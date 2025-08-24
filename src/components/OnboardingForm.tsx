@@ -7,8 +7,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Progress } from "@/components/ui/progress";
 import { ArrowRight, ArrowLeft } from "lucide-react";
+import { useTranslation } from "react-i18next";
 
 const OnboardingForm = ({ onComplete }: { onComplete: () => void }) => {
+  const { t } = useTranslation();
   const [step, setStep] = useState(1);
   const [formData, setFormData] = useState({
     age: "",
@@ -40,8 +42,8 @@ const OnboardingForm = ({ onComplete }: { onComplete: () => void }) => {
     <div className="min-h-screen bg-background flex items-center justify-center p-6">
       <Card className="w-full max-w-2xl gradient-card border-primary/20 shadow-card">
         <CardHeader className="text-center">
-          <CardTitle className="text-3xl font-bold mb-2">Let's Get You Started</CardTitle>
-          <p className="text-muted-foreground">Help us create your personalized fitness plan</p>
+          <CardTitle className="text-3xl font-bold mb-2">{t('onboarding.title')}</CardTitle>
+          <p className="text-muted-foreground">{t('onboarding.description')}</p>
           <div className="mt-6">
             <Progress value={progress} className="h-2" />
             <p className="text-sm text-muted-foreground mt-2">Step {step} of {totalSteps}</p>
@@ -51,15 +53,15 @@ const OnboardingForm = ({ onComplete }: { onComplete: () => void }) => {
         <CardContent className="space-y-6">
           {step === 1 && (
             <div className="space-y-6">
-              <h3 className="text-xl font-semibold text-center mb-6">Basic Information</h3>
+              <h3 className="text-xl font-semibold text-center mb-6">{t('onboarding.steps.personalInfo')}</h3>
               
               <div className="space-y-4">
                 <div>
-                  <Label htmlFor="age">Age</Label>
+                  <Label htmlFor="age">{t('onboarding.fields.age')}</Label>
                   <Input
                     id="age"
                     type="number"
-                    placeholder="Enter your age"
+                    placeholder={t('onboarding.fields.agePlaceholder')}
                     value={formData.age}
                     onChange={(e) => setFormData({...formData, age: e.target.value})}
                     className="mt-1"
@@ -68,11 +70,11 @@ const OnboardingForm = ({ onComplete }: { onComplete: () => void }) => {
                 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
-                    <Label htmlFor="weight">Weight (kg)</Label>
+                    <Label htmlFor="weight">{t('onboarding.fields.weight')}</Label>
                     <Input
                       id="weight"
                       type="number"
-                      placeholder="Enter your weight"
+                      placeholder={t('onboarding.fields.weightPlaceholder')}
                       value={formData.weight}
                       onChange={(e) => setFormData({...formData, weight: e.target.value})}
                       className="mt-1"
@@ -80,11 +82,11 @@ const OnboardingForm = ({ onComplete }: { onComplete: () => void }) => {
                   </div>
                   
                   <div>
-                    <Label htmlFor="height">Height (cm)</Label>
+                    <Label htmlFor="height">{t('onboarding.fields.height')}</Label>
                     <Input
                       id="height"
                       type="number"
-                      placeholder="Enter your height"
+                      placeholder={t('onboarding.fields.heightPlaceholder')}
                       value={formData.height}
                       onChange={(e) => setFormData({...formData, height: e.target.value})}
                       className="mt-1"
@@ -97,10 +99,10 @@ const OnboardingForm = ({ onComplete }: { onComplete: () => void }) => {
 
           {step === 2 && (
             <div className="space-y-6">
-              <h3 className="text-xl font-semibold text-center mb-6">Fitness Goals</h3>
+              <h3 className="text-xl font-semibold text-center mb-6">{t('onboarding.steps.goals')}</h3>
               
               <div>
-                <Label>What's your primary fitness goal?</Label>
+                <Label>{t('onboarding.fields.fitnessGoal')}</Label>
                 <RadioGroup 
                   value={formData.goal} 
                   onValueChange={(value) => setFormData({...formData, goal: value})}
@@ -109,28 +111,28 @@ const OnboardingForm = ({ onComplete }: { onComplete: () => void }) => {
                   <div className="flex items-center space-x-2 p-4 rounded-lg border border-border hover:bg-muted/50 transition-smooth">
                     <RadioGroupItem value="gain-muscle" id="gain-muscle" />
                     <Label htmlFor="gain-muscle" className="cursor-pointer flex-1">
-                      <div className="font-medium">Gain Muscle</div>
+                      <div className="font-medium">{t('onboarding.goals.gainMuscle')}</div>
                       <div className="text-sm text-muted-foreground">Build strength and muscle mass</div>
                     </Label>
                   </div>
                   <div className="flex items-center space-x-2 p-4 rounded-lg border border-border hover:bg-muted/50 transition-smooth">
                     <RadioGroupItem value="lose-fat" id="lose-fat" />
                     <Label htmlFor="lose-fat" className="cursor-pointer flex-1">
-                      <div className="font-medium">Lose Fat</div>
+                      <div className="font-medium">{t('onboarding.goals.loseFat')}</div>
                       <div className="text-sm text-muted-foreground">Reduce body fat and get lean</div>
                     </Label>
                   </div>
                   <div className="flex items-center space-x-2 p-4 rounded-lg border border-border hover:bg-muted/50 transition-smooth">
                     <RadioGroupItem value="improve-cardio" id="improve-cardio" />
                     <Label htmlFor="improve-cardio" className="cursor-pointer flex-1">
-                      <div className="font-medium">Improve Cardio</div>
+                      <div className="font-medium">{t('onboarding.goals.improveCardio')}</div>
                       <div className="text-sm text-muted-foreground">Enhance cardiovascular endurance</div>
                     </Label>
                   </div>
                   <div className="flex items-center space-x-2 p-4 rounded-lg border border-border hover:bg-muted/50 transition-smooth">
                     <RadioGroupItem value="maintain" id="maintain" />
                     <Label htmlFor="maintain" className="cursor-pointer flex-1">
-                      <div className="font-medium">Maintain</div>
+                      <div className="font-medium">{t('onboarding.goals.maintain')}</div>
                       <div className="text-sm text-muted-foreground">Stay fit and healthy</div>
                     </Label>
                   </div>
@@ -141,20 +143,20 @@ const OnboardingForm = ({ onComplete }: { onComplete: () => void }) => {
 
           {step === 3 && (
             <div className="space-y-6">
-              <h3 className="text-xl font-semibold text-center mb-6">Preferences & Experience</h3>
+              <h3 className="text-xl font-semibold text-center mb-6">{t('onboarding.steps.review')}</h3>
               
               <div>
-                <Label>Dietary Preference</Label>
+                <Label>{t('onboarding.fields.dietaryPreference')}</Label>
                 <Select value={formData.diet} onValueChange={(value) => setFormData({...formData, diet: value})}>
                   <SelectTrigger className="mt-1">
-                    <SelectValue placeholder="Select your dietary preference" />
+                    <SelectValue placeholder={t('onboarding.fields.dietaryPreferencePlaceholder')} />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="no-preference">No Preference</SelectItem>
-                    <SelectItem value="vegetarian">Vegetarian</SelectItem>
-                    <SelectItem value="vegan">Vegan</SelectItem>
-                    <SelectItem value="keto">Keto</SelectItem>
-                    <SelectItem value="high-protein">High-Protein</SelectItem>
+                    <SelectItem value="no-preference">{t('onboarding.diet.noPreference')}</SelectItem>
+                    <SelectItem value="vegetarian">{t('onboarding.diet.vegetarian')}</SelectItem>
+                    <SelectItem value="vegan">{t('onboarding.diet.vegan')}</SelectItem>
+                    <SelectItem value="keto">{t('onboarding.diet.keto')}</SelectItem>
+                    <SelectItem value="high-protein">{t('onboarding.diet.highProtein')}</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -183,14 +185,14 @@ const OnboardingForm = ({ onComplete }: { onComplete: () => void }) => {
               className="flex items-center gap-2"
             >
               <ArrowLeft className="h-4 w-4" />
-              Back
+              {t('onboarding.buttons.previous')}
             </Button>
             
             <Button 
               onClick={handleNext}
               className="gradient-primary text-primary-foreground shadow-glow flex items-center gap-2"
             >
-              {step === totalSteps ? "Generate Plan" : "Next"}
+              {step === totalSteps ? t('onboarding.buttons.complete') : t('onboarding.buttons.next')}
               <ArrowRight className="h-4 w-4" />
             </Button>
           </div>

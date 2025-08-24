@@ -1,0 +1,124 @@
+{
+  "navigation": {
+    "features": "Features",
+    "pricing": "Pricing",
+    "about": "About",
+    "signIn": "Sign In",
+    "getStarted": "Get Started"
+  },
+  "hero": {
+    "badge": "AI-Powered Fitness Revolution",
+    "title": "Your Personal",
+    "titleHighlight": "AI Fitness Coach",
+    "description": "Transform your fitness journey with personalized workout and nutrition plans powered by advanced AI. Achieve your goals faster than ever before.",
+    "startJourney": "Start Your Journey",
+    "watchDemo": "Watch Demo",
+    "stats": {
+      "activeUsers": "Active Users",
+      "successRate": "Success Rate",
+      "support": "AI Support"
+    }
+  },
+  "features": {
+    "title": "Powered by Advanced AI",
+    "description": "Experience the future of fitness with intelligent features designed to accelerate your transformation",
+    "aiPlans": {
+      "title": "AI-Powered Plans",
+      "description": "Advanced AI analyzes your profile to create personalized workout and nutrition plans tailored to your unique needs and goals."
+    },
+    "customWorkouts": {
+      "title": "Custom Workouts",
+      "description": "Get detailed 4-week workout programs with specific exercises, sets, reps, and progression tracking for optimal results."
+    },
+    "smartNutrition": {
+      "title": "Smart Nutrition",
+      "description": "Receive personalized meal plans and nutrition guidance based on your dietary preferences and fitness objectives."
+    },
+    "goalTracking": {
+      "title": "Goal Tracking",
+      "description": "Set and achieve your fitness goals with intelligent progress tracking and adaptive plan adjustments."
+    },
+    "progressAnalytics": {
+      "title": "Progress Analytics",
+      "description": "Monitor your improvement with detailed analytics and insights to stay motivated and on track."
+    },
+    "communitySupport": {
+      "title": "Community Support",
+      "description": "Connect with like-minded fitness enthusiasts and get support from our active community."
+    }
+  },
+  "cta": {
+    "badge": "Ready to Transform?",
+    "title": "Start Your",
+    "titleHighlight": "AI-Powered Journey",
+    "description": "Join thousands of users who have already transformed their fitness with FitssAI. Get your personalized plan in under 5 minutes.",
+    "getStartedFree": "Get Started Free",
+    "disclaimer": "No credit card required • 7-day free trial"
+  },
+  "onboarding": {
+    "title": "Let's Get You Started",
+    "description": "Tell us about yourself to create your personalized fitness plan",
+    "steps": {
+      "personalInfo": "Personal Info",
+      "goals": "Goals & Preferences",
+      "review": "Review"
+    },
+    "fields": {
+      "age": "Age",
+      "agePlaceholder": "Enter your age",
+      "weight": "Weight (kg)",
+      "weightPlaceholder": "Enter your weight in kg",
+      "height": "Height (cm)",
+      "heightPlaceholder": "Enter your height in cm",
+      "fitnessGoal": "Fitness Goal",
+      "fitnessGoalPlaceholder": "Select your primary goal",
+      "dietaryPreference": "Dietary Preference",
+      "dietaryPreferencePlaceholder": "Select your dietary preference"
+    },
+    "goals": {
+      "gainMuscle": "Gain Muscle",
+      "loseFat": "Lose Fat",
+      "improveCardio": "Improve Cardio",
+      "maintain": "Maintain"
+    },
+    "diet": {
+      "noPreference": "No Preference",
+      "vegetarian": "Vegetarian",
+      "vegan": "Vegan",
+      "keto": "Keto",
+      "highProtein": "High-Protein"
+    },
+    "buttons": {
+      "next": "Next",
+      "previous": "Previous",
+      "complete": "Complete Setup"
+    }
+  },
+  "dashboard": {
+    "welcome": "Welcome to FitssAI",
+    "subtitle": "Your personalized fitness journey starts here",
+    "tabs": {
+      "workoutPlan": "Workout Plan",
+      "nutritionPlan": "Nutrition Plan",
+      "profile": "Profile",
+      "regeneratePlans": "Regenerate Plans"
+    },
+    "workoutPlan": {
+      "title": "Your 4-Week Workout Plan",
+      "comingSoon": "Your personalized workout plan will be generated here based on your profile and goals."
+    },
+    "nutritionPlan": {
+      "title": "Your Nutrition Guide",
+      "comingSoon": "Your personalized nutrition plan will be generated here based on your dietary preferences and goals."
+    },
+    "profile": {
+      "title": "Your Profile",
+      "edit": "Edit Profile"
+    },
+    "regenerate": {
+      "title": "Regenerate Your Plans",
+      "description": "Generate new workout and nutrition plans based on your current profile.",
+      "button": "Regenerate Plans"
+    }
+  }
+}

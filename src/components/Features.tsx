@@ -1,37 +1,40 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Brain, Dumbbell, Apple, Target, TrendingUp, Users } from "lucide-react";
+import { useTranslation } from "react-i18next";
 
 const Features = () => {
+  const { t } = useTranslation();
+  
   const features = [
     {
       icon: Brain,
-      title: "AI-Powered Plans",
-      description: "Advanced AI analyzes your profile to create personalized workout and nutrition plans tailored to your unique needs and goals."
+      title: t('features.aiPlans.title'),
+      description: t('features.aiPlans.description')
     },
     {
       icon: Dumbbell,
-      title: "Custom Workouts",
-      description: "Get detailed 4-week workout programs with specific exercises, sets, reps, and progression tracking for optimal results."
+      title: t('features.customWorkouts.title'),
+      description: t('features.customWorkouts.description')
     },
     {
       icon: Apple,
-      title: "Smart Nutrition",
-      description: "Receive personalized meal plans and nutrition guidance based on your dietary preferences and fitness objectives."
+      title: t('features.smartNutrition.title'),
+      description: t('features.smartNutrition.description')
     },
     {
       icon: Target,
-      title: "Goal Tracking",
-      description: "Set and achieve your fitness goals with intelligent progress tracking and adaptive plan adjustments."
+      title: t('features.goalTracking.title'),
+      description: t('features.goalTracking.description')
     },
     {
       icon: TrendingUp,
-      title: "Progress Analytics",
-      description: "Monitor your improvement with detailed analytics and insights to stay motivated and on track."
+      title: t('features.progressAnalytics.title'),
+      description: t('features.progressAnalytics.description')
     },
     {
       icon: Users,
-      title: "Community Support",
-      description: "Connect with like-minded fitness enthusiasts and get support from our active community."
+      title: t('features.communitySupport.title'),
+      description: t('features.communitySupport.description')
     }
   ];
 
@@ -40,10 +43,11 @@ const Features = () => {
       <div className="container mx-auto px-6">
         <div className="text-center mb-16">
           <h2 className="text-4xl md:text-5xl font-bold mb-6">
-            Powered by <span className="gradient-primary bg-clip-text text-transparent">Advanced AI</span>
+            {t('features.title').split('Advanced AI')[0]}
+            <span className="gradient-primary bg-clip-text text-transparent">Advanced AI</span>
           </h2>
           <p className="text-xl text-muted-foreground max-w-3xl mx-auto">
-            Experience the future of fitness with intelligent features designed to accelerate your transformation
+            {t('features.description')}
           </p>
         </div>
         
