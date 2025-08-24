@@ -1,43 +1,12 @@
-import Navigation from "@/components/Navigation";
-import Hero from "@/components/Hero";
-import Features from "@/components/Features";
-import CTA from "@/components/CTA";
-import Dashboard from "@/components/Dashboard";
-import OnboardingForm from "@/components/OnboardingForm";
-import { useState } from "react";
+// Update this page (the content is just a fallback if you fail to update the page)
 
 const Index = () => {
-  const [currentView, setCurrentView] = useState<'landing' | 'onboarding' | 'dashboard'>('landing');
-
-  const handleGetStarted = () => {
-    setCurrentView('onboarding');
-  };
-
-  const handleOnboardingComplete = () => {
-    setCurrentView('dashboard');
-  };
-
-  const renderCurrentView = () => {
-    switch (currentView) {
-      case 'onboarding':
-        return <OnboardingForm onComplete={handleOnboardingComplete} />;
-      case 'dashboard':
-        return <Dashboard />;
-      default:
-        return (
-          <>
-            <Navigation onGetStarted={handleGetStarted} />
-            <Hero onGetStarted={handleGetStarted} />
-            <Features />
-            <CTA onGetStarted={handleGetStarted} />
-          </>
-        );
-    }
-  };
-
   return (
-    <div className="min-h-screen bg-background">
-      {renderCurrentView()}
+    <div className="min-h-screen flex items-center justify-center bg-background">
+      <div className="text-center">
+        <h1 className="text-4xl font-bold mb-4">Welcome to Your Blank App</h1>
+        <p className="text-xl text-muted-foreground">Start building your amazing project here!</p>
+      </div>
     </div>
   );
 };
