@@ -1,18 +1,28 @@
 {
   "auth": {
-    "subtitle": "Your AI-powered fitness journey starts here",
+    "subtitle": "Join thousands achieving their fitness goals",
     "signIn": "Sign In",
-    "signUp": "Sign Up", 
+    "signUp": "Sign Up",
+    "signInSubtitle": "Welcome back! Sign in to your account",
+    "signUpSubtitle": "Create your account to get started",
     "email": "Email",
     "password": "Password",
     "signingIn": "Signing in...",
-    "signingUp": "Signing up..."
+    "signingUp": "Signing up...",
+    "backToHome": "Back to Home",
+    "alreadyHaveAccount": "Already have an account?",
+    "dontHaveAccount": "Don't have an account?"
   },
   "navigation": {
+    "home": "Home",
     "features": "Features",
     "pricing": "Pricing",
     "about": "About",
     "signIn": "Sign In",
+    "signUp": "Sign Up",
+    "signOut": "Sign Out",
+    "dashboard": "Dashboard",
+    "profile": "Profile",
     "getStarted": "Get Started"
   },
   "hero": {

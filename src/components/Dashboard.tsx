@@ -14,8 +14,7 @@ import {
   Clock,
   TrendingUp,
   Target,
-  Flame,
-  LogOut
+  Flame
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { useAuth } from "@/hooks/useAuth";
@@ -25,7 +24,7 @@ import { toast } from "sonner";
 
 const Dashboard = () => {
   const { t } = useTranslation();
-  const { user, signOut } = useAuth();
+  const { user } = useAuth();
   const [profile, setProfile] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState(false);
@@ -113,10 +112,6 @@ const Dashboard = () => {
     }
   };
 
-  const handleSignOut = async () => {
-    await signOut();
-  };
-
   if (loading) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
@@ -126,10 +121,9 @@ const Dashboard = () => {
   }
   
   return (
-    <div className="min-h-screen bg-background p-6">
-      <div className="max-w-7xl mx-auto">
-        {/* Header */}
-        <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8">
+    <div className="max-w-7xl mx-auto p-6">
+      {/* Header */}
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8">
           <div>
             <h1 className="text-3xl font-bold mb-2">{t('dashboard.welcome')}</h1>
             <p className="text-muted-foreground">{t('dashboard.subtitle')}</p>
@@ -142,10 +136,6 @@ const Dashboard = () => {
             >
               <RefreshCw className={`mr-2 h-4 w-4 ${generatingPlans ? 'animate-spin' : ''}`} />
               {generatingPlans ? 'Generating...' : (workoutPlan || nutritionPlan ? 'Regenerate Plans' : 'Generate Plans')}
-            </Button>
-            <Button variant="outline" onClick={handleSignOut}>
-              <LogOut className="mr-2 h-4 w-4" />
-              Sign Out
             </Button>
           </div>
         </div>

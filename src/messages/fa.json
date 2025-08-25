@@ -1,18 +1,28 @@
 {
   "auth": {
-    "subtitle": "سفر تناسب اندام هوشمند شما از اینجا شروع می‌شود",
+    "subtitle": "به هزاران نفری بپیوندید که به اهداف تناسب اندام خود می‌رسند",
     "signIn": "ورود",
     "signUp": "ثبت نام",
+    "signInSubtitle": "خوش آمدید! وارد حساب خود شوید",
+    "signUpSubtitle": "حساب خود را ایجاد کنید تا شروع کنید",
     "email": "ایمیل",
     "password": "رمز عبور",
     "signingIn": "در حال ورود...",
-    "signingUp": "در حال ثبت نام..."
+    "signingUp": "در حال ثبت نام...",
+    "backToHome": "بازگشت به خانه",
+    "alreadyHaveAccount": "قبلاً حساب دارید؟",
+    "dontHaveAccount": "حساب ندارید؟"
   },
   "navigation": {
+    "home": "خانه",
     "features": "ویژگی‌ها",
     "pricing": "قیمت‌گذاری",
     "about": "درباره ما",
     "signIn": "ورود",
+    "signUp": "ثبت نام",
+    "signOut": "خروج",
+    "dashboard": "داشبورد",
+    "profile": "پروفایل",
     "getStarted": "شروع کنید"
   },
   "hero": {
