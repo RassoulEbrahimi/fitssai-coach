@@ -29,10 +29,14 @@ const Dashboard = () => {
   const [profile, setProfile] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState(false);
+  const [workoutPlan, setWorkoutPlan] = useState<any>(null);
+  const [nutritionPlan, setNutritionPlan] = useState<any>(null);
+  const [generatingPlans, setGeneratingPlans] = useState(false);
   
   useEffect(() => {
     if (user) {
       fetchProfile();
+      fetchPlans();
     }
   }, [user]);
 
@@ -52,6 +56,60 @@ const Dashboard = () => {
       console.error('Error fetching profile:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchPlans = async () => {
+    if (!user) return;
+
+    try {
+      // Fetch latest workout plan
+      const { data: workoutData } = await supabase
+        .from('workout_plans')
+        .select('*')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false })
+        .limit(1);
+
+      // Fetch latest nutrition plan
+      const { data: nutritionData } = await supabase
+        .from('nutrition_plans')
+        .select('*')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false })
+        .limit(1);
+
+      setWorkoutPlan(workoutData?.[0] || null);
+      setNutritionPlan(nutritionData?.[0] || null);
+    } catch (error) {
+      console.error('Error fetching plans:', error);
+    }
+  };
+
+  const generatePlans = async () => {
+    if (!user) return;
+
+    setGeneratingPlans(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('generate-plans', {
+        headers: {
+          Authorization: `Bearer ${(await supabase.auth.getSession()).data.session?.access_token}`,
+        },
+      });
+
+      if (error) throw error;
+
+      if (data.success) {
+        toast.success('Plans generated successfully!');
+        await fetchPlans(); // Refresh the plans
+      } else {
+        throw new Error(data.error || 'Failed to generate plans');
+      }
+    } catch (error) {
+      console.error('Error generating plans:', error);
+      toast.error('Failed to generate plans. Please try again.');
+    } finally {
+      setGeneratingPlans(false);
     }
   };
 
@@ -77,9 +135,13 @@ const Dashboard = () => {
             <p className="text-muted-foreground">{t('dashboard.subtitle')}</p>
           </div>
           <div className="flex gap-2">
-            <Button className="gradient-primary text-primary-foreground shadow-glow">
-              <RefreshCw className="mr-2 h-4 w-4" />
-              {t('dashboard.regenerate.button')}
+            <Button 
+              className="gradient-primary text-primary-foreground shadow-glow" 
+              onClick={generatePlans}
+              disabled={generatingPlans}
+            >
+              <RefreshCw className={`mr-2 h-4 w-4 ${generatingPlans ? 'animate-spin' : ''}`} />
+              {generatingPlans ? 'Generating...' : (workoutPlan || nutritionPlan ? 'Regenerate Plans' : 'Generate Plans')}
             </Button>
             <Button variant="outline" onClick={handleSignOut}>
               <LogOut className="mr-2 h-4 w-4" />
@@ -165,17 +227,46 @@ const Dashboard = () => {
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm text-muted-foreground">Week 1 Progress</span>
-                    <Badge variant="secondary">5/7 Complete</Badge>
+                {workoutPlan ? (
+                  <div className="space-y-6">
+                    {Object.entries(workoutPlan.content).map(([week, days]: [string, any]) => (
+                      <div key={week} className="space-y-4">
+                        <h3 className="text-lg font-semibold capitalize text-primary">
+                          {week.replace(/([A-Z])/g, ' $1').trim()}
+                        </h3>
+                        <div className="grid gap-4">
+                          {days.map((day: any, dayIndex: number) => (
+                            <Card key={dayIndex} className="border-primary/10">
+                              <CardHeader className="pb-3">
+                                <CardTitle className="text-base">{day.day}</CardTitle>
+                              </CardHeader>
+                              <CardContent>
+                                <div className="space-y-2">
+                                  {day.exercises.map((exercise: any, exerciseIndex: number) => (
+                                    <div key={exerciseIndex} className="flex justify-between items-center p-3 bg-muted/50 rounded-lg">
+                                      <div>
+                                        <span className="font-medium">{exercise.name}</span>
+                                      </div>
+                                      <div className="text-sm text-muted-foreground">
+                                        {exercise.sets} sets × {exercise.reps} • {exercise.rest}
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                              </CardContent>
+                            </Card>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
                   </div>
-                  <Progress value={71} className="h-2" />
-                  
+                ) : (
                   <div className="text-center py-8">
-                    <p className="text-muted-foreground">{t('dashboard.workoutPlan.comingSoon')}</p>
+                    <p className="text-muted-foreground">
+                      No workout plan generated yet. Click "Generate Plans" to create your personalized plan.
+                    </p>
                   </div>
-                </div>
+                )}
               </CardContent>
             </Card>
           </TabsContent>
@@ -189,9 +280,38 @@ const Dashboard = () => {
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="text-center py-8">
-                  <p className="text-muted-foreground">{t('dashboard.nutritionPlan.comingSoon')}</p>
-                </div>
+                {nutritionPlan ? (
+                  <div className="space-y-6">
+                    {Object.entries(nutritionPlan.content).map(([mealType, meals]: [string, any]) => (
+                      <div key={mealType} className="space-y-3">
+                        <h3 className="text-lg font-semibold capitalize text-primary">{mealType}</h3>
+                        <div className="grid gap-3">
+                          {meals.map((meal: any, mealIndex: number) => (
+                            <Card key={mealIndex} className="border-primary/10">
+                              <CardContent className="p-4">
+                                <div className="flex justify-between items-start">
+                                  <div className="flex-1">
+                                    <h4 className="font-medium">{meal.meal}</h4>
+                                    <p className="text-sm text-muted-foreground mt-1">{meal.description}</p>
+                                  </div>
+                                  <Badge variant="secondary" className="ml-3">
+                                    {meal.calories} cal
+                                  </Badge>
+                                </div>
+                              </CardContent>
+                            </Card>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-center py-8">
+                    <p className="text-muted-foreground">
+                      No nutrition plan generated yet. Click "Generate Plans" to create your personalized plan.
+                    </p>
+                  </div>
+                )}
               </CardContent>
             </Card>
           </TabsContent>

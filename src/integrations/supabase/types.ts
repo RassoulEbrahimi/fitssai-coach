@@ -14,6 +14,27 @@ export type Database = {
   }
   public: {
     Tables: {
+      nutrition_plans: {
+        Row: {
+          content: Json
+          created_at: string
+          id: string
+          user_id: string
+        }
+        Insert: {
+          content: Json
+          created_at?: string
+          id?: string
+          user_id: string
+        }
+        Update: {
+          content?: Json
+          created_at?: string
+          id?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       profiles: {
         Row: {
           age: number
@@ -47,6 +68,27 @@ export type Database = {
           id?: string
           updated_at?: string
           weight?: number
+        }
+        Relationships: []
+      }
+      workout_plans: {
+        Row: {
+          content: Json
+          created_at: string
+          id: string
+          user_id: string
+        }
+        Insert: {
+          content: Json
+          created_at?: string
+          id?: string
+          user_id: string
+        }
+        Update: {
+          content?: Json
+          created_at?: string
+          id?: string
+          user_id?: string
         }
         Relationships: []
       }
