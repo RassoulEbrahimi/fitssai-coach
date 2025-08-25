@@ -31,22 +31,25 @@ const Dashboard = () => {
   const [workoutPlan, setWorkoutPlan] = useState<any>(null);
   const [nutritionPlan, setNutritionPlan] = useState<any>(null);
   const [generatingPlans, setGeneratingPlans] = useState(false);
-  const [dailyQuote, setDailyQuote] = useState<any>(null);
-  const [loadingQuote, setLoadingQuote] = useState(true);
+  // TODO: Re-enable Quote of the Day feature
+  // const [dailyQuote, setDailyQuote] = useState<any>(null);
+  // const [loadingQuote, setLoadingQuote] = useState(true);
   
   useEffect(() => {
     if (user) {
       fetchProfile();
       fetchPlans();
-      fetchDailyQuote();
+      // TODO: Re-enable quote fetching
+      // fetchDailyQuote();
     }
   }, [user]);
 
-  useEffect(() => {
-    if (user) {
-      fetchDailyQuote();
-    }
-  }, [i18n.language]);
+  // TODO: Re-enable quote fetching on language change
+  // useEffect(() => {
+  //   if (user) {
+  //     fetchDailyQuote();
+  //   }
+  // }, [i18n.language]);
 
   const fetchProfile = async () => {
     if (!user) return;
@@ -94,33 +97,34 @@ const Dashboard = () => {
     }
   };
 
-  const fetchDailyQuote = async (forceRefresh = false) => {
-    if (!user) return;
-
-    setLoadingQuote(true);
-    try {
-      const { data, error } = await supabase.functions.invoke('get-daily-quote', {
-        body: { 
-          language: i18n.language,
-          forceRefresh 
-        },
-      });
-
-      if (error) throw error;
-      setDailyQuote(data);
-    } catch (error) {
-      console.error('Error fetching daily quote:', error);
-      setDailyQuote({
-        quote: i18n.language === 'fa' 
-          ? 'هر روز فرصتی جدید برای بهتر شدن است.'
-          : 'Every day is a new opportunity to become better.',
-        author: 'FitssAI',
-        language: i18n.language
-      });
-    } finally {
-      setLoadingQuote(false);
-    }
-  };
+  // TODO: Re-enable Quote of the Day feature - fetchDailyQuote function
+  // const fetchDailyQuote = async (forceRefresh = false) => {
+  //   if (!user) return;
+  //
+  //   setLoadingQuote(true);
+  //   try {
+  //     const { data, error } = await supabase.functions.invoke('get-daily-quote', {
+  //       body: { 
+  //         language: i18n.language,
+  //         forceRefresh 
+  //       },
+  //     });
+  //
+  //     if (error) throw error;
+  //     setDailyQuote(data);
+  //   } catch (error) {
+  //     console.error('Error fetching daily quote:', error);
+  //     setDailyQuote({
+  //       quote: i18n.language === 'fa' 
+  //         ? 'هر روز فرصتی جدید برای بهتر شدن است.'
+  //         : 'Every day is a new opportunity to become better.',
+  //       author: 'FitssAI',
+  //       language: i18n.language
+  //     });
+  //   } finally {
+  //     setLoadingQuote(false);
+  //   }
+  // };
 
   const generatePlans = async () => {
     if (!user) return;
@@ -177,8 +181,9 @@ const Dashboard = () => {
           </div>
         </div>
 
-        {/* Daily Quote */}
-        <Card className="gradient-card border-primary/20 mb-8">
+        {/* TODO: Re-enable Quote of the Day feature */}
+        {/* Daily Quote - DISABLED */}
+        {/* <Card className="gradient-card border-primary/20 mb-8">
           <CardContent className="p-6">
             <div className={`flex items-start justify-between ${i18n.language === 'fa' ? 'flex-row-reverse' : ''}`}>
               <div className={`flex-1 ${i18n.language === 'fa' ? 'text-right' : 'text-left'}`}>
@@ -214,7 +219,7 @@ const Dashboard = () => {
               </Button>
             </div>
           </CardContent>
-        </Card>
+        </Card> */}
 
         {/* Quick Stats */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
