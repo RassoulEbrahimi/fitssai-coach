@@ -135,6 +135,9 @@ const Dashboard = () => {
         headers: {
           Authorization: `Bearer ${(await supabase.auth.getSession()).data.session?.access_token}`,
         },
+        body: {
+          language: i18n.language, // Pass current language to edge function
+        },
       });
 
       if (error) throw error;

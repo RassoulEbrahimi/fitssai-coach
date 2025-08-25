@@ -28,6 +28,7 @@ serve(async (req) => {
       // No body or invalid JSON, use empty object
     }
     const targetUserId = body.user_id;
+    const language = body.language || 'en'; // Default to English if not specified
 
     let userId: string;
     
@@ -100,7 +101,14 @@ serve(async (req) => {
       });
     }
 
-    const prompt = `Generate a personalized 4-week workout plan and a daily nutrition plan for a user with the following profile:
+    // Language-specific instructions
+    const languageInstruction = language === 'fa' 
+      ? 'Generate ALL content (exercise names, meal names, descriptions, day labels) in Persian (Farsi). Use Persian/Farsi language for all text content.'
+      : 'Generate all content in English.';
+
+    const prompt = `${languageInstruction}
+
+Generate a personalized 4-week workout plan and a daily nutrition plan for a user with the following profile:
 - Age: ${profile.age} years old
 - Weight: ${profile.weight} kg
 - Height: ${profile.height} cm
@@ -142,7 +150,9 @@ Please return a JSON response with exactly this structure:
   }
 }
 
-Make sure the workout plan is appropriate for their experience level and the nutrition plan matches their dietary preferences and fitness goals.`;
+Make sure the workout plan is appropriate for their experience level and the nutrition plan matches their dietary preferences and fitness goals.
+
+IMPORTANT: ${languageInstruction} All exercise names, meal names, descriptions, and any other text content must be in ${language === 'fa' ? 'Persian (Farsi)' : 'English'}.`;
 
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
@@ -155,7 +165,7 @@ Make sure the workout plan is appropriate for their experience level and the nut
         messages: [
           { 
             role: 'system', 
-            content: 'You are a professional fitness and nutrition expert. Always respond with valid JSON only, no additional text.' 
+            content: `You are a professional fitness and nutrition expert. Always respond with valid JSON only, no additional text. ${language === 'fa' ? 'Generate all content in Persian (Farsi) language.' : 'Generate all content in English.'}` 
           },
           { role: 'user', content: prompt }
         ],

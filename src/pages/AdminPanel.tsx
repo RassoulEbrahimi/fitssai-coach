@@ -231,7 +231,10 @@ const AdminPanel = () => {
     setRegeneratingPlan(`${planUserId}-${planType}`);
     try {
       const { data, error } = await supabase.functions.invoke('generate-plans', {
-        body: { user_id: planUserId },
+        body: { 
+          user_id: planUserId,
+          language: i18n.language, // Use admin's current language preference
+        },
       });
 
       if (error) throw error;
