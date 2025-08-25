@@ -370,8 +370,7 @@ const Dashboard = () => {
           </TabsContent>
         </Tabs>
       </div>
-    </div>
-  );
-};
+    );
+  };
 
 export default Dashboard;
