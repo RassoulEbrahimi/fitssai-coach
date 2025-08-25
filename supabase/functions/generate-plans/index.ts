@@ -20,22 +20,66 @@ serve(async (req) => {
       { global: { headers: { Authorization: req.headers.get('Authorization')! } } }
     );
 
-    // Get current user
-    const { data: { user }, error: userError } = await supabaseClient.auth.getUser();
+    // Parse request body
+    let body = {};
+    try {
+      body = await req.json();
+    } catch (e) {
+      // No body or invalid JSON, use empty object
+    }
+    const targetUserId = body.user_id;
+
+    let userId: string;
     
-    if (userError || !user) {
-      console.error('Auth error:', userError);
-      return new Response(JSON.stringify({ error: 'Unauthorized' }), {
-        status: 401,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
+    if (targetUserId) {
+      // Admin is generating plans for another user
+      // First verify that the current user is an admin
+      const { data: { user }, error: userError } = await supabaseClient.auth.getUser();
+      
+      if (userError || !user) {
+        console.error('Auth error:', userError);
+        return new Response(JSON.stringify({ error: 'Unauthorized' }), {
+          status: 401,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+
+      // Check if current user is admin
+      const { data: adminProfile, error: adminError } = await supabaseClient
+        .from('profiles')
+        .select('is_admin')
+        .eq('id', user.id)
+        .single();
+
+      if (adminError || !adminProfile?.is_admin) {
+        console.error('Admin check failed:', adminError);
+        return new Response(JSON.stringify({ error: 'Admin access required' }), {
+          status: 403,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+
+      userId = targetUserId;
+    } else {
+      // Regular user generating their own plans
+      const { data: { user }, error: userError } = await supabaseClient.auth.getUser();
+      
+      if (userError || !user) {
+        console.error('Auth error:', userError);
+        return new Response(JSON.stringify({ error: 'Unauthorized' }), {
+          status: 401,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+
+      userId = user.id;
     }
 
     // Fetch user profile
     const { data: profile, error: profileError } = await supabaseClient
       .from('profiles')
       .select('*')
-      .eq('id', user.id)
+      .eq('id', userId)
       .single();
 
     if (profileError || !profile) {
@@ -142,11 +186,15 @@ Make sure the workout plan is appropriate for their experience level and the nut
       });
     }
 
+    // Delete existing plans for this user (to replace with new ones)
+    await supabaseClient.from('workout_plans').delete().eq('user_id', userId);
+    await supabaseClient.from('nutrition_plans').delete().eq('user_id', userId);
+
     // Save workout plan
     const { error: workoutError } = await supabaseClient
       .from('workout_plans')
       .insert({
-        user_id: user.id,
+        user_id: userId,
         content: parsedContent.workoutPlan
       });
 
@@ -158,7 +206,7 @@ Make sure the workout plan is appropriate for their experience level and the nut
     const { error: nutritionError } = await supabaseClient
       .from('nutrition_plans')
       .insert({
-        user_id: user.id,
+        user_id: userId,
         content: parsedContent.nutritionPlan
       });
 
