@@ -1,4 +1,13 @@
 {
+  "auth": {
+    "subtitle": "Your AI-powered fitness journey starts here",
+    "signIn": "Sign In",
+    "signUp": "Sign Up", 
+    "email": "Email",
+    "password": "Password",
+    "signingIn": "Signing in...",
+    "signingUp": "Signing up..."
+  },
   "navigation": {
     "features": "Features",
     "pricing": "Pricing",

@@ -3,6 +3,8 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Progress } from "@/components/ui/progress";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { 
   Dumbbell, 
   Apple, 
@@ -12,12 +14,58 @@ import {
   Clock,
   TrendingUp,
   Target,
-  Flame
+  Flame,
+  LogOut
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import { useAuth } from "@/hooks/useAuth";
+import { supabase } from "@/integrations/supabase/client";
+import { useState, useEffect } from "react";
+import { toast } from "sonner";
 
 const Dashboard = () => {
   const { t } = useTranslation();
+  const { user, signOut } = useAuth();
+  const [profile, setProfile] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const [editing, setEditing] = useState(false);
+  
+  useEffect(() => {
+    if (user) {
+      fetchProfile();
+    }
+  }, [user]);
+
+  const fetchProfile = async () => {
+    if (!user) return;
+
+    try {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', user.id)
+        .single();
+
+      if (error) throw error;
+      setProfile(data);
+    } catch (error) {
+      console.error('Error fetching profile:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSignOut = async () => {
+    await signOut();
+  };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="text-xl">Loading your profile...</div>
+      </div>
+    );
+  }
   
   return (
     <div className="min-h-screen bg-background p-6">
@@ -28,10 +76,16 @@ const Dashboard = () => {
             <h1 className="text-3xl font-bold mb-2">{t('dashboard.welcome')}</h1>
             <p className="text-muted-foreground">{t('dashboard.subtitle')}</p>
           </div>
-          <Button className="gradient-primary text-primary-foreground shadow-glow">
-            <RefreshCw className="mr-2 h-4 w-4" />
-            {t('dashboard.regenerate.button')}
-          </Button>
+          <div className="flex gap-2">
+            <Button className="gradient-primary text-primary-foreground shadow-glow">
+              <RefreshCw className="mr-2 h-4 w-4" />
+              {t('dashboard.regenerate.button')}
+            </Button>
+            <Button variant="outline" onClick={handleSignOut}>
+              <LogOut className="mr-2 h-4 w-4" />
+              Sign Out
+            </Button>
+          </div>
         </div>
 
         {/* Quick Stats */}
@@ -155,29 +209,44 @@ const Dashboard = () => {
                   <div className="space-y-4">
                     <div>
                       <label className="text-sm font-medium">{t('onboarding.fields.age')}</label>
-                      <div className="mt-1 p-3 bg-muted rounded-lg">28 years</div>
+                      <div className="mt-1 p-3 bg-muted rounded-lg">{profile?.age} years</div>
                     </div>
                     <div>
                       <label className="text-sm font-medium">{t('onboarding.fields.weight')}</label>
-                      <div className="mt-1 p-3 bg-muted rounded-lg">75 kg</div>
+                      <div className="mt-1 p-3 bg-muted rounded-lg">{profile?.weight} kg</div>
                     </div>
                     <div>
                       <label className="text-sm font-medium">{t('onboarding.fields.height')}</label>
-                      <div className="mt-1 p-3 bg-muted rounded-lg">180 cm</div>
+                      <div className="mt-1 p-3 bg-muted rounded-lg">{profile?.height} cm</div>
                     </div>
                   </div>
                   <div className="space-y-4">
                     <div>
                       <label className="text-sm font-medium">{t('onboarding.fields.fitnessGoal')}</label>
-                      <div className="mt-1 p-3 bg-muted rounded-lg">{t('onboarding.goals.gainMuscle')}</div>
+                      <div className="mt-1 p-3 bg-muted rounded-lg">
+                        {profile?.fitness_goal === 'gain-muscle' && t('onboarding.goals.gainMuscle')}
+                        {profile?.fitness_goal === 'lose-fat' && t('onboarding.goals.loseFat')}
+                        {profile?.fitness_goal === 'improve-cardio' && t('onboarding.goals.improveCardio')}
+                        {profile?.fitness_goal === 'maintain' && t('onboarding.goals.maintain')}
+                      </div>
                     </div>
                     <div>
                       <label className="text-sm font-medium">{t('onboarding.fields.dietaryPreference')}</label>
-                      <div className="mt-1 p-3 bg-muted rounded-lg">{t('onboarding.diet.highProtein')}</div>
+                      <div className="mt-1 p-3 bg-muted rounded-lg">
+                        {profile?.dietary_preference === 'no-preference' && t('onboarding.diet.noPreference')}
+                        {profile?.dietary_preference === 'vegetarian' && t('onboarding.diet.vegetarian')}
+                        {profile?.dietary_preference === 'vegan' && t('onboarding.diet.vegan')}
+                        {profile?.dietary_preference === 'keto' && t('onboarding.diet.keto')}
+                        {profile?.dietary_preference === 'high-protein' && t('onboarding.diet.highProtein')}
+                      </div>
                     </div>
                     <div>
                       <label className="text-sm font-medium">Experience Level</label>
-                      <div className="mt-1 p-3 bg-muted rounded-lg">Intermediate</div>
+                      <div className="mt-1 p-3 bg-muted rounded-lg">
+                        {profile?.experience_level === 'beginner' && 'Beginner'}
+                        {profile?.experience_level === 'intermediate' && 'Intermediate'}
+                        {profile?.experience_level === 'advanced' && 'Advanced'}
+                      </div>
                     </div>
                   </div>
                 </div>

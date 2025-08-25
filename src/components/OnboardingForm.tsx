@@ -8,10 +8,15 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Progress } from "@/components/ui/progress";
 import { ArrowRight, ArrowLeft } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/hooks/useAuth";
+import { toast } from "sonner";
 
 const OnboardingForm = ({ onComplete }: { onComplete: () => void }) => {
   const { t } = useTranslation();
+  const { user } = useAuth();
   const [step, setStep] = useState(1);
+  const [loading, setLoading] = useState(false);
   const [formData, setFormData] = useState({
     age: "",
     weight: "",
@@ -24,11 +29,40 @@ const OnboardingForm = ({ onComplete }: { onComplete: () => void }) => {
   const totalSteps = 3;
   const progress = (step / totalSteps) * 100;
 
-  const handleNext = () => {
+  const handleNext = async () => {
     if (step < totalSteps) {
       setStep(step + 1);
     } else {
+      await saveProfile();
+    }
+  };
+
+  const saveProfile = async () => {
+    if (!user) return;
+
+    setLoading(true);
+    try {
+      const { error } = await supabase
+        .from('profiles')
+        .upsert({
+          id: user.id,
+          age: parseInt(formData.age),
+          weight: parseInt(formData.weight),
+          height: parseInt(formData.height),
+          fitness_goal: formData.goal,
+          dietary_preference: formData.diet,
+          experience_level: formData.experience,
+        });
+
+      if (error) throw error;
+
+      toast.success('Profile saved successfully!');
       onComplete();
+    } catch (error: any) {
+      console.error('Error saving profile:', error);
+      toast.error('Failed to save profile. Please try again.');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -190,9 +224,10 @@ const OnboardingForm = ({ onComplete }: { onComplete: () => void }) => {
             
             <Button 
               onClick={handleNext}
+              disabled={loading}
               className="gradient-primary text-primary-foreground shadow-glow flex items-center gap-2"
             >
-              {step === totalSteps ? t('onboarding.buttons.complete') : t('onboarding.buttons.next')}
+              {loading ? 'Saving...' : (step === totalSteps ? t('onboarding.buttons.complete') : t('onboarding.buttons.next'))}
               <ArrowRight className="h-4 w-4" />
             </Button>
           </div>
