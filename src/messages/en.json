@@ -13,7 +13,7 @@
     "alreadyHaveAccount": "Already have an account?",
     "dontHaveAccount": "Don't have an account?"
   },
-  "navigation": {
+  "navbar": {
     "home": "Home",
     "features": "Features",
     "pricing": "Pricing",

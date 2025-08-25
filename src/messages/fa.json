@@ -13,7 +13,7 @@
     "alreadyHaveAccount": "قبلاً حساب دارید؟",
     "dontHaveAccount": "حساب ندارید؟"
   },
-  "navigation": {
+  "navbar": {
     "home": "خانه",
     "features": "ویژگی‌ها",
     "pricing": "قیمت‌گذاری",
