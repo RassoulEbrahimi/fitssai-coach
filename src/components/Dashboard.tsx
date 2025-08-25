@@ -23,7 +23,7 @@ import { useState, useEffect } from "react";
 import { toast } from "sonner";
 
 const Dashboard = () => {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const { user } = useAuth();
   const [profile, setProfile] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -31,13 +31,22 @@ const Dashboard = () => {
   const [workoutPlan, setWorkoutPlan] = useState<any>(null);
   const [nutritionPlan, setNutritionPlan] = useState<any>(null);
   const [generatingPlans, setGeneratingPlans] = useState(false);
+  const [dailyQuote, setDailyQuote] = useState<any>(null);
+  const [loadingQuote, setLoadingQuote] = useState(true);
   
   useEffect(() => {
     if (user) {
       fetchProfile();
       fetchPlans();
+      fetchDailyQuote();
     }
   }, [user]);
+
+  useEffect(() => {
+    if (user) {
+      fetchDailyQuote();
+    }
+  }, [i18n.language]);
 
   const fetchProfile = async () => {
     if (!user) return;
@@ -82,6 +91,34 @@ const Dashboard = () => {
       setNutritionPlan(nutritionData?.[0] || null);
     } catch (error) {
       console.error('Error fetching plans:', error);
+    }
+  };
+
+  const fetchDailyQuote = async (forceRefresh = false) => {
+    if (!user) return;
+
+    setLoadingQuote(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('get-daily-quote', {
+        body: { 
+          language: i18n.language,
+          forceRefresh 
+        },
+      });
+
+      if (error) throw error;
+      setDailyQuote(data);
+    } catch (error) {
+      console.error('Error fetching daily quote:', error);
+      setDailyQuote({
+        quote: i18n.language === 'fa' 
+          ? 'هر روز فرصتی جدید برای بهتر شدن است.'
+          : 'Every day is a new opportunity to become better.',
+        author: 'FitssAI',
+        language: i18n.language
+      });
+    } finally {
+      setLoadingQuote(false);
     }
   };
 
@@ -139,6 +176,45 @@ const Dashboard = () => {
             </Button>
           </div>
         </div>
+
+        {/* Daily Quote */}
+        <Card className="gradient-card border-primary/20 mb-8">
+          <CardContent className="p-6">
+            <div className={`flex items-start justify-between ${i18n.language === 'fa' ? 'flex-row-reverse' : ''}`}>
+              <div className={`flex-1 ${i18n.language === 'fa' ? 'text-right' : 'text-left'}`}>
+                <h3 className="text-lg font-semibold mb-3 flex items-center gap-2">
+                  <span>💡</span>
+                  <span>{i18n.language === 'fa' ? 'نقل قول روز' : 'Quote of the Day'}</span>
+                </h3>
+                {loadingQuote ? (
+                  <div className="animate-pulse">
+                    <div className="h-4 bg-muted rounded w-3/4 mb-2"></div>
+                    <div className="h-3 bg-muted rounded w-1/2"></div>
+                  </div>
+                ) : (
+                  <div className={`${i18n.language === 'fa' ? 'rtl' : 'ltr'}`}>
+                    <p className="text-foreground mb-2 italic text-lg leading-relaxed">
+                      "{dailyQuote?.quote}"
+                    </p>
+                    <p className="text-muted-foreground text-sm">
+                      — {dailyQuote?.author}
+                    </p>
+                  </div>
+                )}
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => fetchDailyQuote(true)}
+                disabled={loadingQuote}
+                className={`${i18n.language === 'fa' ? 'ml-4' : 'mr-4'} shrink-0`}
+              >
+                <RefreshCw className={`h-4 w-4 ${loadingQuote ? 'animate-spin' : ''} ${i18n.language === 'fa' ? 'ml-2' : 'mr-2'}`} />
+                {i18n.language === 'fa' ? 'تجدید' : 'Refresh'}
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
 
         {/* Quick Stats */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
