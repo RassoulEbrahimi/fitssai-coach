@@ -20,7 +20,7 @@ const CTA = ({ onGetStarted }: CTAProps) => {
           
           <h2 className="text-4xl md:text-6xl font-bold mb-6 leading-tight">
             {t('cta.title')}
-            <span className="block gradient-primary bg-clip-text text-transparent">
+            <span className="block text-primary font-bold">
               {t('cta.titleHighlight')}
             </span>
           </h2>
