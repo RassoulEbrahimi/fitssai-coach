@@ -5,6 +5,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Progress } from "@/components/ui/progress";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { 
   Dumbbell, 
   Apple, 
@@ -16,7 +17,8 @@ import {
   Target,
   Flame,
   Check,
-  CheckCircle
+  CheckCircle,
+  ChevronDown
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useTranslation } from "react-i18next";
@@ -39,6 +41,8 @@ const Dashboard = () => {
   const [generatingPlans, setGeneratingPlans] = useState(false);
   const [workoutLogs, setWorkoutLogs] = useState<any[]>([]);
   const [completingWorkout, setCompletingWorkout] = useState<number | null>(null);
+  const [activeWeek, setActiveWeek] = useState<string | null>(null);
+  const [currentWeekProgress, setCurrentWeekProgress] = useState({ completed: 0, total: 0 });
   // TODO: Re-enable Quote of the Day feature
   // const [dailyQuote, setDailyQuote] = useState<any>(null);
   // const [loadingQuote, setLoadingQuote] = useState(true);
@@ -159,14 +163,18 @@ const Dashboard = () => {
     }
   }, [workoutPlan]);
 
-  const markWorkoutComplete = async (dayIndex: number) => {
+  // Simplified day completion function - marks entire day as done
+  const markDayComplete = async (weekKey: string, dayIndex: number) => {
     if (!user || !workoutPlan || completingWorkout === dayIndex) return;
 
     setCompletingWorkout(dayIndex);
     
     try {
-      const startDate = startOfWeek(new Date(), { weekStartsOn: 6 });
-      const workoutDate = addDays(startDate, dayIndex);
+      // Calculate the actual date based on week and day
+      const weekNumber = parseInt(weekKey.replace(/\D/g, '')) - 1; // Extract week number (0-based)
+      const totalDaysFromStart = (weekNumber * 7) + dayIndex;
+      const startDate = new Date(); // For demo, using current date as reference
+      const workoutDate = addDays(startDate, totalDaysFromStart - new Date().getDay());
       
       const { error } = await supabase
         .from('workout_logs')
@@ -182,16 +190,75 @@ const Dashboard = () => {
       
       // Add delay for animation effect
       setTimeout(() => {
-        toast.success(t('dashboard.workoutCompletion.completed'));
+        toast.success(t('dashboard.workoutCompletion.dayCompleted'));
         fetchWorkoutLogs(); // Refresh logs
         setCompletingWorkout(null);
       }, 600);
     } catch (error) {
-      console.error('Error marking workout complete:', error);
-      toast.error('Failed to mark workout as complete');
+      console.error('Error marking day complete:', error);
+      toast.error('Failed to mark day as complete');
       setCompletingWorkout(null);
     }
   };
+
+  // Check if a specific day in a specific week is completed
+  const isDayCompleted = (weekKey: string, dayIndex: number) => {
+    const weekNumber = parseInt(weekKey.replace(/\D/g, '')) - 1;
+    const totalDaysFromStart = (weekNumber * 7) + dayIndex;
+    const startDate = new Date();
+    const workoutDate = addDays(startDate, totalDaysFromStart - new Date().getDay());
+    const dateString = workoutDate.toISOString().split('T')[0];
+    return workoutLogs.some(log => log.workout_day === dateString && log.completed);
+  };
+
+  // Check if today matches a specific week and day
+  const isTodayInWeekDay = (weekKey: string, dayIndex: number) => {
+    const weekNumber = parseInt(weekKey.replace(/\D/g, '')) - 1;
+    const totalDaysFromStart = (weekNumber * 7) + dayIndex;
+    const startDate = new Date();
+    const targetDate = addDays(startDate, totalDaysFromStart - new Date().getDay());
+    return isSameDay(targetDate, new Date());
+  };
+
+  // Get current week based on today's date
+  const getCurrentWeek = () => {
+    if (!workoutPlan || !workoutPlan.content) return null;
+    const weekKeys = Object.keys(workoutPlan.content);
+    return weekKeys[0]; // For demo purposes, return first week. In real app, calculate based on start date
+  };
+
+  // Get week progress for a specific week
+  const getWeekProgress = (weekKey: string) => {
+    if (!workoutPlan || !workoutPlan.content) return { completed: 0, total: 0 };
+    
+    const weekData = workoutPlan.content[weekKey];
+    if (!Array.isArray(weekData)) return { completed: 0, total: 0 };
+    
+    const completed = weekData.filter((_, dayIndex) => isDayCompleted(weekKey, dayIndex)).length;
+    return { completed, total: weekData.length };
+  };
+
+  // Format week title for display
+  const getWeekTitle = (weekKey: string) => {
+    const weekNumber = weekKey.replace(/([A-Z])/g, ' $1').trim();
+    return weekNumber.charAt(0).toUpperCase() + weekNumber.slice(1);
+  };
+
+  // Set initial active week on load
+  useEffect(() => {
+    if (workoutPlan && !activeWeek) {
+      const currentWeek = getCurrentWeek();
+      setActiveWeek(currentWeek);
+    }
+  }, [workoutPlan]);
+
+  // Update current week progress
+  useEffect(() => {
+    if (activeWeek && workoutLogs.length > 0) {
+      const progress = getWeekProgress(activeWeek);
+      setCurrentWeekProgress(progress);
+    }
+  }, [activeWeek, workoutLogs]);
 
   const isWorkoutCompleted = (dayIndex: number) => {
     const startDate = startOfWeek(new Date(), { weekStartsOn: 6 });
@@ -527,146 +594,222 @@ const Dashboard = () => {
                     <CardContent>
                 {workoutPlan ? (
                   <div className="space-y-6">
-                    {Object.entries(workoutPlan.content).map(([week, days]: [string, any]) => (
-                      <div key={week} className="space-y-4">
-                        <h3 className="text-lg font-semibold capitalize text-primary">
-                          {week.replace(/([A-Z])/g, ' $1').trim()}
-                        </h3>
-                        <div className="grid gap-4">
-                          {days.map((day: any, dayIndex: number) => {
-                            const startDate = startOfWeek(new Date(), { weekStartsOn: 6 }); // Saturday as start of week for Persian calendar
-                            const isCurrentDay = isToday(startDate, dayIndex);
-                            const isCompleted = isWorkoutCompleted(dayIndex);
-                            
-                            return (
-                              <motion.div
-                                key={dayIndex}
-                                layout
-                                initial={{ opacity: 0, scale: 0.9 }}
-                                animate={{ 
-                                  opacity: isCompleted ? 0.7 : 1, 
-                                  scale: isCompleted ? 0.98 : 1 
-                                }}
-                                transition={{ duration: 0.3 }}
-                                whileHover={{ scale: isCompleted ? 0.98 : 1.02, y: -2 }}
-                              >
-                                <Card className={`border-primary/10 transition-all duration-300 ${isCompleted ? 'bg-muted/30' : 'hover-scale'}`}>
-                                  <CardHeader className="pb-3">
-                                    <div className="flex items-center justify-between">
-                                      <div className="flex items-center gap-2">
-                                        <CardTitle className="text-base">
-                                          {getWeekdayName(dayIndex)}
-                                        </CardTitle>
-                                        {isCurrentDay && (
-                                          <motion.div
-                                            initial={{ scale: 0 }}
-                                            animate={{ scale: 1 }}
-                                            transition={{ type: "spring", stiffness: 500, damping: 30 }}
-                                          >
-                                            <Badge variant="default" className="text-xs bg-primary">
-                                              {t('dashboard.workoutCompletion.today')}
-                                            </Badge>
-                                          </motion.div>
-                                        )}
-                                        <AnimatePresence>
-                                          {isCompleted && (
-                                            <motion.div
-                                              initial={{ scale: 0, rotate: -180 }}
-                                              animate={{ scale: 1, rotate: 0 }}
-                                              exit={{ scale: 0, rotate: 180 }}
-                                              transition={{ type: "spring", stiffness: 500, damping: 30 }}
+                    {/* Sticky Weekly Progress */}
+                    <motion.div 
+                      className="sticky top-0 z-10 bg-background/95 backdrop-blur-sm p-4 -mx-4 -mt-2 rounded-lg border border-border/50"
+                      initial={{ opacity: 0, y: -20 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ duration: 0.3 }}
+                    >
+                      <div className="flex items-center justify-between mb-2">
+                        <h4 className="font-semibold text-primary">
+                          {activeWeek ? getWeekTitle(activeWeek) : 'Current Week'}
+                        </h4>
+                        <span className="text-sm text-muted-foreground">
+                          {t('dashboard.workoutCompletion.daysCompletedShort', { 
+                            completed: currentWeekProgress.completed, 
+                            total: currentWeekProgress.total 
+                          })}
+                        </span>
+                      </div>
+                      <Progress 
+                        value={currentWeekProgress.total > 0 ? (currentWeekProgress.completed / currentWeekProgress.total) * 100 : 0} 
+                        className="h-2 mb-4" 
+                      />
+                      
+                      {/* Week Navigation */}
+                      <div className="flex gap-2 overflow-x-auto pb-2">
+                        {Object.keys(workoutPlan.content).map((weekKey) => (
+                          <motion.div
+                            key={weekKey}
+                            whileHover={{ scale: 1.02 }}
+                            whileTap={{ scale: 0.98 }}
+                          >
+                            <Button
+                              variant={activeWeek === weekKey ? "default" : "outline"}
+                              size="sm"
+                              onClick={() => setActiveWeek(weekKey)}
+                              className="whitespace-nowrap"
+                            >
+                              {getWeekTitle(weekKey)}
+                            </Button>
+                          </motion.div>
+                        ))}
+                      </div>
+                    </motion.div>
+
+                    {/* Week Accordion */}
+                    <Accordion 
+                      type="single" 
+                      value={activeWeek || ''} 
+                      onValueChange={setActiveWeek}
+                      className="space-y-4"
+                    >
+                      {Object.entries(workoutPlan.content).map(([weekKey, days]: [string, any]) => (
+                        <AccordionItem key={weekKey} value={weekKey} className="border border-border rounded-lg">
+                          <AccordionTrigger className="px-4 py-3 hover:no-underline">
+                            <div className="flex items-center justify-between w-full mr-4">
+                              <div className="flex items-center gap-3">
+                                <h3 className="text-lg font-semibold text-primary">
+                                  {getWeekTitle(weekKey)}
+                                </h3>
+                                <Badge variant="secondary" className="text-xs">
+                                  {getWeekProgress(weekKey).completed} / {getWeekProgress(weekKey).total} {t('dashboard.workoutCompletion.daysCompleted')}
+                                </Badge>
+                              </div>
+                            </div>
+                          </AccordionTrigger>
+                          <AccordionContent className="px-4 pb-4">
+                            <motion.div
+                              initial={{ opacity: 0, y: 20 }}
+                              animate={{ opacity: 1, y: 0 }}
+                              transition={{ duration: 0.3, staggerChildren: 0.1 }}
+                              className="space-y-4"
+                            >
+                              {days.map((day: any, dayIndex: number) => {
+                                const isCurrentDay = isTodayInWeekDay(weekKey, dayIndex);
+                                const isCompleted = isDayCompleted(weekKey, dayIndex);
+                                
+                                return (
+                                  <motion.div
+                                    key={dayIndex}
+                                    layout
+                                    initial={{ opacity: 0, scale: 0.9 }}
+                                    animate={{ 
+                                      opacity: isCompleted ? 0.7 : 1, 
+                                      scale: isCompleted ? 0.98 : 1 
+                                    }}
+                                    transition={{ duration: 0.3 }}
+                                    whileHover={{ scale: isCompleted ? 0.98 : 1.02, y: -2 }}
+                                    id={isCurrentDay ? 'today-workout' : undefined}
+                                  >
+                                    <Card className={`
+                                      border-primary/10 transition-all duration-300 
+                                      ${isCompleted ? 'bg-muted/30' : 'hover-scale'}
+                                      ${isCurrentDay ? 'ring-2 ring-primary/50 border-primary/30' : ''}
+                                    `}>
+                                      <CardHeader className="pb-3">
+                                        <div className="flex items-center justify-between">
+                                          <div className="flex items-center gap-2">
+                                            <CardTitle className={`text-base ${isCurrentDay ? 'text-primary font-bold' : ''}`}>
+                                              {getWeekdayName(dayIndex)}
+                                            </CardTitle>
+                                            {isCurrentDay && (
+                                              <motion.div
+                                                initial={{ scale: 0 }}
+                                                animate={{ scale: 1 }}
+                                                transition={{ type: "spring", stiffness: 500, damping: 30 }}
+                                              >
+                                                <Badge className="text-xs gradient-primary">
+                                                  {t('dashboard.workoutCompletion.today')}
+                                                </Badge>
+                                              </motion.div>
+                                            )}
+                                            <AnimatePresence>
+                                              {isCompleted && (
+                                                <motion.div
+                                                  initial={{ scale: 0, rotate: -180 }}
+                                                  animate={{ scale: 1, rotate: 0 }}
+                                                  exit={{ scale: 0, rotate: 180 }}
+                                                  transition={{ type: "spring", stiffness: 500, damping: 30 }}
+                                                >
+                                                  <Badge variant="secondary" className="text-xs bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-100">
+                                                    ✅ {t('dashboard.workoutCompletion.completed')}
+                                                  </Badge>
+                                                </motion.div>
+                                              )}
+                                            </AnimatePresence>
+                                          </div>
+                                        </div>
+                                      </CardHeader>
+                                      <CardContent>
+                                        <motion.div 
+                                          className="space-y-2 mb-4"
+                                          animate={{ opacity: isCompleted ? 0.6 : 1 }}
+                                          transition={{ duration: 0.3 }}
+                                        >
+                                          {day.exercises.map((exercise: any, exerciseIndex: number) => (
+                                            <motion.div 
+                                              key={exerciseIndex} 
+                                              className="flex justify-between items-center p-3 bg-muted/50 rounded-lg"
+                                              whileHover={{ x: 4 }}
+                                              transition={{ duration: 0.2 }}
                                             >
-                                              <Badge variant="secondary" className="text-xs bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-100">
-                                                ✅ {t('dashboard.workoutCompletion.completed')}
-                                              </Badge>
+                                              <div>
+                                                <span className="font-medium text-sm">{exercise.name}</span>
+                                              </div>
+                                              <div className="text-xs text-muted-foreground">
+                                                {exercise.sets} sets × {exercise.reps} • {exercise.rest}
+                                              </div>
+                                            </motion.div>
+                                          ))}
+                                        </motion.div>
+                                        
+                                        {/* Single Day Completion Button */}
+                                        <AnimatePresence>
+                                          {!isCompleted && (
+                                            <motion.div 
+                                              initial={{ opacity: 1, height: "auto" }}
+                                              exit={{ opacity: 0, height: 0 }}
+                                              transition={{ duration: 0.3 }}
+                                            >
+                                              <motion.div
+                                                whileHover={{ scale: 1.02 }}
+                                                whileTap={{ scale: 0.98 }}
+                                              >
+                                                <Button
+                                                  variant="outline"
+                                                  size="sm"
+                                                  onClick={() => markDayComplete(weekKey, dayIndex)}
+                                                  disabled={completingWorkout === dayIndex}
+                                                  className={`
+                                                    w-full transition-all duration-200
+                                                    ${isCurrentDay 
+                                                      ? 'gradient-primary text-primary-foreground shadow-glow hover:shadow-glow' 
+                                                      : 'bg-primary/10 hover:bg-primary/20 border-primary/30'
+                                                    }
+                                                  `}
+                                                >
+                                                  <AnimatePresence mode="wait">
+                                                    {completingWorkout === dayIndex ? (
+                                                      <motion.div
+                                                        key="completing"
+                                                        initial={{ scale: 0, rotate: -180 }}
+                                                        animate={{ scale: 1, rotate: 0 }}
+                                                        exit={{ scale: 0, rotate: 180 }}
+                                                        className="flex items-center"
+                                                      >
+                                                        <CheckCircle className="h-4 w-4 mr-2 text-green-500" />
+                                                        <span className="text-green-600">{t('dashboard.workoutCompletion.dayCompleted')}</span>
+                                                      </motion.div>
+                                                    ) : (
+                                                      <motion.div
+                                                        key="mark-done"
+                                                        initial={{ scale: 0 }}
+                                                        animate={{ scale: 1 }}
+                                                        exit={{ scale: 0 }}
+                                                        className="flex items-center"
+                                                      >
+                                                        <Check className="h-4 w-4 mr-2" />
+                                                        {t('dashboard.workoutCompletion.markDayAsDone')}
+                                                      </motion.div>
+                                                    )}
+                                                  </AnimatePresence>
+                                                </Button>
+                                              </motion.div>
                                             </motion.div>
                                           )}
                                         </AnimatePresence>
-                                      </div>
-                                      <div className="text-sm text-muted-foreground">
-                                        {formatWorkoutDate(startDate, dayIndex)}
-                                      </div>
-                                    </div>
-                                  </CardHeader>
-                                  <CardContent>
-                                    <motion.div 
-                                      className="space-y-2"
-                                      animate={{ opacity: isCompleted ? 0.6 : 1 }}
-                                      transition={{ duration: 0.3 }}
-                                    >
-                                      {day.exercises.map((exercise: any, exerciseIndex: number) => (
-                                        <motion.div 
-                                          key={exerciseIndex} 
-                                          className="flex justify-between items-center p-3 bg-muted/50 rounded-lg"
-                                          whileHover={{ x: 4 }}
-                                          transition={{ duration: 0.2 }}
-                                        >
-                                          <div>
-                                            <span className="font-medium">{exercise.name}</span>
-                                          </div>
-                                          <div className="text-sm text-muted-foreground">
-                                            {exercise.sets} sets × {exercise.reps} • {exercise.rest}
-                                          </div>
-                                        </motion.div>
-                                      ))}
-                                    </motion.div>
-                                    <AnimatePresence>
-                                      {!isCompleted && (
-                                        <motion.div 
-                                          className="mt-4"
-                                          initial={{ opacity: 1, height: "auto" }}
-                                          exit={{ opacity: 0, height: 0 }}
-                                          transition={{ duration: 0.3 }}
-                                        >
-                                          <motion.div
-                                            whileHover={{ scale: 1.02 }}
-                                            whileTap={{ scale: 0.98 }}
-                                          >
-                                            <Button
-                                              variant="outline"
-                                              size="sm"
-                                              onClick={() => markWorkoutComplete(dayIndex)}
-                                              disabled={completingWorkout === dayIndex}
-                                              className="w-full bg-primary/10 hover:bg-primary/20 border-primary/30 transition-all duration-200"
-                                            >
-                                              <AnimatePresence mode="wait">
-                                                {completingWorkout === dayIndex ? (
-                                                  <motion.div
-                                                    key="completing"
-                                                    initial={{ scale: 0, rotate: -180 }}
-                                                    animate={{ scale: 1, rotate: 0 }}
-                                                    exit={{ scale: 0, rotate: 180 }}
-                                                    className="flex items-center"
-                                                  >
-                                                    <CheckCircle className="h-4 w-4 mr-2 text-green-500" />
-                                                    <span className="text-green-600">{t('dashboard.workoutCompletion.completed')}</span>
-                                                  </motion.div>
-                                                ) : (
-                                                  <motion.div
-                                                    key="mark-done"
-                                                    initial={{ scale: 0 }}
-                                                    animate={{ scale: 1 }}
-                                                    exit={{ scale: 0 }}
-                                                    className="flex items-center"
-                                                  >
-                                                    <Check className="h-4 w-4 mr-2" />
-                                                    {t('dashboard.workoutCompletion.markAsDone')}
-                                                  </motion.div>
-                                                )}
-                                              </AnimatePresence>
-                                            </Button>
-                                          </motion.div>
-                                        </motion.div>
-                                      )}
-                                    </AnimatePresence>
-                                  </CardContent>
-                                </Card>
-                              </motion.div>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    ))}
+                                      </CardContent>
+                                    </Card>
+                                  </motion.div>
+                                );
+                              })}
+                            </motion.div>
+                          </AccordionContent>
+                        </AccordionItem>
+                      ))}
+                    </Accordion>
                   </div>
                 ) : (
                       <motion.div 
@@ -679,8 +822,8 @@ const Dashboard = () => {
                           No workout plan generated yet. Click "Generate Plans" to create your personalized plan.
                         </p>
                       </motion.div>
-                    )}
-                    </CardContent>
+                     )}
+                     </CardContent>
                   </Card>
                 </motion.div>
               </motion.div>

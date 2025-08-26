@@ -168,8 +168,18 @@
       "completed": "Abgeschlossen",
       "today": "Heute",
       "markAsDone": "Als erledigt markieren",
+      "markDayAsDone": "Tag als erledigt markieren",
+      "dayCompleted": "Tag abgeschlossen",
       "weeklyProgress": "Wöchentlicher Fortschritt",
-      "daysCompleted": "Tage diese Woche abgeschlossen"
+      "daysCompleted": "Tage diese Woche abgeschlossen",
+      "daysCompletedShort": "{{completed}}/{{total}} Tage abgeschlossen"
+    },
+    "weekNavigation": {
+      "week1": "Woche 1",
+      "week2": "Woche 2",
+      "week3": "Woche 3", 
+      "week4": "Woche 4",
+      "jumpToWeek": "Zu Woche springen"
     }
   },
   "profile": {

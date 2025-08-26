@@ -168,8 +168,18 @@
       "completed": "تکمیل شده",
       "today": "امروز",
       "markAsDone": "انجام شد",
+      "markDayAsDone": "روز را انجام شده علامت بزن",
+      "dayCompleted": "روز کامل شد",
       "weeklyProgress": "پیشرفت هفتگی",
-      "daysCompleted": "روز این هفته کامل شد"
+      "daysCompleted": "روز این هفته کامل شد",
+      "daysCompletedShort": "{{completed}} از {{total}} روز کامل شد"
+    },
+    "weekNavigation": {
+      "week1": "هفته ۱",
+      "week2": "هفته ۲",
+      "week3": "هفته ۳",
+      "week4": "هفته ۴", 
+      "jumpToWeek": "پرش به هفته"
     }
   },
   "profile": {
