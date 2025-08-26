@@ -18,6 +18,7 @@ import {
   Check,
   CheckCircle
 } from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
 import { useTranslation } from "react-i18next";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
@@ -37,6 +38,7 @@ const Dashboard = () => {
   const [nutritionPlan, setNutritionPlan] = useState<any>(null);
   const [generatingPlans, setGeneratingPlans] = useState(false);
   const [workoutLogs, setWorkoutLogs] = useState<any[]>([]);
+  const [completingWorkout, setCompletingWorkout] = useState<number | null>(null);
   // TODO: Re-enable Quote of the Day feature
   // const [dailyQuote, setDailyQuote] = useState<any>(null);
   // const [loadingQuote, setLoadingQuote] = useState(true);
@@ -158,8 +160,10 @@ const Dashboard = () => {
   }, [workoutPlan]);
 
   const markWorkoutComplete = async (dayIndex: number) => {
-    if (!user || !workoutPlan) return;
+    if (!user || !workoutPlan || completingWorkout === dayIndex) return;
 
+    setCompletingWorkout(dayIndex);
+    
     try {
       const startDate = startOfWeek(new Date(), { weekStartsOn: 6 });
       const workoutDate = addDays(startDate, dayIndex);
@@ -176,11 +180,16 @@ const Dashboard = () => {
 
       if (error) throw error;
       
-      toast.success(t('dashboard.workoutCompletion.completed'));
-      fetchWorkoutLogs(); // Refresh logs
+      // Add delay for animation effect
+      setTimeout(() => {
+        toast.success(t('dashboard.workoutCompletion.completed'));
+        fetchWorkoutLogs(); // Refresh logs
+        setCompletingWorkout(null);
+      }, 600);
     } catch (error) {
       console.error('Error marking workout complete:', error);
       toast.error('Failed to mark workout as complete');
+      setCompletingWorkout(null);
     }
   };
 
@@ -273,24 +282,39 @@ const Dashboard = () => {
   }
   
   return (
-    <div className="max-w-7xl mx-auto p-6">
+    <motion.div 
+      className="max-w-7xl mx-auto p-6"
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.4, ease: "easeOut" }}
+    >
       {/* Header */}
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8">
+      <motion.div 
+        className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8"
+        initial={{ opacity: 0, y: -20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.4, delay: 0.1 }}
+      >
           <div>
             <h1 className="text-3xl font-bold mb-2">{t('dashboard.welcome')}</h1>
             <p className="text-muted-foreground">{t('dashboard.subtitle')}</p>
           </div>
           <div className="flex gap-2">
-            <Button 
-              className="gradient-primary text-primary-foreground shadow-glow" 
-              onClick={generatePlans}
-              disabled={generatingPlans}
+            <motion.div
+              whileHover={{ scale: 1.02 }}
+              whileTap={{ scale: 0.98 }}
             >
-              <RefreshCw className={`mr-2 h-4 w-4 ${generatingPlans ? 'animate-spin' : ''}`} />
-              {generatingPlans ? t('dashboard.stats.generating') : (workoutPlan || nutritionPlan ? t('dashboard.regenerate.button') : t('dashboard.stats.generatePlans'))}
-            </Button>
+              <Button 
+                className="gradient-primary text-primary-foreground shadow-glow hover-scale" 
+                onClick={generatePlans}
+                disabled={generatingPlans}
+              >
+                <RefreshCw className={`mr-2 h-4 w-4 ${generatingPlans ? 'animate-spin' : ''}`} />
+                {generatingPlans ? t('dashboard.stats.generating') : (workoutPlan || nutritionPlan ? t('dashboard.regenerate.button') : t('dashboard.stats.generatePlans'))}
+              </Button>
+            </motion.div>
           </div>
-        </div>
+        </motion.div>
 
         {/* TODO: Re-enable Quote of the Day feature */}
         {/* Daily Quote - DISABLED */}
@@ -333,100 +357,174 @@ const Dashboard = () => {
         </Card> */}
 
         {/* Quick Stats */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
-          <Card className="gradient-card border-primary/20">
-            <CardContent className="p-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-muted-foreground">{t('dashboard.stats.currentStreak')}</p>
-                  <p className="text-2xl font-bold text-primary">12 {t('dashboard.stats.days')}</p>
+        <motion.div 
+          className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8"
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.4, delay: 0.2, staggerChildren: 0.1 }}
+        >
+          <motion.div
+            variants={{
+              hidden: { opacity: 0, y: 20 },
+              visible: { opacity: 1, y: 0 }
+            }}
+            whileHover={{ scale: 1.02, boxShadow: "0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)" }}
+            transition={{ duration: 0.2 }}
+          >
+            <Card className="gradient-card border-primary/20 hover-scale">
+              <CardContent className="p-6">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm text-muted-foreground">{t('dashboard.stats.currentStreak')}</p>
+                    <p className="text-2xl font-bold text-primary">12 {t('dashboard.stats.days')}</p>
+                  </div>
+                  <Flame className="h-8 w-8 text-primary" />
                 </div>
-                <Flame className="h-8 w-8 text-primary" />
-              </div>
-            </CardContent>
-          </Card>
+              </CardContent>
+            </Card>
+          </motion.div>
           
-          <Card className="gradient-card border-primary/20">
-            <CardContent className="p-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-muted-foreground">{t('dashboard.stats.weeklyGoal')}</p>
-                  <p className="text-2xl font-bold text-primary">4/5</p>
+          <motion.div
+            variants={{
+              hidden: { opacity: 0, y: 20 },
+              visible: { opacity: 1, y: 0 }
+            }}
+            whileHover={{ scale: 1.02, boxShadow: "0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)" }}
+            transition={{ duration: 0.2 }}
+          >
+            <Card className="gradient-card border-primary/20 hover-scale">
+              <CardContent className="p-6">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm text-muted-foreground">{t('dashboard.stats.weeklyGoal')}</p>
+                    <p className="text-2xl font-bold text-primary">4/5</p>
+                  </div>
+                  <Target className="h-8 w-8 text-primary" />
                 </div>
-                <Target className="h-8 w-8 text-primary" />
-              </div>
-            </CardContent>
-          </Card>
+              </CardContent>
+            </Card>
+          </motion.div>
           
-          <Card className="gradient-card border-primary/20">
-            <CardContent className="p-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-muted-foreground">{t('dashboard.stats.caloriesBurned')}</p>
-                  <p className="text-2xl font-bold text-primary">2,450</p>
+          <motion.div
+            variants={{
+              hidden: { opacity: 0, y: 20 },
+              visible: { opacity: 1, y: 0 }
+            }}
+            whileHover={{ scale: 1.02, boxShadow: "0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)" }}
+            transition={{ duration: 0.2 }}
+          >
+            <Card className="gradient-card border-primary/20 hover-scale">
+              <CardContent className="p-6">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm text-muted-foreground">{t('dashboard.stats.caloriesBurned')}</p>
+                    <p className="text-2xl font-bold text-primary">2,450</p>
+                  </div>
+                  <TrendingUp className="h-8 w-8 text-primary" />
                 </div>
-                <TrendingUp className="h-8 w-8 text-primary" />
-              </div>
-            </CardContent>
-          </Card>
+              </CardContent>
+            </Card>
+          </motion.div>
           
-          <Card className="gradient-card border-primary/20">
-            <CardContent className="p-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-muted-foreground">{t('dashboard.stats.nextWorkout')}</p>
-                  <p className="text-2xl font-bold text-primary">{t('dashboard.stats.today')}</p>
+          <motion.div
+            variants={{
+              hidden: { opacity: 0, y: 20 },
+              visible: { opacity: 1, y: 0 }
+            }}
+            whileHover={{ scale: 1.02, boxShadow: "0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)" }}
+            transition={{ duration: 0.2 }}
+          >
+            <Card className="gradient-card border-primary/20 hover-scale">
+              <CardContent className="p-6">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm text-muted-foreground">{t('dashboard.stats.nextWorkout')}</p>
+                    <p className="text-2xl font-bold text-primary">{t('dashboard.stats.today')}</p>
+                  </div>
+                  <Clock className="h-8 w-8 text-primary" />
                 </div>
-                <Clock className="h-8 w-8 text-primary" />
-              </div>
-            </CardContent>
-          </Card>
-        </div>
+              </CardContent>
+            </Card>
+          </motion.div>
+        </motion.div>
 
         {/* Main Content */}
-        <Tabs defaultValue="workout" className="space-y-6">
-          <TabsList className="grid w-full md:w-fit grid-cols-3 md:grid-cols-3 bg-card border border-border">
-            <TabsTrigger value="workout" className="flex items-center gap-2">
-              <Dumbbell className="h-4 w-4" />
-              {t('dashboard.tabs.workoutPlan')}
-            </TabsTrigger>
-            <TabsTrigger value="nutrition" className="flex items-center gap-2">
-              <Apple className="h-4 w-4" />
-              {t('dashboard.tabs.nutritionPlan')}
-            </TabsTrigger>
-            <TabsTrigger value="profile" className="flex items-center gap-2">
-              <User className="h-4 w-4" />
-              {t('dashboard.tabs.profile')}
-            </TabsTrigger>
-          </TabsList>
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.4, delay: 0.3 }}
+        >
+          <Tabs defaultValue="workout" className="space-y-6">
+            <motion.div
+              initial={{ opacity: 0, x: -20 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ duration: 0.3, delay: 0.4 }}
+            >
+              <TabsList className="grid w-full md:w-fit grid-cols-3 md:grid-cols-3 bg-card border border-border">
+                <TabsTrigger value="workout" className="flex items-center gap-2 transition-all duration-200 data-[state=active]:scale-105">
+                  <Dumbbell className="h-4 w-4" />
+                  {t('dashboard.tabs.workoutPlan')}
+                </TabsTrigger>
+                <TabsTrigger value="nutrition" className="flex items-center gap-2 transition-all duration-200 data-[state=active]:scale-105">
+                  <Apple className="h-4 w-4" />
+                  {t('dashboard.tabs.nutritionPlan')}
+                </TabsTrigger>
+                <TabsTrigger value="profile" className="flex items-center gap-2 transition-all duration-200 data-[state=active]:scale-105">
+                  <User className="h-4 w-4" />
+                  {t('dashboard.tabs.profile')}
+                </TabsTrigger>
+              </TabsList>
+            </motion.div>
 
           <TabsContent value="workout" className="space-y-6">
-            {/* Weekly Progress */}
-            {workoutPlan && (
-              <Card className="gradient-card border-primary/20">
-                <CardContent className="p-4">
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-sm font-medium">{t('dashboard.workoutCompletion.weeklyProgress')}</span>
-                    <span className="text-sm text-muted-foreground">
-                      {getWeeklyProgress().completed} / {getWeeklyProgress().total} {t('dashboard.workoutCompletion.daysCompleted')}
-                    </span>
-                  </div>
-                  <Progress 
-                    value={getWeeklyProgress().total > 0 ? (getWeeklyProgress().completed / getWeeklyProgress().total) * 100 : 0} 
-                    className="h-2" 
-                  />
-                </CardContent>
-              </Card>
-            )}
+            <AnimatePresence mode="wait">
+              <motion.div
+                key="workout-content"
+                initial={{ opacity: 0, x: 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -20 }}
+                transition={{ duration: 0.3 }}
+                className="space-y-6"
+              >
+                {/* Weekly Progress */}
+                {workoutPlan && (
+                  <motion.div
+                    initial={{ opacity: 0, scale: 0.95 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    transition={{ duration: 0.3 }}
+                    whileHover={{ scale: 1.01 }}
+                  >
+                    <Card className="gradient-card border-primary/20 hover-scale">
+                      <CardContent className="p-4">
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="text-sm font-medium">{t('dashboard.workoutCompletion.weeklyProgress')}</span>
+                          <span className="text-sm text-muted-foreground">
+                            {getWeeklyProgress().completed} / {getWeeklyProgress().total} {t('dashboard.workoutCompletion.daysCompleted')}
+                          </span>
+                        </div>
+                        <Progress 
+                          value={getWeeklyProgress().total > 0 ? (getWeeklyProgress().completed / getWeeklyProgress().total) * 100 : 0} 
+                          className="h-2" 
+                        />
+                      </CardContent>
+                    </Card>
+                  </motion.div>
+                )}
             
-            <Card className="gradient-card border-primary/20">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Dumbbell className="h-5 w-5 text-primary" />
-                  {t('dashboard.workoutPlan.title')}
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
+                <motion.div
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.4, delay: 0.1 }}
+                  whileHover={{ scale: 1.01, boxShadow: "0 10px 25px -3px rgba(0, 0, 0, 0.1)" }}
+                >
+                  <Card className="gradient-card border-primary/20 hover-scale">
+                    <CardHeader>
+                      <CardTitle className="flex items-center gap-2">
+                        <Dumbbell className="h-5 w-5 text-primary" />
+                        {t('dashboard.workoutPlan.title')}
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
                 {workoutPlan ? (
                   <div className="space-y-6">
                     {Object.entries(workoutPlan.content).map(([week, days]: [string, any]) => (
@@ -441,57 +539,129 @@ const Dashboard = () => {
                             const isCompleted = isWorkoutCompleted(dayIndex);
                             
                             return (
-                              <Card key={dayIndex} className={`border-primary/10 ${isCompleted ? 'opacity-60 bg-muted/30' : ''}`}>
-                                <CardHeader className="pb-3">
-                                  <div className="flex items-center justify-between">
-                                    <div className="flex items-center gap-2">
-                                      <CardTitle className="text-base">
-                                        {getWeekdayName(dayIndex)}
-                                      </CardTitle>
-                                      {isCurrentDay && (
-                                        <Badge variant="default" className="text-xs bg-primary">
-                                          {t('dashboard.workoutCompletion.today')}
-                                        </Badge>
-                                      )}
-                                      {isCompleted && (
-                                        <Badge variant="secondary" className="text-xs bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-100">
-                                          ✅ {t('dashboard.workoutCompletion.completed')}
-                                        </Badge>
-                                      )}
-                                    </div>
-                                    <div className="text-sm text-muted-foreground">
-                                      {formatWorkoutDate(startDate, dayIndex)}
-                                    </div>
-                                  </div>
-                                </CardHeader>
-                                <CardContent>
-                                  <div className="space-y-2">
-                                    {day.exercises.map((exercise: any, exerciseIndex: number) => (
-                                      <div key={exerciseIndex} className={`flex justify-between items-center p-3 bg-muted/50 rounded-lg ${isCompleted ? 'opacity-70' : ''}`}>
-                                        <div>
-                                          <span className="font-medium">{exercise.name}</span>
-                                        </div>
-                                        <div className="text-sm text-muted-foreground">
-                                          {exercise.sets} sets × {exercise.reps} • {exercise.rest}
-                                        </div>
+                              <motion.div
+                                key={dayIndex}
+                                layout
+                                initial={{ opacity: 0, scale: 0.9 }}
+                                animate={{ 
+                                  opacity: isCompleted ? 0.7 : 1, 
+                                  scale: isCompleted ? 0.98 : 1 
+                                }}
+                                transition={{ duration: 0.3 }}
+                                whileHover={{ scale: isCompleted ? 0.98 : 1.02, y: -2 }}
+                              >
+                                <Card className={`border-primary/10 transition-all duration-300 ${isCompleted ? 'bg-muted/30' : 'hover-scale'}`}>
+                                  <CardHeader className="pb-3">
+                                    <div className="flex items-center justify-between">
+                                      <div className="flex items-center gap-2">
+                                        <CardTitle className="text-base">
+                                          {getWeekdayName(dayIndex)}
+                                        </CardTitle>
+                                        {isCurrentDay && (
+                                          <motion.div
+                                            initial={{ scale: 0 }}
+                                            animate={{ scale: 1 }}
+                                            transition={{ type: "spring", stiffness: 500, damping: 30 }}
+                                          >
+                                            <Badge variant="default" className="text-xs bg-primary">
+                                              {t('dashboard.workoutCompletion.today')}
+                                            </Badge>
+                                          </motion.div>
+                                        )}
+                                        <AnimatePresence>
+                                          {isCompleted && (
+                                            <motion.div
+                                              initial={{ scale: 0, rotate: -180 }}
+                                              animate={{ scale: 1, rotate: 0 }}
+                                              exit={{ scale: 0, rotate: 180 }}
+                                              transition={{ type: "spring", stiffness: 500, damping: 30 }}
+                                            >
+                                              <Badge variant="secondary" className="text-xs bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-100">
+                                                ✅ {t('dashboard.workoutCompletion.completed')}
+                                              </Badge>
+                                            </motion.div>
+                                          )}
+                                        </AnimatePresence>
                                       </div>
-                                    ))}
-                                  </div>
-                                  {!isCompleted && (
-                                    <div className="mt-4">
-                                      <Button
-                                        variant="outline"
-                                        size="sm"
-                                        onClick={() => markWorkoutComplete(dayIndex)}
-                                        className="w-full bg-primary/10 hover:bg-primary/20 border-primary/30"
-                                      >
-                                        <Check className="h-4 w-4 mr-2" />
-                                        {t('dashboard.workoutCompletion.markAsDone')}
-                                      </Button>
+                                      <div className="text-sm text-muted-foreground">
+                                        {formatWorkoutDate(startDate, dayIndex)}
+                                      </div>
                                     </div>
-                                  )}
-                                </CardContent>
-                              </Card>
+                                  </CardHeader>
+                                  <CardContent>
+                                    <motion.div 
+                                      className="space-y-2"
+                                      animate={{ opacity: isCompleted ? 0.6 : 1 }}
+                                      transition={{ duration: 0.3 }}
+                                    >
+                                      {day.exercises.map((exercise: any, exerciseIndex: number) => (
+                                        <motion.div 
+                                          key={exerciseIndex} 
+                                          className="flex justify-between items-center p-3 bg-muted/50 rounded-lg"
+                                          whileHover={{ x: 4 }}
+                                          transition={{ duration: 0.2 }}
+                                        >
+                                          <div>
+                                            <span className="font-medium">{exercise.name}</span>
+                                          </div>
+                                          <div className="text-sm text-muted-foreground">
+                                            {exercise.sets} sets × {exercise.reps} • {exercise.rest}
+                                          </div>
+                                        </motion.div>
+                                      ))}
+                                    </motion.div>
+                                    <AnimatePresence>
+                                      {!isCompleted && (
+                                        <motion.div 
+                                          className="mt-4"
+                                          initial={{ opacity: 1, height: "auto" }}
+                                          exit={{ opacity: 0, height: 0 }}
+                                          transition={{ duration: 0.3 }}
+                                        >
+                                          <motion.div
+                                            whileHover={{ scale: 1.02 }}
+                                            whileTap={{ scale: 0.98 }}
+                                          >
+                                            <Button
+                                              variant="outline"
+                                              size="sm"
+                                              onClick={() => markWorkoutComplete(dayIndex)}
+                                              disabled={completingWorkout === dayIndex}
+                                              className="w-full bg-primary/10 hover:bg-primary/20 border-primary/30 transition-all duration-200"
+                                            >
+                                              <AnimatePresence mode="wait">
+                                                {completingWorkout === dayIndex ? (
+                                                  <motion.div
+                                                    key="completing"
+                                                    initial={{ scale: 0, rotate: -180 }}
+                                                    animate={{ scale: 1, rotate: 0 }}
+                                                    exit={{ scale: 0, rotate: 180 }}
+                                                    className="flex items-center"
+                                                  >
+                                                    <CheckCircle className="h-4 w-4 mr-2 text-green-500" />
+                                                    <span className="text-green-600">{t('dashboard.workoutCompletion.completed')}</span>
+                                                  </motion.div>
+                                                ) : (
+                                                  <motion.div
+                                                    key="mark-done"
+                                                    initial={{ scale: 0 }}
+                                                    animate={{ scale: 1 }}
+                                                    exit={{ scale: 0 }}
+                                                    className="flex items-center"
+                                                  >
+                                                    <Check className="h-4 w-4 mr-2" />
+                                                    {t('dashboard.workoutCompletion.markAsDone')}
+                                                  </motion.div>
+                                                )}
+                                              </AnimatePresence>
+                                            </Button>
+                                          </motion.div>
+                                        </motion.div>
+                                      )}
+                                    </AnimatePresence>
+                                  </CardContent>
+                                </Card>
+                              </motion.div>
                             );
                           })}
                         </div>
@@ -499,70 +669,124 @@ const Dashboard = () => {
                     ))}
                   </div>
                 ) : (
-                  <div className="text-center py-8">
-                    <p className="text-muted-foreground">
-                      No workout plan generated yet. Click "Generate Plans" to create your personalized plan.
-                    </p>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
+                      <motion.div 
+                        className="text-center py-8"
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        transition={{ duration: 0.3 }}
+                      >
+                        <p className="text-muted-foreground">
+                          No workout plan generated yet. Click "Generate Plans" to create your personalized plan.
+                        </p>
+                      </motion.div>
+                    )}
+                    </CardContent>
+                  </Card>
+                </motion.div>
+              </motion.div>
+            </AnimatePresence>
           </TabsContent>
 
           <TabsContent value="nutrition" className="space-y-6">
-            <Card className="gradient-card border-primary/20">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Apple className="h-5 w-5 text-primary" />
-                  {t('dashboard.nutritionPlan.title')}
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                {nutritionPlan ? (
-                  <div className="space-y-6">
-                    {Object.entries(nutritionPlan.content).map(([mealType, meals]: [string, any]) => (
-                      <div key={mealType} className="space-y-3">
-                        <h3 className="text-lg font-semibold capitalize text-primary">{mealType}</h3>
-                        <div className="grid gap-3">
-                          {meals.map((meal: any, mealIndex: number) => (
-                            <Card key={mealIndex} className="border-primary/10">
-                              <CardContent className="p-4">
-                                <div className="flex justify-between items-start">
-                                  <div className="flex-1">
-                                    <h4 className="font-medium">{meal.meal}</h4>
-                                    <p className="text-sm text-muted-foreground mt-1">{meal.description}</p>
-                                  </div>
-                                  <Badge variant="secondary" className="ml-3">
-                                    {meal.calories} cal
-                                  </Badge>
-                                </div>
-                              </CardContent>
-                            </Card>
+            <AnimatePresence mode="wait">
+              <motion.div
+                key="nutrition-content"
+                initial={{ opacity: 0, x: 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -20 }}
+                transition={{ duration: 0.3 }}
+              >
+                <motion.div
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.4 }}
+                  whileHover={{ scale: 1.01, boxShadow: "0 10px 25px -3px rgba(0, 0, 0, 0.1)" }}
+                >
+                  <Card className="gradient-card border-primary/20 hover-scale">
+                    <CardHeader>
+                      <CardTitle className="flex items-center gap-2">
+                        <Apple className="h-5 w-5 text-primary" />
+                        {t('dashboard.nutritionPlan.title')}
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      {nutritionPlan ? (
+                        <div className="space-y-6">
+                          {Object.entries(nutritionPlan.content).map(([mealType, meals]: [string, any]) => (
+                            <div key={mealType} className="space-y-3">
+                              <h3 className="text-lg font-semibold capitalize text-primary">{mealType}</h3>
+                              <div className="grid gap-3">
+                                {meals.map((meal: any, mealIndex: number) => (
+                                  <motion.div
+                                    key={mealIndex}
+                                    initial={{ opacity: 0, y: 10 }}
+                                    animate={{ opacity: 1, y: 0 }}
+                                    transition={{ duration: 0.3, delay: mealIndex * 0.1 }}
+                                    whileHover={{ scale: 1.02, y: -2 }}
+                                  >
+                                    <Card className="border-primary/10 hover-scale">
+                                      <CardContent className="p-4">
+                                        <div className="flex justify-between items-start">
+                                          <div className="flex-1">
+                                            <h4 className="font-medium">{meal.meal}</h4>
+                                            <p className="text-sm text-muted-foreground mt-1">{meal.description}</p>
+                                          </div>
+                                          <motion.div
+                                            whileHover={{ scale: 1.1 }}
+                                            transition={{ duration: 0.2 }}
+                                          >
+                                            <Badge variant="secondary" className="ml-3">
+                                              {meal.calories} cal
+                                            </Badge>
+                                          </motion.div>
+                                        </div>
+                                      </CardContent>
+                                    </Card>
+                                  </motion.div>
+                                ))}
+                              </div>
+                            </div>
                           ))}
                         </div>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="text-center py-8">
-                    <p className="text-muted-foreground">
-                      No nutrition plan generated yet. Click "Generate Plans" to create your personalized plan.
-                    </p>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
+                      ) : (
+                        <motion.div 
+                          className="text-center py-8"
+                          initial={{ opacity: 0 }}
+                          animate={{ opacity: 1 }}
+                          transition={{ duration: 0.3 }}
+                        >
+                          <p className="text-muted-foreground">
+                            No nutrition plan generated yet. Click "Generate Plans" to create your personalized plan.
+                          </p>
+                        </motion.div>
+                      )}
+                    </CardContent>
+                  </Card>
+                </motion.div>
+              </motion.div>
+            </AnimatePresence>
           </TabsContent>
 
           <TabsContent value="profile" className="space-y-6">
-            <ProfileCard 
-              profile={profile}
-              onProfileUpdate={fetchProfile}
-              workoutProgress={getWeeklyProgress()}
-            />
+            <AnimatePresence mode="wait">
+              <motion.div
+                key="profile-content"
+                initial={{ opacity: 0, x: 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -20 }}
+                transition={{ duration: 0.3 }}
+              >
+                <ProfileCard 
+                  profile={profile}
+                  onProfileUpdate={fetchProfile}
+                  workoutProgress={getWeeklyProgress()}
+                />
+              </motion.div>
+            </AnimatePresence>
           </TabsContent>
-        </Tabs>
-      </div>
+          </Tabs>
+        </motion.div>
+      </motion.div>
     );
   };
 

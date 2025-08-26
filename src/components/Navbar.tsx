@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
+import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Menu, 
   X, 
@@ -59,107 +60,172 @@ const Navbar = () => {
   };
 
   return (
-    <nav className="fixed top-0 w-full z-50 bg-background/80 backdrop-blur-md border-b border-border">
+    <motion.nav 
+      className="fixed top-0 w-full z-50 bg-background/80 backdrop-blur-md border-b border-border"
+      initial={{ y: -100 }}
+      animate={{ y: 0 }}
+      transition={{ duration: 0.3 }}
+    >
       <div className="container mx-auto px-6 h-16 flex items-center justify-between">
         {/* Logo */}
-        <Link to="/" className="flex items-center gap-2">
-          <div className="gradient-primary p-2 rounded-lg">
-            <Dumbbell className="h-6 w-6 text-primary-foreground" />
-          </div>
-          <span className="text-xl font-bold">FitssAI</span>
-        </Link>
+        <motion.div
+          whileHover={{ scale: 1.05 }}
+          whileTap={{ scale: 0.95 }}
+        >
+          <Link to="/" className="flex items-center gap-2">
+            <motion.div 
+              className="gradient-primary p-2 rounded-lg"
+              whileHover={{ rotate: 360 }}
+              transition={{ duration: 0.5 }}
+            >
+              <Dumbbell className="h-6 w-6 text-primary-foreground" />
+            </motion.div>
+            <span className="text-xl font-bold">FitssAI</span>
+          </Link>
+        </motion.div>
         
         {/* Desktop Navigation */}
         <div className="hidden md:flex items-center gap-8">
           {user ? (
             <>
-              <Link 
-                to="/" 
-                className="text-foreground hover:text-primary transition-colors"
-              >
-                <Home className="h-4 w-4 inline mr-2" />
-                {t('navbar.home')}
-              </Link>
-              <Link
-                to="/dashboard"
-                className="text-foreground hover:text-primary transition-colors"
-              >
-                <LayoutDashboard className="h-4 w-4 inline mr-2" />
-                {t('navbar.dashboard')}
-              </Link>
+              <motion.div whileHover={{ y: -2 }} transition={{ duration: 0.2 }}>
+                <Link 
+                  to="/" 
+                  className="text-foreground hover:text-primary transition-colors relative story-link"
+                >
+                  <Home className="h-4 w-4 inline mr-2" />
+                  {t('navbar.home')}
+                </Link>
+              </motion.div>
+              <motion.div whileHover={{ y: -2 }} transition={{ duration: 0.2 }}>
+                <Link
+                  to="/dashboard"
+                  className="text-foreground hover:text-primary transition-colors relative story-link"
+                >
+                  <LayoutDashboard className="h-4 w-4 inline mr-2" />
+                  {t('navbar.dashboard')}
+                </Link>
+              </motion.div>
 
               {isAdmin && (
-                <Link
-                  to="/admin"
-                  className="text-foreground hover:text-primary transition-colors"
-                >
-                  <Shield className="h-4 w-4 inline mr-2" />
-                  {i18n.language === 'fa' ? 'پنل مدیریت' : 'Admin Panel'}
-                </Link>
+                <motion.div whileHover={{ y: -2 }} transition={{ duration: 0.2 }}>
+                  <Link
+                    to="/admin"
+                    className="text-foreground hover:text-primary transition-colors relative story-link"
+                  >
+                    <Shield className="h-4 w-4 inline mr-2" />
+                    {i18n.language === 'fa' ? 'پنل مدیریت' : 'Admin Panel'}
+                  </Link>
+                </motion.div>
               )}
 
-              <Link
-                to="/dashboard#profile"
-                className="text-foreground hover:text-primary transition-colors"
-              >
-                <User className="h-4 w-4 inline mr-2" />
-                {t('navbar.profile')}
-              </Link>
+              <motion.div whileHover={{ y: -2 }} transition={{ duration: 0.2 }}>
+                <Link
+                  to="/dashboard#profile"
+                  className="text-foreground hover:text-primary transition-colors relative story-link"
+                >
+                  <User className="h-4 w-4 inline mr-2" />
+                  {t('navbar.profile')}
+                </Link>
+              </motion.div>
             </>
           ) : (
             <>
-              <Link 
-                to="/" 
-                className="text-foreground hover:text-primary transition-colors"
-              >
-                <Home className="h-4 w-4 inline mr-2" />
-                {t('navbar.home')}
-              </Link>
+              <motion.div whileHover={{ y: -2 }} transition={{ duration: 0.2 }}>
+                <Link 
+                  to="/" 
+                  className="text-foreground hover:text-primary transition-colors relative story-link"
+                >
+                  <Home className="h-4 w-4 inline mr-2" />
+                  {t('navbar.home')}
+                </Link>
+              </motion.div>
             </>
           )}
         </div>
         
         {/* Desktop Actions */}
         <div className="hidden md:flex items-center gap-4">
-          <ThemeToggle />
-          <LanguageSwitcher />
+          <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
+            <ThemeToggle />
+          </motion.div>
+          <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
+            <LanguageSwitcher />
+          </motion.div>
           {user ? (
-            <Button variant="outline" onClick={handleSignOut}>
-              <LogOut className="h-4 w-4 mr-2" />
-              {t('navbar.signOut')}
-            </Button>
+            <motion.div whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}>
+              <Button variant="outline" onClick={handleSignOut}>
+                <LogOut className="h-4 w-4 mr-2" />
+                {t('navbar.signOut')}
+              </Button>
+            </motion.div>
           ) : (
             <>
-              <Link to="/auth/sign-in">
-                <Button variant="outline">
-                  <LogIn className="h-4 w-4 mr-2" />
-                  {t('navbar.signIn')}
-                </Button>
-              </Link>
-              <Link to="/auth/sign-up">
-                <Button className="gradient-primary text-primary-foreground">
-                  <UserPlus className="h-4 w-4 mr-2" />
-                  {t('navbar.signUp')}
-                </Button>
-              </Link>
+              <motion.div whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}>
+                <Link to="/auth/sign-in">
+                  <Button variant="outline">
+                    <LogIn className="h-4 w-4 mr-2" />
+                    {t('navbar.signIn')}
+                  </Button>
+                </Link>
+              </motion.div>
+              <motion.div whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}>
+                <Link to="/auth/sign-up">
+                  <Button className="gradient-primary text-primary-foreground">
+                    <UserPlus className="h-4 w-4 mr-2" />
+                    {t('navbar.signUp')}
+                  </Button>
+                </Link>
+              </motion.div>
             </>
           )}
         </div>
 
         {/* Mobile menu button */}
-        <Button
-          variant="ghost"
-          size="icon"
-          className="md:hidden"
-          onClick={() => setIsOpen(!isOpen)}
-        >
-          {isOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
-        </Button>
+        <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="md:hidden"
+            onClick={() => setIsOpen(!isOpen)}
+          >
+            <AnimatePresence mode="wait">
+              {isOpen ? (
+                <motion.div
+                  key="close"
+                  initial={{ rotate: -90, opacity: 0 }}
+                  animate={{ rotate: 0, opacity: 1 }}
+                  exit={{ rotate: 90, opacity: 0 }}
+                  transition={{ duration: 0.2 }}
+                >
+                  <X className="h-6 w-6" />
+                </motion.div>
+              ) : (
+                <motion.div
+                  key="menu"
+                  initial={{ rotate: 90, opacity: 0 }}
+                  animate={{ rotate: 0, opacity: 1 }}
+                  exit={{ rotate: -90, opacity: 0 }}
+                  transition={{ duration: 0.2 }}
+                >
+                  <Menu className="h-6 w-6" />
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </Button>
+        </motion.div>
       </div>
 
       {/* Mobile Navigation */}
-      {isOpen && (
-        <div className="md:hidden border-t border-border bg-background/95 backdrop-blur-sm">
+      <AnimatePresence>
+        {isOpen && (
+          <motion.div 
+            className="md:hidden border-t border-border bg-background/95 backdrop-blur-sm"
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: "auto" }}
+            exit={{ opacity: 0, height: 0 }}
+            transition={{ duration: 0.3 }}
+          >
           <div className="container mx-auto px-6 py-4 space-y-4">
             {user ? (
               <>
@@ -244,9 +310,10 @@ const Navbar = () => {
               <LanguageSwitcher />
             </div>
           </div>
-        </div>
-      )}
-    </nav>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </motion.nav>
   );
 };
 

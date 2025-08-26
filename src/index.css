@@ -206,4 +206,40 @@
   .hover-scale {
     @apply transition-transform duration-200 hover:scale-105;
   }
+
+  /* Story link animation (underline effect) */
+  .story-link {
+    @apply relative inline-block after:content-[''] after:absolute after:w-full after:scale-x-0 after:h-0.5 after:bottom-0 after:left-0 after:bg-primary after:origin-bottom-right after:transition-transform after:duration-300 hover:after:scale-x-100 hover:after:origin-bottom-left;
+  }
+
+  /* Button ripple effect */
+  button {
+    @apply relative overflow-hidden;
+  }
+
+  button:active::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 100px;
+    height: 100px;
+    background: rgba(255, 255, 255, 0.3);
+    border-radius: 50%;
+    transform: translate(-50%, -50%) scale(0);
+    animation: ripple 0.6s ease-out;
+  }
+
+  @keyframes ripple {
+    to {
+      transform: translate(-50%, -50%) scale(4);
+      opacity: 0;
+    }
+  }
+
+  /* Smooth transitions for all interactive elements */
+  .transition-colors {
+    @apply transition-colors duration-300 ease-in-out;
+  }
+}
 }
