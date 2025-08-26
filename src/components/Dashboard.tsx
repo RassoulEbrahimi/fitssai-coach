@@ -21,6 +21,7 @@ import {
 import { useTranslation } from "react-i18next";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
+import { ProfileCard } from "@/components/ProfileCard";
 import { useState, useEffect } from "react";
 import { toast } from "sonner";
 import { format, addDays, isSameDay, startOfWeek } from "date-fns";
@@ -554,66 +555,11 @@ const Dashboard = () => {
           </TabsContent>
 
           <TabsContent value="profile" className="space-y-6">
-            <Card className="gradient-card border-primary/20">
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <User className="h-5 w-5 text-primary" />
-                  {t('dashboard.profile.title')}
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div className="space-y-4">
-                    <div>
-                      <label className="text-sm font-medium">{t('onboarding.fields.age')}</label>
-                      <div className="mt-1 p-3 bg-muted rounded-lg">{profile?.age} years</div>
-                    </div>
-                    <div>
-                      <label className="text-sm font-medium">{t('onboarding.fields.weight')}</label>
-                      <div className="mt-1 p-3 bg-muted rounded-lg">{profile?.weight} kg</div>
-                    </div>
-                    <div>
-                      <label className="text-sm font-medium">{t('onboarding.fields.height')}</label>
-                      <div className="mt-1 p-3 bg-muted rounded-lg">{profile?.height} cm</div>
-                    </div>
-                  </div>
-                  <div className="space-y-4">
-                    <div>
-                      <label className="text-sm font-medium">{t('onboarding.fields.fitnessGoal')}</label>
-                      <div className="mt-1 p-3 bg-muted rounded-lg">
-                        {profile?.fitness_goal === 'gain-muscle' && t('onboarding.goals.gainMuscle')}
-                        {profile?.fitness_goal === 'lose-fat' && t('onboarding.goals.loseFat')}
-                        {profile?.fitness_goal === 'improve-cardio' && t('onboarding.goals.improveCardio')}
-                        {profile?.fitness_goal === 'maintain' && t('onboarding.goals.maintain')}
-                      </div>
-                    </div>
-                    <div>
-                      <label className="text-sm font-medium">{t('onboarding.fields.dietaryPreference')}</label>
-                      <div className="mt-1 p-3 bg-muted rounded-lg">
-                        {profile?.dietary_preference === 'no-preference' && t('onboarding.diet.noPreference')}
-                        {profile?.dietary_preference === 'vegetarian' && t('onboarding.diet.vegetarian')}
-                        {profile?.dietary_preference === 'vegan' && t('onboarding.diet.vegan')}
-                        {profile?.dietary_preference === 'keto' && t('onboarding.diet.keto')}
-                        {profile?.dietary_preference === 'high-protein' && t('onboarding.diet.highProtein')}
-                      </div>
-                    </div>
-                    <div>
-                      <label className="text-sm font-medium">{t('dashboard.experienceLevel.label')}</label>
-                      <div className="mt-1 p-3 bg-muted rounded-lg">
-                        {profile?.experience_level === 'beginner' && t('dashboard.experienceLevel.beginner')}
-                        {profile?.experience_level === 'intermediate' && t('dashboard.experienceLevel.intermediate')}
-                        {profile?.experience_level === 'advanced' && t('dashboard.experienceLevel.advanced')}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-                <div className="mt-6">
-                  <Button className="gradient-primary text-primary-foreground">
-                    {t('dashboard.profile.edit')}
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
+            <ProfileCard 
+              profile={profile}
+              onProfileUpdate={fetchProfile}
+              workoutProgress={getWeeklyProgress()}
+            />
           </TabsContent>
         </Tabs>
       </div>

@@ -171,5 +171,27 @@
       "weeklyProgress": "پیشرفت هفتگی",
       "daysCompleted": "روز این هفته کامل شد"
     }
+  },
+  "profile": {
+    "title": "پروفایل شما",
+    "edit": "ویرایش پروفایل",
+    "uploadPhoto": "آپلود عکس",
+    "workoutProgress": "{{completed}}/{{total}} تمرین این هفته",
+    "weeklyProgress": "پیشرفت هفتگی",
+    "stats": {
+      "age": "سن",
+      "weight": "وزن",
+      "height": "قد",
+      "goal": "هدف"
+    },
+    "editDialog": {
+      "title": "ویرایش پروفایل",
+      "save": "ذخیره تغییرات",
+      "cancel": "لغو"
+    },
+    "updateSuccess": "پروفایل با موفقیت به‌روزرسانی شد",
+    "updateError": "خطا در به‌روزرسانی پروفایل",
+    "avatarUploadSuccess": "آواتار با موفقیت آپلود شد",
+    "avatarUploadError": "خطا در آپلود آواتار"
   }
 }

@@ -171,5 +171,27 @@
       "weeklyProgress": "Weekly Progress",
       "daysCompleted": "days completed this week"
     }
+  },
+  "profile": {
+    "title": "Your Profile",
+    "edit": "Edit Profile",
+    "uploadPhoto": "Upload Photo",
+    "workoutProgress": "{{completed}}/{{total}} workouts this week",
+    "weeklyProgress": "Weekly Progress",
+    "stats": {
+      "age": "Age",
+      "weight": "Weight",
+      "height": "Height",
+      "goal": "Goal"
+    },
+    "editDialog": {
+      "title": "Edit Profile",
+      "save": "Save Changes",
+      "cancel": "Cancel"
+    },
+    "updateSuccess": "Profile updated successfully",
+    "updateError": "Error updating profile",
+    "avatarUploadSuccess": "Avatar uploaded successfully",
+    "avatarUploadError": "Error uploading avatar"
   }
 }

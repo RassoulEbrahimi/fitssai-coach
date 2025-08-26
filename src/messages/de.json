@@ -171,5 +171,27 @@
       "weeklyProgress": "Wöchentlicher Fortschritt",
       "daysCompleted": "Tage diese Woche abgeschlossen"
     }
+  },
+  "profile": {
+    "title": "Dein Profil",
+    "edit": "Profil bearbeiten",
+    "uploadPhoto": "Foto hochladen",
+    "workoutProgress": "{{completed}}/{{total}} Workouts diese Woche",
+    "weeklyProgress": "Wöchentlicher Fortschritt",
+    "stats": {
+      "age": "Alter",
+      "weight": "Gewicht",
+      "height": "Größe",
+      "goal": "Ziel"
+    },
+    "editDialog": {
+      "title": "Profil bearbeiten",
+      "save": "Speichern",
+      "cancel": "Abbrechen"
+    },
+    "updateSuccess": "Profil erfolgreich aktualisiert",
+    "updateError": "Fehler beim Aktualisieren des Profils",
+    "avatarUploadSuccess": "Profilbild erfolgreich hochgeladen",
+    "avatarUploadError": "Fehler beim Hochladen des Profilbilds"
   }
 }
