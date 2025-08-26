@@ -76,30 +76,41 @@ export type Database = {
       }
       workout_logs: {
         Row: {
-          completed_at: string
+          completed: boolean
+          completed_at: string | null
           created_at: string
           id: string
-          plan_day: string
+          plan_id: string | null
           user_id: string
-          workout_plan_id: string
+          workout_day: string
         }
         Insert: {
-          completed_at?: string
+          completed?: boolean
+          completed_at?: string | null
           created_at?: string
           id?: string
-          plan_day: string
+          plan_id?: string | null
           user_id: string
-          workout_plan_id: string
+          workout_day: string
         }
         Update: {
-          completed_at?: string
+          completed?: boolean
+          completed_at?: string | null
           created_at?: string
           id?: string
-          plan_day?: string
+          plan_id?: string | null
           user_id?: string
-          workout_plan_id?: string
+          workout_day?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "workout_logs_plan_id_fkey"
+            columns: ["plan_id"]
+            isOneToOne: false
+            referencedRelation: "workout_plans"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       workout_plans: {
         Row: {

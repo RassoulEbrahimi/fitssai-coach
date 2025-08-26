@@ -140,7 +140,7 @@ const Dashboard = () => {
         .from('workout_logs')
         .select('*')
         .eq('user_id', user.id)
-        .eq('workout_plan_id', workoutPlan.id);
+        .eq('plan_id', workoutPlan.id);
 
       if (error) throw error;
       setWorkoutLogs(data || []);
@@ -156,16 +156,21 @@ const Dashboard = () => {
     }
   }, [workoutPlan]);
 
-  const markWorkoutComplete = async (planDay: string) => {
+  const markWorkoutComplete = async (dayIndex: number) => {
     if (!user || !workoutPlan) return;
 
     try {
+      const startDate = startOfWeek(new Date(), { weekStartsOn: 6 });
+      const workoutDate = addDays(startDate, dayIndex);
+      
       const { error } = await supabase
         .from('workout_logs')
         .insert({
           user_id: user.id,
-          plan_day: planDay,
-          workout_plan_id: workoutPlan.id
+          plan_id: workoutPlan.id,
+          workout_day: workoutDate.toISOString().split('T')[0],
+          completed: true,
+          completed_at: new Date().toISOString()
         });
 
       if (error) throw error;
@@ -178,8 +183,31 @@ const Dashboard = () => {
     }
   };
 
-  const isWorkoutCompleted = (planDay: string) => {
-    return workoutLogs.some(log => log.plan_day === planDay);
+  const isWorkoutCompleted = (dayIndex: number) => {
+    const startDate = startOfWeek(new Date(), { weekStartsOn: 6 });
+    const workoutDate = addDays(startDate, dayIndex);
+    const dateString = workoutDate.toISOString().split('T')[0];
+    return workoutLogs.some(log => log.workout_day === dateString && log.completed);
+  };
+
+  const getWeeklyProgress = () => {
+    const startDate = startOfWeek(new Date(), { weekStartsOn: 6 });
+    const weeklyLogs = workoutLogs.filter(log => {
+      const logDate = new Date(log.workout_day);
+      const weekStart = startOfWeek(logDate, { weekStartsOn: 6 });
+      return weekStart.getTime() === startDate.getTime() && log.completed;
+    });
+    
+    let totalDays = 0;
+    if (workoutPlan && workoutPlan.content) {
+      const firstWeek = Object.values(workoutPlan.content)[0];
+      totalDays = Array.isArray(firstWeek) ? firstWeek.length : 0;
+    }
+    
+    return {
+      completed: weeklyLogs.length,
+      total: totalDays
+    };
   };
 
   const getWeekdayName = (dayIndex: number) => {
@@ -372,6 +400,24 @@ const Dashboard = () => {
           </TabsList>
 
           <TabsContent value="workout" className="space-y-6">
+            {/* Weekly Progress */}
+            {workoutPlan && (
+              <Card className="gradient-card border-primary/20">
+                <CardContent className="p-4">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-sm font-medium">{t('dashboard.workoutCompletion.weeklyProgress')}</span>
+                    <span className="text-sm text-muted-foreground">
+                      {getWeeklyProgress().completed} / {getWeeklyProgress().total} {t('dashboard.workoutCompletion.daysCompleted')}
+                    </span>
+                  </div>
+                  <Progress 
+                    value={getWeeklyProgress().total > 0 ? (getWeeklyProgress().completed / getWeeklyProgress().total) * 100 : 0} 
+                    className="h-2" 
+                  />
+                </CardContent>
+              </Card>
+            )}
+            
             <Card className="gradient-card border-primary/20">
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
@@ -391,10 +437,10 @@ const Dashboard = () => {
                           {days.map((day: any, dayIndex: number) => {
                             const startDate = startOfWeek(new Date(), { weekStartsOn: 6 }); // Saturday as start of week for Persian calendar
                             const isCurrentDay = isToday(startDate, dayIndex);
-                            const isCompleted = isWorkoutCompleted(day.day);
+                            const isCompleted = isWorkoutCompleted(dayIndex);
                             
                             return (
-                              <Card key={dayIndex} className={`border-primary/10 ${isCompleted ? 'opacity-60' : ''}`}>
+                              <Card key={dayIndex} className={`border-primary/10 ${isCompleted ? 'opacity-60 bg-muted/30' : ''}`}>
                                 <CardHeader className="pb-3">
                                   <div className="flex items-center justify-between">
                                     <div className="flex items-center gap-2">
@@ -402,12 +448,14 @@ const Dashboard = () => {
                                         {getWeekdayName(dayIndex)}
                                       </CardTitle>
                                       {isCurrentDay && (
-                                        <Badge variant="default" className="text-xs">
+                                        <Badge variant="default" className="text-xs bg-primary">
                                           {t('dashboard.workoutCompletion.today')}
                                         </Badge>
                                       )}
                                       {isCompleted && (
-                                        <CheckCircle className="h-4 w-4 text-green-600" />
+                                        <Badge variant="secondary" className="text-xs bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-100">
+                                          ✅ {t('dashboard.workoutCompletion.completed')}
+                                        </Badge>
                                       )}
                                     </div>
                                     <div className="text-sm text-muted-foreground">
@@ -418,7 +466,7 @@ const Dashboard = () => {
                                 <CardContent>
                                   <div className="space-y-2">
                                     {day.exercises.map((exercise: any, exerciseIndex: number) => (
-                                      <div key={exerciseIndex} className="flex justify-between items-center p-3 bg-muted/50 rounded-lg">
+                                      <div key={exerciseIndex} className={`flex justify-between items-center p-3 bg-muted/50 rounded-lg ${isCompleted ? 'opacity-70' : ''}`}>
                                         <div>
                                           <span className="font-medium">{exercise.name}</span>
                                         </div>
@@ -433,11 +481,11 @@ const Dashboard = () => {
                                       <Button
                                         variant="outline"
                                         size="sm"
-                                        onClick={() => markWorkoutComplete(day.day)}
-                                        className="w-full"
+                                        onClick={() => markWorkoutComplete(dayIndex)}
+                                        className="w-full bg-primary/10 hover:bg-primary/20 border-primary/30"
                                       >
                                         <Check className="h-4 w-4 mr-2" />
-                                        {t('dashboard.workoutCompletion.markComplete')}
+                                        {t('dashboard.workoutCompletion.markAsDone')}
                                       </Button>
                                     </div>
                                   )}

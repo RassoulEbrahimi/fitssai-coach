@@ -167,7 +167,10 @@
     "workoutCompletion": {
       "markComplete": "Mark Complete",
       "completed": "Completed",
-      "today": "Today"
+      "today": "Today",
+      "markAsDone": "Mark as Done",
+      "weeklyProgress": "Weekly Progress",
+      "daysCompleted": "days completed this week"
     }
   }
 }

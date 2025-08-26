@@ -167,7 +167,10 @@
     "workoutCompletion": {
       "markComplete": "علامت‌گذاری تکمیل",
       "completed": "تکمیل شده",
-      "today": "امروز"
+      "today": "امروز",
+      "markAsDone": "انجام شد",
+      "weeklyProgress": "پیشرفت هفتگی",
+      "daysCompleted": "روز این هفته کامل شد"
     }
   }
 }
