@@ -128,7 +128,7 @@ const AdminPanel = () => {
 
       // Merge profile data with email from auth
       const usersWithEmails = profiles?.map(profile => {
-        const authUser = authUsers?.users?.find((au: any) => au.id === profile.id);
+        const authUser = authUsers.users.find(au => au.id === profile.id);
         return {
           ...profile,
           email: authUser?.email || 'N/A'
@@ -194,12 +194,12 @@ const AdminPanel = () => {
         ...(workoutPlans || []).map(plan => ({
           ...plan,
           type: 'workout' as const,
-          user_email: authUsers?.users?.find((u: any) => u.id === plan.user_id)?.email || 'N/A'
+          user_email: authUsers.users.find(u => u.id === plan.user_id)?.email || 'N/A'
         })),
         ...(nutritionPlans || []).map(plan => ({
           ...plan,
           type: 'nutrition' as const,
-          user_email: authUsers?.users?.find((u: any) => u.id === plan.user_id)?.email || 'N/A'
+          user_email: authUsers.users.find(u => u.id === plan.user_id)?.email || 'N/A'
         }))
       ].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
 
