@@ -236,9 +236,4 @@
       opacity: 0;
     }
   }
-
-  /* Smooth transitions for all interactive elements */
-  .transition-colors {
-    @apply transition-colors duration-300 ease-in-out;
-  }
 }
