@@ -104,6 +104,8 @@ serve(async (req) => {
     // Language-specific instructions
     const languageInstruction = language === 'fa' 
       ? 'Generate ALL content (exercise names, meal names, descriptions, day labels) in Persian (Farsi). Use Persian/Farsi language for all text content.'
+      : language === 'de' 
+      ? 'Generate ALL content (exercise names, meal names, descriptions, day labels) in German (Deutsch). Use German language for all text content.'
       : 'Generate all content in English.';
 
     const prompt = `${languageInstruction}
@@ -152,7 +154,7 @@ Please return a JSON response with exactly this structure:
 
 Make sure the workout plan is appropriate for their experience level and the nutrition plan matches their dietary preferences and fitness goals.
 
-IMPORTANT: ${languageInstruction} All exercise names, meal names, descriptions, and any other text content must be in ${language === 'fa' ? 'Persian (Farsi)' : 'English'}.`;
+IMPORTANT: ${languageInstruction} All exercise names, meal names, descriptions, and any other text content must be in ${language === 'fa' ? 'Persian (Farsi)' : language === 'de' ? 'German (Deutsch)' : 'English'}.`;
 
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
@@ -165,7 +167,7 @@ IMPORTANT: ${languageInstruction} All exercise names, meal names, descriptions, 
         messages: [
           { 
             role: 'system', 
-            content: `You are a professional fitness and nutrition expert. Always respond with valid JSON only, no additional text. ${language === 'fa' ? 'Generate all content in Persian (Farsi) language.' : 'Generate all content in English.'}` 
+            content: `You are a professional fitness and nutrition expert. Always respond with valid JSON only, no additional text. ${language === 'fa' ? 'Generate all content in Persian (Farsi) language.' : language === 'de' ? 'Generate all content in German (Deutsch) language.' : 'Generate all content in English.'}` 
           },
           { role: 'user', content: prompt }
         ],

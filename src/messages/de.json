@@ -1,0 +1,176 @@
+{
+  "auth": {
+    "subtitle": "Schließe dich Tausenden an, die ihre Fitnessziele erreichen",
+    "signIn": "Anmelden",
+    "signUp": "Registrieren",
+    "signInSubtitle": "Willkommen zurück! Melde dich in deinem Konto an",
+    "signUpSubtitle": "Erstelle dein Konto, um loszulegen",
+    "email": "E-Mail",
+    "password": "Passwort",
+    "signingIn": "Anmeldung läuft...",
+    "signingUp": "Registrierung läuft...",
+    "backToHome": "Zurück zur Startseite",
+    "alreadyHaveAccount": "Hast du bereits ein Konto?",
+    "dontHaveAccount": "Hast du noch kein Konto?"
+  },
+  "navbar": {
+    "home": "Startseite",
+    "features": "Funktionen",
+    "pricing": "Preise",
+    "about": "Über uns",
+    "signIn": "Anmelden",
+    "signUp": "Registrieren",
+    "signOut": "Abmelden",
+    "dashboard": "Dashboard",
+    "profile": "Profil",
+    "getStarted": "Loslegen"
+  },
+  "hero": {
+    "badge": "KI-gestützte Fitness-Revolution",
+    "title": "Dein persönlicher",
+    "titleHighlight": "KI-Fitness-Coach",
+    "description": "Verwandle deine Fitness-Reise mit personalisierten Trainings- und Ernährungsplänen powered by fortschrittlicher KI. Erreiche deine Ziele schneller als je zuvor.",
+    "startJourney": "Starte deine Reise",
+    "watchDemo": "Demo ansehen",
+    "stats": {
+      "activeUsers": "Aktive Benutzer",
+      "successRate": "Erfolgsrate",
+      "support": "KI-Unterstützung"
+    }
+  },
+  "features": {
+    "title": "Powered by fortschrittlicher KI",
+    "description": "Erlebe die Zukunft des Fitness mit intelligenten Funktionen, die deine Transformation beschleunigen",
+    "aiPlans": {
+      "title": "KI-gestützte Pläne",
+      "description": "Fortschrittliche KI analysiert dein Profil, um personalisierte Trainings- und Ernährungspläne zu erstellen, die auf deine einzigartigen Bedürfnisse und Ziele zugeschnitten sind."
+    },
+    "customWorkouts": {
+      "title": "Individuelle Workouts",
+      "description": "Erhalte detaillierte 4-Wochen-Trainingsprogramme mit spezifischen Übungen, Sätzen, Wiederholungen und Fortschrittsverfolgung für optimale Ergebnisse."
+    },
+    "smartNutrition": {
+      "title": "Intelligente Ernährung",
+      "description": "Erhalte personalisierte Mahlzeitenpläne und Ernährungsberatung basierend auf deinen Ernährungsvorlieben und Fitnesszielen."
+    },
+    "goalTracking": {
+      "title": "Zielverfolgung",
+      "description": "Setze und erreiche deine Fitnessziele mit intelligenter Fortschrittsverfolgung und adaptiven Plananpassungen."
+    },
+    "progressAnalytics": {
+      "title": "Fortschritts-Analytik",
+      "description": "Überwache deine Verbesserung mit detaillierten Analysen und Einblicken, um motiviert und auf Kurs zu bleiben."
+    },
+    "communitySupport": {
+      "title": "Community-Unterstützung",
+      "description": "Verbinde dich mit gleichgesinnten Fitness-Enthusiasten und erhalte Unterstützung von unserer aktiven Community."
+    }
+  },
+  "cta": {
+    "badge": "Bereit für die Transformation?",
+    "title": "Starte deine",
+    "titleHighlight": "KI-gestützte Reise",
+    "description": "Schließe dich Tausenden von Benutzern an, die ihr Fitness bereits mit FitssAI transformiert haben. Erhalte deinen personalisierten Plan in unter 5 Minuten.",
+    "getStartedFree": "Kostenlos beginnen",
+    "disclaimer": "Keine Kreditkarte erforderlich • 7 Tage kostenlose Testversion"
+  },
+  "onboarding": {
+    "title": "Lass uns anfangen",
+    "description": "Erzähle uns von dir, um deinen personalisierten Fitnessplan zu erstellen",
+    "steps": {
+      "personalInfo": "Persönliche Infos",
+      "goals": "Ziele & Vorlieben",
+      "review": "Überprüfung"
+    },
+    "fields": {
+      "age": "Alter",
+      "agePlaceholder": "Gib dein Alter ein",
+      "weight": "Gewicht (kg)",
+      "weightPlaceholder": "Gib dein Gewicht in kg ein",
+      "height": "Größe (cm)",
+      "heightPlaceholder": "Gib deine Größe in cm ein",
+      "fitnessGoal": "Fitnessziel",
+      "fitnessGoalPlaceholder": "Wähle dein Hauptziel",
+      "dietaryPreference": "Ernährungsvorliebe",
+      "dietaryPreferencePlaceholder": "Wähle deine Ernährungsvorliebe"
+    },
+    "goals": {
+      "gainMuscle": "Muskeln aufbauen",
+      "loseFat": "Fett verlieren",
+      "improveCardio": "Kardio verbessern",
+      "maintain": "Halten"
+    },
+    "diet": {
+      "noPreference": "Keine Vorliebe",
+      "vegetarian": "Vegetarisch",
+      "vegan": "Vegan",
+      "keto": "Keto",
+      "highProtein": "Proteinreich"
+    },
+    "buttons": {
+      "next": "Weiter",
+      "previous": "Zurück",
+      "complete": "Setup abschließen"
+    }
+  },
+  "dashboard": {
+    "welcome": "Willkommen bei FitssAI",
+    "subtitle": "Deine personalisierte Fitness-Reise beginnt hier",
+    "tabs": {
+      "workoutPlan": "Trainingsplan",
+      "nutritionPlan": "Ernährungsplan",
+      "profile": "Profil",
+      "regeneratePlans": "Pläne neu erstellen"
+    },
+    "workoutPlan": {
+      "title": "Dein 4-Wochen-Trainingsplan",
+      "comingSoon": "Dein personalisierter Trainingsplan wird hier basierend auf deinem Profil und deinen Zielen generiert."
+    },
+    "nutritionPlan": {
+      "title": "Dein Ernährungsleitfaden",
+      "comingSoon": "Dein personalisierter Ernährungsplan wird hier basierend auf deinen Ernährungsvorlieben und Zielen generiert."
+    },
+    "profile": {
+      "title": "Dein Profil",
+      "edit": "Profil bearbeiten"
+    },
+    "regenerate": {
+      "title": "Erstelle deine Pläne neu",
+      "description": "Generiere neue Trainings- und Ernährungspläne basierend auf deinem aktuellen Profil.",
+      "button": "Pläne neu erstellen"
+    },
+    "stats": {
+      "currentStreak": "Aktuelle Serie",
+      "weeklyGoal": "Wöchentliches Ziel",
+      "caloriesBurned": "Kalorien verbrannt",
+      "nextWorkout": "Nächstes Training",
+      "today": "Heute",
+      "days": "Tage",
+      "generating": "Wird generiert...",
+      "generatePlans": "Pläne erstellen"
+    },
+    "workoutDays": {
+      "monday": "Montag",
+      "tuesday": "Dienstag",
+      "wednesday": "Mittwoch",
+      "thursday": "Donnerstag",
+      "friday": "Freitag",
+      "saturday": "Samstag",
+      "sunday": "Sonntag"
+    },
+    "experienceLevel": {
+      "label": "Erfahrungslevel",
+      "beginner": "Anfänger",
+      "intermediate": "Fortgeschritten",
+      "advanced": "Experte"
+    },
+    "workoutCompletion": {
+      "markComplete": "Als abgeschlossen markieren",
+      "completed": "Abgeschlossen",
+      "today": "Heute",
+      "markAsDone": "Als erledigt markieren",
+      "weeklyProgress": "Wöchentlicher Fortschritt",
+      "daysCompleted": "Tage diese Woche abgeschlossen"
+    }
+  }
+}

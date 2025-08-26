@@ -17,11 +17,14 @@ const LanguageSwitcher = () => {
         <Button variant="ghost" size="sm" className="gap-2">
           <Languages className="h-4 w-4" />
           <span className="hidden sm:inline">
-            {i18n.language === 'fa' ? 'فارسی' : 'English'}
+            {i18n.language === 'fa' ? 'فارسی' : i18n.language === 'de' ? 'Deutsch' : 'English'}
           </span>
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent>
+        <DropdownMenuItem onClick={() => changeLanguage('de')} className="cursor-pointer">
+          Deutsch
+        </DropdownMenuItem>
         <DropdownMenuItem onClick={() => changeLanguage('en')} className="cursor-pointer">
           English
         </DropdownMenuItem>
