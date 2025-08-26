@@ -71,6 +71,11 @@ interface Plan {
   user_email?: string;
 }
 
+interface AuthUser {
+  id: string;
+  email?: string;
+}
+
 const AdminPanel = () => {
   const { user, loading } = useAuth();
   const { t, i18n } = useTranslation();
@@ -127,8 +132,8 @@ const AdminPanel = () => {
       if (authError) throw authError;
 
       // Merge profile data with email from auth
-      const usersWithEmails = profiles?.map(profile => {
-        const authUser = authUsers.users.find(au => au.id === profile.id);
+      const usersWithEmails = profiles?.map((profile: any) => {
+        const authUser = authUsers.users.find((au: any) => au.id === profile.id);
         return {
           ...profile,
           email: authUser?.email || 'N/A'
@@ -191,15 +196,15 @@ const AdminPanel = () => {
 
       // Combine and format plans
       const allPlans: Plan[] = [
-        ...(workoutPlans || []).map(plan => ({
+        ...(workoutPlans || []).map((plan: any) => ({
           ...plan,
           type: 'workout' as const,
-          user_email: authUsers.users.find(u => u.id === plan.user_id)?.email || 'N/A'
+          user_email: authUsers.users.find((u: any) => u.id === plan.user_id)?.email || 'N/A'
         })),
-        ...(nutritionPlans || []).map(plan => ({
+        ...(nutritionPlans || []).map((plan: any) => ({
           ...plan,
           type: 'nutrition' as const,
-          user_email: authUsers.users.find(u => u.id === plan.user_id)?.email || 'N/A'
+          user_email: authUsers.users.find((u: any) => u.id === plan.user_id)?.email || 'N/A'
         }))
       ].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
 
