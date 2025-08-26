@@ -180,6 +180,19 @@
       "week3": "هفته ۳",
       "week4": "هفته ۴", 
       "jumpToWeek": "پرش به هفته"
+    },
+    "todaySticky": {
+      "title": "تمرین امروز",
+      "noWorkout": "هیچ تمرینی برای امروز برنامه‌ریزی نشده"
+    },
+    "dayAccordion": {
+      "expandDay": "ضربه بزنید تا جزئیات تمرین گسترده شود", 
+      "collapseDay": "ضربه بزنید تا جمع شود"
+    },
+    "exerciseGroup": {
+      "exercises": "تمرینات",
+      "sets": "ست‌ها",
+      "reps": "تکرارها"
     }
   },
   "profile": {

@@ -180,6 +180,19 @@
       "week3": "Woche 3", 
       "week4": "Woche 4",
       "jumpToWeek": "Zu Woche springen"
+    },
+    "todaySticky": {
+      "title": "Heutiges Training",
+      "noWorkout": "Kein Training für heute geplant"
+    },
+    "dayAccordion": {
+      "expandDay": "Antippen um Trainingsdetails zu erweitern",
+      "collapseDay": "Antippen zum Einklappen"
+    },
+    "exerciseGroup": {
+      "exercises": "Übungen",
+      "sets": "Sätze", 
+      "reps": "Wiederholungen"
     }
   },
   "profile": {
