@@ -138,6 +138,34 @@
       "title": "Regenerate Your Plans",
       "description": "Generate new workout and nutrition plans based on your current profile.",
       "button": "Regenerate Plans"
+    },
+    "stats": {
+      "currentStreak": "Current Streak",
+      "weeklyGoal": "Weekly Goal",
+      "caloriesBurned": "Calories Burned",
+      "nextWorkout": "Next Workout",
+      "today": "Today",
+      "days": "days"
+    },
+    "workoutDays": {
+      "monday": "Monday",
+      "tuesday": "Tuesday", 
+      "wednesday": "Wednesday",
+      "thursday": "Thursday",
+      "friday": "Friday",
+      "saturday": "Saturday",
+      "sunday": "Sunday"
+    },
+    "experienceLevel": {
+      "label": "Experience Level",
+      "beginner": "Beginner",
+      "intermediate": "Intermediate", 
+      "advanced": "Advanced"
+    },
+    "workoutCompletion": {
+      "markComplete": "Mark Complete",
+      "completed": "Completed",
+      "today": "Today"
     }
   }
 }

@@ -138,6 +138,34 @@
       "title": "تولید مجدد برنامه‌هایتان",
       "description": "برنامه‌های ورزشی و تغذیه جدید بر اساس پروفایل فعلی خود تولید کنید.",
       "button": "تولید مجدد برنامه‌ها"
+    },
+    "stats": {
+      "currentStreak": "رکورد متوالی",
+      "weeklyGoal": "هدف هفتگی",
+      "caloriesBurned": "کالری سوزانده شده",
+      "nextWorkout": "تمرین بعدی",
+      "today": "امروز",
+      "days": "روز"
+    },
+    "workoutDays": {
+      "monday": "دوشنبه",
+      "tuesday": "سه‌شنبه",
+      "wednesday": "چهارشنبه", 
+      "thursday": "پنج‌شنبه",
+      "friday": "جمعه",
+      "saturday": "شنبه",
+      "sunday": "یکشنبه"
+    },
+    "experienceLevel": {
+      "label": "سطح تجربه",
+      "beginner": "مبتدی",
+      "intermediate": "متوسط",
+      "advanced": "پیشرفته"
+    },
+    "workoutCompletion": {
+      "markComplete": "علامت‌گذاری تکمیل",
+      "completed": "تکمیل شده",
+      "today": "امروز"
     }
   }
 }
