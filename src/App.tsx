@@ -6,6 +6,7 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { AuthProvider } from "@/hooks/useAuth";
+import { ThemeProvider } from "@/hooks/useTheme";
 import Landing from "./pages/Landing";
 import AuthPage from './pages/AuthPage';
 import DashboardPage from './pages/DashboardPage';
@@ -28,23 +29,25 @@ const App = () => {
 
   return (
     <QueryClientProvider client={queryClient}>
-      <AuthProvider>
-        <TooltipProvider>
-          <Toaster />
-          <Sonner />
-          <BrowserRouter>
-            <Routes>
-              <Route path="/" element={<Landing />} />
-              <Route path="/auth/:mode" element={<AuthPage />} />
-          <Route path="/dashboard" element={<DashboardPage />} />
-          <Route path="/onboarding" element={<OnboardingPage />} />
-          <Route path="/admin" element={<AdminPanel />} />
-              {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
-              <Route path="*" element={<NotFound />} />
-            </Routes>
-          </BrowserRouter>
-        </TooltipProvider>
-      </AuthProvider>
+      <ThemeProvider>
+        <AuthProvider>
+          <TooltipProvider>
+            <Toaster />
+            <Sonner />
+            <BrowserRouter>
+              <Routes>
+                <Route path="/" element={<Landing />} />
+                <Route path="/auth/:mode" element={<AuthPage />} />
+            <Route path="/dashboard" element={<DashboardPage />} />
+            <Route path="/onboarding" element={<OnboardingPage />} />
+            <Route path="/admin" element={<AdminPanel />} />
+                {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
+                <Route path="*" element={<NotFound />} />
+              </Routes>
+            </BrowserRouter>
+          </TooltipProvider>
+        </AuthProvider>
+      </ThemeProvider>
     </QueryClientProvider>
   );
 };

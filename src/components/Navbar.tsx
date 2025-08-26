@@ -17,6 +17,7 @@ import {
   Dumbbell
 } from 'lucide-react';
 import LanguageSwitcher from './LanguageSwitcher';
+import ThemeToggle from './ThemeToggle';
 
 const Navbar = () => {
   const { user, signOut } = useAuth();
@@ -120,6 +121,7 @@ const Navbar = () => {
         
         {/* Desktop Actions */}
         <div className="hidden md:flex items-center gap-4">
+          <ThemeToggle />
           <LanguageSwitcher />
           {user ? (
             <Button variant="outline" onClick={handleSignOut}>
@@ -237,7 +239,8 @@ const Navbar = () => {
                 </div>
               </>
             )}
-            <div className="pt-2 border-t border-border">
+            <div className="pt-2 border-t border-border flex items-center gap-2">
+              <ThemeToggle />
               <LanguageSwitcher />
             </div>
           </div>
