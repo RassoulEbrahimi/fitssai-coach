@@ -14,13 +14,17 @@ import {
   Clock,
   TrendingUp,
   Target,
-  Flame
+  Flame,
+  Check,
+  CheckCircle
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
 import { useState, useEffect } from "react";
 import { toast } from "sonner";
+import { format, addDays, isSameDay, startOfWeek } from "date-fns";
+import { enUS, faIR } from "date-fns/locale";
 
 const Dashboard = () => {
   const { t, i18n } = useTranslation();
@@ -31,6 +35,7 @@ const Dashboard = () => {
   const [workoutPlan, setWorkoutPlan] = useState<any>(null);
   const [nutritionPlan, setNutritionPlan] = useState<any>(null);
   const [generatingPlans, setGeneratingPlans] = useState(false);
+  const [workoutLogs, setWorkoutLogs] = useState<any[]>([]);
   // TODO: Re-enable Quote of the Day feature
   // const [dailyQuote, setDailyQuote] = useState<any>(null);
   // const [loadingQuote, setLoadingQuote] = useState(true);
@@ -39,6 +44,7 @@ const Dashboard = () => {
     if (user) {
       fetchProfile();
       fetchPlans();
+      fetchWorkoutLogs();
       // TODO: Re-enable quote fetching
       // fetchDailyQuote();
     }
@@ -126,6 +132,79 @@ const Dashboard = () => {
   //   }
   // };
 
+  const fetchWorkoutLogs = async () => {
+    if (!user || !workoutPlan) return;
+
+    try {
+      const { data, error } = await supabase
+        .from('workout_logs')
+        .select('*')
+        .eq('user_id', user.id)
+        .eq('workout_plan_id', workoutPlan.id);
+
+      if (error) throw error;
+      setWorkoutLogs(data || []);
+    } catch (error) {
+      console.error('Error fetching workout logs:', error);
+    }
+  };
+
+  // Fetch workout logs when workout plan changes
+  useEffect(() => {
+    if (workoutPlan) {
+      fetchWorkoutLogs();
+    }
+  }, [workoutPlan]);
+
+  const markWorkoutComplete = async (planDay: string) => {
+    if (!user || !workoutPlan) return;
+
+    try {
+      const { error } = await supabase
+        .from('workout_logs')
+        .insert({
+          user_id: user.id,
+          plan_day: planDay,
+          workout_plan_id: workoutPlan.id
+        });
+
+      if (error) throw error;
+      
+      toast.success(t('dashboard.workoutCompletion.completed'));
+      fetchWorkoutLogs(); // Refresh logs
+    } catch (error) {
+      console.error('Error marking workout complete:', error);
+      toast.error('Failed to mark workout as complete');
+    }
+  };
+
+  const isWorkoutCompleted = (planDay: string) => {
+    return workoutLogs.some(log => log.plan_day === planDay);
+  };
+
+  const getWeekdayName = (dayIndex: number) => {
+    const days = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
+    return t(`dashboard.workoutDays.${days[dayIndex]}`);
+  };
+
+  const formatWorkoutDate = (startDate: Date, dayIndex: number) => {
+    const date = addDays(startDate, dayIndex);
+    const locale = i18n.language === 'fa' ? faIR : enUS;
+    
+    if (i18n.language === 'fa') {
+      // Format for Persian: "شنبه ۲ شهریور"
+      return format(date, 'EEEE d MMMM', { locale });
+    } else {
+      // Format for English: "Saturday, Aug 24"
+      return format(date, 'EEEE, MMM d', { locale });
+    }
+  };
+
+  const isToday = (startDate: Date, dayIndex: number) => {
+    const date = addDays(startDate, dayIndex);
+    return isSameDay(date, new Date());
+  };
+
   const generatePlans = async () => {
     if (!user) return;
 
@@ -179,7 +258,7 @@ const Dashboard = () => {
               disabled={generatingPlans}
             >
               <RefreshCw className={`mr-2 h-4 w-4 ${generatingPlans ? 'animate-spin' : ''}`} />
-              {generatingPlans ? 'Generating...' : (workoutPlan || nutritionPlan ? 'Regenerate Plans' : 'Generate Plans')}
+              {generatingPlans ? t('dashboard.stats.generating') : (workoutPlan || nutritionPlan ? t('dashboard.regenerate.button') : t('dashboard.stats.generatePlans'))}
             </Button>
           </div>
         </div>
@@ -230,8 +309,8 @@ const Dashboard = () => {
             <CardContent className="p-6">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm text-muted-foreground">Current Streak</p>
-                  <p className="text-2xl font-bold text-primary">12 days</p>
+                  <p className="text-sm text-muted-foreground">{t('dashboard.stats.currentStreak')}</p>
+                  <p className="text-2xl font-bold text-primary">12 {t('dashboard.stats.days')}</p>
                 </div>
                 <Flame className="h-8 w-8 text-primary" />
               </div>
@@ -242,7 +321,7 @@ const Dashboard = () => {
             <CardContent className="p-6">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm text-muted-foreground">Weekly Goal</p>
+                  <p className="text-sm text-muted-foreground">{t('dashboard.stats.weeklyGoal')}</p>
                   <p className="text-2xl font-bold text-primary">4/5</p>
                 </div>
                 <Target className="h-8 w-8 text-primary" />
@@ -254,7 +333,7 @@ const Dashboard = () => {
             <CardContent className="p-6">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm text-muted-foreground">Calories Burned</p>
+                  <p className="text-sm text-muted-foreground">{t('dashboard.stats.caloriesBurned')}</p>
                   <p className="text-2xl font-bold text-primary">2,450</p>
                 </div>
                 <TrendingUp className="h-8 w-8 text-primary" />
@@ -266,8 +345,8 @@ const Dashboard = () => {
             <CardContent className="p-6">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm text-muted-foreground">Next Workout</p>
-                  <p className="text-2xl font-bold text-primary">Today</p>
+                  <p className="text-sm text-muted-foreground">{t('dashboard.stats.nextWorkout')}</p>
+                  <p className="text-2xl font-bold text-primary">{t('dashboard.stats.today')}</p>
                 </div>
                 <Clock className="h-8 w-8 text-primary" />
               </div>
@@ -309,27 +388,63 @@ const Dashboard = () => {
                           {week.replace(/([A-Z])/g, ' $1').trim()}
                         </h3>
                         <div className="grid gap-4">
-                          {days.map((day: any, dayIndex: number) => (
-                            <Card key={dayIndex} className="border-primary/10">
-                              <CardHeader className="pb-3">
-                                <CardTitle className="text-base">{day.day}</CardTitle>
-                              </CardHeader>
-                              <CardContent>
-                                <div className="space-y-2">
-                                  {day.exercises.map((exercise: any, exerciseIndex: number) => (
-                                    <div key={exerciseIndex} className="flex justify-between items-center p-3 bg-muted/50 rounded-lg">
-                                      <div>
-                                        <span className="font-medium">{exercise.name}</span>
-                                      </div>
-                                      <div className="text-sm text-muted-foreground">
-                                        {exercise.sets} sets × {exercise.reps} • {exercise.rest}
-                                      </div>
+                          {days.map((day: any, dayIndex: number) => {
+                            const startDate = startOfWeek(new Date(), { weekStartsOn: 6 }); // Saturday as start of week for Persian calendar
+                            const isCurrentDay = isToday(startDate, dayIndex);
+                            const isCompleted = isWorkoutCompleted(day.day);
+                            
+                            return (
+                              <Card key={dayIndex} className={`border-primary/10 ${isCompleted ? 'opacity-60' : ''}`}>
+                                <CardHeader className="pb-3">
+                                  <div className="flex items-center justify-between">
+                                    <div className="flex items-center gap-2">
+                                      <CardTitle className="text-base">
+                                        {getWeekdayName(dayIndex)}
+                                      </CardTitle>
+                                      {isCurrentDay && (
+                                        <Badge variant="default" className="text-xs">
+                                          {t('dashboard.workoutCompletion.today')}
+                                        </Badge>
+                                      )}
+                                      {isCompleted && (
+                                        <CheckCircle className="h-4 w-4 text-green-600" />
+                                      )}
                                     </div>
-                                  ))}
-                                </div>
-                              </CardContent>
-                            </Card>
-                          ))}
+                                    <div className="text-sm text-muted-foreground">
+                                      {formatWorkoutDate(startDate, dayIndex)}
+                                    </div>
+                                  </div>
+                                </CardHeader>
+                                <CardContent>
+                                  <div className="space-y-2">
+                                    {day.exercises.map((exercise: any, exerciseIndex: number) => (
+                                      <div key={exerciseIndex} className="flex justify-between items-center p-3 bg-muted/50 rounded-lg">
+                                        <div>
+                                          <span className="font-medium">{exercise.name}</span>
+                                        </div>
+                                        <div className="text-sm text-muted-foreground">
+                                          {exercise.sets} sets × {exercise.reps} • {exercise.rest}
+                                        </div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                  {!isCompleted && (
+                                    <div className="mt-4">
+                                      <Button
+                                        variant="outline"
+                                        size="sm"
+                                        onClick={() => markWorkoutComplete(day.day)}
+                                        className="w-full"
+                                      >
+                                        <Check className="h-4 w-4 mr-2" />
+                                        {t('dashboard.workoutCompletion.markComplete')}
+                                      </Button>
+                                    </div>
+                                  )}
+                                </CardContent>
+                              </Card>
+                            );
+                          })}
                         </div>
                       </div>
                     ))}
@@ -435,11 +550,11 @@ const Dashboard = () => {
                       </div>
                     </div>
                     <div>
-                      <label className="text-sm font-medium">Experience Level</label>
+                      <label className="text-sm font-medium">{t('dashboard.experienceLevel.label')}</label>
                       <div className="mt-1 p-3 bg-muted rounded-lg">
-                        {profile?.experience_level === 'beginner' && 'Beginner'}
-                        {profile?.experience_level === 'intermediate' && 'Intermediate'}
-                        {profile?.experience_level === 'advanced' && 'Advanced'}
+                        {profile?.experience_level === 'beginner' && t('dashboard.experienceLevel.beginner')}
+                        {profile?.experience_level === 'intermediate' && t('dashboard.experienceLevel.intermediate')}
+                        {profile?.experience_level === 'advanced' && t('dashboard.experienceLevel.advanced')}
                       </div>
                     </div>
                   </div>

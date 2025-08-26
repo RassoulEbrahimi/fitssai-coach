@@ -74,6 +74,33 @@ export type Database = {
         }
         Relationships: []
       }
+      workout_logs: {
+        Row: {
+          completed_at: string
+          created_at: string
+          id: string
+          plan_day: string
+          user_id: string
+          workout_plan_id: string
+        }
+        Insert: {
+          completed_at?: string
+          created_at?: string
+          id?: string
+          plan_day: string
+          user_id: string
+          workout_plan_id: string
+        }
+        Update: {
+          completed_at?: string
+          created_at?: string
+          id?: string
+          plan_day?: string
+          user_id?: string
+          workout_plan_id?: string
+        }
+        Relationships: []
+      }
       workout_plans: {
         Row: {
           content: Json
