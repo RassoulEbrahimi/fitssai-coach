@@ -33,7 +33,7 @@ const Hero = ({ onGetStarted }: HeroProps) => {
           
           <h1 className="text-5xl md:text-7xl font-bold mb-6 leading-tight text-white" style={{ textShadow: '2px 2px 4px rgba(0,0,0,0.7)' }}>
             {t('hero.title')}
-            <span className="block gradient-primary bg-clip-text text-transparent font-bold" style={{ textShadow: '2px 2px 4px rgba(0,0,0,0.7)' }}>
+            <span className="block gradient-primary bg-clip-text text-transparent font-bold" style={{ textShadow: 'none' }}>
               {t('hero.titleHighlight')}
             </span>
           </h1>
