@@ -6,6 +6,7 @@ import { Progress } from "@/components/ui/progress";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { 
   Dumbbell, 
   Apple, 
@@ -18,7 +19,8 @@ import {
   Flame,
   Check,
   CheckCircle,
-  ChevronDown
+  ChevronDown,
+  Lock
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useTranslation } from "react-i18next";
@@ -29,6 +31,16 @@ import { useState, useEffect } from "react";
 import { toast } from "sonner";
 import { format, addDays, isSameDay, startOfWeek } from "date-fns";
 import { enUS, faIR } from "date-fns/locale";
+import { 
+  getBerlinNow, 
+  getBerlinToday, 
+  getBerlinCurrentWeek, 
+  isBerlinToday, 
+  isBerlinFuture, 
+  isBerlinPast,
+  formatDateForDisplay,
+  getWeekDays
+} from "@/lib/dateUtils";
 
 const Dashboard = () => {
   const { t, i18n } = useTranslation();
@@ -164,61 +176,134 @@ const Dashboard = () => {
     }
   }, [workoutPlan]);
 
-  // Simplified day completion function - marks entire day as done
-  const markDayComplete = async (weekKey: string, dayIndex: number) => {
+  // Robust workout logging with timezone handling and toggle functionality
+  const toggleDayComplete = async (weekKey: string, dayIndex: number) => {
     if (!user || !workoutPlan || completingWorkout === dayIndex) return;
+
+    // Calculate the workout date using Berlin timezone
+    const berlinToday = getBerlinToday();
+    const weekNumber = parseInt(weekKey.replace(/\D/g, '')) - 1;
+    const totalDaysFromStart = (weekNumber * 7) + dayIndex;
+    
+    // For demo, using plan creation date as reference. In production, use actual plan start date
+    const planCreatedDate = new Date(workoutPlan.created_at);
+    const workoutDate = addDays(planCreatedDate, totalDaysFromStart);
+    const workoutDateStr = format(workoutDate, 'yyyy-MM-dd');
+
+    // Prevent future day completion
+    if (isBerlinFuture(workoutDateStr)) {
+      toast.error(t('dashboard.futureDay.locked'));
+      return;
+    }
 
     setCompletingWorkout(dayIndex);
     
     try {
-      // Calculate the actual date based on week and day
-      const weekNumber = parseInt(weekKey.replace(/\D/g, '')) - 1; // Extract week number (0-based)
-      const totalDaysFromStart = (weekNumber * 7) + dayIndex;
-      const startDate = new Date(); // For demo, using current date as reference
-      const workoutDate = addDays(startDate, totalDaysFromStart - new Date().getDay());
-      
-      const { error } = await supabase
+      // Check if log already exists
+      const { data: existingLog, error: fetchError } = await supabase
         .from('workout_logs')
-        .insert({
-          user_id: user.id,
-          plan_id: workoutPlan.id,
-          workout_day: workoutDate.toISOString().split('T')[0],
-          completed: true,
-          completed_at: new Date().toISOString()
-        });
+        .select('*')
+        .eq('user_id', user.id)
+        .eq('plan_id', workoutPlan.id)
+        .eq('workout_day', workoutDateStr)
+        .maybeSingle();
 
-      if (error) throw error;
+      if (fetchError) throw fetchError;
+
+      if (existingLog) {
+        // Toggle existing log
+        if (existingLog.completed) {
+          // Mark as incomplete
+          const { error } = await supabase
+            .from('workout_logs')
+            .update({
+              completed: false,
+              completed_at: null
+            })
+            .eq('id', existingLog.id);
+
+          if (error) throw error;
+          toast.success('Workout marked as incomplete');
+        } else {
+          // Mark as complete
+          const { error } = await supabase
+            .from('workout_logs')
+            .update({
+              completed: true,
+              completed_at: new Date().toISOString()
+            })
+            .eq('id', existingLog.id);
+
+          if (error) throw error;
+          toast.success(t('dashboard.workoutCompletion.dayCompleted'));
+        }
+      } else {
+        // Create new log as completed
+        const { error } = await supabase
+          .from('workout_logs')
+          .upsert({
+            user_id: user.id,
+            plan_id: workoutPlan.id,
+            workout_day: workoutDateStr,
+            completed: true,
+            completed_at: new Date().toISOString()
+          }, {
+            onConflict: 'user_id,plan_id,workout_day'
+          });
+
+        if (error) throw error;
+        toast.success(t('dashboard.workoutCompletion.dayCompleted'));
+      }
       
       // Add delay for animation effect
       setTimeout(() => {
-        toast.success(t('dashboard.workoutCompletion.dayCompleted'));
         fetchWorkoutLogs(); // Refresh logs
         setCompletingWorkout(null);
       }, 600);
     } catch (error) {
-      console.error('Error marking day complete:', error);
-      toast.error('Failed to mark day as complete');
+      console.error('Error toggling day completion:', error);
+      toast.error('Failed to update workout status');
       setCompletingWorkout(null);
     }
   };
 
-  // Check if a specific day in a specific week is completed
+  // Check if a specific day in a specific week is completed (timezone-aware)
   const isDayCompleted = (weekKey: string, dayIndex: number) => {
+    if (!workoutPlan) return false;
+    
     const weekNumber = parseInt(weekKey.replace(/\D/g, '')) - 1;
     const totalDaysFromStart = (weekNumber * 7) + dayIndex;
-    const startDate = new Date();
-    const workoutDate = addDays(startDate, totalDaysFromStart - new Date().getDay());
-    const dateString = workoutDate.toISOString().split('T')[0];
+    const planCreatedDate = new Date(workoutPlan.created_at);
+    const workoutDate = addDays(planCreatedDate, totalDaysFromStart);
+    const dateString = format(workoutDate, 'yyyy-MM-dd');
+    
     return workoutLogs.some(log => log.workout_day === dateString && log.completed);
   };
 
-  // Check if today matches a specific week and day
+  // Check if today matches a specific week and day (Berlin timezone)
   const isTodayInWeekDay = (weekKey: string, dayIndex: number) => {
+    if (!workoutPlan) return false;
+    
     const weekNumber = parseInt(weekKey.replace(/\D/g, '')) - 1;
     const totalDaysFromStart = (weekNumber * 7) + dayIndex;
-    const startDate = new Date();
-    const targetDate = addDays(startDate, totalDaysFromStart - new Date().getDay());
-    return isSameDay(targetDate, new Date());
+    const planCreatedDate = new Date(workoutPlan.created_at);
+    const targetDate = addDays(planCreatedDate, totalDaysFromStart);
+    const targetDateStr = format(targetDate, 'yyyy-MM-dd');
+    
+    return isBerlinToday(targetDateStr);
+  };
+
+  // Check if a day is in the future (Berlin timezone)
+  const isDayInFuture = (weekKey: string, dayIndex: number) => {
+    if (!workoutPlan) return false;
+    
+    const weekNumber = parseInt(weekKey.replace(/\D/g, '')) - 1;
+    const totalDaysFromStart = (weekNumber * 7) + dayIndex;
+    const planCreatedDate = new Date(workoutPlan.created_at);
+    const targetDate = addDays(planCreatedDate, totalDaysFromStart);
+    const targetDateStr = format(targetDate, 'yyyy-MM-dd');
+    
+    return isBerlinFuture(targetDateStr);
   };
 
   // Get current week based on today's date
@@ -228,15 +313,28 @@ const Dashboard = () => {
     return weekKeys[0]; // For demo purposes, return first week. In real app, calculate based on start date
   };
 
-  // Get week progress for a specific week
+  // Get week progress for a specific week (accurate calculation)
   const getWeekProgress = (weekKey: string) => {
     if (!workoutPlan || !workoutPlan.content) return { completed: 0, total: 0 };
     
     const weekData = workoutPlan.content[weekKey];
     if (!Array.isArray(weekData)) return { completed: 0, total: 0 };
     
-    const completed = weekData.filter((_, dayIndex) => isDayCompleted(weekKey, dayIndex)).length;
-    return { completed, total: weekData.length };
+    // Count only non-rest days as total
+    const totalWorkoutDays = weekData.filter((day: any) => 
+      day.exercises && day.exercises.length > 0
+    ).length;
+    
+    // Count completed days, excluding future days
+    const completedDays = weekData.filter((_, dayIndex) => {
+      if (isDayInFuture(weekKey, dayIndex)) return false; // Exclude future days
+      return isDayCompleted(weekKey, dayIndex);
+    }).length;
+    
+    return { 
+      completed: Math.min(completedDays, totalWorkoutDays), // Cap at total
+      total: totalWorkoutDays 
+    };
   };
 
   // Get today's day index for a specific week
@@ -321,23 +419,33 @@ const Dashboard = () => {
     return workoutLogs.some(log => log.workout_day === dateString && log.completed);
   };
 
+  // Accurate weekly progress calculation using Berlin timezone
   const getWeeklyProgress = () => {
-    const startDate = startOfWeek(new Date(), { weekStartsOn: 6 });
+    if (!workoutPlan || !workoutLogs) return { completed: 0, total: 0 };
+    
+    const { startStr, endStr } = getBerlinCurrentWeek();
+    
+    // Filter logs for current week in Berlin timezone
     const weeklyLogs = workoutLogs.filter(log => {
-      const logDate = new Date(log.workout_day);
-      const weekStart = startOfWeek(logDate, { weekStartsOn: 6 });
-      return weekStart.getTime() === startDate.getTime() && log.completed;
+      return log.workout_day >= startStr && 
+             log.workout_day <= endStr && 
+             log.completed &&
+             !isBerlinFuture(log.workout_day); // Exclude future days
     });
     
-    let totalDays = 0;
-    if (workoutPlan && workoutPlan.content) {
-      const firstWeek = Object.values(workoutPlan.content)[0];
-      totalDays = Array.isArray(firstWeek) ? firstWeek.length : 0;
+    // Calculate total planned workout days for current week
+    let totalPlannedDays = 0;
+    if (workoutPlan.content) {
+      // For demo, use first week's structure. In production, calculate based on current week
+      const firstWeek = Object.values(workoutPlan.content)[0] as any[];
+      totalPlannedDays = Array.isArray(firstWeek) 
+        ? firstWeek.filter((day: any) => day.exercises && day.exercises.length > 0).length 
+        : 0;
     }
     
     return {
-      completed: weeklyLogs.length,
-      total: totalDays
+      completed: Math.min(weeklyLogs.length, totalPlannedDays), // Cap at total planned
+      total: totalPlannedDays
     };
   };
 
@@ -669,51 +777,72 @@ const Dashboard = () => {
                                      {t('dashboard.workoutCompletion.today')}
                                    </Badge>
                                  </div>
-                                 <motion.div
-                                   whileHover={{ scale: 1.1 }}
-                                   whileTap={{ scale: 0.9 }}
-                                 >
-                                   <Button
-                                     variant="ghost"
-                                     size="sm"
-                                     onClick={() => markDayComplete(todayWorkout.weekKey, todayWorkout.dayIndex)}
-                                     disabled={todayWorkout.isCompleted || completingWorkout === todayWorkout.dayIndex}
-                                     className={`h-8 w-8 p-0 ${
-                                       todayWorkout.isCompleted 
-                                         ? 'text-green-600 bg-green-100 dark:bg-green-900/20' 
-                                         : 'hover:bg-primary/10'
-                                     }`}
-                                   >
-                                     <AnimatePresence mode="wait">
-                                       {completingWorkout === todayWorkout.dayIndex ? (
-                                         <motion.div
-                                           key="completing"
-                                           initial={{ scale: 0, rotate: -180 }}
-                                           animate={{ scale: 1, rotate: 0 }}
-                                           exit={{ scale: 0, rotate: 180 }}
-                                         >
-                                           <CheckCircle className="h-4 w-4 text-green-500" />
-                                         </motion.div>
-                                       ) : todayWorkout.isCompleted ? (
-                                         <motion.div
-                                           key="completed"
-                                           initial={{ scale: 0 }}
-                                           animate={{ scale: 1 }}
-                                         >
-                                           <CheckCircle className="h-4 w-4 text-green-600" />
-                                         </motion.div>
-                                       ) : (
-                                         <motion.div
-                                           key="incomplete"
-                                           initial={{ scale: 0 }}
-                                           animate={{ scale: 1 }}
-                                         >
-                                           <Check className="h-4 w-4" />
-                                         </motion.div>
-                                       )}
-                                     </AnimatePresence>
-                                   </Button>
-                                 </motion.div>
+                                  <TooltipProvider>
+                                    <Tooltip>
+                                      <TooltipTrigger asChild>
+                                        <motion.div
+                                          whileHover={{ scale: isDayInFuture(todayWorkout.weekKey, todayWorkout.dayIndex) ? 1 : 1.1 }}
+                                          whileTap={{ scale: isDayInFuture(todayWorkout.weekKey, todayWorkout.dayIndex) ? 1 : 0.9 }}
+                                        >
+                                          <Button
+                                            variant="ghost"
+                                            size="sm"
+                                            onClick={() => toggleDayComplete(todayWorkout.weekKey, todayWorkout.dayIndex)}
+                                            disabled={isDayInFuture(todayWorkout.weekKey, todayWorkout.dayIndex) || completingWorkout === todayWorkout.dayIndex}
+                                            className={`h-8 w-8 p-0 ${
+                                              isDayInFuture(todayWorkout.weekKey, todayWorkout.dayIndex)
+                                                ? 'text-muted-foreground cursor-not-allowed opacity-50'
+                                                : todayWorkout.isCompleted 
+                                                  ? 'text-green-600 bg-green-100 dark:bg-green-900/20' 
+                                                  : 'hover:bg-primary/10'
+                                            }`}
+                                          >
+                                            <AnimatePresence mode="wait">
+                                              {isDayInFuture(todayWorkout.weekKey, todayWorkout.dayIndex) ? (
+                                                <motion.div
+                                                  key="locked"
+                                                  initial={{ scale: 0 }}
+                                                  animate={{ scale: 1 }}
+                                                >
+                                                  <Lock className="h-4 w-4" />
+                                                </motion.div>
+                                              ) : completingWorkout === todayWorkout.dayIndex ? (
+                                                <motion.div
+                                                  key="completing"
+                                                  initial={{ scale: 0, rotate: -180 }}
+                                                  animate={{ scale: 1, rotate: 0 }}
+                                                  exit={{ scale: 0, rotate: 180 }}
+                                                >
+                                                  <CheckCircle className="h-4 w-4 text-green-500" />
+                                                </motion.div>
+                                              ) : todayWorkout.isCompleted ? (
+                                                <motion.div
+                                                  key="completed"
+                                                  initial={{ scale: 0 }}
+                                                  animate={{ scale: 1 }}
+                                                >
+                                                  <CheckCircle className="h-4 w-4 text-green-600" />
+                                                </motion.div>
+                                              ) : (
+                                                <motion.div
+                                                  key="incomplete"
+                                                  initial={{ scale: 0 }}
+                                                  animate={{ scale: 1 }}
+                                                >
+                                                  <Check className="h-4 w-4" />
+                                                </motion.div>
+                                              )}
+                                            </AnimatePresence>
+                                          </Button>
+                                        </motion.div>
+                                      </TooltipTrigger>
+                                      {isDayInFuture(todayWorkout.weekKey, todayWorkout.dayIndex) && (
+                                        <TooltipContent>
+                                          <p>{t('dashboard.futureDay.tooltip')}</p>
+                                        </TooltipContent>
+                                      )}
+                                    </Tooltip>
+                                  </TooltipProvider>
                                </div>
                              </CardHeader>
                              <CardContent className="pt-0">
@@ -867,54 +996,77 @@ const Dashboard = () => {
                                              )}
                                            </AnimatePresence>
                                          </div>
-                                         <motion.div
-                                           whileHover={{ scale: 1.1 }}
-                                           whileTap={{ scale: 0.9 }}
-                                           onClick={(e) => {
-                                             e.stopPropagation();
-                                             markDayComplete(weekKey, dayIndex);
-                                           }}
-                                         >
-                                           <Button
-                                             variant="ghost"
-                                             size="sm"
-                                             disabled={isCompleted || completingWorkout === dayIndex}
-                                             className={`h-8 w-8 p-0 ${
-                                               isCompleted 
-                                                 ? 'text-green-600 bg-green-100 dark:bg-green-900/20' 
-                                                 : 'hover:bg-primary/10'
-                                             }`}
-                                           >
-                                             <AnimatePresence mode="wait">
-                                               {completingWorkout === dayIndex ? (
-                                                 <motion.div
-                                                   key="completing"
-                                                   initial={{ scale: 0, rotate: -180 }}
-                                                   animate={{ scale: 1, rotate: 0 }}
-                                                   exit={{ scale: 0, rotate: 180 }}
-                                                 >
-                                                   <CheckCircle className="h-4 w-4 text-green-500" />
-                                                 </motion.div>
-                                               ) : isCompleted ? (
-                                                 <motion.div
-                                                   key="completed"
-                                                   initial={{ scale: 0 }}
-                                                   animate={{ scale: 1 }}
-                                                 >
-                                                   <CheckCircle className="h-4 w-4 text-green-600" />
-                                                 </motion.div>
-                                               ) : (
-                                                 <motion.div
-                                                   key="incomplete"
-                                                   initial={{ scale: 0 }}
-                                                   animate={{ scale: 1 }}
-                                                 >
-                                                   <Check className="h-4 w-4" />
-                                                 </motion.div>
-                                               )}
-                                             </AnimatePresence>
-                                           </Button>
-                                         </motion.div>
+                                          <TooltipProvider>
+                                            <Tooltip>
+                                              <TooltipTrigger asChild>
+                                                <motion.div
+                                                  whileHover={{ scale: isDayInFuture(weekKey, dayIndex) ? 1 : 1.1 }}
+                                                  whileTap={{ scale: isDayInFuture(weekKey, dayIndex) ? 1 : 0.9 }}
+                                                  onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    if (!isDayInFuture(weekKey, dayIndex)) {
+                                                      toggleDayComplete(weekKey, dayIndex);
+                                                    }
+                                                  }}
+                                                >
+                                                  <Button
+                                                    variant="ghost"
+                                                    size="sm"
+                                                    disabled={isDayInFuture(weekKey, dayIndex) || completingWorkout === dayIndex}
+                                                    className={`h-8 w-8 p-0 ${
+                                                      isDayInFuture(weekKey, dayIndex)
+                                                        ? 'text-muted-foreground cursor-not-allowed opacity-50'
+                                                        : isCompleted 
+                                                          ? 'text-green-600 bg-green-100 dark:bg-green-900/20' 
+                                                          : 'hover:bg-primary/10'
+                                                    }`}
+                                                  >
+                                                    <AnimatePresence mode="wait">
+                                                      {isDayInFuture(weekKey, dayIndex) ? (
+                                                        <motion.div
+                                                          key="locked"
+                                                          initial={{ scale: 0 }}
+                                                          animate={{ scale: 1 }}
+                                                        >
+                                                          <Lock className="h-4 w-4" />
+                                                        </motion.div>
+                                                      ) : completingWorkout === dayIndex ? (
+                                                        <motion.div
+                                                          key="completing"
+                                                          initial={{ scale: 0, rotate: -180 }}
+                                                          animate={{ scale: 1, rotate: 0 }}
+                                                          exit={{ scale: 0, rotate: 180 }}
+                                                        >
+                                                          <CheckCircle className="h-4 w-4 text-green-500" />
+                                                        </motion.div>
+                                                      ) : isCompleted ? (
+                                                        <motion.div
+                                                          key="completed"
+                                                          initial={{ scale: 0 }}
+                                                          animate={{ scale: 1 }}
+                                                        >
+                                                          <CheckCircle className="h-4 w-4 text-green-600" />
+                                                        </motion.div>
+                                                      ) : (
+                                                        <motion.div
+                                                          key="incomplete"
+                                                          initial={{ scale: 0 }}
+                                                          animate={{ scale: 1 }}
+                                                        >
+                                                          <Check className="h-4 w-4" />
+                                                        </motion.div>
+                                                      )}
+                                                    </AnimatePresence>
+                                                  </Button>
+                                                </motion.div>
+                                              </TooltipTrigger>
+                                              {isDayInFuture(weekKey, dayIndex) && (
+                                                <TooltipContent>
+                                                  <p>{t('dashboard.futureDay.tooltip')}</p>
+                                                </TooltipContent>
+                                              )}
+                                            </Tooltip>
+                                          </TooltipProvider>
                                        </div>
                                      </AccordionTrigger>
                                      <AccordionContent className="px-4 pb-4">

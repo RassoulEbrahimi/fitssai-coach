@@ -191,8 +191,12 @@
     },
     "exerciseGroup": {
       "exercises": "Übungen",
-      "sets": "Sätze", 
+      "sets": "Sätze",
       "reps": "Wiederholungen"
+    },
+    "futureDay": {
+      "locked": "Nur für heutige oder vergangene Tage verfügbar",
+      "tooltip": "Sie können nur heutige oder vergangene Tage als abgeschlossen markieren"
     }
   },
   "profile": {

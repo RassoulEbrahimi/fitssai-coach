@@ -193,6 +193,10 @@
       "exercises": "exercises",
       "sets": "sets",
       "reps": "reps"
+    },
+    "futureDay": {
+      "locked": "Available only for today or past days",
+      "tooltip": "You can only mark today or past days as completed"
     }
   },
   "profile": {
