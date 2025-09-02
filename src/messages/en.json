@@ -95,16 +95,20 @@
     },
     "goals": {
       "gainMuscle": "Gain Muscle",
-      "loseFat": "Lose Fat",
+      "loseFat": "Lose Fat", 
       "improveCardio": "Improve Cardio",
-      "maintain": "Maintain"
+      "maintain": "Maintain",
+      "gain-muscle": "Gain Muscle",
+      "lose-fat": "Lose Fat",
+      "improve-cardio": "Improve Cardio"
     },
     "diet": {
       "noPreference": "No Preference",
-      "vegetarian": "Vegetarian",
+      "vegetarian": "Vegetarian", 
       "vegan": "Vegan",
       "keto": "Keto",
-      "highProtein": "High-Protein"
+      "highProtein": "High-Protein",
+      "no-preference": "No Preference"
     },
     "buttons": {
       "next": "Next",
@@ -161,7 +165,11 @@
       "label": "Experience Level",
       "beginner": "Beginner",
       "intermediate": "Intermediate", 
-      "advanced": "Advanced"
+      "advanced": "Advanced",
+      "beginnerDesc": "Beginner (0-6 months)",
+      "intermediateDesc": "Intermediate (6 months - 2 years)",
+      "advancedDesc": "Advanced (2+ years)",
+      "placeholder": "Select your experience level"
     },
     "workoutCompletion": {
       "markComplete": "Mark Complete",

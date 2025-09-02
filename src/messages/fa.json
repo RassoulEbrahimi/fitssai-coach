@@ -94,22 +94,36 @@
       "dietaryPreferencePlaceholder": "ترجیحات غذایی خود را انتخاب کنید"
     },
     "goals": {
-      "gainMuscle": "افزایش عضله",
+      "gainMuscle": "عضله‌سازی",
       "loseFat": "کاهش چربی",
       "improveCardio": "بهبود قلبی عروقی",
-      "maintain": "حفظ وضعیت"
+      "maintain": "حفظ وضعیت",
+      "gain-muscle": "عضله‌سازی",
+      "lose-fat": "کاهش چربی",
+      "improve-cardio": "بهبود قلبی عروقی"
     },
     "diet": {
-      "noPreference": "بدون ترجیح",
-      "vegetarian": "گیاهخوار",
+      "noPreference": "بدون تنظیمات خاص",
+      "vegetarian": "گیاه‌خوار",
       "vegan": "وگان",
       "keto": "کتو",
-      "highProtein": "پروتئین بالا"
+      "highProtein": "پروتئین بالا",
+      "no-preference": "بدون تنظیمات خاص"
     },
     "buttons": {
       "next": "بعدی",
       "previous": "قبلی",
-      "complete": "تکمیل تنظیمات"
+      "complete": "تکمیل راه‌اندازی"
+    },
+    "experienceLevel": {
+      "label": "سطح تجربه",
+      "beginner": "مبتدی",
+      "intermediate": "متوسط",
+      "advanced": "پیشرفته",
+      "beginnerDesc": "مبتدی (0-6 ماه)",
+      "intermediateDesc": "متوسط (6 ماه - 2 سال)",
+      "advancedDesc": "پیشرفته (2+ سال)",
+      "placeholder": "سطح تجربه خود را انتخاب کنید"
     }
   },
   "dashboard": {
@@ -161,7 +175,11 @@
       "label": "سطح تجربه",
       "beginner": "مبتدی",
       "intermediate": "متوسط",
-      "advanced": "پیشرفته"
+      "advanced": "پیشرفته",
+      "beginnerDesc": "مبتدی (0-6 ماه)",
+      "intermediateDesc": "متوسط (6 ماه - 2 سال)",
+      "advancedDesc": "پیشرفته (2+ سال)",
+      "placeholder": "سطح تجربه خود را انتخاب کنید"
     },
     "workoutCompletion": {
       "markComplete": "علامت‌گذاری تکمیل",

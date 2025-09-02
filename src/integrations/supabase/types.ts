@@ -38,6 +38,7 @@ export type Database = {
       profiles: {
         Row: {
           age: number
+          avatar_path: string | null
           created_at: string
           dietary_preference: string
           experience_level: string | null
@@ -50,6 +51,7 @@ export type Database = {
         }
         Insert: {
           age: number
+          avatar_path?: string | null
           created_at?: string
           dietary_preference: string
           experience_level?: string | null
@@ -62,6 +64,7 @@ export type Database = {
         }
         Update: {
           age?: number
+          avatar_path?: string | null
           created_at?: string
           dietary_preference?: string
           experience_level?: string | null

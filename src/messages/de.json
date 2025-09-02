@@ -97,14 +97,18 @@
       "gainMuscle": "Muskeln aufbauen",
       "loseFat": "Fett verlieren",
       "improveCardio": "Kardio verbessern",
-      "maintain": "Halten"
+      "maintain": "Halten",
+      "gain-muscle": "Muskeln aufbauen",
+      "lose-fat": "Fett verlieren",
+      "improve-cardio": "Kardio verbessern"
     },
     "diet": {
       "noPreference": "Keine Vorliebe",
       "vegetarian": "Vegetarisch",
       "vegan": "Vegan",
       "keto": "Keto",
-      "highProtein": "Proteinreich"
+      "highProtein": "Proteinreich",
+      "no-preference": "Keine Vorliebe"
     },
     "buttons": {
       "next": "Weiter",
@@ -161,7 +165,11 @@
       "label": "Erfahrungslevel",
       "beginner": "Anfänger",
       "intermediate": "Fortgeschritten",
-      "advanced": "Experte"
+      "advanced": "Experte",
+      "beginnerDesc": "Anfänger (0-6 Monate)",
+      "intermediateDesc": "Fortgeschritten (6 Monate - 2 Jahre)",
+      "advancedDesc": "Experte (2+ Jahre)",
+      "placeholder": "Wähle dein Erfahrungslevel"
     },
     "workoutCompletion": {
       "markComplete": "Als abgeschlossen markieren",

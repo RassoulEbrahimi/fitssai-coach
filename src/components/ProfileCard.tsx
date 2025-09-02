@@ -26,6 +26,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { toast } from "sonner";
+import { getAvatarUrl, uploadAvatar, updateProfileAvatar } from "@/lib/avatarUtils";
 
 interface ProfileCardProps {
   profile: any;
@@ -49,11 +50,15 @@ export const ProfileCard = ({ profile, onProfileUpdate, workoutProgress }: Profi
   const { user } = useAuth();
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
+  const [avatarCacheBuster, setAvatarCacheBuster] = useState<string>('');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const progressPercentage = workoutProgress.total > 0 
     ? (workoutProgress.completed / workoutProgress.total) * 100 
     : 0;
+
+  // Get avatar URL with cache busting
+  const avatarUrl = getAvatarUrl(profile?.avatar_path, avatarCacheBuster);
 
   const form = useForm<z.infer<typeof profileFormSchema>>({
     resolver: zodResolver(profileFormSchema),
@@ -92,9 +97,17 @@ export const ProfileCard = ({ profile, onProfileUpdate, workoutProgress }: Profi
 
     setIsUploading(true);
     try {
-      // For now, just show a success message as we don't have storage bucket set up
-      // In a real implementation, you would upload to Supabase storage
+      // Upload file to storage and get path
+      const avatarPath = await uploadAvatar(user.id, file);
+      
+      // Update profile with avatar path
+      await updateProfileAvatar(user.id, avatarPath);
+      
+      // Set cache buster to force image refresh
+      setAvatarCacheBuster(Date.now().toString());
+      
       toast.success(t('profile.avatarUploadSuccess'));
+      onProfileUpdate(); // Refresh profile data
     } catch (error) {
       console.error('Error uploading avatar:', error);
       toast.error(t('profile.avatarUploadError'));
@@ -315,7 +328,13 @@ export const ProfileCard = ({ profile, onProfileUpdate, workoutProgress }: Profi
                 {/* Avatar */}
                 <div className="absolute inset-3">
                   <Avatar className="w-full h-full border-4 border-background shadow-lg">
-                    <AvatarImage src="" alt={user?.email || 'User'} />
+                    <AvatarImage 
+                      src={avatarUrl || ""} 
+                      alt={user?.email || 'User'} 
+                      className="object-cover"
+                      decoding="async"
+                      loading="lazy"
+                    />
                     <AvatarFallback className="text-xl font-bold bg-gradient-primary text-primary-foreground">
                       {getInitials()}
                     </AvatarFallback>

@@ -143,22 +143,22 @@ const OnboardingForm = ({ onComplete }: { onComplete: () => void }) => {
                   className="mt-3"
                 >
                   <div className="flex items-center space-x-2 p-4 rounded-lg border border-border hover:bg-muted/50 transition-smooth">
-                    <RadioGroupItem value="gain-muscle" id="gain-muscle" />
-                    <Label htmlFor="gain-muscle" className="cursor-pointer flex-1">
+                    <RadioGroupItem value="gainMuscle" id="gainMuscle" />
+                    <Label htmlFor="gainMuscle" className="cursor-pointer flex-1">
                       <div className="font-medium">{t('onboarding.goals.gainMuscle')}</div>
                       <div className="text-sm text-muted-foreground">Build strength and muscle mass</div>
                     </Label>
                   </div>
                   <div className="flex items-center space-x-2 p-4 rounded-lg border border-border hover:bg-muted/50 transition-smooth">
-                    <RadioGroupItem value="lose-fat" id="lose-fat" />
-                    <Label htmlFor="lose-fat" className="cursor-pointer flex-1">
+                    <RadioGroupItem value="loseFat" id="loseFat" />
+                    <Label htmlFor="loseFat" className="cursor-pointer flex-1">
                       <div className="font-medium">{t('onboarding.goals.loseFat')}</div>
                       <div className="text-sm text-muted-foreground">Reduce body fat and get lean</div>
                     </Label>
                   </div>
                   <div className="flex items-center space-x-2 p-4 rounded-lg border border-border hover:bg-muted/50 transition-smooth">
-                    <RadioGroupItem value="improve-cardio" id="improve-cardio" />
-                    <Label htmlFor="improve-cardio" className="cursor-pointer flex-1">
+                    <RadioGroupItem value="improveCardio" id="improveCardio" />
+                    <Label htmlFor="improveCardio" className="cursor-pointer flex-1">
                       <div className="font-medium">{t('onboarding.goals.improveCardio')}</div>
                       <div className="text-sm text-muted-foreground">Enhance cardiovascular endurance</div>
                     </Label>
@@ -186,25 +186,25 @@ const OnboardingForm = ({ onComplete }: { onComplete: () => void }) => {
                     <SelectValue placeholder={t('onboarding.fields.dietaryPreferencePlaceholder')} />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="no-preference">{t('onboarding.diet.noPreference')}</SelectItem>
+                    <SelectItem value="noPreference">{t('onboarding.diet.noPreference')}</SelectItem>
                     <SelectItem value="vegetarian">{t('onboarding.diet.vegetarian')}</SelectItem>
                     <SelectItem value="vegan">{t('onboarding.diet.vegan')}</SelectItem>
                     <SelectItem value="keto">{t('onboarding.diet.keto')}</SelectItem>
-                    <SelectItem value="high-protein">{t('onboarding.diet.highProtein')}</SelectItem>
+                    <SelectItem value="highProtein">{t('onboarding.diet.highProtein')}</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
               
               <div>
-                <Label>Experience Level</Label>
+                <Label>{t('dashboard.experienceLevel.label')}</Label>
                 <Select value={formData.experience} onValueChange={(value) => setFormData({...formData, experience: value})}>
                   <SelectTrigger className="mt-1">
-                    <SelectValue placeholder="Select your experience level" />
+                    <SelectValue placeholder={t('dashboard.experienceLevel.placeholder')} />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="beginner">Beginner (0-6 months)</SelectItem>
-                    <SelectItem value="intermediate">Intermediate (6 months - 2 years)</SelectItem>
-                    <SelectItem value="advanced">Advanced (2+ years)</SelectItem>
+                    <SelectItem value="beginner">{t('dashboard.experienceLevel.beginnerDesc')}</SelectItem>
+                    <SelectItem value="intermediate">{t('dashboard.experienceLevel.intermediateDesc')}</SelectItem>
+                    <SelectItem value="advanced">{t('dashboard.experienceLevel.advancedDesc')}</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
