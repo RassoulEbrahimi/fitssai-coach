@@ -30,6 +30,7 @@ import { ProfileCard } from "@/components/ProfileCard";
 import { useState, useEffect } from "react";
 import { toast } from "sonner";
 import { format, addDays, isSameDay, startOfWeek } from "date-fns";
+import { toZonedTime } from 'date-fns-tz';
 import { 
   getBerlinNow, 
   getBerlinToday, 
@@ -38,7 +39,9 @@ import {
   isBerlinFuture, 
   isBerlinPast,
   formatDateForDisplay,
-  getWeekDays
+  getWeekDays,
+  TARGET_TIMEZONE,
+  WEEK_OPTIONS
 } from "@/lib/dateUtils";
 
 const Dashboard = () => {
@@ -240,15 +243,23 @@ const Dashboard = () => {
 
   // Check if today matches a specific week and day (Berlin timezone)
   const isTodayInWeekDay = (weekKey: string, dayIndex: number) => {
-    if (!workoutPlan) return false;
-    
-    const weekNumber = parseInt(weekKey.replace(/\D/g, '')) - 1;
-    const totalDaysFromStart = (weekNumber * 7) + dayIndex;
-    const planCreatedDate = new Date(workoutPlan.created_at);
-    const targetDate = addDays(planCreatedDate, totalDaysFromStart);
-    const targetDateStr = format(targetDate, 'yyyy-MM-dd');
-    
-    return isBerlinToday(targetDateStr);
+    if (!workoutPlan?.created_at) return false;
+
+    // 1) Plan creation instant → Berlin local time
+    const createdAt = new Date(workoutPlan.created_at);
+    const createdAtBerlin = toZonedTime(createdAt, TARGET_TIMEZONE);
+
+    // 2) Align start to Monday of that week (German standard)
+    const planStartMonday = startOfWeek(createdAtBerlin, WEEK_OPTIONS);
+
+    // 3) Advance by (weekIndex*7 + dayIndex)
+    const weekIndex = parseInt(weekKey.replace(/\D/g, '')) - 1; // Week1 → 0
+    const offsetDays = weekIndex * 7 + dayIndex;
+    const targetDate = addDays(planStartMonday, offsetDays);
+
+    // 4) Compare with Berlin "today" using our utility (DATE-only compare)
+    const targetStr = format(targetDate, 'yyyy-MM-dd');
+    return isBerlinToday(targetStr);
   };
 
   // Check if a day is in the future (Berlin timezone)
@@ -438,7 +449,8 @@ const Dashboard = () => {
       }
     } catch (error) {
       console.error('Error generating plans:', error);
-      toast.error('Failed to generate plans. Please try again.');
+      const errorMsg = error?.message || 'Failed to generate plans. Please try again.';
+      toast.error(errorMsg);
     } finally {
       setGeneratingPlans(false);
     }

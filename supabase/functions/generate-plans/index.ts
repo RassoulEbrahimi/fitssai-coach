@@ -178,7 +178,16 @@ IMPORTANT: ${languageInstruction} All exercise names, meal names, descriptions, 
     if (!response.ok) {
       const errorText = await response.text();
       console.error('OpenAI API error:', errorText);
-      return new Response(JSON.stringify({ error: 'Failed to generate plans' }), {
+
+      let userMsg = 'Fehler beim Erstellen der Pläne. Bitte später erneut versuchen.';
+      try {
+        const err = JSON.parse(errorText);
+        if (err.error?.code === 'insufficient_quota') {
+          userMsg = 'AI-Dienst vorübergehend nicht verfügbar (Quota überschritten). Bitte später erneut versuchen.';
+        }
+      } catch (_) {}
+
+      return new Response(JSON.stringify({ error: userMsg }), {
         status: 500,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
