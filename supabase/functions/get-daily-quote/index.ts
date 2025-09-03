@@ -15,9 +15,10 @@ serve(async (req) => {
   }
 
   try {
-    const { language = 'en', forceRefresh = false } = await req.json();
+    const { language = 'de', forceRefresh = false } = await req.json();
+    const finalLanguage = 'de'; // DE-only mode: Force German for all quotes
     
-    console.log(`Fetching quote for language: ${language}, forceRefresh: ${forceRefresh}`);
+    console.log(`Fetching quote for language: ${finalLanguage}, forceRefresh: ${forceRefresh}`);
 
     let quote = '';
     let author = '';
@@ -25,9 +26,7 @@ serve(async (req) => {
     // Try OpenAI first
     if (openAIApiKey) {
       try {
-        const prompt = language === 'fa' 
-          ? 'Give me one short motivational fitness quote in Persian (Farsi). Return only the quote text without quotation marks.'
-          : 'Give me one short motivational fitness quote. Return only the quote text without quotation marks.';
+        const prompt = 'Gib mir ein kurzes motivierendes Fitness-Zitat auf Deutsch. Gib nur den Zitat-Text ohne Anführungszeichen zurück.';
 
         console.log('Calling OpenAI API...');
         const openAIResponse = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -76,8 +75,8 @@ serve(async (req) => {
           quote = zenData[0].q;
           author = zenData[0].a;
 
-          // Translate to Persian if needed
-          if (language === 'fa' && openAIApiKey) {
+          // Translate to German if needed from English fallback
+          if (openAIApiKey) {
             try {
               const translateResponse = await fetch('https://api.openai.com/v1/chat/completions', {
                 method: 'POST',
@@ -90,9 +89,9 @@ serve(async (req) => {
                   messages: [
                     { 
                       role: 'system', 
-                      content: 'You are a professional translator. Translate the given quote to Persian (Farsi) while maintaining its motivational impact and meaning.' 
+                      content: 'Du bist ein professioneller Übersetzer. Übersetze das angegebene Zitat ins Deutsche und behalte dabei seine motivierende Wirkung und Bedeutung bei.' 
                     },
-                    { role: 'user', content: `Translate this quote to Persian: \"${quote}\"` }
+                    { role: 'user', content: `Übersetze dieses Zitat ins Deutsche: \"${quote}\"` }
                   ],
                   max_tokens: 150,
                   temperature: 0.3,
@@ -102,7 +101,7 @@ serve(async (req) => {
               if (translateResponse.ok) {
                 const translateData = await translateResponse.json();
                 quote = translateData.choices[0].message.content.trim();
-                console.log('Quote translated to Persian');
+                console.log('Quote translated to German');
               }
             } catch (translateError) {
               console.error('Translation error:', translateError);
@@ -112,10 +111,8 @@ serve(async (req) => {
         }
       } catch (error) {
         console.error('ZenQuotes API error:', error);
-        // Final fallback
-        quote = language === 'fa' 
-          ? 'هر روز فرصتی جدید برای بهتر شدن است.'
-          : 'Every day is a new opportunity to become better.';
+        // Final fallback - German quote
+        quote = 'Jeder Tag ist eine neue Gelegenheit, besser zu werden.';
         author = 'FitssAI';
       }
     }
@@ -124,7 +121,7 @@ serve(async (req) => {
       JSON.stringify({ 
         quote: quote.replace(/^[\"']|[\"']$/g, ''), // Remove quotes if present
         author,
-        language,
+        language: finalLanguage,
         timestamp: new Date().toISOString()
       }), 
       {
@@ -137,9 +134,9 @@ serve(async (req) => {
     return new Response(
       JSON.stringify({ 
         error: 'Failed to fetch quote',
-        quote: 'Stay strong, stay focused, stay positive!',
+        quote: 'Bleib stark, bleib fokussiert, bleib positiv!',
         author: 'FitssAI',
-        language: 'en'
+        language: 'de'
       }), 
       {
         status: 500,

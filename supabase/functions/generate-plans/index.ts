@@ -28,7 +28,7 @@ serve(async (req) => {
       // No body or invalid JSON, use empty object
     }
     const targetUserId = body.user_id;
-    const language = body.language || 'en'; // Default to English if not specified
+    const language = 'de'; // DE-only mode: Force German for all AI outputs
 
     let userId: string;
     

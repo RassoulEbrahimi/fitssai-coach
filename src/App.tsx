@@ -21,11 +21,10 @@ const App = () => {
   const { i18n } = useTranslation();
 
   useEffect(() => {
-    // Set document direction and lang based on current language
-    const direction = i18n.language === 'fa' ? 'rtl' : 'ltr';
-    document.documentElement.dir = direction;
-    document.documentElement.lang = i18n.language;
-  }, [i18n.language]);
+    // DE-only mode: Force German language and LTR direction
+    document.documentElement.dir = 'ltr';
+    document.documentElement.lang = 'de';
+  }, []);
 
   return (
     <QueryClientProvider client={queryClient}>

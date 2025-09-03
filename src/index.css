@@ -2,7 +2,8 @@
 @tailwind components;
 @tailwind utilities;
 
-/* RTL support */
+/* DE-only mode: RTL support disabled but kept for future re-enable */
+/*
 [dir="rtl"] {
   direction: rtl;
 }
@@ -29,10 +30,10 @@
   margin-left: auto;
 }
 
-/* Persian font support */
 [dir="rtl"] * {
   font-family: 'Vazirmatn', 'Tahoma', 'Arial', sans-serif;
 }
+*/
 
 /* FitssAI Design System - Clean, energetic fitness app design */
 

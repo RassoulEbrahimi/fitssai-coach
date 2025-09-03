@@ -111,11 +111,11 @@ const Navbar = () => {
                 <motion.div whileHover={{ y: -2 }} transition={{ duration: 0.2 }}>
                   <Link
                     to="/admin"
-                    className="text-foreground hover:text-primary transition-colors relative story-link"
-                  >
-                    <Shield className="h-4 w-4 inline mr-2" />
-                    {i18n.language === 'fa' ? 'پنل مدیریت' : 'Admin Panel'}
-                  </Link>
+                     className="text-foreground hover:text-primary transition-colors relative story-link"
+                   >
+                     <Shield className="h-4 w-4 inline mr-2" />
+                     Admin Panel
+                   </Link>
                 </motion.div>
               )}
 
@@ -251,11 +251,11 @@ const Navbar = () => {
                   <Link
                     to="/admin"
                     className="flex items-center gap-2 text-foreground hover:text-primary transition-colors"
-                    onClick={() => setIsOpen(false)}
-                  >
-                    <Shield className="h-4 w-4" />
-                    {i18n.language === 'fa' ? 'پنل مدیریت' : 'Admin Panel'}
-                  </Link>
+                     onClick={() => setIsOpen(false)}
+                   >
+                     <Shield className="h-4 w-4" />
+                     Admin Panel
+                   </Link>
                 )}
 
                 <Link

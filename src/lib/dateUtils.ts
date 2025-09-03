@@ -1,20 +1,16 @@
 import { format, startOfWeek, endOfWeek, isSameDay, isAfter, isBefore, addDays } from "date-fns";
 import { toZonedTime, fromZonedTime } from "date-fns-tz";
-import { enUS, faIR } from "date-fns/locale";
+import { de } from "date-fns/locale";
 
 // Target timezone for all date calculations
 export const TARGET_TIMEZONE = "Europe/Berlin";
 
-// Locale mapping for date-fns
-export const getDateLocale = (language: string) => {
-  switch (language) {
-    case 'fa':
-      return faIR;
-    case 'en':
-      return enUS;
-    default:
-      return enUS; // German uses default date-fns behavior
-  }
+// Week start options - Monday first (German standard)
+export const WEEK_OPTIONS = { weekStartsOn: 1 as const };
+
+// DE-only mode: Always use German locale
+export const getDateLocale = () => {
+  return de; // German locale for all date formatting
 };
 
 /**
@@ -37,8 +33,8 @@ export const getBerlinToday = (): string => {
  */
 export const getBerlinCurrentWeek = () => {
   const berlinNow = getBerlinNow();
-  const start = startOfWeek(berlinNow, { weekStartsOn: 1 }); // Monday
-  const end = endOfWeek(berlinNow, { weekStartsOn: 1 }); // Sunday
+  const start = startOfWeek(berlinNow, WEEK_OPTIONS); // Monday
+  const end = endOfWeek(berlinNow, WEEK_OPTIONS); // Sunday
   
   return {
     start,
@@ -85,8 +81,8 @@ export const isBerlinPast = (dateStr: string): boolean => {
  */
 export const getWeekBoundaries = (date: Date) => {
   const berlinDate = toZonedTime(date, TARGET_TIMEZONE);
-  const start = startOfWeek(berlinDate, { weekStartsOn: 1 });
-  const end = endOfWeek(berlinDate, { weekStartsOn: 1 });
+  const start = startOfWeek(berlinDate, WEEK_OPTIONS);
+  const end = endOfWeek(berlinDate, WEEK_OPTIONS);
   
   return {
     start,
@@ -97,10 +93,10 @@ export const getWeekBoundaries = (date: Date) => {
 };
 
 /**
- * Format date for display with proper locale
+ * Format date for display with German locale
  */
-export const formatDateForDisplay = (date: Date, formatStr: string, language: string): string => {
-  const locale = getDateLocale(language);
+export const formatDateForDisplay = (date: Date, formatStr: string): string => {
+  const locale = getDateLocale(); // Always German
   return format(date, formatStr, { locale });
 };
 
