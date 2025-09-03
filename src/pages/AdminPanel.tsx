@@ -4,6 +4,8 @@ import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
+import { parseISO } from 'date-fns';
+import { formatDateForDisplay } from '@/lib/dateUtils';
 import Navbar from "@/components/Navbar";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -276,7 +278,7 @@ const AdminPanel = () => {
   };
 
   const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('de-DE');
+    return formatDateForDisplay(parseISO(dateString), 'EEEE, d. MMMM');
   };
 
   const formatGoal = (goal: string) => {
