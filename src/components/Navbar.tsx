@@ -114,7 +114,7 @@ const Navbar = () => {
                      className="text-foreground hover:text-primary transition-colors relative story-link"
                    >
                      <Shield className="h-4 w-4 inline mr-2" />
-                     Admin Panel
+                     Adminbereich
                    </Link>
                 </motion.div>
               )}
@@ -254,7 +254,7 @@ const Navbar = () => {
                      onClick={() => setIsOpen(false)}
                    >
                      <Shield className="h-4 w-4" />
-                     Admin Panel
+                     Adminbereich
                    </Link>
                 )}
 

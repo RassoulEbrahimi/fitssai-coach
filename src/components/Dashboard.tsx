@@ -30,7 +30,6 @@ import { ProfileCard } from "@/components/ProfileCard";
 import { useState, useEffect } from "react";
 import { toast } from "sonner";
 import { format, addDays, isSameDay, startOfWeek } from "date-fns";
-import { enUS, faIR } from "date-fns/locale";
 import { 
   getBerlinNow, 
   getBerlinToday, 
@@ -450,15 +449,7 @@ const Dashboard = () => {
 
   const formatWorkoutDate = (startDate: Date, dayIndex: number) => {
     const date = addDays(startDate, dayIndex);
-    const locale = i18n.language === 'fa' ? faIR : enUS;
-    
-    if (i18n.language === 'fa') {
-      // Format for Persian: "شنبه ۲ شهریور"
-      return format(date, 'EEEE d MMMM', { locale });
-    } else {
-      // Format for English: "Saturday, Aug 24"
-      return format(date, 'EEEE, MMM d', { locale });
-    }
+    return formatDateForDisplay(date, 'EEEE, d. MMMM');
   };
 
   const isToday = (startDate: Date, dayIndex: number) => {
@@ -475,9 +466,7 @@ const Dashboard = () => {
         headers: {
           Authorization: `Bearer ${(await supabase.auth.getSession()).data.session?.access_token}`,
         },
-        body: {
-          language: i18n.language, // Pass current language to edge function
-        },
+        body: {},
       });
 
       if (error) throw error;

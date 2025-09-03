@@ -238,7 +238,6 @@ const AdminPanel = () => {
       const { data, error } = await supabase.functions.invoke('generate-plans', {
         body: { 
           user_id: planUserId,
-          language: i18n.language, // Use admin's current language preference
         },
       });
 
@@ -277,26 +276,26 @@ const AdminPanel = () => {
   };
 
   const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString(i18n.language === 'fa' ? 'fa-IR' : 'en-US');
+    return new Date(dateString).toLocaleDateString('de-DE');
   };
 
   const formatGoal = (goal: string) => {
     const goalMap: Record<string, string> = {
-      'gain-muscle': i18n.language === 'fa' ? 'افزایش عضله' : 'Gain Muscle',
-      'lose-fat': i18n.language === 'fa' ? 'کاهش چربی' : 'Lose Fat',
-      'improve-cardio': i18n.language === 'fa' ? 'بهبود قلبی' : 'Improve Cardio',
-      'maintain': i18n.language === 'fa' ? 'حفظ وضعیت' : 'Maintain'
+      'gain-muscle': 'Muskelaufbau',
+      'lose-fat': 'Fettabbau',
+      'improve-cardio': 'Ausdauer verbessern',
+      'maintain': 'Gewicht halten'
     };
     return goalMap[goal] || goal;
   };
 
   const formatDiet = (diet: string) => {
     const dietMap: Record<string, string> = {
-      'no-preference': i18n.language === 'fa' ? 'بدون ترجیح' : 'No Preference',
-      'vegetarian': i18n.language === 'fa' ? 'گیاهی' : 'Vegetarian',
-      'vegan': i18n.language === 'fa' ? 'وگان' : 'Vegan',
-      'keto': i18n.language === 'fa' ? 'کتو' : 'Keto',
-      'high-protein': i18n.language === 'fa' ? 'پروتین بالا' : 'High Protein'
+      'no-preference': 'Keine Präferenz',
+      'vegetarian': 'Vegetarisch',
+      'vegan': 'Vegan',
+      'keto': 'Keto',
+      'high-protein': 'Proteinreich'
     };
     return dietMap[diet] || diet;
   };
@@ -330,13 +329,11 @@ const AdminPanel = () => {
             <div className="flex items-center gap-3 mb-4">
               <Shield className="h-8 w-8 text-primary" />
               <h1 className="text-3xl font-bold">
-                {i18n.language === 'fa' ? 'پنل مدیریت' : 'Admin Panel'}
+                Adminbereich
               </h1>
             </div>
             <p className="text-muted-foreground">
-              {i18n.language === 'fa' 
-                ? 'مدیریت کاربران و دسترسی‌های سیستم' 
-                : 'Manage users and system access'}
+              Benutzer und Systemzugriff verwalten
             </p>
           </div>
 
@@ -347,7 +344,7 @@ const AdminPanel = () => {
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-sm text-muted-foreground">
-                      {i18n.language === 'fa' ? 'کل کاربران' : 'Total Users'}
+                      Benutzer gesamt
                     </p>
                     <p className="text-2xl font-bold text-primary">{users.length}</p>
                   </div>
@@ -361,7 +358,7 @@ const AdminPanel = () => {
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-sm text-muted-foreground">
-                      {i18n.language === 'fa' ? 'مدیران' : 'Admins'}
+                      Admins
                     </p>
                     <p className="text-2xl font-bold text-primary">
                       {users.filter(u => u.is_admin).length}
@@ -377,7 +374,7 @@ const AdminPanel = () => {
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-sm text-muted-foreground">
-                      {i18n.language === 'fa' ? 'کاربران عادی' : 'Regular Users'}
+                      Normale Benutzer
                     </p>
                     <p className="text-2xl font-bold text-primary">
                       {users.filter(u => !u.is_admin).length}
@@ -393,7 +390,7 @@ const AdminPanel = () => {
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-sm text-muted-foreground">
-                      {i18n.language === 'fa' ? 'کل برنامه‌ها' : 'Total Plans'}
+                      Pläne gesamt
                     </p>
                     <p className="text-2xl font-bold text-primary">{plans.length}</p>
                   </div>
@@ -408,11 +405,11 @@ const AdminPanel = () => {
             <TabsList className="grid w-full md:w-fit grid-cols-2 md:grid-cols-2 bg-card border border-border">
               <TabsTrigger value="users" className="flex items-center gap-2">
                 <Users className="h-4 w-4" />
-                {i18n.language === 'fa' ? 'کاربران' : 'Users'}
+                Benutzer
               </TabsTrigger>
               <TabsTrigger value="plans" className="flex items-center gap-2">
                 <FileText className="h-4 w-4" />
-                {i18n.language === 'fa' ? 'برنامه‌ها' : 'Plans'}
+                Pläne
               </TabsTrigger>
             </TabsList>
 
@@ -421,7 +418,7 @@ const AdminPanel = () => {
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2">
                     <Users className="h-5 w-5 text-primary" />
-                    {i18n.language === 'fa' ? 'مدیریت کاربران' : 'User Management'}
+                    Benutzerverwaltung
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
@@ -434,15 +431,15 @@ const AdminPanel = () => {
                   <Table>
                     <TableHeader>
                       <TableRow>
-                        <TableHead>{i18n.language === 'fa' ? 'ایمیل' : 'Email'}</TableHead>
-                        <TableHead>{i18n.language === 'fa' ? 'سن' : 'Age'}</TableHead>
-                        <TableHead>{i18n.language === 'fa' ? 'وزن' : 'Weight'}</TableHead>
-                        <TableHead>{i18n.language === 'fa' ? 'قد' : 'Height'}</TableHead>
-                        <TableHead>{i18n.language === 'fa' ? 'هدف' : 'Goal'}</TableHead>
-                        <TableHead>{i18n.language === 'fa' ? 'رژیم' : 'Diet'}</TableHead>
-                        <TableHead>{i18n.language === 'fa' ? 'نقش' : 'Role'}</TableHead>
-                        <TableHead>{i18n.language === 'fa' ? 'تاریخ عضویت' : 'Created'}</TableHead>
-                        <TableHead>{i18n.language === 'fa' ? 'عملیات' : 'Actions'}</TableHead>
+                        <TableHead>E-Mail</TableHead>
+                        <TableHead>Alter</TableHead>
+                        <TableHead>Gewicht</TableHead>
+                        <TableHead>Größe</TableHead>
+                        <TableHead>Ziel</TableHead>
+                        <TableHead>Diät</TableHead>
+                        <TableHead>Rolle</TableHead>
+                        <TableHead>Erstellt</TableHead>
+                        <TableHead>Aktionen</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -456,10 +453,7 @@ const AdminPanel = () => {
                           <TableCell>{formatDiet(user.dietary_preference)}</TableCell>
                           <TableCell>
                             <Badge variant={user.is_admin ? "default" : "secondary"}>
-                              {user.is_admin 
-                                ? (i18n.language === 'fa' ? 'مدیر' : 'Admin')
-                                : (i18n.language === 'fa' ? 'کاربر' : 'User')
-                              }
+                              {user.is_admin ? 'Admin' : 'Benutzer'}
                             </Badge>
                           </TableCell>
                           <TableCell>{formatDate(user.created_at)}</TableCell>
@@ -491,26 +485,23 @@ const AdminPanel = () => {
                                 </AlertDialogTrigger>
                                 <AlertDialogContent>
                                   <AlertDialogHeader>
-                                    <AlertDialogTitle>
-                                      {i18n.language === 'fa' ? 'حذف کاربر' : 'Delete User'}
-                                    </AlertDialogTitle>
-                                    <AlertDialogDescription>
-                                      {i18n.language === 'fa' 
-                                        ? `آیا مطمئن هستید که می‌خواهید کاربر ${user.email} را حذف کنید؟ این عمل قابل بازگشت نیست.`
-                                        : `Are you sure you want to delete user ${user.email}? This action cannot be undone.`
-                                      }
-                                    </AlertDialogDescription>
+                                     <AlertDialogTitle>
+                                       Benutzer löschen
+                                     </AlertDialogTitle>
+                                     <AlertDialogDescription>
+                                       Sind Sie sicher, dass Sie den Benutzer ${user.email} löschen möchten? Diese Aktion kann nicht rückgängig gemacht werden.
+                                     </AlertDialogDescription>
                                   </AlertDialogHeader>
                                   <AlertDialogFooter>
-                                    <AlertDialogCancel>
-                                      {i18n.language === 'fa' ? 'لغو' : 'Cancel'}
-                                    </AlertDialogCancel>
-                                    <AlertDialogAction
-                                      onClick={() => deleteUser(user.id)}
-                                      className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                                    >
-                                      {i18n.language === 'fa' ? 'حذف' : 'Delete'}
-                                    </AlertDialogAction>
+                                     <AlertDialogCancel>
+                                       Abbrechen
+                                     </AlertDialogCancel>
+                                     <AlertDialogAction
+                                       onClick={() => deleteUser(user.id)}
+                                       className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                                     >
+                                       Löschen
+                                     </AlertDialogAction>
                                   </AlertDialogFooter>
                                 </AlertDialogContent>
                               </AlertDialog>
@@ -531,7 +522,7 @@ const AdminPanel = () => {
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2">
                     <FileText className="h-5 w-5 text-primary" />
-                    {i18n.language === 'fa' ? 'مدیریت برنامه‌ها' : 'Plan Management'}
+                    Planverwaltung
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
@@ -544,10 +535,10 @@ const AdminPanel = () => {
                       <Table>
                         <TableHeader>
                           <TableRow>
-                            <TableHead>{i18n.language === 'fa' ? 'ایمیل کاربر' : 'User Email'}</TableHead>
-                            <TableHead>{i18n.language === 'fa' ? 'نوع برنامه' : 'Plan Type'}</TableHead>
-                            <TableHead>{i18n.language === 'fa' ? 'تاریخ ایجاد' : 'Created At'}</TableHead>
-                            <TableHead>{i18n.language === 'fa' ? 'عملیات' : 'Actions'}</TableHead>
+                            <TableHead>Benutzer E-Mail</TableHead>
+                            <TableHead>Plantyp</TableHead>
+                            <TableHead>Erstellt am</TableHead>
+                            <TableHead>Aktionen</TableHead>
                           </TableRow>
                         </TableHeader>
                         <TableBody>
@@ -561,10 +552,7 @@ const AdminPanel = () => {
                                   ) : (
                                     <Apple className="h-3 w-3" />
                                   )}
-                                  {plan.type === 'workout' 
-                                    ? (i18n.language === 'fa' ? 'ورزشی' : 'Workout')
-                                    : (i18n.language === 'fa' ? 'تغذیه' : 'Nutrition')
-                                  }
+                                  {plan.type === 'workout' ? 'Training' : 'Ernährung'}
                                 </Badge>
                               </TableCell>
                               <TableCell>{formatDate(plan.created_at)}</TableCell>
@@ -588,14 +576,11 @@ const AdminPanel = () => {
                                           ) : (
                                             <Apple className="h-5 w-5" />
                                           )}
-                                          {plan.type === 'workout' 
-                                            ? (i18n.language === 'fa' ? 'برنامه ورزشی' : 'Workout Plan')
-                                            : (i18n.language === 'fa' ? 'برنامه تغذیه' : 'Nutrition Plan')
-                                          } - {plan.user_email}
+                          {plan.type === 'workout' ? 'Trainingsplan' : 'Ernährungsplan'} - {plan.user_email}
                                         </DialogTitle>
-                                        <DialogDescription>
-                                          {i18n.language === 'fa' ? 'جزئیات کامل برنامه' : 'Full plan details'}
-                                        </DialogDescription>
+                        <DialogDescription>
+                          Vollständige Plandetails
+                        </DialogDescription>
                                       </DialogHeader>
                                       {selectedPlan?.id === plan.id && (
                                         <div className="space-y-4">
@@ -685,24 +670,21 @@ const AdminPanel = () => {
                                     <AlertDialogContent>
                                       <AlertDialogHeader>
                                         <AlertDialogTitle>
-                                          {i18n.language === 'fa' ? 'حذف برنامه' : 'Delete Plan'}
+                                          Plan löschen
                                         </AlertDialogTitle>
                                         <AlertDialogDescription>
-                                          {i18n.language === 'fa' 
-                                            ? `آیا مطمئن هستید که می‌خواهید این برنامه ${plan.type === 'workout' ? 'ورزشی' : 'تغذیه'} را حذف کنید؟ این عمل قابل بازگشت نیست.`
-                                            : `Are you sure you want to delete this ${plan.type} plan? This action cannot be undone.`
-                                          }
+                                          Sind Sie sicher, dass Sie diesen ${plan.type === 'workout' ? 'Trainings' : 'Ernährungs'}plan löschen möchten? Diese Aktion kann nicht rückgängig gemacht werden.
                                         </AlertDialogDescription>
                                       </AlertDialogHeader>
                                       <AlertDialogFooter>
                                         <AlertDialogCancel>
-                                          {i18n.language === 'fa' ? 'لغو' : 'Cancel'}
+                                          Abbrechen
                                         </AlertDialogCancel>
                                         <AlertDialogAction
                                           onClick={() => deletePlan(plan.id, plan.type)}
                                           className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
                                         >
-                                          {i18n.language === 'fa' ? 'حذف' : 'Delete'}
+                                          Löschen
                                         </AlertDialogAction>
                                       </AlertDialogFooter>
                                     </AlertDialogContent>
