@@ -55,26 +55,14 @@ const Dashboard = () => {
   const [activeWeek, setActiveWeek] = useState<string | null>(null);
   const [currentWeekProgress, setCurrentWeekProgress] = useState({ completed: 0, total: 0 });
   const [activeDays, setActiveDays] = useState<Set<string>>(new Set());
-  // TODO: Re-enable Quote of the Day feature
-  // const [dailyQuote, setDailyQuote] = useState<any>(null);
-  // const [loadingQuote, setLoadingQuote] = useState(true);
   
   useEffect(() => {
     if (user) {
       fetchProfile();
       fetchPlans();
       fetchWorkoutLogs();
-      // TODO: Re-enable quote fetching
-      // fetchDailyQuote();
     }
   }, [user]);
-
-  // TODO: Re-enable quote fetching on language change
-  // useEffect(() => {
-  //   if (user) {
-  //     fetchDailyQuote();
-  //   }
-  // }, [i18n.language]);
 
   const fetchProfile = async () => {
     if (!user) return;
@@ -121,35 +109,6 @@ const Dashboard = () => {
       console.error('Error fetching plans:', error);
     }
   };
-
-  // TODO: Re-enable Quote of the Day feature - fetchDailyQuote function
-  // const fetchDailyQuote = async (forceRefresh = false) => {
-  //   if (!user) return;
-  //
-  //   setLoadingQuote(true);
-  //   try {
-  //     const { data, error } = await supabase.functions.invoke('get-daily-quote', {
-  //       body: { 
-  //         language: i18n.language,
-  //         forceRefresh 
-  //       },
-  //     });
-  //
-  //     if (error) throw error;
-  //     setDailyQuote(data);
-  //   } catch (error) {
-  //     console.error('Error fetching daily quote:', error);
-  //     setDailyQuote({
-  //       quote: i18n.language === 'fa' 
-  //         ? 'هر روز فرصتی جدید برای بهتر شدن است.'
-  //         : 'Every day is a new opportunity to become better.',
-  //       author: 'FitssAI',
-  //       language: i18n.language
-  //     });
-  //   } finally {
-  //     setLoadingQuote(false);
-  //   }
-  // };
 
   const fetchWorkoutLogs = async () => {
     if (!user || !workoutPlan) return;
@@ -527,46 +486,6 @@ const Dashboard = () => {
             </motion.div>
           </div>
         </motion.div>
-
-        {/* TODO: Re-enable Quote of the Day feature */}
-        {/* Daily Quote - DISABLED */}
-        {/* <Card className="gradient-card border-primary/20 mb-8">
-          <CardContent className="p-6">
-            <div className={`flex items-start justify-between ${i18n.language === 'fa' ? 'flex-row-reverse' : ''}`}>
-              <div className={`flex-1 ${i18n.language === 'fa' ? 'text-right' : 'text-left'}`}>
-                <h3 className="text-lg font-semibold mb-3 flex items-center gap-2">
-                  <span>💡</span>
-                  <span>{i18n.language === 'fa' ? 'نقل قول روز' : 'Quote of the Day'}</span>
-                </h3>
-                {loadingQuote ? (
-                  <div className="animate-pulse">
-                    <div className="h-4 bg-muted rounded w-3/4 mb-2"></div>
-                    <div className="h-3 bg-muted rounded w-1/2"></div>
-                  </div>
-                ) : (
-                  <div className={`${i18n.language === 'fa' ? 'rtl' : 'ltr'}`}>
-                    <p className="text-foreground mb-2 italic text-lg leading-relaxed">
-                      "{dailyQuote?.quote}"
-                    </p>
-                    <p className="text-muted-foreground text-sm">
-                      — {dailyQuote?.author}
-                    </p>
-                  </div>
-                )}
-              </div>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => fetchDailyQuote(true)}
-                disabled={loadingQuote}
-                className={`${i18n.language === 'fa' ? 'ml-4' : 'mr-4'} shrink-0`}
-              >
-                <RefreshCw className={`h-4 w-4 ${loadingQuote ? 'animate-spin' : ''} ${i18n.language === 'fa' ? 'ml-2' : 'mr-2'}`} />
-                {i18n.language === 'fa' ? 'تجدید' : 'Refresh'}
-              </Button>
-            </div>
-          </CardContent>
-        </Card> */}
 
         {/* Quick Stats */}
         <motion.div 
