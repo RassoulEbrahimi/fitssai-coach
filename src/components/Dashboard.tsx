@@ -412,12 +412,6 @@ const Dashboard = () => {
     }
   }, [activeWeek, workoutLogs]);
 
-  const isWorkoutCompleted = (dayIndex: number) => {
-    const startDate = startOfWeek(new Date(), { weekStartsOn: 6 });
-    const workoutDate = addDays(startDate, dayIndex);
-    const dateString = workoutDate.toISOString().split('T')[0];
-    return workoutLogs.some(log => log.workout_day === dateString && log.completed);
-  };
 
   // Accurate weekly progress calculation using Berlin timezone
   const getWeeklyProgress = () => {
