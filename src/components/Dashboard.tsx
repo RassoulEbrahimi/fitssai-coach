@@ -326,20 +326,61 @@ const Dashboard = () => {
     return weekNumber.charAt(0).toUpperCase() + weekNumber.slice(1);
   };
 
+  // Returns the workout object for a given (weekKey, dayIndex) or null
+  const getWorkoutAt = (weekKey: string, dayIndex: number) => {
+    const days = workoutPlan?.content?.[weekKey];
+    if (!days) return null;
+    const day = days[dayIndex];
+    if (!day || !Array.isArray(day.exercises) || day.exercises.length === 0) return null;
+    return day;
+  };
+
+  // Finds the next workout (>= today) in the current week; returns { weekKey, dayIndex } or null
+  const findNextWorkoutInCurrentWeek = () => {
+    if (!workoutPlan) return null;
+    const currentWeekKey = getCurrentWeek(); // existing variable that points to Week1/Week2...
+    if (!currentWeekKey) return null;
+    
+    for (let i = 0; i < 7; i++) {
+      if (isTodayInWeekDay(currentWeekKey, i)) {
+        // start from today, look ahead including today
+        for (let d = i; d < 7; d++) {
+          if (getWorkoutAt(currentWeekKey, d)) {
+            return { weekKey: currentWeekKey, dayIndex: d };
+          }
+        }
+        break;
+      }
+    }
+    return null;
+  };
+
   // Get today's workout data
   const getTodayWorkout = () => {
     if (!workoutPlan || !workoutPlan.content) return null;
     
     for (const [weekKey, days] of Object.entries(workoutPlan.content)) {
       const weekData = days as any[];
-      for (let dayIndex = 0; dayIndex < weekData.length; dayIndex++) {
+      // Check full week (0..6) not just weekData.length
+      for (let dayIndex = 0; dayIndex < 7; dayIndex++) {
         if (isTodayInWeekDay(weekKey, dayIndex)) {
-          return {
-            weekKey,
-            dayIndex,
-            dayData: weekData[dayIndex],
-            isCompleted: isDayCompleted(weekKey, dayIndex)
-          };
+          const workoutData = getWorkoutAt(weekKey, dayIndex);
+          if (workoutData) {
+            return {
+              weekKey,
+              dayIndex,
+              dayData: workoutData,
+              isCompleted: isDayCompleted(weekKey, dayIndex)
+            };
+          } else {
+            // Rest day sentinel
+            return {
+              __restDay: true,
+              weekKey,
+              dayIndex,
+              isCompleted: false
+            };
+          }
         }
       }
     }
@@ -677,122 +718,175 @@ const Dashboard = () => {
                        animate={{ opacity: 1, y: 0 }}
                        transition={{ duration: 0.3 }}
                      >
-                       {(() => {
-                         const todayWorkout = getTodayWorkout();
-                         return todayWorkout ? (
-                           <Card className="border-primary/30 bg-gradient-to-r from-primary/5 to-primary/10">
-                             <CardHeader className="pb-3">
-                               <div className="flex items-center justify-between">
-                                 <div className="flex items-center gap-2">
-                                   <CardTitle className="text-lg font-bold text-primary">
-                                     {t('dashboard.todaySticky.title')}
-                                   </CardTitle>
-                                   <Badge className="gradient-primary text-xs">
-                                     {t('dashboard.workoutCompletion.today')}
-                                   </Badge>
-                                 </div>
-                                  <TooltipProvider>
-                                    <Tooltip>
-                                      <TooltipTrigger asChild>
-                                        <motion.div
-                                          whileHover={{ scale: isDayInFuture(todayWorkout.weekKey, todayWorkout.dayIndex) ? 1 : 1.1 }}
-                                          whileTap={{ scale: isDayInFuture(todayWorkout.weekKey, todayWorkout.dayIndex) ? 1 : 0.9 }}
-                                        >
-                                          <Button
-                                            variant="ghost"
-                                            size="sm"
-                                            onClick={() => toggleDayComplete(todayWorkout.weekKey, todayWorkout.dayIndex)}
-                                            disabled={isDayInFuture(todayWorkout.weekKey, todayWorkout.dayIndex) || completingWorkout === todayWorkout.dayIndex}
-                                            className={`h-8 w-8 p-0 ${
-                                              isDayInFuture(todayWorkout.weekKey, todayWorkout.dayIndex)
-                                                ? 'text-muted-foreground cursor-not-allowed opacity-50'
-                                                : todayWorkout.isCompleted 
-                                                  ? 'text-green-600 bg-green-100 dark:bg-green-900/20' 
-                                                  : 'hover:bg-primary/10'
-                                            }`}
-                                          >
-                                            <AnimatePresence mode="wait">
-                                              {isDayInFuture(todayWorkout.weekKey, todayWorkout.dayIndex) ? (
-                                                <motion.div
-                                                  key="locked"
-                                                  initial={{ scale: 0 }}
-                                                  animate={{ scale: 1 }}
-                                                >
-                                                  <Lock className="h-4 w-4" />
-                                                </motion.div>
-                                              ) : completingWorkout === todayWorkout.dayIndex ? (
-                                                <motion.div
-                                                  key="completing"
-                                                  initial={{ scale: 0, rotate: -180 }}
-                                                  animate={{ scale: 1, rotate: 0 }}
-                                                  exit={{ scale: 0, rotate: 180 }}
-                                                >
-                                                  <CheckCircle className="h-4 w-4 text-green-500" />
-                                                </motion.div>
-                                              ) : todayWorkout.isCompleted ? (
-                                                <motion.div
-                                                  key="completed"
-                                                  initial={{ scale: 0 }}
-                                                  animate={{ scale: 1 }}
-                                                >
-                                                  <CheckCircle className="h-4 w-4 text-green-600" />
-                                                </motion.div>
-                                              ) : (
-                                                <motion.div
-                                                  key="incomplete"
-                                                  initial={{ scale: 0 }}
-                                                  animate={{ scale: 1 }}
-                                                >
-                                                  <Check className="h-4 w-4" />
-                                                </motion.div>
-                                              )}
-                                            </AnimatePresence>
-                                          </Button>
-                                        </motion.div>
-                                      </TooltipTrigger>
-                                      {isDayInFuture(todayWorkout.weekKey, todayWorkout.dayIndex) && (
-                                        <TooltipContent>
-                                          <p>{t('dashboard.futureDay.tooltip')}</p>
-                                        </TooltipContent>
-                                      )}
-                                    </Tooltip>
-                                  </TooltipProvider>
-                               </div>
-                             </CardHeader>
-                             <CardContent className="pt-0">
-                               <div className="space-y-2">
-                                 <div className="flex items-center justify-between text-sm text-muted-foreground">
-                                   <span>{getWeekdayName(todayWorkout.dayIndex)}</span>
-                                   <span>{todayWorkout.dayData.exercises?.length || 0} {t('dashboard.exerciseGroup.exercises')}</span>
-                                 </div>
-                                 <div className={`space-y-1 ${todayWorkout.isCompleted ? 'opacity-60' : ''}`}>
-                                   {todayWorkout.dayData.exercises?.slice(0, 3).map((exercise: any, index: number) => (
-                                     <div key={index} className="flex justify-between items-center text-xs">
-                                       <span className="font-medium">{exercise.name}</span>
-                                       <span className="text-muted-foreground">
-                                         {exercise.sets}×{exercise.reps}
-                                       </span>
-                                     </div>
-                                   ))}
-                                   {todayWorkout.dayData.exercises?.length > 3 && (
-                                     <div className="text-xs text-muted-foreground">
-                                       +{todayWorkout.dayData.exercises.length - 3} more exercises
-                                     </div>
-                                   )}
-                                 </div>
-                               </div>
-                             </CardContent>
-                           </Card>
-                         ) : (
-                           <Card className="border-muted">
-                             <CardContent className="py-4">
-                               <p className="text-sm text-muted-foreground text-center">
-                                 {t('dashboard.todaySticky.noWorkout')}
-                               </p>
-                             </CardContent>
-                           </Card>
-                         );
-                       })()}
+                      {(() => {
+                          const todayWorkout = getTodayWorkout();
+                          if (!todayWorkout) {
+                            return (
+                              <Card className="border-muted">
+                                <CardContent className="py-4">
+                                  <p className="text-sm text-muted-foreground text-center">
+                                    Kein Training für heute geplant
+                                  </p>
+                                </CardContent>
+                              </Card>
+                            );
+                          }
+
+                          if (todayWorkout.__restDay) {
+                            const nextWorkout = findNextWorkoutInCurrentWeek();
+                            const getGermanWeekday = (dayIdx: number) => {
+                              const days = ['Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag', 'Sonntag'];
+                              return days[dayIdx] || '';
+                            };
+
+                            return (
+                              <Card className="border-muted bg-gradient-to-r from-muted/20 to-muted/10">
+                                <CardHeader className="pb-3">
+                                  <div className="flex items-center justify-between">
+                                    <div className="flex items-center gap-2">
+                                      <CardTitle className="text-lg font-bold text-muted-foreground">
+                                        Ruhetag
+                                      </CardTitle>
+                                      <Badge variant="secondary" className="text-xs">
+                                        Heute
+                                      </Badge>
+                                    </div>
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      disabled
+                                      className="h-8 w-8 p-0 text-muted-foreground cursor-not-allowed opacity-50"
+                                    >
+                                      <Check className="h-4 w-4" />
+                                    </Button>
+                                  </div>
+                                </CardHeader>
+                                <CardContent className="pt-0">
+                                  <div className="space-y-2">
+                                    <p className="text-sm text-muted-foreground">
+                                      Kein Training für heute geplant.
+                                    </p>
+                                    {nextWorkout ? (
+                                      <p className="text-xs text-muted-foreground">
+                                        Nächstes Training: {getGermanWeekday(nextWorkout.dayIndex)}
+                                      </p>
+                                    ) : (
+                                      <p className="text-xs text-muted-foreground">
+                                        Diese Woche sind keine weiteren Trainings geplant.
+                                      </p>
+                                    )}
+                                  </div>
+                                </CardContent>
+                              </Card>
+                            );
+                          }
+
+                          return (
+                            <Card className="border-primary/30 bg-gradient-to-r from-primary/5 to-primary/10">
+                              <CardHeader className="pb-3">
+                                <div className="flex items-center justify-between">
+                                  <div className="flex items-center gap-2">
+                                    <CardTitle className="text-lg font-bold text-primary">
+                                      Heutiges Training
+                                    </CardTitle>
+                                    <Badge className="gradient-primary text-xs">
+                                      Heute
+                                    </Badge>
+                                  </div>
+                                   <TooltipProvider>
+                                     <Tooltip>
+                                       <TooltipTrigger asChild>
+                                         <motion.div
+                                           whileHover={{ scale: isDayInFuture(todayWorkout.weekKey, todayWorkout.dayIndex) ? 1 : 1.1 }}
+                                           whileTap={{ scale: isDayInFuture(todayWorkout.weekKey, todayWorkout.dayIndex) ? 1 : 0.9 }}
+                                         >
+                                           <Button
+                                             variant="ghost"
+                                             size="sm"
+                                             onClick={() => toggleDayComplete(todayWorkout.weekKey, todayWorkout.dayIndex)}
+                                             disabled={isDayInFuture(todayWorkout.weekKey, todayWorkout.dayIndex) || completingWorkout === todayWorkout.dayIndex}
+                                             className={`h-8 w-8 p-0 ${
+                                               isDayInFuture(todayWorkout.weekKey, todayWorkout.dayIndex)
+                                                 ? 'text-muted-foreground cursor-not-allowed opacity-50'
+                                                 : todayWorkout.isCompleted 
+                                                   ? 'text-green-600 bg-green-100 dark:bg-green-900/20' 
+                                                   : 'hover:bg-primary/10'
+                                             }`}
+                                           >
+                                             <AnimatePresence mode="wait">
+                                               {isDayInFuture(todayWorkout.weekKey, todayWorkout.dayIndex) ? (
+                                                 <motion.div
+                                                   key="locked"
+                                                   initial={{ scale: 0 }}
+                                                   animate={{ scale: 1 }}
+                                                 >
+                                                   <Lock className="h-4 w-4" />
+                                                 </motion.div>
+                                               ) : completingWorkout === todayWorkout.dayIndex ? (
+                                                 <motion.div
+                                                   key="completing"
+                                                   initial={{ scale: 0, rotate: -180 }}
+                                                   animate={{ scale: 1, rotate: 0 }}
+                                                   exit={{ scale: 0, rotate: 180 }}
+                                                 >
+                                                   <CheckCircle className="h-4 w-4 text-green-500" />
+                                                 </motion.div>
+                                               ) : todayWorkout.isCompleted ? (
+                                                 <motion.div
+                                                   key="completed"
+                                                   initial={{ scale: 0 }}
+                                                   animate={{ scale: 1 }}
+                                                 >
+                                                   <CheckCircle className="h-4 w-4 text-green-600" />
+                                                 </motion.div>
+                                               ) : (
+                                                 <motion.div
+                                                   key="incomplete"
+                                                   initial={{ scale: 0 }}
+                                                   animate={{ scale: 1 }}
+                                                 >
+                                                   <Check className="h-4 w-4" />
+                                                 </motion.div>
+                                               )}
+                                             </AnimatePresence>
+                                           </Button>
+                                         </motion.div>
+                                       </TooltipTrigger>
+                                       {isDayInFuture(todayWorkout.weekKey, todayWorkout.dayIndex) && (
+                                         <TooltipContent>
+                                           <p>Zukünftige Trainingstage sind gesperrt</p>
+                                         </TooltipContent>
+                                       )}
+                                     </Tooltip>
+                                   </TooltipProvider>
+                                </div>
+                              </CardHeader>
+                              <CardContent className="pt-0">
+                                <div className="space-y-2">
+                                  <div className="flex items-center justify-between text-sm text-muted-foreground">
+                                    <span>{['Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag', 'Sonntag'][todayWorkout.dayIndex]}</span>
+                                    <span>{todayWorkout.dayData.exercises?.length || 0} Übungen</span>
+                                  </div>
+                                  <div className={`space-y-1 ${todayWorkout.isCompleted ? 'opacity-60' : ''}`}>
+                                    {todayWorkout.dayData.exercises?.slice(0, 3).map((exercise: any, index: number) => (
+                                      <div key={index} className="flex justify-between items-center text-xs">
+                                        <span className="font-medium">{exercise.name}</span>
+                                        <span className="text-muted-foreground">
+                                          {exercise.sets}×{exercise.reps}
+                                        </span>
+                                      </div>
+                                    ))}
+                                    {todayWorkout.dayData.exercises?.length > 3 && (
+                                      <div className="text-xs text-muted-foreground">
+                                        +{todayWorkout.dayData.exercises.length - 3} weitere Übungen
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
+                              </CardContent>
+                            </Card>
+                          );
+                        })()}
                      </motion.div>
 
                      {/* Weekly Progress */}
