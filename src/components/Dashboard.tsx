@@ -29,7 +29,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { ProfileCard } from "@/components/ProfileCard";
 import { useState, useEffect } from "react";
 import { toast } from "sonner";
-import { format, addDays, isSameDay, startOfWeek } from "date-fns";
+import { format, addDays, isSameDay, startOfWeek, differenceInCalendarDays } from "date-fns";
 import { toZonedTime } from 'date-fns-tz';
 import { 
   getBerlinNow, 
@@ -335,6 +335,33 @@ const Dashboard = () => {
     return day;
   };
 
+  // Get plan start Monday from created_at
+  const getPlanStartMonday = () => {
+    if (!workoutPlan?.created_at) return null;
+    const createdAt = new Date(workoutPlan.created_at);
+    const createdAtBerlin = toZonedTime(createdAt, TARGET_TIMEZONE);
+    return startOfWeek(createdAtBerlin, WEEK_OPTIONS); // Monday-aligned
+  };
+
+  // Get ordered week keys (week1..week4)
+  const getOrderedWeekKeys = () => {
+    if (!workoutPlan?.content) return [];
+    // Sort keys by their numeric index: "week1","week2",...
+    return Object.keys(workoutPlan.content)
+      .sort((a, b) => (parseInt(a.replace(/\D/g, '')) - parseInt(b.replace(/\D/g, ''))));
+  };
+
+  // Get current week key based on days since plan start
+  const getCurrentWeekKey = () => {
+    const startMonday = getPlanStartMonday();
+    if (!startMonday) return null;
+    const today = new Date(); // Berlin alignment is handled in isTodayInWeekDay()
+    const days = differenceInCalendarDays(today, startMonday);
+    const idx = Math.max(0, Math.min(3, Math.floor(days / 7))); // clamp 0..3
+    const weekKeys = getOrderedWeekKeys();
+    return weekKeys[idx] || weekKeys[0] || null;
+  };
+
   // Finds the next workout (>= today) in the current week; returns { weekKey, dayIndex } or null
   const findNextWorkoutInCurrentWeek = () => {
     if (!workoutPlan) return null;
@@ -350,6 +377,28 @@ const Dashboard = () => {
           }
         }
         break;
+      }
+    }
+    return null;
+  };
+
+  // Find next workout across all weeks (start from *next* week)
+  const findNextWorkoutAcrossWeeks = () => {
+    const startMonday = getPlanStartMonday();
+    const weekKeys = getOrderedWeekKeys();
+    const currentKey = getCurrentWeekKey();
+    if (!startMonday || weekKeys.length === 0 || !currentKey) return null;
+
+    const currentIdx = Math.max(0, weekKeys.indexOf(currentKey));
+    for (let w = currentIdx + 1; w < weekKeys.length; w++) {
+      const wk = weekKeys[w];
+      for (let d = 0; d < 7; d++) {
+        const day = getWorkoutAt(wk, d);
+        if (day) {
+          const offsetDays = (w * 7) + d;
+          const targetDate = addDays(startMonday, offsetDays);
+          return { weekKey: wk, dayIndex: d, date: targetDate };
+        }
       }
     }
     return null;
@@ -734,6 +783,7 @@ const Dashboard = () => {
 
                           if (todayWorkout.__restDay) {
                             const nextWorkout = findNextWorkoutInCurrentWeek();
+                            const nextWorkoutLater = findNextWorkoutAcrossWeeks();
                             const getGermanWeekday = (dayIdx: number) => {
                               const days = ['Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag', 'Sonntag'];
                               return days[dayIdx] || '';
@@ -770,9 +820,13 @@ const Dashboard = () => {
                                       <p className="text-xs text-muted-foreground">
                                         Nächstes Training: {getGermanWeekday(nextWorkout.dayIndex)}
                                       </p>
+                                    ) : nextWorkoutLater ? (
+                                      <p className="text-xs text-muted-foreground">
+                                        Nächstes Training: {formatDateForDisplay(nextWorkoutLater.date, 'EEEE, d. MMMM')}
+                                      </p>
                                     ) : (
                                       <p className="text-xs text-muted-foreground">
-                                        Diese Woche sind keine weiteren Trainings geplant.
+                                        Keine zukünftigen Trainings geplant.
                                       </p>
                                     )}
                                   </div>
