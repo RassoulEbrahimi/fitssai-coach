@@ -365,7 +365,7 @@ const Dashboard = () => {
   // Finds the next workout (>= today) in the current week; returns { weekKey, dayIndex } or null
   const findNextWorkoutInCurrentWeek = () => {
     if (!workoutPlan) return null;
-    const currentWeekKey = getCurrentWeek(); // existing variable that points to Week1/Week2...
+    const currentWeekKey = getCurrentWeekKey();
     if (!currentWeekKey) return null;
     
     for (let i = 0; i < 7; i++) {
