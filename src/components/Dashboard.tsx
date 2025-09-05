@@ -27,6 +27,7 @@ import { useTranslation } from "react-i18next";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
 import { ProfileCard } from "@/components/ProfileCard";
+import VideoBackground from '@/components/VideoBackground';
 import { useState, useEffect } from "react";
 import { toast } from "sonner";
 import { format, addDays, isSameDay, startOfWeek, differenceInCalendarDays } from "date-fns";
@@ -560,12 +561,14 @@ const Dashboard = () => {
   }
   
   return (
-    <motion.div 
-      className="max-w-7xl mx-auto p-6"
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.4, ease: "easeOut" }}
-    >
+    <div className="relative min-h-screen">
+      <VideoBackground />
+      <motion.div 
+        className="relative z-10 max-w-7xl mx-auto p-6"
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.4, ease: "easeOut" }}
+      >
       {/* Header */}
       <motion.div 
         className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8"
@@ -1314,7 +1317,8 @@ const Dashboard = () => {
           </Tabs>
         </motion.div>
       </motion.div>
-    );
-  };
+    </div>
+  );
+};
 
 export default Dashboard;
