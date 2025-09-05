@@ -243,6 +243,8 @@
 .bg-video { 
   pointer-events: none; 
   filter: none;
+  opacity: 1;
+  visibility: visible;
 }
 
 /* Dark mode: invert/hue-rotate for pleasing dark palette */

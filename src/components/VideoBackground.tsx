@@ -14,7 +14,7 @@ const VideoBackground = ({
   poster = DEFAULT_POSTER 
 }: VideoBackgroundProps) => {
   return (
-    <div className="absolute inset-0 -z-10 overflow-hidden">
+    <div className="fixed inset-0 z-0 overflow-hidden">
       <video 
         className="bg-video absolute inset-0 w-full h-full object-cover"
         autoPlay
@@ -29,7 +29,7 @@ const VideoBackground = ({
         <source src={srcMp4} type="video/mp4" />
       </video>
       {/* Contrast overlay so text stays readable */}
-      <div className="absolute inset-0 pointer-events-none bg-gradient-to-b from-background/60 to-background/90" aria-hidden="true" />
+      <div className="absolute inset-0 pointer-events-none bg-gradient-to-b from-background/40 to-background/80 z-10" aria-hidden="true" />
     </div>
   );
 };

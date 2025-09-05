@@ -561,7 +561,7 @@ const Dashboard = () => {
   }
   
   return (
-    <div className="relative min-h-screen">
+    <div className="relative min-h-screen z-20">
       <VideoBackground />
       <motion.div 
         className="relative z-10 max-w-7xl mx-auto p-6"
