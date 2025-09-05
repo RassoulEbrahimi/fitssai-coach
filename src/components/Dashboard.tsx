@@ -30,7 +30,6 @@ import { ProfileCard } from "@/components/ProfileCard";
 import { useState, useEffect } from "react";
 import { toast } from "sonner";
 import { format, addDays, isSameDay, startOfWeek, differenceInCalendarDays } from "date-fns";
-import { de } from 'date-fns/locale';
 import { toZonedTime } from 'date-fns-tz';
 import { 
   getBerlinNow, 
@@ -769,12 +768,14 @@ const Dashboard = () => {
                        transition={{ duration: 0.3 }}
                      >
                        {(() => {
-                           // Debug logging for verification
-                           const todayBerlin = getBerlinToday();
-                           const todayBerlinStr = format(todayBerlin, 'yyyy-MM-dd');
-                           const weekdayDE = format(todayBerlin, 'EEEE', { locale: de });
-                           console.log('=== DASHBOARD VERIFICATION ===');
-                           console.log('todayBerlin:', todayBerlinStr, 'weekday:', weekdayDE);
+                            // Debug logging for verification
+                            const todayBerlin = getBerlinToday();
+                            const todayBerlinStr = format(todayBerlin, 'yyyy-MM-dd');
+                            const berlinNow = getBerlinNow();
+                            const germanWeekdays = ['Sonntag', 'Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag'];
+                            const weekdayDE = germanWeekdays[berlinNow.getDay()];
+                            console.log('=== DASHBOARD VERIFICATION ===');
+                            console.log('todayBerlin:', todayBerlinStr, 'weekday:', weekdayDE);
                            
                            const todayWorkout = getTodayWorkout();
                            console.log('getTodayWorkout():', {
