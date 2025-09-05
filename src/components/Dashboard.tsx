@@ -343,6 +343,15 @@ const Dashboard = () => {
     return startOfWeek(createdAtBerlin, WEEK_OPTIONS); // Monday-aligned
   };
 
+  // Get calendar date for a given weekKey and dayIndex
+  const getDateFor = (weekKey: string, dayIndex: number) => {
+    const startMonday = getPlanStartMonday();
+    if (!startMonday) return null;
+    const weekIdx = parseInt(weekKey.replace(/\D/g, '')) - 1; // week1 → 0
+    const offsetDays = (weekIdx * 7) + dayIndex;
+    return addDays(startMonday, offsetDays); // Date object in Berlin timeline
+  };
+
   // Get ordered week keys (week1..week4)
   const getOrderedWeekKeys = () => {
     if (!workoutPlan?.content) return [];
@@ -767,23 +776,8 @@ const Dashboard = () => {
                        animate={{ opacity: 1, y: 0 }}
                        transition={{ duration: 0.3 }}
                      >
-                       {(() => {
-                            // Debug logging for verification
-                            const todayBerlin = getBerlinToday();
-                            const todayBerlinStr = format(todayBerlin, 'yyyy-MM-dd');
-                            const berlinNow = getBerlinNow();
-                            const germanWeekdays = ['Sonntag', 'Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag'];
-                            const weekdayDE = germanWeekdays[berlinNow.getDay()];
-                            console.log('=== DASHBOARD VERIFICATION ===');
-                            console.log('todayBerlin:', todayBerlinStr, 'weekday:', weekdayDE);
-                           
-                           const todayWorkout = getTodayWorkout();
-                           console.log('getTodayWorkout():', {
-                             __restDay: todayWorkout?.__restDay,
-                             weekKey: todayWorkout?.weekKey,
-                             dayIndex: todayWorkout?.dayIndex,
-                             exercisesCount: todayWorkout?.dayData?.exercises?.length || 0
-                           });
+                        {(() => {
+                            const todayWorkout = getTodayWorkout();
                            
                            if (!todayWorkout) {
                             return (
@@ -798,14 +792,8 @@ const Dashboard = () => {
                           }
 
                            if (todayWorkout.__restDay) {
-                             const nextWorkout = findNextWorkoutInCurrentWeek();
-                             console.log('findNextWorkoutInCurrentWeek():', nextWorkout);
-                             const nextWorkoutLater = findNextWorkoutAcrossWeeks();
-                             console.log('findNextWorkoutAcrossWeeks():', nextWorkoutLater);
-                             const getGermanWeekday = (dayIdx: number) => {
-                              const days = ['Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag', 'Sonntag'];
-                              return days[dayIdx] || '';
-                            };
+                              const nextWorkout = findNextWorkoutInCurrentWeek();
+                              const nextWorkoutLater = findNextWorkoutAcrossWeeks();
 
                             return (
                               <Card className="border-muted bg-gradient-to-r from-muted/20 to-muted/10">
@@ -834,11 +822,14 @@ const Dashboard = () => {
                                     <p className="text-sm text-muted-foreground">
                                       Kein Training für heute geplant.
                                     </p>
-                                    {nextWorkout ? (
-                                      <p className="text-xs text-muted-foreground">
-                                        Nächstes Training: {getGermanWeekday(nextWorkout.dayIndex)}
-                                      </p>
-                                    ) : nextWorkoutLater ? (
+                                     {nextWorkout ? (
+                                       <p className="text-xs text-muted-foreground">
+                                         Nächstes Training: {(() => {
+                                           const dtNext = getDateFor(nextWorkout.weekKey, nextWorkout.dayIndex);
+                                           return dtNext ? formatDateForDisplay(dtNext, 'EEEE') : '';
+                                         })()}
+                                       </p>
+                                     ) : nextWorkoutLater ? (
                                       <p className="text-xs text-muted-foreground">
                                         Nächstes Training: {formatDateForDisplay(nextWorkoutLater.date, 'EEEE, d. MMMM')}
                                       </p>
@@ -934,11 +925,14 @@ const Dashboard = () => {
                                 </div>
                               </CardHeader>
                               <CardContent className="pt-0">
-                                <div className="space-y-2">
-                                  <div className="flex items-center justify-between text-sm text-muted-foreground">
-                                    <span>{['Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag', 'Sonntag'][todayWorkout.dayIndex]}</span>
-                                    <span>{todayWorkout.dayData.exercises?.length || 0} Übungen</span>
-                                  </div>
+                                 <div className="space-y-2">
+                                   <div className="flex items-center justify-between text-sm text-muted-foreground">
+                                     <span>{(() => {
+                                       const dtToday = getDateFor(todayWorkout.weekKey, todayWorkout.dayIndex);
+                                       return dtToday ? formatDateForDisplay(dtToday, 'EEEE') : '';
+                                     })()}</span>
+                                     <span>{todayWorkout.dayData.exercises?.length || 0} Übungen</span>
+                                   </div>
                                   <div className={`space-y-1 ${todayWorkout.isCompleted ? 'opacity-60' : ''}`}>
                                     {todayWorkout.dayData.exercises?.slice(0, 3).map((exercise: any, index: number) => (
                                       <div key={index} className="flex justify-between items-center text-xs">
