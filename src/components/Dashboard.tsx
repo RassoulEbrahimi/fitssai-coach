@@ -30,6 +30,7 @@ import { ProfileCard } from "@/components/ProfileCard";
 import { useState, useEffect } from "react";
 import { toast } from "sonner";
 import { format, addDays, isSameDay, startOfWeek, differenceInCalendarDays } from "date-fns";
+import { de } from 'date-fns/locale';
 import { toZonedTime } from 'date-fns-tz';
 import { 
   getBerlinNow, 
@@ -767,9 +768,23 @@ const Dashboard = () => {
                        animate={{ opacity: 1, y: 0 }}
                        transition={{ duration: 0.3 }}
                      >
-                      {(() => {
-                          const todayWorkout = getTodayWorkout();
-                          if (!todayWorkout) {
+                       {(() => {
+                           // Debug logging for verification
+                           const todayBerlin = getBerlinToday();
+                           const todayBerlinStr = format(todayBerlin, 'yyyy-MM-dd');
+                           const weekdayDE = format(todayBerlin, 'EEEE', { locale: de });
+                           console.log('=== DASHBOARD VERIFICATION ===');
+                           console.log('todayBerlin:', todayBerlinStr, 'weekday:', weekdayDE);
+                           
+                           const todayWorkout = getTodayWorkout();
+                           console.log('getTodayWorkout():', {
+                             __restDay: todayWorkout?.__restDay,
+                             weekKey: todayWorkout?.weekKey,
+                             dayIndex: todayWorkout?.dayIndex,
+                             exercisesCount: todayWorkout?.dayData?.exercises?.length || 0
+                           });
+                           
+                           if (!todayWorkout) {
                             return (
                               <Card className="border-muted">
                                 <CardContent className="py-4">
@@ -781,10 +796,12 @@ const Dashboard = () => {
                             );
                           }
 
-                          if (todayWorkout.__restDay) {
-                            const nextWorkout = findNextWorkoutInCurrentWeek();
-                            const nextWorkoutLater = findNextWorkoutAcrossWeeks();
-                            const getGermanWeekday = (dayIdx: number) => {
+                           if (todayWorkout.__restDay) {
+                             const nextWorkout = findNextWorkoutInCurrentWeek();
+                             console.log('findNextWorkoutInCurrentWeek():', nextWorkout);
+                             const nextWorkoutLater = findNextWorkoutAcrossWeeks();
+                             console.log('findNextWorkoutAcrossWeeks():', nextWorkoutLater);
+                             const getGermanWeekday = (dayIdx: number) => {
                               const days = ['Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag', 'Sonntag'];
                               return days[dayIdx] || '';
                             };
