@@ -511,10 +511,6 @@ const Dashboard = () => {
     };
   };
 
-  const getWeekdayName = (dayIndex: number) => {
-    const days = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
-    return t(`dashboard.workoutDays.${days[dayIndex]}`);
-  };
 
   const formatWorkoutDate = (startDate: Date, dayIndex: number) => {
     const date = addDays(startDate, dayIndex);
@@ -1042,7 +1038,10 @@ const Dashboard = () => {
                                        <div className="flex items-center justify-between w-full mr-4">
                                          <div className="flex items-center gap-2">
                                            <CardTitle className={`text-base ${isCurrentDay ? 'text-primary font-bold' : ''}`}>
-                                             {getWeekdayName(dayIndex)}
+                                              {(() => {
+                                                const dt = getDateFor(weekKey, dayIndex);
+                                                return dt ? formatDateForDisplay(dt, 'EEEE') : '';
+                                              })()}
                                            </CardTitle>
                                            {isCurrentDay && (
                                              <motion.div
