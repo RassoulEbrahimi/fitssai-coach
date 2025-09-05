@@ -239,20 +239,26 @@
   }
 }
 
-/* Background video base */
-.bg-video { 
-  pointer-events: none; 
+/* Ensure video is visible by default */
+.bg-video {
+  pointer-events: none;
   filter: none;
   opacity: 1;
   visibility: visible;
 }
 
-/* Dark mode: invert/hue-rotate for pleasing dark palette */
+/* Dark mode transform stays as before */
 .dark .bg-video {
   filter: invert(1) hue-rotate(180deg) saturate(0.9) brightness(0.85);
 }
 
-/* Reduced motion: hide video, rely on gradient overlay only */
+/* Poster fallback hidden by default */
+.bg-video-poster {
+  display: none;
+}
+
+/* Reduced motion: hide video, show poster (static image) */
 @media (prefers-reduced-motion: reduce) {
   .bg-video { display: none !important; }
+  .bg-video-poster { display: block !important; }
 }
