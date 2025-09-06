@@ -262,3 +262,8 @@
   .bg-video { display: none !important; }
   .bg-video-poster { display: block !important; }
 }
+
+/* PWA install button styling */
+.pwa-install-btn { 
+  @apply bg-background border-border text-foreground hover:bg-muted; 
+}

@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import LanguageSwitcher from './LanguageSwitcher';
 import ThemeToggle from './ThemeToggle';
+import InstallPrompt from './InstallPrompt';
 
 const Navbar = () => {
   const { user, signOut } = useAuth();
@@ -146,6 +147,9 @@ const Navbar = () => {
         
         {/* Desktop Actions */}
         <div className="hidden md:flex items-center gap-4">
+          <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
+            <InstallPrompt />
+          </motion.div>
           <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
             <ThemeToggle />
           </motion.div>
@@ -306,6 +310,7 @@ const Navbar = () => {
               </>
             )}
             <div className="pt-2 border-t border-border flex items-center gap-2">
+              <InstallPrompt />
               <ThemeToggle />
               <LanguageSwitcher />
             </div>
