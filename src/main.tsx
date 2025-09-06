@@ -1,3 +1,4 @@
+import React from 'react';
 import { createRoot } from 'react-dom/client'
 import App from './App.tsx'
 import './index.css'
@@ -7,7 +8,7 @@ if (!rootEl) {
   throw new Error('[FitssAI] #root not found in index.html');
 }
 
-createRoot(rootEl).render(<App />);
+createRoot(rootEl).render(React.createElement(App));
 
 // QA: confirm mount in console
 console.log('[FitssAI] App mounted');
