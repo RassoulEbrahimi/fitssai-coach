@@ -1,5 +1,5 @@
 // FitssAI Service Worker - Minimal, safe runtime cache
-const STATIC_CACHE = 'static-v1';
+const STATIC_CACHE = 'static-v3';
 
 // Skip waiting and claim clients immediately
 self.addEventListener('install', (event) => {

@@ -11,8 +11,8 @@
   "orientation": "portrait",
   "categories": ["health", "fitness", "nutrition", "lifestyle"],
   "icons": [
-    { "src": "/icons/fitssai-192.png",       "sizes": "192x192", "type": "image/png", "purpose": "any" },
-    { "src": "/icons/fitssai-512.png",       "sizes": "512x512", "type": "image/png", "purpose": "any" },
-    { "src": "/icons/fitssai-maskable.png",  "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+    { "src": "/icons/fitssai-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/fitssai-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/fitssai-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
   ]
 }
