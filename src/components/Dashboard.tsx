@@ -524,34 +524,41 @@ const Dashboard = () => {
   };
 
   const generatePlans = async () => {
-    if (!user) return;
-
+    if (generatingPlans) return;
     setGeneratingPlans(true);
     try {
-      const response = await supabase.functions.invoke('generate-plans', {
+      // Get a fresh session
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        toast.error('Bitte melde dich erneut an.');
+        return;
+      }
+
+      // Call Edge Function with explicit headers + non-empty body
+      const { data, error } = await supabase.functions.invoke('generate-plans', {
+        body: { trigger: 'manual' },
         headers: {
-          Authorization: `Bearer ${(await supabase.auth.getSession()).data.session?.access_token}`,
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`,
         },
-        body: {},
       });
 
-      // Check for function invoke error
-      if (response.error) {
-        throw new Error(response.data?.error || response.error.message || 'Function invoke error');
+      if (error) {
+        // If the SDK returns error object
+        toast.error(error.message || 'Fehler beim Erstellen der Pläne. Bitte später erneut versuchen.');
+        return;
       }
 
-      if (response.data?.success) {
-        toast.success('Pläne erfolgreich erstellt!');
-        await fetchPlans(); // Refresh the plans
-      } else {
-        throw new Error(response.data?.error || 'Failed to generate plans');
+      // If you're using fetch elsewhere, always parse server JSON and surface German `data.error`
+      if (data?.error) {
+        toast.error(data.error);
+        return;
       }
-    } catch (error) {
-      console.error('Error generating plans:', error);
-      
-      // Use the error message directly if it's already in German, otherwise use fallback
-      const errorMsg = error?.message || 'Fehler beim Erstellen der Pläne. Bitte später erneut versuchen.';
-      toast.error(errorMsg);
+
+      toast.success('Pläne erfolgreich erstellt!');
+      await fetchPlans(); // Refresh the plans
+    } catch (err: any) {
+      toast.error('Fehler beim Erstellen der Pläne. Bitte später erneut versuchen.');
     } finally {
       setGeneratingPlans(false);
     }
