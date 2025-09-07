@@ -528,42 +528,29 @@ const Dashboard = () => {
 
     setGeneratingPlans(true);
     try {
-      const { data, error } = await supabase.functions.invoke('generate-plans', {
+      const response = await supabase.functions.invoke('generate-plans', {
         headers: {
           Authorization: `Bearer ${(await supabase.auth.getSession()).data.session?.access_token}`,
         },
         body: {},
       });
 
-      if (error) throw error;
+      // Check for function invoke error
+      if (response.error) {
+        throw new Error(response.data?.error || response.error.message || 'Function invoke error');
+      }
 
-      if (data.success) {
+      if (response.data?.success) {
         toast.success('Pläne erfolgreich erstellt!');
         await fetchPlans(); // Refresh the plans
       } else {
-        throw new Error(data.error || 'Failed to generate plans');
+        throw new Error(response.data?.error || 'Failed to generate plans');
       }
     } catch (error) {
       console.error('Error generating plans:', error);
       
-      // Extract server error message if available
-      let errorMsg = 'Fehler beim Erstellen der Pläne. Bitte später erneut versuchen.';
-      
-      if (error?.message) {
-        const serverMsg = error.message;
-        // Map common server errors to German
-        if (serverMsg.includes('insufficient_quota') || serverMsg.includes('Quota überschritten')) {
-          errorMsg = 'AI-Dienst vorübergehend nicht verfügbar (Quota überschritten). Bitte später erneut versuchen.';
-        } else if (serverMsg.includes('invalid_api_key') || serverMsg.includes('ungültig')) {
-          errorMsg = 'Konfiguration des AI-Dienstes ungültig. Bitte Admin kontaktieren.';
-        } else if (serverMsg.includes('parse') || serverMsg.includes('invalid') || serverMsg.includes('Eingabedaten')) {
-          errorMsg = 'Ungültige Eingabedaten. Bitte Profil vervollständigen und erneut versuchen.';
-        } else if (serverMsg.length > 0) {
-          // Use server message if it's already in German
-          errorMsg = serverMsg;
-        }
-      }
-      
+      // Use the error message directly if it's already in German, otherwise use fallback
+      const errorMsg = error?.message || 'Fehler beim Erstellen der Pläne. Bitte später erneut versuchen.';
       toast.error(errorMsg);
     } finally {
       setGeneratingPlans(false);
