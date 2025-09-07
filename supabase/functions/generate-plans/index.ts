@@ -203,6 +203,7 @@ IMPORTANT: ${languageInstruction} All exercise names, meal names, descriptions, 
         },
         body: JSON.stringify({
           model: 'gpt-4o-mini',
+          response_format: { type: 'json_object' },
           messages: [
             { 
               role: 'system', 
@@ -269,7 +270,7 @@ IMPORTANT: ${languageInstruction} All exercise names, meal names, descriptions, 
       parsedContent = JSON.parse(generatedContent);
     } catch (parseError) {
       console.error('Failed to parse OpenAI response:', parseError);
-      return new Response(JSON.stringify({ error: 'Invalid response format from AI' }), {
+      return new Response(JSON.stringify({ error: 'Antwort des KI-Dienstes war kein gültiges JSON. Bitte später erneut versuchen.' }), {
         status: 500,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
@@ -304,7 +305,7 @@ IMPORTANT: ${languageInstruction} All exercise names, meal names, descriptions, 
     }
 
     if (workoutError || nutritionError) {
-      return new Response(JSON.stringify({ error: 'Failed to save plans' }), {
+      return new Response(JSON.stringify({ error: 'Fehler beim Speichern der Pläne. Bitte erneut versuchen.' }), {
         status: 500,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
