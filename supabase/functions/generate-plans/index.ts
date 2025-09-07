@@ -8,6 +8,16 @@ const corsHeaders = {
   'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
 };
 
+const json = (obj: any, status = 200) =>
+  new Response(JSON.stringify(obj), {
+    status,
+    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+  });
+
+const ok = (obj: Record<string, any> = {}) => json({ success: true, ...obj }, 200);
+const fail = (message: string, code?: string, extra?: Record<string, any>) =>
+  json({ success: false, error: message, code, ...(extra || {}) }, 200);
+
 serve(async (req) => {
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
@@ -16,15 +26,8 @@ serve(async (req) => {
 
   // Health check endpoint
   const url = new URL(req.url);
-  if (url.searchParams.get('health') === '1') {
-    const openAIApiKey = Deno.env.get('OPENAI_API_KEY');
-    return new Response(JSON.stringify({ 
-      ok: true, 
-      env: { hasKey: Boolean(openAIApiKey) }, 
-      msg: "generate-plans healthy" 
-    }), {
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    });
+  if (req.method === 'GET' && url.searchParams.get('health') === '1') {
+    return ok({ health: 'ok' });
   }
 
   try {
@@ -38,8 +41,17 @@ serve(async (req) => {
       language: "de"
     }));
 
+    const SUPABASE_URL = Deno.env.get('SUPABASE_URL');
+    const SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+    if (!SUPABASE_URL || !SERVICE_ROLE_KEY) {
+      throw new Error('Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY');
+    }
+
+    const sb = createClient(SUPABASE_URL, SERVICE_ROLE_KEY, { auth: { persistSession: false } });
+    
+    // Keep auth client for user verification
     const supabaseClient = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
+      SUPABASE_URL,
       Deno.env.get('SUPABASE_ANON_KEY') ?? '',
       { global: { headers: { Authorization: req.headers.get('Authorization')! } } }
     );
@@ -63,10 +75,7 @@ serve(async (req) => {
       
       if (userError || !user) {
         console.error('Auth error:', userError);
-        return new Response(JSON.stringify({ error: 'Unauthorized' }), {
-          status: 401,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        });
+        return fail('Nicht autorisiert', 'AUTH');
       }
 
       // Check if current user is admin
@@ -78,10 +87,7 @@ serve(async (req) => {
 
       if (adminError || !adminProfile?.is_admin) {
         console.error('Admin check failed:', adminError);
-        return new Response(JSON.stringify({ error: 'Admin access required' }), {
-          status: 403,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        });
+        return fail('Admin-Zugriff erforderlich', 'ADMIN_REQUIRED');
       }
 
       userId = targetUserId;
@@ -91,17 +97,14 @@ serve(async (req) => {
       
       if (userError || !user) {
         console.error('Auth error:', userError);
-        return new Response(JSON.stringify({ error: 'Unauthorized' }), {
-          status: 401,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        });
+        return fail('Nicht autorisiert', 'AUTH');
       }
 
       userId = user.id;
     }
 
     // Fetch user profile
-    const { data: profile, error: profileError } = await supabaseClient
+    const { data: profile, error: profileError } = await sb
       .from('profiles')
       .select('*')
       .eq('id', userId)
@@ -109,33 +112,18 @@ serve(async (req) => {
 
     if (profileError || !profile) {
       console.error('Profile error:', profileError);
-      return new Response(JSON.stringify({ error: 'Profil nicht gefunden. Bitte vervollständige dein Profil und versuche es erneut.' }), {
-        status: 404,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
+      return fail('Profil nicht gefunden. Bitte vervollständige dein Profil und versuche es erneut.', 'PROFILE_NOT_FOUND');
     }
 
     // Validate critical profile fields
     if (!profile.age || !profile.height || !profile.weight || !profile.fitness_goal || !profile.dietary_preference) {
-      return new Response(JSON.stringify({ 
-        error: 'Bitte vervollständige dein Profil (Alter, Größe, Gewicht, Ziel/Diät) und versuche es erneut.',
-        code: 'incomplete_profile'
-      }), {
-        status: 400,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
+      return fail('Bitte vervollständige dein Profil (Alter, Größe, Gewicht, Ziel/Diät) und versuche es erneut.', 'INCOMPLETE_PROFILE');
     }
 
     // Validate OpenAI API key
     if (!openAIApiKey) {
       console.error('OpenAI API key not found');
-      return new Response(JSON.stringify({ 
-        error: 'Konfiguration des AI-Dienstes ungültig. Bitte Admin kontaktieren.',
-        code: 'missing_api_key'
-      }), {
-        status: 500,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
+      return fail('Konfiguration des AI-Dienstes ungültig. Bitte Admin kontaktieren.', 'MISSING_API_KEY');
     }
 
     // Language-specific instructions
@@ -219,13 +207,7 @@ IMPORTANT: ${languageInstruction} All exercise names, meal names, descriptions, 
         message: error?.message, 
         name: error?.name 
       }));
-      return new Response(JSON.stringify({ 
-        error: 'Netzwerkfehler beim AI-Dienst. Bitte Internetverbindung prüfen und erneut versuchen.',
-        code: 'network_error'
-      }), {
-        status: 500,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
+      return fail('Netzwerkfehler beim AI-Dienst. Bitte Internetverbindung prüfen und erneut versuchen.', 'NETWORK_ERROR');
     }
 
     if (!response.ok) {
@@ -256,10 +238,7 @@ IMPORTANT: ${languageInstruction} All exercise names, meal names, descriptions, 
         }
       } catch (_) {}
 
-      return new Response(JSON.stringify({ error: userMsg, code }), {
-        status,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
+      return fail(userMsg, code);
     }
 
     const data = await response.json();
@@ -270,18 +249,15 @@ IMPORTANT: ${languageInstruction} All exercise names, meal names, descriptions, 
       parsedContent = JSON.parse(generatedContent);
     } catch (parseError) {
       console.error('Failed to parse OpenAI response:', parseError);
-      return new Response(JSON.stringify({ error: 'Antwort des KI-Dienstes war kein gültiges JSON. Bitte später erneut versuchen.' }), {
-        status: 500,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
+      return fail('Antwort des KI-Dienstes war kein gültiges JSON. Bitte später erneut versuchen.', 'OPENAI_PARSE');
     }
 
     // Delete existing plans for this user (to replace with new ones)
-    await supabaseClient.from('workout_plans').delete().eq('user_id', userId);
-    await supabaseClient.from('nutrition_plans').delete().eq('user_id', userId);
+    await sb.from('workout_plans').delete().eq('user_id', userId);
+    await sb.from('nutrition_plans').delete().eq('user_id', userId);
 
     // Save workout plan
-    const { error: workoutError } = await supabaseClient
+    const { error: workoutError } = await sb
       .from('workout_plans')
       .insert({
         user_id: userId,
@@ -293,7 +269,7 @@ IMPORTANT: ${languageInstruction} All exercise names, meal names, descriptions, 
     }
 
     // Save nutrition plan
-    const { error: nutritionError } = await supabaseClient
+    const { error: nutritionError } = await sb
       .from('nutrition_plans')
       .insert({
         user_id: userId,
@@ -305,10 +281,7 @@ IMPORTANT: ${languageInstruction} All exercise names, meal names, descriptions, 
     }
 
     if (workoutError || nutritionError) {
-      return new Response(JSON.stringify({ error: 'Fehler beim Speichern der Pläne. Bitte erneut versuchen.' }), {
-        status: 500,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
+      return fail('Speichern der Pläne ist fehlgeschlagen. Bitte später erneut versuchen.', 'DB_SAVE');
     }
 
     console.info(JSON.stringify({
@@ -317,13 +290,9 @@ IMPORTANT: ${languageInstruction} All exercise names, meal names, descriptions, 
       ts: new Date().toISOString()
     }));
 
-    return new Response(JSON.stringify({ 
-      ok: true,
-      success: true,
+    return ok({ 
       workoutPlan: parsedContent.workoutPlan,
       nutritionPlan: parsedContent.nutritionPlan
-    }), {
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
 
   } catch (error) {
@@ -333,12 +302,6 @@ IMPORTANT: ${languageInstruction} All exercise names, meal names, descriptions, 
       name: error?.name,
       stack: error?.stack?.substring(0, 200)
     }));
-    return new Response(JSON.stringify({ 
-      error: 'Unerwarteter Fehler beim Erstellen der Pläne. Bitte später erneut versuchen.',
-      code: 'unexpected_error'
-    }), {
-      status: 500,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    });
+    return fail('Unerwarteter Fehler beim Erstellen der Pläne. Bitte später erneut versuchen.', 'UNEXPECTED_ERROR');
   }
 });
