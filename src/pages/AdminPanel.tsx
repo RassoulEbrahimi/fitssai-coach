@@ -237,9 +237,20 @@ const AdminPanel = () => {
   const regeneratePlan = async (planUserId: string, planType: 'workout' | 'nutrition') => {
     setRegeneratingPlan(`${planUserId}-${planType}`);
     try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        console.error('Nicht angemeldet. Bitte melde dich erneut an.');
+        return;
+      }
+
       const { data, error } = await supabase.functions.invoke('generate-plans', {
         body: { 
           user_id: planUserId,
+          trigger: 'admin'
+        },
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`,
         },
       });
 
