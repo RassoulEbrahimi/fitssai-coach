@@ -5,15 +5,39 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
 };
 
 serve(async (req) => {
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
-    return new Response(null, { headers: corsHeaders });
+    return new Response('ok', { headers: corsHeaders });
+  }
+
+  // Health check endpoint
+  const url = new URL(req.url);
+  if (url.searchParams.get('health') === '1') {
+    const openAIApiKey = Deno.env.get('OPENAI_API_KEY');
+    return new Response(JSON.stringify({ 
+      ok: true, 
+      env: { hasKey: Boolean(openAIApiKey) }, 
+      msg: "generate-plans healthy" 
+    }), {
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    });
   }
 
   try {
+    const openAIApiKey = Deno.env.get('OPENAI_API_KEY');
+    
+    // Log function entry
+    console.info(JSON.stringify({
+      tag: "generate_plans_begin",
+      ts: new Date().toISOString(),
+      hasApiKey: !!openAIApiKey,
+      language: "de"
+    }));
+
     const supabaseClient = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_ANON_KEY') ?? '',
@@ -85,17 +109,30 @@ serve(async (req) => {
 
     if (profileError || !profile) {
       console.error('Profile error:', profileError);
-      return new Response(JSON.stringify({ error: 'Profile not found' }), {
+      return new Response(JSON.stringify({ error: 'Profil nicht gefunden. Bitte vervollständige dein Profil und versuche es erneut.' }), {
         status: 404,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
 
-    // Call OpenAI API
-    const openAIApiKey = Deno.env.get('OPENAI_API_KEY');
+    // Validate critical profile fields
+    if (!profile.age || !profile.height || !profile.weight || !profile.fitness_goal || !profile.dietary_preference) {
+      return new Response(JSON.stringify({ 
+        error: 'Bitte vervollständige dein Profil (Alter, Größe, Gewicht, Ziel/Diät) und versuche es erneut.',
+        code: 'incomplete_profile'
+      }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    // Validate OpenAI API key
     if (!openAIApiKey) {
       console.error('OpenAI API key not found');
-      return new Response(JSON.stringify({ error: 'OpenAI API key not configured' }), {
+      return new Response(JSON.stringify({ 
+        error: 'Konfiguration des AI-Dienstes ungültig. Bitte Admin kontaktieren.',
+        code: 'missing_api_key'
+      }), {
         status: 500,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
@@ -156,38 +193,70 @@ Make sure the workout plan is appropriate for their experience level and the nut
 
 IMPORTANT: ${languageInstruction} All exercise names, meal names, descriptions, and any other text content must be in ${language === 'fa' ? 'Persian (Farsi)' : language === 'de' ? 'German (Deutsch)' : 'English'}.`;
 
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${openAIApiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: 'gpt-4o-mini',
-        messages: [
-          { 
-            role: 'system', 
-            content: `You are a professional fitness and nutrition expert. Always respond with valid JSON only, no additional text. ${language === 'fa' ? 'Generate all content in Persian (Farsi) language.' : language === 'de' ? 'Generate all content in German (Deutsch) language.' : 'Generate all content in English.'}` 
-          },
-          { role: 'user', content: prompt }
-        ],
-      }),
-    });
+    let response;
+    try {
+      response = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${openAIApiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model: 'gpt-4o-mini',
+          messages: [
+            { 
+              role: 'system', 
+              content: `You are a professional fitness and nutrition expert. Always respond with valid JSON only, no additional text. ${language === 'fa' ? 'Generate all content in Persian (Farsi) language.' : language === 'de' ? 'Generate all content in German (Deutsch) language.' : 'Generate all content in English.'}` 
+            },
+            { role: 'user', content: prompt }
+          ],
+        }),
+      });
+    } catch (error) {
+      console.error(JSON.stringify({ 
+        tag: "openai_fetch_error", 
+        message: error?.message, 
+        name: error?.name 
+      }));
+      return new Response(JSON.stringify({ 
+        error: 'Netzwerkfehler beim AI-Dienst. Bitte Internetverbindung prüfen und erneut versuchen.',
+        code: 'network_error'
+      }), {
+        status: 500,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error('OpenAI API error:', errorText);
+      console.error(JSON.stringify({ 
+        tag: "openai_error", 
+        status: response.status,
+        statusText: response.statusText,
+        errorText 
+      }));
 
       let userMsg = 'Fehler beim Erstellen der Pläne. Bitte später erneut versuchen.';
+      let code = 'api_error';
+      let status = 500;
+
       try {
         const err = JSON.parse(errorText);
         if (err.error?.code === 'insufficient_quota') {
           userMsg = 'AI-Dienst vorübergehend nicht verfügbar (Quota überschritten). Bitte später erneut versuchen.';
+          code = 'quota_exceeded';
+        } else if (err.error?.code === 'invalid_api_key') {
+          userMsg = 'Konfiguration des AI-Dienstes ungültig. Bitte Admin kontaktieren.';
+          code = 'invalid_api_key';
+        } else if (err.error?.code === 'rate_limit_exceeded' || response.status === 429) {
+          userMsg = 'Zu viele Anfragen. Bitte kurz warten und erneut versuchen.';
+          code = 'rate_limit';
+          status = 429;
         }
       } catch (_) {}
 
-      return new Response(JSON.stringify({ error: userMsg }), {
-        status: 500,
+      return new Response(JSON.stringify({ error: userMsg, code }), {
+        status,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
@@ -241,7 +310,14 @@ IMPORTANT: ${languageInstruction} All exercise names, meal names, descriptions, 
       });
     }
 
+    console.info(JSON.stringify({
+      tag: "generate_plans_success",
+      userId,
+      ts: new Date().toISOString()
+    }));
+
     return new Response(JSON.stringify({ 
+      ok: true,
       success: true,
       workoutPlan: parsedContent.workoutPlan,
       nutritionPlan: parsedContent.nutritionPlan
@@ -250,8 +326,16 @@ IMPORTANT: ${languageInstruction} All exercise names, meal names, descriptions, 
     });
 
   } catch (error) {
-    console.error('Error in generate-plans function:', error);
-    return new Response(JSON.stringify({ error: error.message }), {
+    console.error(JSON.stringify({ 
+      tag: "generate_plans_error", 
+      message: error?.message, 
+      name: error?.name,
+      stack: error?.stack?.substring(0, 200)
+    }));
+    return new Response(JSON.stringify({ 
+      error: 'Unerwarteter Fehler beim Erstellen der Pläne. Bitte später erneut versuchen.',
+      code: 'unexpected_error'
+    }), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
