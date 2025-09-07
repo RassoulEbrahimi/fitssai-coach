@@ -171,7 +171,6 @@ IMPORTANT: ${languageInstruction} All exercise names, meal names, descriptions, 
           },
           { role: 'user', content: prompt }
         ],
-        temperature: 0.7,
       }),
     });
 

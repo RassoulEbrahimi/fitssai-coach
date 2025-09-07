@@ -538,14 +538,32 @@ const Dashboard = () => {
       if (error) throw error;
 
       if (data.success) {
-        toast.success('Plans generated successfully!');
+        toast.success('Pläne erfolgreich erstellt!');
         await fetchPlans(); // Refresh the plans
       } else {
         throw new Error(data.error || 'Failed to generate plans');
       }
     } catch (error) {
       console.error('Error generating plans:', error);
-      const errorMsg = error?.message || 'Failed to generate plans. Please try again.';
+      
+      // Extract server error message if available
+      let errorMsg = 'Fehler beim Erstellen der Pläne. Bitte später erneut versuchen.';
+      
+      if (error?.message) {
+        const serverMsg = error.message;
+        // Map common server errors to German
+        if (serverMsg.includes('insufficient_quota') || serverMsg.includes('Quota überschritten')) {
+          errorMsg = 'AI-Dienst vorübergehend nicht verfügbar (Quota überschritten). Bitte später erneut versuchen.';
+        } else if (serverMsg.includes('invalid_api_key') || serverMsg.includes('ungültig')) {
+          errorMsg = 'Konfiguration des AI-Dienstes ungültig. Bitte Admin kontaktieren.';
+        } else if (serverMsg.includes('parse') || serverMsg.includes('invalid') || serverMsg.includes('Eingabedaten')) {
+          errorMsg = 'Ungültige Eingabedaten. Bitte Profil vervollständigen und erneut versuchen.';
+        } else if (serverMsg.length > 0) {
+          // Use server message if it's already in German
+          errorMsg = serverMsg;
+        }
+      }
+      
       toast.error(errorMsg);
     } finally {
       setGeneratingPlans(false);
