@@ -1042,7 +1042,7 @@ const Dashboard = () => {
                                onValueChange={(value) => setActiveDays(new Set(value))}
                                className="space-y-3"
                              >
-                               {days.map((day: any, dayIndex: number) => {
+                               {(Array.isArray(days) ? days : []).map((day: any, dayIndex: number) => {
                                  const isCurrentDay = isTodayInWeekDay(weekKey, dayIndex);
                                  const isCompleted = isDayCompleted(weekKey, dayIndex);
                                  const dayKey = `${weekKey}-${dayIndex}`;
@@ -1258,7 +1258,7 @@ const Dashboard = () => {
                             <div key={mealType} className="space-y-3">
                               <h3 className="text-lg font-semibold capitalize text-primary">{mealType}</h3>
                               <div className="grid gap-3">
-                                {meals.map((meal: any, mealIndex: number) => (
+                                {(Array.isArray(meals) ? meals : []).map((meal: any, mealIndex: number) => (
                                   <motion.div
                                     key={mealIndex}
                                     initial={{ opacity: 0, y: 10 }}
