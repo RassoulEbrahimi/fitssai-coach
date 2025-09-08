@@ -18,6 +18,28 @@ const ok = (obj: Record<string, any> = {}) => json({ success: true, ...obj }, 20
 const fail = (message: string, code?: string, extra?: Record<string, any>) =>
   json({ success: false, error: message, code, ...(extra || {}) }, 200);
 
+function buildMockPlansDE(profile: { fitness_goal?: string; dietary_preference?: string }) {
+  const goal = profile?.fitness_goal || 'Allgemeine Fitness';
+  const diet = profile?.dietary_preference || 'Ausgewogen';
+  const workout = [
+    { tag: 'Montag',     plan: 'Ganzkörper (30–40 Min): Kniebeugen, Liegestütze, Rudern, Plank.' },
+    { tag: 'Dienstag',   plan: 'Locker joggen/Gehen (25–35 Min) + Dehnen (10 Min).' },
+    { tag: 'Mittwoch',   plan: 'Oberkörper (30–40 Min): Schulterdrücken, Rudern, Core.' },
+    { tag: 'Donnerstag', plan: 'Aktive Erholung: Spazieren (20–30 Min) + Mobility (10 Min).' },
+    { tag: 'Freitag',    plan: 'Unterkörper (30–40 Min): Ausfallschritte, Glute Bridge, Wadenheben.' },
+    { tag: 'Samstag',    plan: 'Intervall (20–25 Min) oder Radfahren (30 Min).' },
+    { tag: 'Sonntag',    plan: 'Ruhetag / Spaziergang (optional).' },
+  ];
+  const nutrition = [
+    { tag: 'Frühstück',  plan: 'Haferflocken mit Joghurt, Beeren, Nüsse.' },
+    { tag: 'Mittag',     plan: 'Hähnchen/Tofu mit Vollkornreis & Gemüse.' },
+    { tag: 'Abend',      plan: 'Lachs/Bohnen mit Ofengemüse & Salat.' },
+    { tag: 'Snack-Ideen',plan: 'Quark/Skyr, Obst, Nüsse, Karotten mit Hummus.' },
+    { hinweis: `Ziel: ${goal} | Ernährung: ${diet}` },
+  ];
+  return { workout, nutrition };
+}
+
 serve(async (req) => {
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
@@ -32,6 +54,7 @@ serve(async (req) => {
 
   try {
     const openAIApiKey = Deno.env.get('OPENAI_API_KEY');
+    const USE_MOCK_IF_OPENAI_FAILS = Deno.env.get('USE_MOCK_IF_OPENAI_FAILS') === '1';
     
     // Log function entry
     console.info(JSON.stringify({
@@ -226,12 +249,68 @@ IMPORTANT: ${languageInstruction} All exercise names, meal names, descriptions, 
       try {
         const err = JSON.parse(errorText);
         if (err.error?.code === 'insufficient_quota') {
+          if (USE_MOCK_IF_OPENAI_FAILS) {
+            const mock = buildMockPlansDE(profile);
+            // Delete existing plans for this user (to replace with new ones)
+            await sb.from('workout_plans').delete().eq('user_id', userId);
+            await sb.from('nutrition_plans').delete().eq('user_id', userId);
+            
+            // Save mock workout plan
+            const { error: workoutError } = await sb
+              .from('workout_plans')
+              .insert({
+                user_id: userId,
+                content: mock.workout
+              });
+
+            // Save mock nutrition plan  
+            const { error: nutritionError } = await sb
+              .from('nutrition_plans')
+              .insert({
+                user_id: userId,
+                content: mock.nutrition
+              });
+
+            if (workoutError || nutritionError) {
+              return fail('Speichern der Pläne ist fehlgeschlagen. Bitte später erneut versuchen.', 'DB_SAVE');
+            }
+            
+            return ok({ warning: 'mocked', source: 'fallback' });
+          }
           userMsg = 'AI-Dienst vorübergehend nicht verfügbar (Quota überschritten). Bitte später erneut versuchen.';
           code = 'quota_exceeded';
         } else if (err.error?.code === 'invalid_api_key') {
           userMsg = 'Konfiguration des AI-Dienstes ungültig. Bitte Admin kontaktieren.';
           code = 'invalid_api_key';
         } else if (err.error?.code === 'rate_limit_exceeded' || response.status === 429) {
+          if (USE_MOCK_IF_OPENAI_FAILS) {
+            const mock = buildMockPlansDE(profile);
+            // Delete existing plans for this user (to replace with new ones)
+            await sb.from('workout_plans').delete().eq('user_id', userId);
+            await sb.from('nutrition_plans').delete().eq('user_id', userId);
+            
+            // Save mock workout plan
+            const { error: workoutError } = await sb
+              .from('workout_plans')
+              .insert({
+                user_id: userId,
+                content: mock.workout
+              });
+
+            // Save mock nutrition plan  
+            const { error: nutritionError } = await sb
+              .from('nutrition_plans')
+              .insert({
+                user_id: userId,
+                content: mock.nutrition
+              });
+
+            if (workoutError || nutritionError) {
+              return fail('Speichern der Pläne ist fehlgeschlagen. Bitte später erneut versuchen.', 'DB_SAVE');
+            }
+            
+            return ok({ warning: 'mocked', source: 'fallback' });
+          }
           userMsg = 'Zu viele Anfragen. Bitte kurz warten und erneut versuchen.';
           code = 'rate_limit';
           status = 429;
@@ -249,6 +328,34 @@ IMPORTANT: ${languageInstruction} All exercise names, meal names, descriptions, 
       parsedContent = JSON.parse(generatedContent);
     } catch (parseError) {
       console.error('Failed to parse OpenAI response:', parseError);
+      if (USE_MOCK_IF_OPENAI_FAILS) {
+        const mock = buildMockPlansDE(profile);
+        // Delete existing plans for this user (to replace with new ones)
+        await sb.from('workout_plans').delete().eq('user_id', userId);
+        await sb.from('nutrition_plans').delete().eq('user_id', userId);
+        
+        // Save mock workout plan
+        const { error: workoutError } = await sb
+          .from('workout_plans')
+          .insert({
+            user_id: userId,
+            content: mock.workout
+          });
+
+        // Save mock nutrition plan  
+        const { error: nutritionError } = await sb
+          .from('nutrition_plans')
+          .insert({
+            user_id: userId,
+            content: mock.nutrition
+          });
+
+        if (workoutError || nutritionError) {
+          return fail('Speichern der Pläne ist fehlgeschlagen. Bitte später erneut versuchen.', 'DB_SAVE');
+        }
+        
+        return ok({ warning: 'mocked', source: 'fallback' });
+      }
       return fail('Antwort des KI-Dienstes war kein gültiges JSON. Bitte später erneut versuchen.', 'OPENAI_PARSE');
     }
 
