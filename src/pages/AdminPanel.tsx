@@ -98,6 +98,21 @@ const AdminPanel = () => {
     }
   }, [user]);
 
+  const invokeAdmin = async (action: 'users' | 'plans') => {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) throw new Error('Nicht angemeldet.');
+    const { data, error } = await supabase.functions.invoke('admin-fetch', {
+      body: { action },
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${session.access_token}`,
+      },
+    });
+    if (error) throw error;
+    if (!data?.success) throw new Error(data?.error || 'Fehler');
+    return data;
+  };
+
   const checkAdminStatus = async () => {
     if (!user) return;
     
@@ -120,32 +135,21 @@ const AdminPanel = () => {
 
   const fetchAllUsers = async () => {
     try {
-      // Get all profiles
-      const { data: profiles, error: profilesError } = await supabase
-        .from('profiles')
-        .select('*')
-        .order('created_at', { ascending: false });
-
-      if (profilesError) throw profilesError;
-
-      // Get all users from auth to get emails
-      const { data: authUsers, error: authError } = await supabase.auth.admin.listUsers();
-      
-      if (authError) throw authError;
-
-      // Merge profile data with email from auth
-      const usersWithEmails = profiles?.map((profile: any) => {
-        const authUser = authUsers.users.find((au: any) => au.id === profile.id);
-        return {
-          ...profile,
-          email: authUser?.email || 'N/A'
-        };
-      }) || [];
-
-      setUsers(usersWithEmails);
+      const data = await invokeAdmin('users');
+      setUsers((data.users || []).map((u: any) => ({
+        id: u.id,
+        email: u.email,
+        age: u.age,
+        weight: u.weight,
+        height: u.height,
+        fitness_goal: u.fitness_goal,
+        dietary_preference: u.dietary_preference,
+        is_admin: u.is_admin,
+        created_at: u.created_at,
+      })));
     } catch (error) {
       console.error('Error fetching users:', error);
-      toast.error('Failed to load users');
+      toast.error('Benutzer konnten nicht geladen werden');
     } finally {
       setLoadingUsers(false);
     }
@@ -175,45 +179,11 @@ const AdminPanel = () => {
 
   const fetchAllPlans = async () => {
     try {
-      // Fetch workout plans
-      const { data: workoutPlans, error: workoutError } = await supabase
-        .from('workout_plans')
-        .select('id, user_id, content, created_at')
-        .order('created_at', { ascending: false });
-
-      if (workoutError) throw workoutError;
-
-      // Fetch nutrition plans
-      const { data: nutritionPlans, error: nutritionError } = await supabase
-        .from('nutrition_plans')
-        .select('id, user_id, content, created_at')
-        .order('created_at', { ascending: false });
-
-      if (nutritionError) throw nutritionError;
-
-      // Get all users from auth to get emails
-      const { data: authUsers, error: authError } = await supabase.auth.admin.listUsers();
-      
-      if (authError) throw authError;
-
-      // Combine and format plans
-      const allPlans: Plan[] = [
-        ...(workoutPlans || []).map((plan: any) => ({
-          ...plan,
-          type: 'workout' as const,
-          user_email: authUsers.users.find((u: any) => u.id === plan.user_id)?.email || 'N/A'
-        })),
-        ...(nutritionPlans || []).map((plan: any) => ({
-          ...plan,
-          type: 'nutrition' as const,
-          user_email: authUsers.users.find((u: any) => u.id === plan.user_id)?.email || 'N/A'
-        }))
-      ].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
-
-      setPlans(allPlans);
+      const data = await invokeAdmin('plans');
+      setPlans(data.plans || []);
     } catch (error) {
       console.error('Error fetching plans:', error);
-      toast.error('Failed to load plans');
+      toast.error('Pläne konnten nicht geladen werden');
     } finally {
       setLoadingPlans(false);
     }
