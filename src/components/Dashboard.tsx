@@ -555,7 +555,15 @@ const Dashboard = () => {
         return;
       }
 
-      toast.success('Pläne erfolgreich erstellt!');
+      // If the Edge Function used the mock fallback (quota), surface an info toast
+      if (data && (data as any).warning === 'mocked') {
+        toast('Hinweis: Demo-Pläne (Fallback) wurden erstellt.', {
+          description: 'Die KI-Generierung ist derzeit nicht verfügbar.',
+          duration: 5000,
+        });
+      } else {
+        toast.success('Pläne erfolgreich erstellt!');
+      }
       await fetchPlans(); // Refresh the plans
     } catch (err: any) {
       toast.error('Fehler beim Erstellen der Pläne. Bitte später erneut versuchen.');
