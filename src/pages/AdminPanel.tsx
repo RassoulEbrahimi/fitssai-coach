@@ -100,7 +100,10 @@ const AdminPanel = () => {
 
   const invokeAdmin = async (action: 'users' | 'plans') => {
     const { data: { session } } = await supabase.auth.getSession();
-    if (!session) throw new Error('Nicht angemeldet.');
+    if (!session) {
+      toast.error('Nicht angemeldet. (AUTH)');
+      throw new Error('Nicht angemeldet.');
+    }
     const { data, error } = await supabase.functions.invoke('admin-fetch', {
       body: { action },
       headers: {
@@ -108,8 +111,14 @@ const AdminPanel = () => {
         'Authorization': `Bearer ${session.access_token}`,
       },
     });
-    if (error) throw error;
-    if (!data?.success) throw new Error(data?.error || 'Fehler');
+    if (error) {
+      toast.error(`Admin-Fehler: ${error.message} (INVOKE)`);
+      throw error;
+    }
+    if (!data?.success) {
+      toast.error(`Admin-Fehler: ${data.error}${data.code ? ` (${data.code})` : ''}`);
+      throw new Error(data.error);
+    }
     return data;
   };
 
@@ -149,7 +158,7 @@ const AdminPanel = () => {
       })));
     } catch (error) {
       console.error('Error fetching users:', error);
-      toast.error('Benutzer konnten nicht geladen werden');
+      // Error toast already handled in invokeAdmin
     } finally {
       setLoadingUsers(false);
     }
@@ -183,7 +192,7 @@ const AdminPanel = () => {
       setPlans(data.plans || []);
     } catch (error) {
       console.error('Error fetching plans:', error);
-      toast.error('Pläne konnten nicht geladen werden');
+      // Error toast already handled in invokeAdmin
     } finally {
       setLoadingPlans(false);
     }
