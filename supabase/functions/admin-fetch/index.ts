@@ -15,6 +15,16 @@ const json = (obj: any, status = 200) =>
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
+  // ✅ Health for GET
+  if (req.method === "GET") {
+    return json({ success: true, health: "ok" });
+  }
+
+  // ✅ Only POST is allowed for actions
+  if (req.method !== "POST") {
+    return json({ success: false, error: "Ungültige Methode.", code: "METHOD" });
+  }
+
   // 0) Config sanity
   if (!SUPABASE_URL || !SERVICE_ROLE_KEY) {
     return json({ success: false, error: "Server-Konfiguration fehlt (URL/SERVICE_ROLE_KEY).", code: "CONFIG" });
@@ -40,12 +50,16 @@ serve(async (req) => {
     if (profErr) return json({ success: false, error: "Profilprüfung fehlgeschlagen.", code: "DB" });
     if (!profile?.is_admin) return json({ success: false, error: "Keine Berechtigung.", code: "FORBIDDEN" });
 
-    // 4) Body parsing (robust)
+    // Parse JSON body safely and validate `action`
     let action: "users" | "plans";
     try {
       const body = await req.json();
       action = body?.action;
     } catch {
+      return json({ success: false, error: "Ungültige Anfrage: JSON erwartet.", code: "BAD_REQUEST" });
+    }
+
+    if (action !== "users" && action !== "plans") {
       return json({ success: false, error: "Ungültige Anfrage.", code: "BAD_REQUEST" });
     }
 
