@@ -50,17 +50,38 @@ serve(async (req) => {
     if (profErr) return json({ success: false, error: "Profilprüfung fehlgeschlagen.", code: "DB" });
     if (!profile?.is_admin) return json({ success: false, error: "Keine Berechtigung.", code: "FORBIDDEN" });
 
-    // Parse JSON body safely and validate `action`
-    let action: "users" | "plans";
-    try {
-      const body = await req.json();
-      action = body?.action;
-    } catch {
-      return json({ success: false, error: "Ungültige Anfrage: JSON erwartet.", code: "BAD_REQUEST" });
+    // Parse `action` tolerantly: prefer JSON body; else query param; else default
+    let action: "users" | "plans" | undefined;
+
+    // Only attempt JSON if content-type hints JSON and body likely present
+    const ct = (req.headers.get("content-type") || "").toLowerCase();
+    const cl = parseInt(req.headers.get("content-length") || "0", 10);
+
+    if (ct.includes("application/json") && cl > 0) {
+      try {
+        const body = await req.json();
+        if (body && (body.action === "users" || body.action === "plans")) {
+          action = body.action;
+        }
+      } catch {
+        // swallow: we'll try query param next
+      }
     }
 
-    if (action !== "users" && action !== "plans") {
-      return json({ success: false, error: "Ungültige Anfrage.", code: "BAD_REQUEST" });
+    // Fallback: allow `?action=users|plans`
+    if (!action) {
+      const url = new URL(req.url);
+      const q = url.searchParams.get("action");
+      if (q === "users" || q === "plans") {
+        action = q;
+      }
+    }
+
+    // Final fallback: default to 'users' to avoid noisy BAD_REQUEST toasts on accidental POSTs
+    if (!action) {
+      // optional server log for diagnostics; keep response 200 to avoid SDK generic errors
+      console.warn("[admin-fetch] Missing action; defaulting to 'users'.");
+      action = "users";
     }
 
     // 5) Actions
