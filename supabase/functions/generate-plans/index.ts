@@ -22,79 +22,104 @@ function buildMockPlansDE(profile: { fitness_goal?: string; dietary_preference?:
   const goal = profile?.fitness_goal || 'Allgemeine Fitness';
   const diet = profile?.dietary_preference || 'Ausgewogen';
   
-  // Structure to match what Dashboard expects
+  // Structure to match what Dashboard expects - each week key maps to an array of day objects
   const workout = {
-    "Week 1": [
+    "week1": [
       { 
         day: 'Montag', 
         exercises: [
-          { name: 'Kniebeugen', sets: '3', reps: '12', weight: 'Körpergewicht' },
-          { name: 'Liegestütze', sets: '3', reps: '10', weight: 'Körpergewicht' },
-          { name: 'Rudern', sets: '3', reps: '12', weight: 'Leicht' },
-          { name: 'Plank', sets: '3', reps: '30s', weight: 'Körpergewicht' }
+          { name: 'Kniebeugen', sets: '3', reps: '12', rest: '60 seconds' },
+          { name: 'Liegestütze', sets: '3', reps: '10', rest: '60 seconds' },
+          { name: 'Rudern', sets: '3', reps: '12', rest: '60 seconds' },
+          { name: 'Plank', sets: '3', reps: '30s', rest: '60 seconds' }
         ]
       },
       { 
         day: 'Dienstag', 
         exercises: [
-          { name: 'Joggen', sets: '1', reps: '25-35 Min', weight: 'Cardio' },
-          { name: 'Dehnen', sets: '1', reps: '10 Min', weight: 'Beweglichkeit' }
+          { name: 'Joggen', sets: '1', reps: '25-35 Min', rest: '0 seconds' },
+          { name: 'Dehnen', sets: '1', reps: '10 Min', rest: '0 seconds' }
         ]
       },
       { 
         day: 'Mittwoch', 
         exercises: [
-          { name: 'Schulterdrücken', sets: '3', reps: '12', weight: 'Leicht' },
-          { name: 'Rudern', sets: '3', reps: '12', weight: 'Leicht' },
-          { name: 'Core Training', sets: '3', reps: '15', weight: 'Körpergewicht' }
+          { name: 'Schulterdrücken', sets: '3', reps: '12', rest: '60 seconds' },
+          { name: 'Rudern', sets: '3', reps: '12', rest: '60 seconds' },
+          { name: 'Core Training', sets: '3', reps: '15', rest: '45 seconds' }
         ]
       },
       { 
         day: 'Donnerstag', 
         exercises: [
-          { name: 'Spazieren', sets: '1', reps: '20-30 Min', weight: 'Erholung' },
-          { name: 'Mobility', sets: '1', reps: '10 Min', weight: 'Beweglichkeit' }
+          { name: 'Spazieren', sets: '1', reps: '20-30 Min', rest: '0 seconds' },
+          { name: 'Mobility', sets: '1', reps: '10 Min', rest: '0 seconds' }
         ]
       },
       { 
         day: 'Freitag', 
         exercises: [
-          { name: 'Ausfallschritte', sets: '3', reps: '12 je Bein', weight: 'Körpergewicht' },
-          { name: 'Glute Bridge', sets: '3', reps: '15', weight: 'Körpergewicht' },
-          { name: 'Wadenheben', sets: '3', reps: '15', weight: 'Körpergewicht' }
+          { name: 'Ausfallschritte', sets: '3', reps: '12 je Bein', rest: '60 seconds' },
+          { name: 'Glute Bridge', sets: '3', reps: '15', rest: '45 seconds' },
+          { name: 'Wadenheben', sets: '3', reps: '15', rest: '45 seconds' }
         ]
       },
       { 
         day: 'Samstag', 
         exercises: [
-          { name: 'Intervall Training', sets: '1', reps: '20-25 Min', weight: 'Cardio' }
+          { name: 'Intervall Training', sets: '1', reps: '20-25 Min', rest: '0 seconds' }
         ]
       },
       { 
         day: 'Sonntag', 
-        exercises: [
-          { name: 'Ruhetag', sets: '1', reps: 'Optional: Spaziergang', weight: 'Erholung' }
-        ]
+        exercises: []
       }
+    ],
+    "week2": [
+      { day: 'Montag', exercises: [{ name: 'Kniebeugen', sets: '3', reps: '15', rest: '60 seconds' }, { name: 'Liegestütze', sets: '3', reps: '12', rest: '60 seconds' }] },
+      { day: 'Dienstag', exercises: [{ name: 'Joggen', sets: '1', reps: '30-40 Min', rest: '0 seconds' }] },
+      { day: 'Mittwoch', exercises: [{ name: 'Schulterdrücken', sets: '3', reps: '15', rest: '60 seconds' }, { name: 'Core Training', sets: '3', reps: '20', rest: '45 seconds' }] },
+      { day: 'Donnerstag', exercises: [{ name: 'Spazieren', sets: '1', reps: '25-35 Min', rest: '0 seconds' }] },
+      { day: 'Freitag', exercises: [{ name: 'Ausfallschritte', sets: '3', reps: '15 je Bein', rest: '60 seconds' }, { name: 'Glute Bridge', sets: '3', reps: '20', rest: '45 seconds' }] },
+      { day: 'Samstag', exercises: [{ name: 'Intervall Training', sets: '1', reps: '25-30 Min', rest: '0 seconds' }] },
+      { day: 'Sonntag', exercises: [] }
+    ],
+    "week3": [
+      { day: 'Montag', exercises: [{ name: 'Kniebeugen', sets: '4', reps: '12', rest: '60 seconds' }, { name: 'Liegestütze', sets: '4', reps: '10', rest: '60 seconds' }] },
+      { day: 'Dienstag', exercises: [{ name: 'Joggen', sets: '1', reps: '35-45 Min', rest: '0 seconds' }] },
+      { day: 'Mittwoch', exercises: [{ name: 'Schulterdrücken', sets: '4', reps: '12', rest: '60 seconds' }, { name: 'Core Training', sets: '4', reps: '15', rest: '45 seconds' }] },
+      { day: 'Donnerstag', exercises: [{ name: 'Spazieren', sets: '1', reps: '30-40 Min', rest: '0 seconds' }] },
+      { day: 'Freitag', exercises: [{ name: 'Ausfallschritte', sets: '4', reps: '12 je Bein', rest: '60 seconds' }, { name: 'Glute Bridge', sets: '4', reps: '15', rest: '45 seconds' }] },
+      { day: 'Samstag', exercises: [{ name: 'Intervall Training', sets: '1', reps: '30-35 Min', rest: '0 seconds' }] },
+      { day: 'Sonntag', exercises: [] }
+    ],
+    "week4": [
+      { day: 'Montag', exercises: [{ name: 'Kniebeugen', sets: '4', reps: '15', rest: '60 seconds' }, { name: 'Liegestütze', sets: '4', reps: '12', rest: '60 seconds' }] },
+      { day: 'Dienstag', exercises: [{ name: 'Joggen', sets: '1', reps: '40-50 Min', rest: '0 seconds' }] },
+      { day: 'Mittwoch', exercises: [{ name: 'Schulterdrücken', sets: '4', reps: '15', rest: '60 seconds' }, { name: 'Core Training', sets: '4', reps: '20', rest: '45 seconds' }] },
+      { day: 'Donnerstag', exercises: [{ name: 'Spazieren', sets: '1', reps: '35-45 Min', rest: '0 seconds' }] },
+      { day: 'Freitag', exercises: [{ name: 'Ausfallschritte', sets: '4', reps: '15 je Bein', rest: '60 seconds' }, { name: 'Glute Bridge', sets: '4', reps: '20', rest: '45 seconds' }] },
+      { day: 'Samstag', exercises: [{ name: 'Intervall Training', sets: '1', reps: '35-40 Min', rest: '0 seconds' }] },
+      { day: 'Sonntag', exercises: [] }
     ]
   };
 
   const nutrition = {
-    "Frühstück": [
-      { name: 'Haferflocken mit Joghurt', ingredients: 'Haferflocken, Joghurt, Beeren, Nüsse', calories: '~350 kcal' }
+    "breakfast": [
+      { meal: 'Haferflocken mit Joghurt', calories: 350, description: 'Haferflocken, Joghurt, Beeren, Nüsse' }
     ],
-    "Mittag": [
-      { name: 'Hähnchen mit Vollkornreis', ingredients: 'Hähnchen/Tofu, Vollkornreis, Gemüse', calories: '~450 kcal' }
+    "lunch": [
+      { meal: 'Hähnchen mit Vollkornreis', calories: 450, description: 'Hähnchen/Tofu, Vollkornreis, Gemüse' }
     ],
-    "Abend": [
-      { name: 'Lachs mit Ofengemüse', ingredients: 'Lachs/Bohnen, Ofengemüse, Salat', calories: '~400 kcal' }
+    "dinner": [
+      { meal: 'Lachs mit Ofengemüse', calories: 400, description: 'Lachs/Bohnen, Ofengemüse, Salat' }
     ],
-    "Snacks": [
-      { name: 'Gesunde Snacks', ingredients: 'Quark/Skyr, Obst, Nüsse, Karotten mit Hummus', calories: '~150 kcal' }
+    "snacks": [
+      { meal: 'Gesunde Snacks', calories: 150, description: 'Quark/Skyr, Obst, Nüsse, Karotten mit Hummus' }
     ]
   };
 
-  return { workout, nutrition };
+  return { workoutPlan: workout, nutritionPlan: nutrition };
 }
 
 serve(async (req) => {
@@ -315,7 +340,7 @@ IMPORTANT: ${languageInstruction} All exercise names, meal names, descriptions, 
             .from('workout_plans')
             .insert({
               user_id: userId,
-              content: mock.workout
+              content: mock.workoutPlan
             });
 
           // Save mock nutrition plan  
@@ -323,37 +348,7 @@ IMPORTANT: ${languageInstruction} All exercise names, meal names, descriptions, 
             .from('nutrition_plans')
             .insert({
               user_id: userId,
-              content: mock.nutrition
-            });
-
-          if (workoutError || nutritionError) {
-            return fail('Speichern der Pläne ist fehlgeschlagen. Bitte später erneut versuchen.', 'DB_SAVE');
-          }
-          
-          return ok({ warning: 'mocked', source: 'fallback' });
-        } else if (err.error?.code === 'invalid_api_key') {
-          userMsg = 'Konfiguration des AI-Dienstes ungültig. Bitte Admin kontaktieren.';
-          code = 'invalid_api_key';
-        } else if (err.error?.code === 'rate_limit_exceeded' || response.status === 429) {
-          const mock = buildMockPlansDE(profile);
-          // Delete existing plans for this user (to replace with new ones)
-          await sb.from('workout_plans').delete().eq('user_id', userId);
-          await sb.from('nutrition_plans').delete().eq('user_id', userId);
-          
-          // Save mock workout plan
-          const { error: workoutError } = await sb
-            .from('workout_plans')
-            .insert({
-              user_id: userId,
-              content: mock.workout
-            });
-
-          // Save mock nutrition plan  
-          const { error: nutritionError } = await sb
-            .from('nutrition_plans')
-            .insert({
-              user_id: userId,
-              content: mock.nutrition
+              content: mock.nutritionPlan
             });
 
           if (workoutError || nutritionError) {
@@ -376,32 +371,32 @@ IMPORTANT: ${languageInstruction} All exercise names, meal names, descriptions, 
     } catch (parseError) {
       console.error('Failed to parse OpenAI response:', parseError);
       if (USE_MOCK_IF_OPENAI_FAILS) {
-        const mock = buildMockPlansDE(profile);
-        // Delete existing plans for this user (to replace with new ones)
-        await sb.from('workout_plans').delete().eq('user_id', userId);
-        await sb.from('nutrition_plans').delete().eq('user_id', userId);
-        
-        // Save mock workout plan
-        const { error: workoutError } = await sb
-          .from('workout_plans')
-          .insert({
-            user_id: userId,
-            content: mock.workout
-          });
+      const mock = buildMockPlansDE(profile);
+      // Delete existing plans for this user (to replace with new ones)
+      await sb.from('workout_plans').delete().eq('user_id', userId);
+      await sb.from('nutrition_plans').delete().eq('user_id', userId);
+      
+      // Save mock workout plan
+      const { error: workoutError } = await sb
+        .from('workout_plans')
+        .insert({
+          user_id: userId,
+          content: mock.workoutPlan
+        });
 
-        // Save mock nutrition plan  
-        const { error: nutritionError } = await sb
-          .from('nutrition_plans')
-          .insert({
-            user_id: userId,
-            content: mock.nutrition
-          });
+      // Save mock nutrition plan  
+      const { error: nutritionError } = await sb
+        .from('nutrition_plans')
+        .insert({
+          user_id: userId,
+          content: mock.nutritionPlan
+        });
 
-        if (workoutError || nutritionError) {
-          return fail('Speichern der Pläne ist fehlgeschlagen. Bitte später erneut versuchen.', 'DB_SAVE');
-        }
-        
-        return ok({ warning: 'mocked', source: 'fallback' });
+      if (workoutError || nutritionError) {
+        return fail('Speichern der Pläne ist fehlgeschlagen. Bitte später erneut versuchen.', 'DB_SAVE');
+      }
+      
+      return ok({ warning: 'mocked', source: 'fallback' });
       }
       return fail('Antwort des KI-Dienstes war kein gültiges JSON. Bitte später erneut versuchen.', 'OPENAI_PARSE');
     }
