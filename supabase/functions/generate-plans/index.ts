@@ -54,7 +54,6 @@ serve(async (req) => {
 
   try {
     const openAIApiKey = Deno.env.get('OPENAI_API_KEY');
-    const USE_MOCK_IF_OPENAI_FAILS = Deno.env.get('USE_MOCK_IF_OPENAI_FAILS') === '1';
     
     // Log function entry
     console.info(JSON.stringify({
@@ -249,71 +248,62 @@ IMPORTANT: ${languageInstruction} All exercise names, meal names, descriptions, 
       try {
         const err = JSON.parse(errorText);
         if (err.error?.code === 'insufficient_quota') {
-          if (USE_MOCK_IF_OPENAI_FAILS) {
-            const mock = buildMockPlansDE(profile);
-            // Delete existing plans for this user (to replace with new ones)
-            await sb.from('workout_plans').delete().eq('user_id', userId);
-            await sb.from('nutrition_plans').delete().eq('user_id', userId);
-            
-            // Save mock workout plan
-            const { error: workoutError } = await sb
-              .from('workout_plans')
-              .insert({
-                user_id: userId,
-                content: mock.workout
-              });
+          const mock = buildMockPlansDE(profile);
+          // Delete existing plans for this user (to replace with new ones)
+          await sb.from('workout_plans').delete().eq('user_id', userId);
+          await sb.from('nutrition_plans').delete().eq('user_id', userId);
+          
+          // Save mock workout plan
+          const { error: workoutError } = await sb
+            .from('workout_plans')
+            .insert({
+              user_id: userId,
+              content: mock.workout
+            });
 
-            // Save mock nutrition plan  
-            const { error: nutritionError } = await sb
-              .from('nutrition_plans')
-              .insert({
-                user_id: userId,
-                content: mock.nutrition
-              });
+          // Save mock nutrition plan  
+          const { error: nutritionError } = await sb
+            .from('nutrition_plans')
+            .insert({
+              user_id: userId,
+              content: mock.nutrition
+            });
 
-            if (workoutError || nutritionError) {
-              return fail('Speichern der Pläne ist fehlgeschlagen. Bitte später erneut versuchen.', 'DB_SAVE');
-            }
-            
-            return ok({ warning: 'mocked', source: 'fallback' });
+          if (workoutError || nutritionError) {
+            return fail('Speichern der Pläne ist fehlgeschlagen. Bitte später erneut versuchen.', 'DB_SAVE');
           }
-          userMsg = 'AI-Dienst vorübergehend nicht verfügbar (Quota überschritten). Bitte später erneut versuchen.';
-          code = 'quota_exceeded';
+          
+          return ok({ warning: 'mocked', source: 'fallback' });
         } else if (err.error?.code === 'invalid_api_key') {
           userMsg = 'Konfiguration des AI-Dienstes ungültig. Bitte Admin kontaktieren.';
           code = 'invalid_api_key';
         } else if (err.error?.code === 'rate_limit_exceeded' || response.status === 429) {
-          if (USE_MOCK_IF_OPENAI_FAILS) {
-            const mock = buildMockPlansDE(profile);
-            // Delete existing plans for this user (to replace with new ones)
-            await sb.from('workout_plans').delete().eq('user_id', userId);
-            await sb.from('nutrition_plans').delete().eq('user_id', userId);
-            
-            // Save mock workout plan
-            const { error: workoutError } = await sb
-              .from('workout_plans')
-              .insert({
-                user_id: userId,
-                content: mock.workout
-              });
+          const mock = buildMockPlansDE(profile);
+          // Delete existing plans for this user (to replace with new ones)
+          await sb.from('workout_plans').delete().eq('user_id', userId);
+          await sb.from('nutrition_plans').delete().eq('user_id', userId);
+          
+          // Save mock workout plan
+          const { error: workoutError } = await sb
+            .from('workout_plans')
+            .insert({
+              user_id: userId,
+              content: mock.workout
+            });
 
-            // Save mock nutrition plan  
-            const { error: nutritionError } = await sb
-              .from('nutrition_plans')
-              .insert({
-                user_id: userId,
-                content: mock.nutrition
-              });
+          // Save mock nutrition plan  
+          const { error: nutritionError } = await sb
+            .from('nutrition_plans')
+            .insert({
+              user_id: userId,
+              content: mock.nutrition
+            });
 
-            if (workoutError || nutritionError) {
-              return fail('Speichern der Pläne ist fehlgeschlagen. Bitte später erneut versuchen.', 'DB_SAVE');
-            }
-            
-            return ok({ warning: 'mocked', source: 'fallback' });
+          if (workoutError || nutritionError) {
+            return fail('Speichern der Pläne ist fehlgeschlagen. Bitte später erneut versuchen.', 'DB_SAVE');
           }
-          userMsg = 'Zu viele Anfragen. Bitte kurz warten und erneut versuchen.';
-          code = 'rate_limit';
-          status = 429;
+          
+          return ok({ warning: 'mocked', source: 'fallback' });
         }
       } catch (_) {}
 
