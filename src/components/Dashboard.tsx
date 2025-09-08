@@ -28,7 +28,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
 import { ProfileCard } from "@/components/ProfileCard";
 import VideoBackground from '@/components/VideoBackground';
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { toast } from "sonner";
 import { format, addDays, isSameDay, startOfWeek, differenceInCalendarDays } from "date-fns";
 import { toZonedTime } from 'date-fns-tz';
@@ -59,6 +59,21 @@ const Dashboard = () => {
   const [activeWeek, setActiveWeek] = useState<string | null>(null);
   const [currentWeekProgress, setCurrentWeekProgress] = useState({ completed: 0, total: 0 });
   const [activeDays, setActiveDays] = useState<Set<string>>(new Set());
+
+  // Normalize plan content shapes so UI can handle array or object
+  const normalizedWorkoutContent: Record<string, any[]> = useMemo(() => {
+    const c = workoutPlan?.content as any;
+    if (!c) return {};
+    if (Array.isArray(c)) return { week1: c }; // wrap array as first week
+    return c; // already an object of weeks
+  }, [workoutPlan]);
+
+  const normalizedNutritionContent: Record<string, any[]> = useMemo(() => {
+    const c = nutritionPlan?.content as any;
+    if (!c) return {};
+    if (Array.isArray(c)) return { Empfehlungen: c }; // wrap array under a single group
+    return c; // already an object of meal groups
+  }, [nutritionPlan]);
   
   useEffect(() => {
     if (user) {
@@ -278,16 +293,16 @@ const Dashboard = () => {
 
   // Get current week based on today's date
   const getCurrentWeek = () => {
-    if (!workoutPlan || !workoutPlan.content) return null;
-    const weekKeys = Object.keys(workoutPlan.content);
+    if (!workoutPlan || !normalizedWorkoutContent) return null;
+    const weekKeys = Object.keys(normalizedWorkoutContent);
     return weekKeys[0]; // For demo purposes, return first week. In real app, calculate based on start date
   };
 
   // Get week progress for a specific week (accurate calculation)
   const getWeekProgress = (weekKey: string) => {
-    if (!workoutPlan || !workoutPlan.content) return { completed: 0, total: 0 };
+    if (!workoutPlan || !normalizedWorkoutContent) return { completed: 0, total: 0 };
     
-    const weekData = workoutPlan.content[weekKey];
+    const weekData = normalizedWorkoutContent[weekKey];
     if (!Array.isArray(weekData)) return { completed: 0, total: 0 };
     
     // Count only non-rest days as total
@@ -309,8 +324,8 @@ const Dashboard = () => {
 
   // Get today's day index for a specific week
   const getTodayDayIndex = (weekKey: string) => {
-    if (!workoutPlan || !workoutPlan.content) return -1;
-    const weekData = workoutPlan.content[weekKey];
+    if (!workoutPlan || !normalizedWorkoutContent) return -1;
+    const weekData = normalizedWorkoutContent[weekKey];
     if (!Array.isArray(weekData)) return -1;
     
     for (let dayIndex = 0; dayIndex < weekData.length; dayIndex++) {
@@ -329,7 +344,7 @@ const Dashboard = () => {
 
   // Returns the workout object for a given (weekKey, dayIndex) or null
   const getWorkoutAt = (weekKey: string, dayIndex: number) => {
-    const days = workoutPlan?.content?.[weekKey];
+    const days = normalizedWorkoutContent?.[weekKey];
     if (!days) return null;
     const day = days[dayIndex];
     if (!day || !Array.isArray(day.exercises) || day.exercises.length === 0) return null;
@@ -355,9 +370,9 @@ const Dashboard = () => {
 
   // Get ordered week keys (week1..week4)
   const getOrderedWeekKeys = () => {
-    if (!workoutPlan?.content) return [];
+    if (!normalizedWorkoutContent) return [];
     // Sort keys by their numeric index: "week1","week2",...
-    return Object.keys(workoutPlan.content)
+    return Object.keys(normalizedWorkoutContent)
       .sort((a, b) => (parseInt(a.replace(/\D/g, '')) - parseInt(b.replace(/\D/g, ''))));
   };
 
@@ -416,9 +431,9 @@ const Dashboard = () => {
 
   // Get today's workout data
   const getTodayWorkout = () => {
-    if (!workoutPlan || !workoutPlan.content) return null;
+    if (!workoutPlan || !normalizedWorkoutContent) return null;
     
-    for (const [weekKey, days] of Object.entries(workoutPlan.content)) {
+    for (const [weekKey, days] of Object.entries(normalizedWorkoutContent)) {
       const weekData = days as any[];
       // Check full week (0..6) not just weekData.length
       for (let dayIndex = 0; dayIndex < 7; dayIndex++) {
@@ -498,12 +513,12 @@ const Dashboard = () => {
     
     // Calculate total planned workout days for current week
     let totalPlannedDays = 0;
-    if (workoutPlan.content) {
-      // For demo, use first week's structure. In production, calculate based on current week
-      const firstWeek = Object.values(workoutPlan.content)[0] as any[];
-      totalPlannedDays = Array.isArray(firstWeek) 
-        ? firstWeek.filter((day: any) => day.exercises && day.exercises.length > 0).length 
-        : 0;
+    if (normalizedWorkoutContent) {
+    // For demo, use first week's structure. In production, calculate based on current week
+    const firstWeek = Object.values(normalizedWorkoutContent)[0] as any[];
+    totalPlannedDays = Array.isArray(firstWeek) 
+      ? firstWeek.filter((day: any) => day.exercises && day.exercises.length > 0).length 
+      : 0;
     }
     
     return {
@@ -1020,7 +1035,7 @@ const Dashboard = () => {
                        onValueChange={setActiveWeek}
                        className="space-y-4"
                      >
-                       {Object.entries(workoutPlan.content).map(([weekKey, days]: [string, any]) => (
+                       {Object.entries(normalizedWorkoutContent).map(([weekKey, days]: [string, any]) => (
                          <AccordionItem key={weekKey} value={weekKey} className="border border-border rounded-lg">
                            <AccordionTrigger className="px-4 py-3 hover:no-underline">
                              <div className="flex items-center justify-between w-full mr-4">
@@ -1042,7 +1057,7 @@ const Dashboard = () => {
                                onValueChange={(value) => setActiveDays(new Set(value))}
                                className="space-y-3"
                              >
-                               {days.map((day: any, dayIndex: number) => {
+                               {(Array.isArray(days) ? days : []).map((day: any, dayIndex: number) => {
                                  const isCurrentDay = isTodayInWeekDay(weekKey, dayIndex);
                                  const isCompleted = isDayCompleted(weekKey, dayIndex);
                                  const dayKey = `${weekKey}-${dayIndex}`;
@@ -1254,11 +1269,11 @@ const Dashboard = () => {
                     <CardContent>
                       {nutritionPlan ? (
                         <div className="space-y-6">
-                          {Object.entries(nutritionPlan.content).map(([mealType, meals]: [string, any]) => (
+                          {Object.entries(normalizedNutritionContent).map(([mealType, meals]: [string, any]) => (
                             <div key={mealType} className="space-y-3">
                               <h3 className="text-lg font-semibold capitalize text-primary">{mealType}</h3>
                               <div className="grid gap-3">
-                                {meals.map((meal: any, mealIndex: number) => (
+                                {(Array.isArray(meals) ? meals : []).map((meal: any, mealIndex: number) => (
                                   <motion.div
                                     key={mealIndex}
                                     initial={{ opacity: 0, y: 10 }}
