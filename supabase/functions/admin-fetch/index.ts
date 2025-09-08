@@ -62,7 +62,7 @@ serve(async (req) => {
 
       const users = (profilesData || []).map((p: any) => ({
         ...p,
-        email: authUsers.users.find((u: any) => u.id === p.id)?.email ?? "N/A",
+        email: (authUsers?.users || []).find((u: any) => u.id === p.id)?.email ?? "N/A",
       }));
       return json({ success: true, users });
     }
@@ -84,8 +84,8 @@ serve(async (req) => {
       if (aErr) return json({ success: false, error: "Pläne konnten nicht geladen werden.", code: "AUTH_ADMIN" });
 
       const plans = [
-        ...(workout || []).map((p: any) => ({ ...p, type: "workout" as const, user_email: authUsers.users.find((u: any) => u.id === p.user_id)?.email ?? "N/A" })),
-        ...(nutrition || []).map((p: any) => ({ ...p, type: "nutrition" as const, user_email: authUsers.users.find((u: any) => u.id === p.user_id)?.email ?? "N/A" })),
+        ...(workout || []).map((p: any) => ({ ...p, type: "workout" as const, user_email: (authUsers?.users || []).find((u: any) => u.id === p.user_id)?.email ?? "N/A" })),
+        ...(nutrition || []).map((p: any) => ({ ...p, type: "nutrition" as const, user_email: (authUsers?.users || []).find((u: any) => u.id === p.user_id)?.email ?? "N/A" })),
       ].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
 
       return json({ success: true, plans });
@@ -93,7 +93,7 @@ serve(async (req) => {
 
     return json({ success: false, error: "Unbekannte Aktion.", code: "BAD_REQUEST" });
   } catch (e) {
-    // Return a clear, surfaced error code
+    console.error("Admin-fetch unexpected error:", e);
     return json({ success: false, error: "Unerwarteter Fehler.", code: "ERROR" });
   }
 });
