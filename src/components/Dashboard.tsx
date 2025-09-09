@@ -32,6 +32,7 @@ import { useState, useEffect } from "react";
 import { toast } from "sonner";
 import { format, addDays, isSameDay, startOfWeek, differenceInCalendarDays } from "date-fns";
 import { toZonedTime } from 'date-fns-tz';
+import BottomNav from './BottomNav';
 import { 
   getBerlinNow, 
   getBerlinToday, 
@@ -59,6 +60,7 @@ const Dashboard = () => {
   const [activeWeek, setActiveWeek] = useState<string | null>(null);
   const [currentWeekProgress, setCurrentWeekProgress] = useState({ completed: 0, total: 0 });
   const [activeDays, setActiveDays] = useState<Set<string>>(new Set());
+  const [activeTab, setActiveTab] = useState<'workout' | 'nutrition' | 'profile'>('workout');
   
   useEffect(() => {
     if (user) {
@@ -584,7 +586,7 @@ const Dashboard = () => {
     <div className="relative min-h-screen z-20">
       <VideoBackground />
       <motion.div 
-        className="relative z-10 max-w-7xl mx-auto p-6"
+        className="relative z-10 max-w-7xl mx-auto p-6 pb-[calc(64px+env(safe-area-inset-bottom))] md:pb-6"
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.4, ease: "easeOut" }}
@@ -715,13 +717,13 @@ const Dashboard = () => {
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.4, delay: 0.3 }}
         >
-          <Tabs defaultValue="workout" className="space-y-6">
+          <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as 'workout' | 'nutrition' | 'profile')} className="space-y-6">
             <motion.div
               initial={{ opacity: 0, x: -20 }}
               animate={{ opacity: 1, x: 0 }}
               transition={{ duration: 0.3, delay: 0.4 }}
             >
-              <TabsList className="grid w-full md:w-fit grid-cols-3 md:grid-cols-3 bg-card border border-border">
+              <TabsList className="hidden md:grid w-full md:w-fit grid-cols-3 md:grid-cols-3 bg-card border border-border">
                 <TabsTrigger value="workout" className="flex items-center gap-2 transition-all duration-200 data-[state=active]:scale-105">
                   <Dumbbell className="h-4 w-4" />
                   {t('dashboard.tabs.workoutPlan')}
@@ -1337,6 +1339,19 @@ const Dashboard = () => {
           </Tabs>
         </motion.div>
       </motion.div>
+      
+      <BottomNav 
+        activeTab={activeTab} 
+        onChange={(tab) => {
+          if (tab === 'dashboard') {
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+            return;
+          }
+          if (tab === 'workout' || tab === 'nutrition' || tab === 'profile') {
+            setActiveTab(tab);
+          }
+        }} 
+      />
     </div>
   );
 };
