@@ -28,7 +28,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
 import { ProfileCard } from "@/components/ProfileCard";
 import VideoBackground from '@/components/VideoBackground';
-import { useState, useEffect, Suspense } from "react";
+import { useState, useEffect, Suspense, useRef, useCallback } from "react";
 import React from "react";
 import { toast } from "sonner";
 import { format, addDays, isSameDay, startOfWeek, differenceInCalendarDays } from "date-fns";
@@ -40,6 +40,57 @@ import { WorkoutSkeleton, NutritionSkeleton, ProfileSkeleton } from "@/component
 const WorkoutView = React.lazy(() => import('@/views/WorkoutView'));
 const NutritionView = React.lazy(() => import('@/views/NutritionView'));
 const ProfileView = React.lazy(() => import('@/views/ProfileView'));
+
+/**
+ * Hook for intersection-based prefetching of view components when BottomNav enters viewport
+ */
+const useIntersectionPrefetch = () => {
+  const [hasIntersected, setHasIntersected] = useState(false);
+  
+  const prefetchOnIntersection = useCallback(async () => {
+    if (hasIntersected) return;
+    setHasIntersected(true);
+    
+    // Prefetch most likely next tabs when BottomNav is visible
+    try {
+      await Promise.all([
+        import('@/views/WorkoutView'),
+        import('@/views/NutritionView')
+      ]);
+    } catch (error) {
+      console.warn('Failed to prefetch views on intersection:', error);
+    }
+  }, [hasIntersected]);
+  
+  return { prefetchOnIntersection, hasIntersected };
+};
+
+/**
+ * Hook for managing focus when tabs change for accessibility
+ */
+const useFocusManagement = (activeTab: string) => {
+  const viewRefs = useRef<Record<string, HTMLElement | null>>({});
+  
+  const setViewRef = useCallback((tab: string, element: HTMLElement | null) => {
+    viewRefs.current[tab] = element;
+  }, []);
+  
+  useEffect(() => {
+    // Focus the first heading of the active view for screen readers
+    const activeElement = viewRefs.current[activeTab];
+    if (activeElement) {
+      const heading = activeElement.querySelector('h1, h2, [role="heading"]') as HTMLElement;
+      if (heading) {
+        heading.tabIndex = -1;
+        heading.focus();
+        // Remove tabIndex after focus to avoid affecting tab order
+        setTimeout(() => { heading.tabIndex = 0; }, 100);
+      }
+    }
+  }, [activeTab]);
+  
+  return { setViewRef };
+};
 import { 
   getBerlinNow, 
   getBerlinToday, 
@@ -94,6 +145,11 @@ const Dashboard = () => {
 
   const initialTab = hashToTab(location.hash) ?? 'workout'; // default to workout if null
   const [activeTab, setActiveTab] = useState<'workout' | 'nutrition' | 'profile'>(initialTab);
+
+  // Performance optimization hooks
+  const { prefetchOnIntersection } = useIntersectionPrefetch();
+  const { setViewRef } = useFocusManagement(activeTab);
+  const bottomNavRef = useRef<HTMLElement>(null);
   
   useEffect(() => {
     if (user) {
@@ -103,19 +159,31 @@ const Dashboard = () => {
     }
   }, [user]);
 
+  // Focus management and intersection observer for prefetching
+  useEffect(() => {
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) {
+          prefetchOnIntersection();
+        }
+      },
+      { threshold: 0.1 }
+    );
+
+    if (bottomNavRef.current) {
+      observer.observe(bottomNavRef.current);
+    }
+
+    return () => observer.disconnect();
+  }, [prefetchOnIntersection]);
+
   // Focus management for accessibility
   useEffect(() => {
     const onHashChange = () => {
       const next = hashToTab(location.hash);
       if (next) {
         setActiveTab(next);
-        // Focus the main heading of the loaded view for accessibility
-        setTimeout(() => {
-          const heading = document.querySelector(`[data-tab="${next}"] h1, [data-tab="${next}"] h2`);
-          if (heading instanceof HTMLElement) {
-            heading.focus();
-          }
-        }, 100);
+        // Focus management is handled by useFocusManagement hook
       }
       // If null (dashboard), stay on current tab visually
     };
@@ -794,44 +862,50 @@ const Dashboard = () => {
 
           <TabsContent value="workout" className="space-y-6">
             <Suspense fallback={<WorkoutSkeleton />}>
-              <WorkoutView
-                workoutPlan={workoutPlan}
-                workoutLogs={workoutLogs}
-                completingWorkout={completingWorkout}
-                activeWeek={activeWeek}
-                currentWeekProgress={currentWeekProgress}
-                activeDays={activeDays}
-                getTodayWorkout={getTodayWorkout}
-                findNextWorkoutInCurrentWeek={findNextWorkoutInCurrentWeek}
-                findNextWorkoutAcrossWeeks={findNextWorkoutAcrossWeeks}
-                isDayCompleted={isDayCompleted}
-                isDayInFuture={isDayInFuture}
-                isTodayInWeekDay={isTodayInWeekDay}
-                getDateFor={getDateFor}
-                getWeekTitle={getWeekTitle}
-                getWeekProgress={getWeekProgress}
-                getWeeklyProgress={getWeeklyProgress}
-                toggleDayComplete={toggleDayComplete}
-                setActiveWeek={setActiveWeek}
-                setActiveDays={setActiveDays}
-                toggleDay={toggleDay}
-              />
+              <div ref={(el) => setViewRef('workout', el)}>
+                <WorkoutView
+                  workoutPlan={workoutPlan}
+                  workoutLogs={workoutLogs}
+                  completingWorkout={completingWorkout}
+                  activeWeek={activeWeek}
+                  currentWeekProgress={currentWeekProgress}
+                  activeDays={activeDays}
+                  getTodayWorkout={getTodayWorkout}
+                  findNextWorkoutInCurrentWeek={findNextWorkoutInCurrentWeek}
+                  findNextWorkoutAcrossWeeks={findNextWorkoutAcrossWeeks}
+                  isDayCompleted={isDayCompleted}
+                  isDayInFuture={isDayInFuture}
+                  isTodayInWeekDay={isTodayInWeekDay}
+                  getDateFor={getDateFor}
+                  getWeekTitle={getWeekTitle}
+                  getWeekProgress={getWeekProgress}
+                  getWeeklyProgress={getWeeklyProgress}
+                  toggleDayComplete={toggleDayComplete}
+                  setActiveWeek={setActiveWeek}
+                  setActiveDays={setActiveDays}
+                  toggleDay={toggleDay}
+                />
+              </div>
             </Suspense>
           </TabsContent>
 
           <TabsContent value="nutrition" className="space-y-6">
             <Suspense fallback={<NutritionSkeleton />}>
-              <NutritionView nutritionPlan={nutritionPlan} />
+              <div ref={(el) => setViewRef('nutrition', el)}>
+                <NutritionView nutritionPlan={nutritionPlan} />
+              </div>
             </Suspense>
           </TabsContent>
 
           <TabsContent value="profile" className="space-y-6">
             <Suspense fallback={<ProfileSkeleton />}>
-              <ProfileView 
-                profile={profile}
-                onProfileUpdate={fetchProfile}
-                workoutProgress={getWeeklyProgress()}
-              />
+              <div ref={(el) => setViewRef('profile', el)}>
+                <ProfileView 
+                  profile={profile}
+                  onProfileUpdate={fetchProfile}
+                  workoutProgress={getWeeklyProgress()}
+                />
+              </div>
             </Suspense>
           </TabsContent>
           </Tabs>
@@ -839,6 +913,7 @@ const Dashboard = () => {
       </motion.div>
       
       <BottomNav 
+        ref={bottomNavRef}
         activeTab={activeTab} 
         onChange={(tab) => {
           if (tab === 'dashboard') {

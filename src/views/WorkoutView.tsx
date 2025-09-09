@@ -76,7 +76,7 @@ const WorkoutView: React.FC<WorkoutViewProps> = React.memo(({
     >
       <Card className="gradient-card border-primary/20 hover-scale">
         <CardHeader>
-          <CardTitle className="flex items-center gap-2">
+          <CardTitle className="flex items-center gap-2" role="heading" aria-level={2}>
             <Dumbbell className="h-5 w-5 text-primary" />
             {t('dashboard.workoutPlan.title')}
           </CardTitle>

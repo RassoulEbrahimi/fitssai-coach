@@ -29,7 +29,7 @@ const NutritionView: React.FC<NutritionViewProps> = React.memo(({ nutritionPlan 
         >
           <Card className="gradient-card border-primary/20 hover-scale">
             <CardHeader>
-              <CardTitle className="flex items-center gap-2">
+              <CardTitle className="flex items-center gap-2" role="heading" aria-level={2}>
                 <Apple className="h-5 w-5 text-primary" />
                 {t('dashboard.nutritionPlan.title')}
               </CardTitle>
