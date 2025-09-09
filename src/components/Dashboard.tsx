@@ -60,7 +60,33 @@ const Dashboard = () => {
   const [activeWeek, setActiveWeek] = useState<string | null>(null);
   const [currentWeekProgress, setCurrentWeekProgress] = useState({ completed: 0, total: 0 });
   const [activeDays, setActiveDays] = useState<Set<string>>(new Set());
-  const [activeTab, setActiveTab] = useState<'workout' | 'nutrition' | 'profile'>('workout');
+
+  // Hash-based navigation helpers
+  const hashToTab = (hash: string): 'workout' | 'nutrition' | 'profile' | null => {
+    switch (hash.replace('#', '').replace('/', '')) {
+      case 'workout': return 'workout';
+      case 'nutrition': return 'nutrition';
+      case 'profile': return 'profile';
+      case '':
+      case undefined:
+      case null:
+        return null; // dashboard
+      default:
+        return null;
+    }
+  };
+
+  const setHashForTab = (tab: 'dashboard' | 'workout' | 'nutrition' | 'profile') => {
+    if (tab === 'dashboard') {
+      history.pushState(null, '', '#/');
+    } else {
+      history.pushState(null, '', `#/${tab}`);
+    }
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const initialTab = hashToTab(location.hash) ?? 'workout'; // default to workout if null
+  const [activeTab, setActiveTab] = useState<'workout' | 'nutrition' | 'profile'>(initialTab);
   
   useEffect(() => {
     if (user) {
@@ -69,6 +95,17 @@ const Dashboard = () => {
       fetchWorkoutLogs();
     }
   }, [user]);
+
+  // Subscribe to hashchange to keep state in sync
+  useEffect(() => {
+    const onHashChange = () => {
+      const next = hashToTab(location.hash);
+      if (next) setActiveTab(next);
+      // If null (dashboard), stay on current tab visually
+    };
+    window.addEventListener('hashchange', onHashChange);
+    return () => window.removeEventListener('hashchange', onHashChange);
+  }, []);
 
   const fetchProfile = async () => {
     if (!user) return;
@@ -1344,12 +1381,10 @@ const Dashboard = () => {
         activeTab={activeTab} 
         onChange={(tab) => {
           if (tab === 'dashboard') {
-            window.scrollTo({ top: 0, behavior: 'smooth' });
+            setHashForTab('dashboard');
             return;
           }
-          if (tab === 'workout' || tab === 'nutrition' || tab === 'profile') {
-            setActiveTab(tab);
-          }
+          setHashForTab(tab);
         }} 
       />
     </div>

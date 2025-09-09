@@ -21,7 +21,7 @@ export default function BottomNav({ activeTab, onChange }: BottomNavProps) {
           isActive ? 'text-primary' : 'text-muted-foreground'
         }`}
       >
-        <Icon className="h-5 w-5" />
+        <Icon aria-hidden="true" className="h-5 w-5" />
         <span className="font-medium">{label}</span>
         <span className={`h-0.5 w-8 rounded-full transition-colors ${
           isActive ? 'bg-primary' : 'bg-transparent'
