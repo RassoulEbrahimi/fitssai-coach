@@ -34,7 +34,7 @@ import { toast } from "sonner";
 import { format, addDays, isSameDay, startOfWeek, differenceInCalendarDays } from "date-fns";
 import { toZonedTime } from 'date-fns-tz';
 import BottomNav from './BottomNav';
-import { WorkoutSkeleton, NutritionSkeleton, ProfileSkeleton } from "@/components/skeletons/SectionSkeleton";
+import { default as SectionSkeleton, WorkoutSkeleton, NutritionSkeleton, ProfileSkeleton } from "@/components/skeletons/SectionSkeleton";
 
 // Lazy load view components for code splitting
 const WorkoutView = React.lazy(() => import('@/views/WorkoutView'));

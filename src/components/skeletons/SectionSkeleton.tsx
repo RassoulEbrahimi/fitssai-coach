@@ -15,6 +15,9 @@ export const SectionSkeleton = () => (
   </div>
 );
 
+// Default export for stable import path
+export default SectionSkeleton;
+
 /**
  * Optimized skeleton for workout tab - matches above-the-fold content structure
  */
