@@ -838,77 +838,104 @@ const Dashboard = () => {
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.4, delay: 0.3 }}
         >
-          <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as 'workout' | 'nutrition' | 'profile')} className="space-y-6">
+          <div className="space-y-6">
             <motion.div
               initial={{ opacity: 0, x: -20 }}
               animate={{ opacity: 1, x: 0 }}
               transition={{ duration: 0.3, delay: 0.4 }}
             >
-              <TabsList className="hidden md:grid w-full md:w-fit grid-cols-3 md:grid-cols-3 bg-card border border-border">
-                <TabsTrigger value="workout" className="flex items-center gap-2 transition-all duration-200 data-[state=active]:scale-105">
+              <div className="hidden md:grid w-full md:w-fit grid-cols-3 md:grid-cols-3 bg-card border border-border rounded-lg p-1">
+                <button
+                  onClick={() => setHashForTab('workout')}
+                  className={`flex items-center justify-center gap-2 px-4 py-2 rounded-md transition-all duration-200 ${
+                    activeTab === 'workout' 
+                      ? 'bg-primary text-primary-foreground scale-105' 
+                      : 'hover:bg-muted'
+                  }`}
+                >
                   <Dumbbell className="h-4 w-4" />
                   {t('dashboard.tabs.workoutPlan')}
-                </TabsTrigger>
-                <TabsTrigger value="nutrition" className="flex items-center gap-2 transition-all duration-200 data-[state=active]:scale-105">
+                </button>
+                <button
+                  onClick={() => setHashForTab('nutrition')}
+                  className={`flex items-center justify-center gap-2 px-4 py-2 rounded-md transition-all duration-200 ${
+                    activeTab === 'nutrition' 
+                      ? 'bg-primary text-primary-foreground scale-105' 
+                      : 'hover:bg-muted'
+                  }`}
+                >
                   <Apple className="h-4 w-4" />
                   {t('dashboard.tabs.nutritionPlan')}
-                </TabsTrigger>
-                <TabsTrigger value="profile" className="flex items-center gap-2 transition-all duration-200 data-[state=active]:scale-105">
+                </button>
+                <button
+                  onClick={() => setHashForTab('profile')}
+                  className={`flex items-center justify-center gap-2 px-4 py-2 rounded-md transition-all duration-200 ${
+                    activeTab === 'profile' 
+                      ? 'bg-primary text-primary-foreground scale-105' 
+                      : 'hover:bg-muted'
+                  }`}
+                >
                   <User className="h-4 w-4" />
                   {t('dashboard.tabs.profile')}
-                </TabsTrigger>
-              </TabsList>
+                </button>
+              </div>
             </motion.div>
 
-          <TabsContent value="workout" className="space-y-6">
-            <Suspense fallback={<WorkoutSkeleton />}>
-              <div ref={(el) => setViewRef('workout', el)}>
-                <WorkoutView
-                  workoutPlan={workoutPlan}
-                  workoutLogs={workoutLogs}
-                  completingWorkout={completingWorkout}
-                  activeWeek={activeWeek}
-                  currentWeekProgress={currentWeekProgress}
-                  activeDays={activeDays}
-                  getTodayWorkout={getTodayWorkout}
-                  findNextWorkoutInCurrentWeek={findNextWorkoutInCurrentWeek}
-                  findNextWorkoutAcrossWeeks={findNextWorkoutAcrossWeeks}
-                  isDayCompleted={isDayCompleted}
-                  isDayInFuture={isDayInFuture}
-                  isTodayInWeekDay={isTodayInWeekDay}
-                  getDateFor={getDateFor}
-                  getWeekTitle={getWeekTitle}
-                  getWeekProgress={getWeekProgress}
-                  getWeeklyProgress={getWeeklyProgress}
-                  toggleDayComplete={toggleDayComplete}
-                  setActiveWeek={setActiveWeek}
-                  setActiveDays={setActiveDays}
-                  toggleDay={toggleDay}
-                />
+            {activeTab === 'workout' && (
+              <div className="space-y-6">
+                <Suspense fallback={<WorkoutSkeleton />}>
+                  <div ref={(el) => setViewRef('workout', el)}>
+                    <WorkoutView
+                      workoutPlan={workoutPlan}
+                      workoutLogs={workoutLogs}
+                      completingWorkout={completingWorkout}
+                      activeWeek={activeWeek}
+                      currentWeekProgress={currentWeekProgress}
+                      activeDays={activeDays}
+                      getTodayWorkout={getTodayWorkout}
+                      findNextWorkoutInCurrentWeek={findNextWorkoutInCurrentWeek}
+                      findNextWorkoutAcrossWeeks={findNextWorkoutAcrossWeeks}
+                      isDayCompleted={isDayCompleted}
+                      isDayInFuture={isDayInFuture}
+                      isTodayInWeekDay={isTodayInWeekDay}
+                      getDateFor={getDateFor}
+                      getWeekTitle={getWeekTitle}
+                      getWeekProgress={getWeekProgress}
+                      getWeeklyProgress={getWeeklyProgress}
+                      toggleDayComplete={toggleDayComplete}
+                      setActiveWeek={setActiveWeek}
+                      setActiveDays={setActiveDays}
+                      toggleDay={toggleDay}
+                    />
+                  </div>
+                </Suspense>
               </div>
-            </Suspense>
-          </TabsContent>
+            )}
 
-          <TabsContent value="nutrition" className="space-y-6">
-            <Suspense fallback={<NutritionSkeleton />}>
-              <div ref={(el) => setViewRef('nutrition', el)}>
-                <NutritionView nutritionPlan={nutritionPlan} />
+            {activeTab === 'nutrition' && (
+              <div className="space-y-6">
+                <Suspense fallback={<NutritionSkeleton />}>
+                  <div ref={(el) => setViewRef('nutrition', el)}>
+                    <NutritionView nutritionPlan={nutritionPlan} />
+                  </div>
+                </Suspense>
               </div>
-            </Suspense>
-          </TabsContent>
+            )}
 
-          <TabsContent value="profile" className="space-y-6">
-            <Suspense fallback={<ProfileSkeleton />}>
-              <div ref={(el) => setViewRef('profile', el)}>
-                <ProfileView 
-                  profile={profile}
-                  onProfileUpdate={fetchProfile}
-                  workoutProgress={getWeeklyProgress()}
-                />
+            {activeTab === 'profile' && (
+              <div className="space-y-6">
+                <Suspense fallback={<ProfileSkeleton />}>
+                  <div ref={(el) => setViewRef('profile', el)}>
+                    <ProfileView 
+                      profile={profile}
+                      onProfileUpdate={fetchProfile}
+                      workoutProgress={getWeeklyProgress()}
+                    />
+                  </div>
+                </Suspense>
               </div>
-            </Suspense>
-          </TabsContent>
-          </Tabs>
+            )}
+          </div>
         </motion.div>
       </motion.div>
       
