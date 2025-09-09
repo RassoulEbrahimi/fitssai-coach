@@ -59,7 +59,8 @@ export default forwardRef<HTMLElement, BottomNavProps>(function BottomNav({ acti
   }, [prefetchView, touchStarted]);
 
   const Item = ({ id, label, Icon }: { id: Tab; label: string; Icon: any }) => {
-    const isActive = (id !== 'dashboard' ? activeTab === id : false);
+    // Dashboard shows as active when on workout tab (default landing view)
+    const isActive = id === 'dashboard' ? activeTab === 'workout' : activeTab === id;
     
     return (
       <button

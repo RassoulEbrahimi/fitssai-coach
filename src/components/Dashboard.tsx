@@ -945,10 +945,12 @@ const Dashboard = () => {
         onChange={(tab) => {
           if (tab === 'dashboard') {
             setHashForTab('dashboard');
+            // Stay on current tab visually when user taps Dashboard
             return;
           }
           setHashForTab(tab);
-        }} 
+          setActiveTab(tab);  // Immediately update state for instant UI response
+        }}
       />
     </div>
   );
