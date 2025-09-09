@@ -121,17 +121,12 @@ const Dashboard = () => {
 
   // Hash-based navigation helpers
   const hashToTab = (hash: string): 'workout' | 'nutrition' | 'profile' | null => {
-    switch (hash.replace('#', '').replace('/', '')) {
-      case 'workout': return 'workout';
-      case 'nutrition': return 'nutrition';
-      case 'profile': return 'profile';
-      case '':
-      case undefined:
-      case null:
-        return null; // dashboard
-      default:
-        return null;
-    }
+    const clean = (hash || '').replace(/^#\/?/, '').toLowerCase();
+    if (clean === '' || clean === 'dashboard' || clean === '/') return 'workout';
+    if (clean === 'workout') return 'workout';
+    if (clean === 'nutrition') return 'nutrition';
+    if (clean === 'profile') return 'profile';
+    return null; // unknown → caller will fallback to 'workout'
   };
 
   const setHashForTab = (tab: 'dashboard' | 'workout' | 'nutrition' | 'profile') => {
@@ -180,12 +175,8 @@ const Dashboard = () => {
   // Focus management for accessibility
   useEffect(() => {
     const onHashChange = () => {
-      const next = hashToTab(location.hash);
-      if (next) {
-        setActiveTab(next);
-        // Focus management is handled by useFocusManagement hook
-      }
-      // If null (dashboard), stay on current tab visually
+      const next = hashToTab(location.hash) ?? 'workout';
+      setActiveTab(next);
     };
     window.addEventListener('hashchange', onHashChange);
     return () => window.removeEventListener('hashchange', onHashChange);
@@ -945,7 +936,7 @@ const Dashboard = () => {
         onChange={(tab) => {
           if (tab === 'dashboard') {
             setHashForTab('dashboard');
-            // Stay on current tab visually when user taps Dashboard
+            setActiveTab('workout'); // dashboard defaults to workout view visually
             return;
           }
           setHashForTab(tab);
