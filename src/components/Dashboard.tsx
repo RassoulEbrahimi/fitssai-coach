@@ -28,11 +28,18 @@ import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
 import { ProfileCard } from "@/components/ProfileCard";
 import VideoBackground from '@/components/VideoBackground';
-import { useState, useEffect } from "react";
+import { useState, useEffect, Suspense } from "react";
+import React from "react";
 import { toast } from "sonner";
 import { format, addDays, isSameDay, startOfWeek, differenceInCalendarDays } from "date-fns";
 import { toZonedTime } from 'date-fns-tz';
 import BottomNav from './BottomNav';
+import { WorkoutSkeleton, NutritionSkeleton, ProfileSkeleton } from "@/components/skeletons/SectionSkeleton";
+
+// Lazy load view components for code splitting
+const WorkoutView = React.lazy(() => import('@/views/WorkoutView'));
+const NutritionView = React.lazy(() => import('@/views/NutritionView'));
+const ProfileView = React.lazy(() => import('@/views/ProfileView'));
 import { 
   getBerlinNow, 
   getBerlinToday, 
@@ -96,11 +103,20 @@ const Dashboard = () => {
     }
   }, [user]);
 
-  // Subscribe to hashchange to keep state in sync
+  // Focus management for accessibility
   useEffect(() => {
     const onHashChange = () => {
       const next = hashToTab(location.hash);
-      if (next) setActiveTab(next);
+      if (next) {
+        setActiveTab(next);
+        // Focus the main heading of the loaded view for accessibility
+        setTimeout(() => {
+          const heading = document.querySelector(`[data-tab="${next}"] h1, [data-tab="${next}"] h2`);
+          if (heading instanceof HTMLElement) {
+            heading.focus();
+          }
+        }, 100);
+      }
       // If null (dashboard), stay on current tab visually
     };
     window.addEventListener('hashchange', onHashChange);
@@ -777,6 +793,31 @@ const Dashboard = () => {
             </motion.div>
 
           <TabsContent value="workout" className="space-y-6">
+            <Suspense fallback={<WorkoutSkeleton />}>
+              <WorkoutView
+                workoutPlan={workoutPlan}
+                workoutLogs={workoutLogs}
+                completingWorkout={completingWorkout}
+                activeWeek={activeWeek}
+                currentWeekProgress={currentWeekProgress}
+                activeDays={activeDays}
+                getTodayWorkout={getTodayWorkout}
+                findNextWorkoutInCurrentWeek={findNextWorkoutInCurrentWeek}
+                findNextWorkoutAcrossWeeks={findNextWorkoutAcrossWeeks}
+                isDayCompleted={isDayCompleted}
+                isDayInFuture={isDayInFuture}
+                isTodayInWeekDay={isTodayInWeekDay}
+                getDateFor={getDateFor}
+                getWeekTitle={getWeekTitle}
+                getWeekProgress={getWeekProgress}
+                getWeeklyProgress={getWeeklyProgress}
+                toggleDayComplete={toggleDayComplete}
+                setActiveWeek={setActiveWeek}
+                setActiveDays={setActiveDays}
+                toggleDay={toggleDay}
+              />
+            </Suspense>
+          </TabsContent>
             <AnimatePresence mode="wait">
               <motion.div
                 key="workout-content"
@@ -1277,101 +1318,19 @@ const Dashboard = () => {
           </TabsContent>
 
           <TabsContent value="nutrition" className="space-y-6">
-            <AnimatePresence mode="wait">
-              <motion.div
-                key="nutrition-content"
-                initial={{ opacity: 0, x: 20 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: -20 }}
-                transition={{ duration: 0.3 }}
-              >
-                <motion.div
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ duration: 0.4 }}
-                  whileHover={{ scale: 1.01, boxShadow: "0 10px 25px -3px rgba(0, 0, 0, 0.1)" }}
-                >
-                  <Card className="gradient-card border-primary/20 hover-scale">
-                    <CardHeader>
-                      <CardTitle className="flex items-center gap-2">
-                        <Apple className="h-5 w-5 text-primary" />
-                        {t('dashboard.nutritionPlan.title')}
-                      </CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      {nutritionPlan ? (
-                        <div className="space-y-6">
-                          {Object.entries(nutritionPlan.content).map(([mealType, meals]: [string, any]) => (
-                            <div key={mealType} className="space-y-3">
-                              <h3 className="text-lg font-semibold capitalize text-primary">{mealType}</h3>
-                              <div className="grid gap-3">
-                                {(Array.isArray(meals) ? meals : []).map((meal: any, mealIndex: number) => (
-                                  <motion.div
-                                    key={mealIndex}
-                                    initial={{ opacity: 0, y: 10 }}
-                                    animate={{ opacity: 1, y: 0 }}
-                                    transition={{ duration: 0.3, delay: mealIndex * 0.1 }}
-                                    whileHover={{ scale: 1.02, y: -2 }}
-                                  >
-                                    <Card className="border-primary/10 hover-scale">
-                                      <CardContent className="p-4">
-                                        <div className="flex justify-between items-start">
-                                          <div className="flex-1">
-                                            <h4 className="font-medium">{meal.meal}</h4>
-                                            <p className="text-sm text-muted-foreground mt-1">{meal.description}</p>
-                                          </div>
-                                          <motion.div
-                                            whileHover={{ scale: 1.1 }}
-                                            transition={{ duration: 0.2 }}
-                                          >
-                                            <Badge variant="secondary" className="ml-3">
-                                              {meal.calories} cal
-                                            </Badge>
-                                          </motion.div>
-                                        </div>
-                                      </CardContent>
-                                    </Card>
-                                  </motion.div>
-                                ))}
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      ) : (
-                        <motion.div 
-                          className="text-center py-8"
-                          initial={{ opacity: 0 }}
-                          animate={{ opacity: 1 }}
-                          transition={{ duration: 0.3 }}
-                        >
-                          <p className="text-muted-foreground">
-                            No nutrition plan generated yet. Click "Generate Plans" to create your personalized plan.
-                          </p>
-                        </motion.div>
-                      )}
-                    </CardContent>
-                  </Card>
-                </motion.div>
-              </motion.div>
-            </AnimatePresence>
+            <Suspense fallback={<NutritionSkeleton />}>
+              <NutritionView nutritionPlan={nutritionPlan} />
+            </Suspense>
           </TabsContent>
 
           <TabsContent value="profile" className="space-y-6">
-            <AnimatePresence mode="wait">
-              <motion.div
-                key="profile-content"
-                initial={{ opacity: 0, x: 20 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: -20 }}
-                transition={{ duration: 0.3 }}
-              >
-                <ProfileCard 
-                  profile={profile}
-                  onProfileUpdate={fetchProfile}
-                  workoutProgress={getWeeklyProgress()}
-                />
-              </motion.div>
-            </AnimatePresence>
+            <Suspense fallback={<ProfileSkeleton />}>
+              <ProfileView 
+                profile={profile}
+                onProfileUpdate={fetchProfile}
+                workoutProgress={getWeeklyProgress()}
+              />
+            </Suspense>
           </TabsContent>
           </Tabs>
         </motion.div>
