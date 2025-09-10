@@ -4,7 +4,7 @@ import { useState, useCallback, forwardRef } from 'react';
 type Tab = 'workout' | 'nutrition' | 'profile' | 'dashboard';
 
 interface BottomNavProps {
-  activeTab: 'workout' | 'nutrition' | 'profile';
+  activeTab: 'dashboard' | 'workout' | 'nutrition' | 'profile';
   onChange: (tab: Tab) => void;
 }
 
@@ -59,8 +59,7 @@ export default forwardRef<HTMLElement, BottomNavProps>(function BottomNav({ acti
   }, [prefetchView, touchStarted]);
 
   const Item = ({ id, label, Icon }: { id: Tab; label: string; Icon: any }) => {
-    // Dashboard shows as active when on workout tab (default landing view)
-    const isActive = id === 'dashboard' ? activeTab === 'workout' : activeTab === id;
+    const isActive = activeTab === id;
     
     return (
       <button
