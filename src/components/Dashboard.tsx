@@ -35,13 +35,13 @@ import { format, addDays, isSameDay, startOfWeek, differenceInCalendarDays } fro
 import { toZonedTime } from 'date-fns-tz';
 import BottomNav from './BottomNav';
 import { default as SectionSkeleton, WorkoutSkeleton, NutritionSkeleton, ProfileSkeleton } from "@/components/skeletons/SectionSkeleton";
+import HomeSkeleton from "@/components/skeletons/HomeSkeleton";
 
 // Lazy load view components for code splitting
+const HomeView = React.lazy(() => import('@/views/HomeView'));
 const WorkoutView = React.lazy(() => import('@/views/WorkoutView'));
 const NutritionView = React.lazy(() => import('@/views/NutritionView'));
 const ProfileView = React.lazy(() => import('@/views/ProfileView'));
-// HomeView doesn't need lazy loading as it's the default landing view
-import HomeView from '@/views/HomeView';
 
 /**
  * Hook for intersection-based prefetching of view components when BottomNav enters viewport
@@ -750,13 +750,17 @@ const Dashboard = () => {
         >
           <div className="space-y-6">
             {activeTab === 'dashboard' && (
-              <div ref={(el) => setViewRef('dashboard', el)}>
-                <HomeView
-                  generatingPlans={generatingPlans}
-                  workoutPlan={workoutPlan}
-                  nutritionPlan={nutritionPlan}
-                  onGeneratePlans={generatePlans}
-                />
+              <div className="space-y-6">
+                <Suspense fallback={<HomeSkeleton />}>
+                  <div ref={(el) => setViewRef('dashboard', el)}>
+                    <HomeView
+                      generatingPlans={generatingPlans}
+                      workoutPlan={workoutPlan}
+                      nutritionPlan={nutritionPlan}
+                      onGeneratePlans={generatePlans}
+                    />
+                  </div>
+                </Suspense>
               </div>
             )}
 

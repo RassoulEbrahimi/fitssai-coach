@@ -4,6 +4,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { RefreshCw, Flame, Target, TrendingUp, Clock } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import HomeSkeleton from "@/components/skeletons/HomeSkeleton";
 
 interface HomeViewProps {
   generatingPlans: boolean;
@@ -19,6 +20,11 @@ const HomeView: React.FC<HomeViewProps> = ({
   onGeneratePlans
 }) => {
   const { t } = useTranslation();
+
+  // Show skeleton when initially loading or generating plans
+  if (generatingPlans && !workoutPlan && !nutritionPlan) {
+    return <HomeSkeleton />;
+  }
 
   return (
     <div className="space-y-8">
