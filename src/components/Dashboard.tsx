@@ -22,7 +22,7 @@ import {
   ChevronDown,
   Lock
 } from "lucide-react";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 import { useTranslation } from "react-i18next";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
@@ -157,6 +157,10 @@ const Dashboard = () => {
   const { setViewRef } = useFocusManagement(activeTab);
   const bottomNavRef = useRef<HTMLElement>(null);
   
+  // Animation state for mobile tab switching
+  const prefersReducedMotion = useReducedMotion();
+  const [direction, setDirection] = useState<1 | -1>(1); // 1 = forward (slide left), -1 = backward (slide right)
+  
   useEffect(() => {
     if (user) {
       fetchProfile();
@@ -190,6 +194,14 @@ const Dashboard = () => {
     // Store previous tab's scroll position
     if (prevTab !== activeTab) {
       scrollPosRef.current[prevTab] = window.scrollY;
+    }
+    
+    // Update slide direction based on tab order
+    const order = ['dashboard', 'workout', 'nutrition', 'profile'] as const;
+    const prev = previousTabRef.current as typeof order[number];
+    const next = activeTab as typeof order[number];
+    if (prev !== next) {
+      setDirection(order.indexOf(next) > order.indexOf(prev) ? 1 : -1);
     }
     
     // Update document title based on active tab
@@ -749,75 +761,104 @@ const Dashboard = () => {
           transition={{ duration: 0.4, delay: 0.3 }}
         >
           <div className="space-y-6">
-            {activeTab === 'dashboard' && (
-              <div className="space-y-6">
-                <Suspense fallback={<HomeSkeleton />}>
-                  <div ref={(el) => setViewRef('dashboard', el)}>
-                    <HomeView
-                      generatingPlans={generatingPlans}
-                      workoutPlan={workoutPlan}
-                      nutritionPlan={nutritionPlan}
-                      onGeneratePlans={generatePlans}
-                    />
-                  </div>
-                </Suspense>
-              </div>
-            )}
+            {/* View stack: one child mounted at a time with slide animations */}
+            <div className="relative">
+              <AnimatePresence mode="popLayout" initial={false} custom={direction}>
+                <motion.div
+                  key={activeTab}
+                  custom={direction}
+                  initial="enter"
+                  animate="center"
+                  exit="exit"
+                  variants={{
+                    enter: (dir: 1 | -1) => ({ 
+                      x: prefersReducedMotion ? 0 : dir * 40, 
+                      opacity: prefersReducedMotion ? 1 : 0 
+                    }),
+                    center: { x: 0, opacity: 1 },
+                    exit: (dir: 1 | -1) => ({ 
+                      x: prefersReducedMotion ? 0 : dir * -40, 
+                      opacity: prefersReducedMotion ? 1 : 0 
+                    })
+                  }}
+                  transition={{ 
+                    type: 'tween', 
+                    duration: prefersReducedMotion ? 0 : 0.18, 
+                    ease: 'easeOut' 
+                  }}
+                >
+                  {activeTab === 'dashboard' && (
+                    <div className="space-y-6">
+                      <Suspense fallback={<HomeSkeleton />}>
+                        <div ref={(el) => setViewRef('dashboard', el)}>
+                          <HomeView
+                            generatingPlans={generatingPlans}
+                            workoutPlan={workoutPlan}
+                            nutritionPlan={nutritionPlan}
+                            onGeneratePlans={generatePlans}
+                          />
+                        </div>
+                      </Suspense>
+                    </div>
+                  )}
 
-            {activeTab === 'workout' && (
-              <div className="space-y-6">
-                <Suspense fallback={<WorkoutSkeleton />}>
-                  <div ref={(el) => setViewRef('workout', el)}>
-                    <WorkoutView
-                      workoutPlan={workoutPlan}
-                      workoutLogs={workoutLogs}
-                      completingWorkout={completingWorkout}
-                      activeWeek={activeWeek}
-                      currentWeekProgress={currentWeekProgress}
-                      activeDays={activeDays}
-                      getTodayWorkout={getTodayWorkout}
-                      findNextWorkoutInCurrentWeek={findNextWorkoutInCurrentWeek}
-                      findNextWorkoutAcrossWeeks={findNextWorkoutAcrossWeeks}
-                      isDayCompleted={isDayCompleted}
-                      isDayInFuture={isDayInFuture}
-                      isTodayInWeekDay={isTodayInWeekDay}
-                      getDateFor={getDateFor}
-                      getWeekTitle={getWeekTitle}
-                      getWeekProgress={getWeekProgress}
-                      getWeeklyProgress={getWeeklyProgress}
-                      toggleDayComplete={toggleDayComplete}
-                      setActiveWeek={setActiveWeek}
-                      setActiveDays={setActiveDays}
-                      toggleDay={toggleDay}
-                    />
-                  </div>
-                </Suspense>
-              </div>
-            )}
+                  {activeTab === 'workout' && (
+                    <div className="space-y-6">
+                      <Suspense fallback={<WorkoutSkeleton />}>
+                        <div ref={(el) => setViewRef('workout', el)}>
+                          <WorkoutView
+                            workoutPlan={workoutPlan}
+                            workoutLogs={workoutLogs}
+                            completingWorkout={completingWorkout}
+                            activeWeek={activeWeek}
+                            currentWeekProgress={currentWeekProgress}
+                            activeDays={activeDays}
+                            getTodayWorkout={getTodayWorkout}
+                            findNextWorkoutInCurrentWeek={findNextWorkoutInCurrentWeek}
+                            findNextWorkoutAcrossWeeks={findNextWorkoutAcrossWeeks}
+                            isDayCompleted={isDayCompleted}
+                            isDayInFuture={isDayInFuture}
+                            isTodayInWeekDay={isTodayInWeekDay}
+                            getDateFor={getDateFor}
+                            getWeekTitle={getWeekTitle}
+                            getWeekProgress={getWeekProgress}
+                            getWeeklyProgress={getWeeklyProgress}
+                            toggleDayComplete={toggleDayComplete}
+                            setActiveWeek={setActiveWeek}
+                            setActiveDays={setActiveDays}
+                            toggleDay={toggleDay}
+                          />
+                        </div>
+                      </Suspense>
+                    </div>
+                  )}
 
-            {activeTab === 'nutrition' && (
-              <div className="space-y-6">
-                <Suspense fallback={<NutritionSkeleton />}>
-                  <div ref={(el) => setViewRef('nutrition', el)}>
-                    <NutritionView nutritionPlan={nutritionPlan} />
-                  </div>
-                </Suspense>
-              </div>
-            )}
+                  {activeTab === 'nutrition' && (
+                    <div className="space-y-6">
+                      <Suspense fallback={<NutritionSkeleton />}>
+                        <div ref={(el) => setViewRef('nutrition', el)}>
+                          <NutritionView nutritionPlan={nutritionPlan} />
+                        </div>
+                      </Suspense>
+                    </div>
+                  )}
 
-            {activeTab === 'profile' && (
-              <div className="space-y-6">
-                <Suspense fallback={<ProfileSkeleton />}>
-                  <div ref={(el) => setViewRef('profile', el)}>
-                    <ProfileView 
-                      profile={profile}
-                      onProfileUpdate={fetchProfile}
-                      workoutProgress={getWeeklyProgress()}
-                    />
-                  </div>
-                </Suspense>
-              </div>
-            )}
+                  {activeTab === 'profile' && (
+                    <div className="space-y-6">
+                      <Suspense fallback={<ProfileSkeleton />}>
+                        <div ref={(el) => setViewRef('profile', el)}>
+                          <ProfileView 
+                            profile={profile}
+                            onProfileUpdate={fetchProfile}
+                            workoutProgress={getWeeklyProgress()}
+                          />
+                        </div>
+                      </Suspense>
+                    </div>
+                  )}
+                </motion.div>
+              </AnimatePresence>
+            </div>
           </div>
         </motion.div>
       </motion.div>
