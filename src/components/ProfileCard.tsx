@@ -8,6 +8,8 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Progress } from "@/components/ui/progress";
+import { Separator } from "@/components/ui/separator";
+import ThemeToggle from "@/components/ThemeToggle";
 import { 
   User, 
   Edit, 
@@ -431,6 +433,36 @@ export const ProfileCard = ({ profile, onProfileUpdate, workoutProgress }: Profi
               </span>
             </div>
             <Progress value={progressPercentage} className="h-2" />
+          </motion.div>
+
+          {/* Settings Section */}
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ duration: 0.5, delay: 0.8 }}
+            className="mt-6"
+          >
+            <Separator className="mb-4" />
+            <div className="space-y-4">
+              <h2 id="settings-heading" className="text-lg font-semibold text-foreground">
+                Einstellungen
+              </h2>
+              <div 
+                className="flex items-center justify-between min-h-[56px] p-4 rounded-lg bg-card border border-border/50 hover:border-primary/50 transition-colors"
+                role="region"
+                aria-labelledby="settings-heading"
+              >
+                <div className="flex-1">
+                  <h3 className="text-sm font-medium text-foreground">
+                    Erscheinungsbild
+                  </h3>
+                  <p className="text-xs text-muted-foreground">
+                    Helles/Dunkles Design
+                  </p>
+                </div>
+                <ThemeToggle aria-label="Theme wechseln" />
+              </div>
+            </div>
           </motion.div>
         </CardContent>
       </Card>
