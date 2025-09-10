@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -18,7 +18,8 @@ import {
   Weight as WeightIcon,
   Ruler,
   Target,
-  Upload
+  Upload,
+  Shield
 } from "lucide-react";
 import { motion } from "framer-motion";
 import { useTranslation } from "react-i18next";
@@ -53,6 +54,7 @@ export const ProfileCard = ({ profile, onProfileUpdate, workoutProgress }: Profi
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [avatarCacheBuster, setAvatarCacheBuster] = useState<string>('');
+  const [isAdmin, setIsAdmin] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const progressPercentage = workoutProgress.total > 0 
@@ -72,6 +74,32 @@ export const ProfileCard = ({ profile, onProfileUpdate, workoutProgress }: Profi
       dietary_preference: profile?.dietary_preference || 'noPreference'
     }
   });
+
+  // Check admin status
+  const checkAdminStatus = async () => {
+    if (!user) return;
+    
+    try {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('is_admin')
+        .eq('id', user.id)
+        .single();
+      
+      if (error) throw error;
+      setIsAdmin(data?.is_admin || false);
+    } catch (error) {
+      console.error('Error checking admin status:', error);
+      setIsAdmin(false);
+    }
+  };
+
+  // Effect to check admin status
+  useEffect(() => {
+    if (user) {
+      checkAdminStatus();
+    }
+  }, [user]);
 
   const onSubmit = async (values: z.infer<typeof profileFormSchema>) => {
     if (!user) return;
@@ -462,6 +490,28 @@ export const ProfileCard = ({ profile, onProfileUpdate, workoutProgress }: Profi
                 </div>
                 <ThemeToggle aria-label="Theme wechseln" />
               </div>
+              
+              {isAdmin && (
+                <div 
+                  className="flex items-center justify-between min-h-[56px] p-4 rounded-lg bg-card border border-border/50 hover:border-primary/50 transition-colors"
+                >
+                  <div className="flex-1">
+                    <h3 className="text-sm font-medium text-foreground">
+                      Adminbereich
+                    </h3>
+                    <p className="text-xs text-muted-foreground">
+                      Erweiterte Verwaltungsoptionen
+                    </p>
+                  </div>
+                  <a 
+                    href="/admin"
+                    className="p-2 rounded-md hover:bg-accent transition-colors"
+                    aria-label="Adminbereich öffnen"
+                  >
+                    <Shield className="h-4 w-4 text-foreground" />
+                  </a>
+                </div>
+              )}
             </div>
           </motion.div>
         </CardContent>

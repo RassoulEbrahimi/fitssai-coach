@@ -9,13 +9,14 @@ import {
   Menu, 
   X, 
   Home, 
-  User, 
+  User2, 
   LogIn, 
   UserPlus, 
   LayoutDashboard,
   LogOut,
   Shield,
-  Dumbbell
+  Dumbbell,
+  Utensils
 } from 'lucide-react';
 import LanguageSwitcher from './LanguageSwitcher';
 import ThemeToggle from './ThemeToggle';
@@ -90,43 +91,39 @@ const Navbar = () => {
           {user ? (
             <>
               <motion.div whileHover={{ y: -2 }} transition={{ duration: 0.2 }}>
-                <Link 
-                  to="/" 
-                  className="text-foreground hover:text-primary transition-colors relative story-link"
-                >
-                  <Home className="h-4 w-4 inline mr-2" />
-                  {t('navbar.home')}
-                </Link>
-              </motion.div>
-              <motion.div whileHover={{ y: -2 }} transition={{ duration: 0.2 }}>
                 <Link
                   to="/dashboard"
                   className="text-foreground hover:text-primary transition-colors relative story-link"
                 >
-                  <LayoutDashboard className="h-4 w-4 inline mr-2" />
-                  {t('navbar.dashboard')}
+                  <Home className="h-4 w-4 inline mr-2" />
+                  Dashboard
                 </Link>
               </motion.div>
-
-              {isAdmin && (
-                <motion.div whileHover={{ y: -2 }} transition={{ duration: 0.2 }}>
-                  <Link
-                    to="/admin"
-                     className="text-foreground hover:text-primary transition-colors relative story-link"
-                   >
-                     <Shield className="h-4 w-4 inline mr-2" />
-                     Adminbereich
-                   </Link>
-                </motion.div>
-              )}
-
+              <motion.div whileHover={{ y: -2 }} transition={{ duration: 0.2 }}>
+                <Link
+                  to="/dashboard#workout"
+                  className="text-foreground hover:text-primary transition-colors relative story-link"
+                >
+                  <Dumbbell className="h-4 w-4 inline mr-2" />
+                  Trainingsplan
+                </Link>
+              </motion.div>
+              <motion.div whileHover={{ y: -2 }} transition={{ duration: 0.2 }}>
+                <Link
+                  to="/dashboard#nutrition"
+                  className="text-foreground hover:text-primary transition-colors relative story-link"
+                >
+                  <Utensils className="h-4 w-4 inline mr-2" />
+                  Ernährungsplan
+                </Link>
+              </motion.div>
               <motion.div whileHover={{ y: -2 }} transition={{ duration: 0.2 }}>
                 <Link
                   to="/dashboard#profile"
                   className="text-foreground hover:text-primary transition-colors relative story-link"
                 >
-                  <User className="h-4 w-4 inline mr-2" />
-                  {t('navbar.profile')}
+                  <User2 className="h-4 w-4 inline mr-2" />
+                  Profil
                 </Link>
               </motion.div>
             </>
@@ -251,23 +248,12 @@ const Navbar = () => {
                   {t('navbar.dashboard')}
                 </Link>
 
-                {isAdmin && (
-                  <Link
-                    to="/admin"
-                    className="flex items-center gap-2 text-foreground hover:text-primary transition-colors"
-                     onClick={() => setIsOpen(false)}
-                   >
-                     <Shield className="h-4 w-4" />
-                     Adminbereich
-                   </Link>
-                )}
-
                 <Link
                   to="/dashboard#profile"
                   className="flex items-center gap-2 text-foreground hover:text-primary transition-colors"
                   onClick={() => setIsOpen(false)}
                 >
-                  <User className="h-4 w-4" />
+                  <User2 className="h-4 w-4" />
                   {t('navbar.profile')}
                 </Link>
 
