@@ -161,6 +161,12 @@ const Dashboard = () => {
   const prefersReducedMotion = useReducedMotion();
   const [direction, setDirection] = useState<1 | -1>(1); // 1 = forward (slide left), -1 = backward (slide right)
   
+  // Mobile detection for constraining animations to mobile only
+  const isMobile = (() => {
+    if (typeof window === 'undefined') return true;
+    return window.matchMedia('(max-width: 767px)').matches;
+  })();
+  
   useEffect(() => {
     if (user) {
       fetchProfile();
@@ -772,18 +778,18 @@ const Dashboard = () => {
                   exit="exit"
                   variants={{
                     enter: (dir: 1 | -1) => ({ 
-                      x: prefersReducedMotion ? 0 : dir * 40, 
-                      opacity: prefersReducedMotion ? 1 : 0 
+                      x: prefersReducedMotion || !isMobile ? 0 : dir * 40, 
+                      opacity: prefersReducedMotion || !isMobile ? 1 : 0 
                     }),
                     center: { x: 0, opacity: 1 },
                     exit: (dir: 1 | -1) => ({ 
-                      x: prefersReducedMotion ? 0 : dir * -40, 
-                      opacity: prefersReducedMotion ? 1 : 0 
+                      x: prefersReducedMotion || !isMobile ? 0 : dir * -40, 
+                      opacity: prefersReducedMotion || !isMobile ? 1 : 0 
                     })
                   }}
                   transition={{ 
                     type: 'tween', 
-                    duration: prefersReducedMotion ? 0 : 0.18, 
+                    duration: prefersReducedMotion || !isMobile ? 0 : 0.18, 
                     ease: 'easeOut' 
                   }}
                 >
