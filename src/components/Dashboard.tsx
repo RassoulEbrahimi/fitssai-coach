@@ -875,6 +875,11 @@ const Dashboard = () => {
         onChange={(tab) => {
           setHashForTab(tab);
           setActiveTab(tab);  // Immediately update state for instant UI response
+          
+          // Optional haptic feedback for supported devices
+          try {
+            if (navigator.vibrate) navigator.vibrate(8); // very subtle
+          } catch {}
         }}
       />
     </div>
