@@ -28,12 +28,14 @@ const NutritionView: React.FC<NutritionViewProps> = React.memo(({ nutritionPlan 
           whileHover={{ scale: 1.01, boxShadow: "0 10px 25px -3px rgba(0, 0, 0, 0.1)" }}
         >
           <Card className="gradient-card border-primary/20 hover-scale">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2" role="heading" aria-level={2}>
-                <Apple className="h-5 w-5 text-primary" />
-                {t('dashboard.nutritionPlan.title')}
-              </CardTitle>
-            </CardHeader>
+            <div className="sticky top-[56px] z-20 bg-background/80 backdrop-blur supports-[backdrop-filter]:bg-background/60 md:static md:top-auto">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2" role="heading" aria-level={2}>
+                  <Apple className="h-5 w-5 text-primary" />
+                  {t('dashboard.nutritionPlan.title')}
+                </CardTitle>
+              </CardHeader>
+            </div>
             <CardContent>
               {nutritionPlan ? (
                 <div className="space-y-6">
