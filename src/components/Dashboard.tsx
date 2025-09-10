@@ -28,7 +28,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
 import { ProfileCard } from "@/components/ProfileCard";
 import VideoBackground from '@/components/VideoBackground';
-import { useState, useEffect, Suspense, useRef, useCallback } from "react";
+import { useState, useEffect, Suspense, useRef, useCallback, useLayoutEffect } from "react";
 import React from "react";
 import { toast } from "sonner";
 import { format, addDays, isSameDay, startOfWeek, differenceInCalendarDays } from "date-fns";
@@ -143,6 +143,15 @@ const Dashboard = () => {
   const initialTab = hashToTab(location.hash) ?? 'dashboard'; // default to dashboard if null
   const [activeTab, setActiveTab] = useState<'dashboard' | 'workout' | 'nutrition' | 'profile'>(initialTab);
 
+  // Scroll memory for per-tab scroll positions
+  const scrollPosRef = useRef<Record<'dashboard' | 'workout' | 'nutrition' | 'profile', number>>({
+    dashboard: 0,
+    workout: 0,
+    nutrition: 0,
+    profile: 0
+  });
+  const previousTabRef = useRef<'dashboard' | 'workout' | 'nutrition' | 'profile'>(initialTab);
+
   // Performance optimization hooks
   const { prefetchOnIntersection } = useIntersectionPrefetch();
   const { setViewRef } = useFocusManagement(activeTab);
@@ -173,6 +182,33 @@ const Dashboard = () => {
 
     return () => observer.disconnect();
   }, [prefetchOnIntersection]);
+
+  // Scroll memory and document title management
+  useLayoutEffect(() => {
+    const prevTab = previousTabRef.current;
+    
+    // Store previous tab's scroll position
+    if (prevTab !== activeTab) {
+      scrollPosRef.current[prevTab] = window.scrollY;
+    }
+    
+    // Update document title based on active tab
+    const titles = {
+      dashboard: "FitssAI — Dashboard",
+      workout: "FitssAI — Trainingsplan", 
+      nutrition: "FitssAI — Ernährungsplan",
+      profile: "FitssAI — Profil"
+    };
+    document.title = titles[activeTab];
+    
+    // Restore scroll position for new tab after next paint
+    requestAnimationFrame(() => {
+      const savedPosition = scrollPosRef.current[activeTab];
+      window.scrollTo({ top: savedPosition, behavior: 'instant' });
+    });
+    
+    previousTabRef.current = activeTab;
+  }, [activeTab]);
 
   // Focus management for accessibility
   useEffect(() => {
