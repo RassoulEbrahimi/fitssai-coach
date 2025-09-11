@@ -802,6 +802,8 @@ const Dashboard = () => {
                             workoutPlan={workoutPlan}
                             nutritionPlan={nutritionPlan}
                             onGeneratePlans={generatePlans}
+                            profile={profile}
+                            workoutProgress={getWeeklyProgress()}
                           />
                         </div>
                       </Suspense>
