@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '@/hooks/useAuth';
@@ -28,11 +28,44 @@ const Navbar = () => {
   const [isOpen, setIsOpen] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
 
+  // Map the current hash to one of: 'dashboard' | 'workout' | 'nutrition' | 'profile'
+  function hashToTab(hash: string): 'dashboard' | 'workout' | 'nutrition' | 'profile' {
+    const clean = (hash || '').replace(/^#\/?/, '').toLowerCase();
+    if (clean === '' || clean === 'dashboard' || clean === '/') return 'dashboard';
+    if (clean === 'workout') return 'workout';
+    if (clean === 'nutrition') return 'nutrition';
+    if (clean === 'profile') return 'profile';
+    return 'dashboard';
+  }
+
+  const DESKTOP_TABS: Array<{
+    id: 'dashboard' | 'workout' | 'nutrition' | 'profile';
+    label: string;
+    href: string;
+    Icon: React.ComponentType<any>;
+  }> = [
+    { id: 'dashboard', label: 'Dashboard', href: '/dashboard#/', Icon: Home },
+    { id: 'workout', label: 'Trainingsplan', href: '/dashboard#/workout', Icon: Dumbbell },
+    { id: 'nutrition', label: 'Ernährungsplan', href: '/dashboard#/nutrition', Icon: Utensils },
+    { id: 'profile', label: 'Profil', href: '/dashboard#/profile', Icon: User2 },
+  ];
+
+  const [activeDesktopTab, setActiveDesktopTab] = useState<'dashboard' | 'workout' | 'nutrition' | 'profile'>(() => {
+    if (typeof window === 'undefined') return 'dashboard';
+    return hashToTab(window.location.hash);
+  });
+
   useEffect(() => {
     if (user) {
       checkAdminStatus();
     }
   }, [user]);
+
+  useEffect(() => {
+    const onHashChange = () => setActiveDesktopTab(hashToTab(window.location.hash));
+    window.addEventListener('hashchange', onHashChange);
+    return () => window.removeEventListener('hashchange', onHashChange);
+  }, []);
 
   const checkAdminStatus = async () => {
     if (!user) return;
@@ -87,60 +120,48 @@ const Navbar = () => {
         </motion.div>
         
         {/* Desktop Navigation */}
-        <div className="hidden md:flex items-center gap-8">
-          {user ? (
-            <>
-              <motion.div whileHover={{ y: -2 }} transition={{ duration: 0.2 }}>
-                <Link
-                  to="/dashboard"
-                  className="text-foreground hover:text-primary transition-colors relative story-link"
+        {user && (
+          <nav
+            className="hidden md:flex items-center gap-2"
+            role="navigation"
+            aria-label="Hauptnavigation"
+          >
+            {DESKTOP_TABS.map(({ id, label, href, Icon }) => {
+              const isActive = activeDesktopTab === id;
+              return (
+                <a
+                  key={id}
+                  href={href}
+                  className={[
+                    "inline-flex items-center gap-2 px-3 py-2 rounded-md text-sm transition-colors",
+                    isActive
+                      ? "bg-primary text-primary-foreground"
+                      : "hover:bg-muted text-muted-foreground"
+                  ].join(' ')}
+                  aria-current={isActive ? "page" : undefined}
+                  aria-label={label}
                 >
-                  <Home className="h-4 w-4 inline mr-2" />
-                  Dashboard
-                </Link>
-              </motion.div>
-              <motion.div whileHover={{ y: -2 }} transition={{ duration: 0.2 }}>
-                <Link
-                  to="/dashboard#workout"
-                  className="text-foreground hover:text-primary transition-colors relative story-link"
-                >
-                  <Dumbbell className="h-4 w-4 inline mr-2" />
-                  Trainingsplan
-                </Link>
-              </motion.div>
-              <motion.div whileHover={{ y: -2 }} transition={{ duration: 0.2 }}>
-                <Link
-                  to="/dashboard#nutrition"
-                  className="text-foreground hover:text-primary transition-colors relative story-link"
-                >
-                  <Utensils className="h-4 w-4 inline mr-2" />
-                  Ernährungsplan
-                </Link>
-              </motion.div>
-              <motion.div whileHover={{ y: -2 }} transition={{ duration: 0.2 }}>
-                <Link
-                  to="/dashboard#profile"
-                  className="text-foreground hover:text-primary transition-colors relative story-link"
-                >
-                  <User2 className="h-4 w-4 inline mr-2" />
-                  Profil
-                </Link>
-              </motion.div>
-            </>
-          ) : (
-            <>
-              <motion.div whileHover={{ y: -2 }} transition={{ duration: 0.2 }}>
-                <Link 
-                  to="/" 
-                  className="text-foreground hover:text-primary transition-colors relative story-link"
-                >
-                  <Home className="h-4 w-4 inline mr-2" />
-                  {t('navbar.home')}
-                </Link>
-              </motion.div>
-            </>
-          )}
-        </div>
+                  <Icon aria-hidden="true" className="h-4 w-4" />
+                  <span className="whitespace-nowrap">{label}</span>
+                </a>
+              );
+            })}
+          </nav>
+        )}
+        
+        {!user && (
+          <div className="hidden md:flex items-center gap-8">
+            <motion.div whileHover={{ y: -2 }} transition={{ duration: 0.2 }}>
+              <Link 
+                to="/" 
+                className="text-foreground hover:text-primary transition-colors relative story-link"
+              >
+                <Home className="h-4 w-4 inline mr-2" />
+                {t('navbar.home')}
+              </Link>
+            </motion.div>
+          </div>
+        )}
         
         {/* Desktop Actions */}
         <div className="hidden md:flex items-center gap-4">
