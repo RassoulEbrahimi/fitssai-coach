@@ -1,9 +1,8 @@
 import React, { useState, useEffect } from "react";
 import { motion } from "framer-motion";
-import { Card, CardContent } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
-import { RefreshCw, Bell, Dumbbell, Utensils } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Bell, Dumbbell, Utensils } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { supabase } from "@/integrations/supabase/client";
 import { getAvatarUrl } from "@/lib/avatarUtils";
@@ -20,6 +19,9 @@ interface HomeViewProps {
   onGeneratePlans: () => void;
   profile?: any;
   workoutProgress?: { completed: number; total: number };
+  getTodayWorkout?: () => any;
+  isDayCompleted?: (weekKey: string, dayIndex: number) => boolean;
+  getWeeklyProgress?: () => { completed: number; total: number };
 }
 
 const HomeView: React.FC<HomeViewProps> = ({
@@ -28,7 +30,10 @@ const HomeView: React.FC<HomeViewProps> = ({
   nutritionPlan,
   onGeneratePlans,
   profile,
-  workoutProgress = { completed: 0, total: 0 }
+  workoutProgress = { completed: 0, total: 0 },
+  getTodayWorkout,
+  isDayCompleted,
+  getWeeklyProgress
 }) => {
   const { t } = useTranslation();
   const [quote, setQuote] = useState<string>("");
@@ -44,34 +49,45 @@ const HomeView: React.FC<HomeViewProps> = ({
     { text: "Jeder Tag ist eine neue Chance, besser zu werden.", author: "Unbekannt" }
   ];
 
-  // Mock data for activity chart
-  const weeklyActivityData = [
-    { day: "Mo", value: 85 },
-    { day: "Di", value: 92 },
-    { day: "Mi", value: 78 },
-    { day: "Do", value: 100 },
-    { day: "Fr", value: 88 },
-    { day: "Sa", value: 0 },
-    { day: "So", value: 95 }
-  ];
+  // Calculate today's training progress
+  const todayWorkout = getTodayWorkout ? getTodayWorkout() : null;
+  const todayTrainingProgress = (() => {
+    if (!todayWorkout) return { value: 0, label: "Kein Training geplant" };
+    if (todayWorkout.__restDay) return { value: 0, label: "Ruhetag" };
+    if (todayWorkout.isCompleted) return { value: 100, label: "Training abgeschlossen" };
+    return { value: 0, label: "Training ausstehend" };
+  })();
 
-  // Calculate progress values
-  const workoutProgressPercentage = workoutProgress.total > 0 
-    ? (workoutProgress.completed / workoutProgress.total) * 100 
-    : 0;
-  const nutritionProgressPercentage = 65; // Mock value for now
+  // Calculate nutrition progress (100% if plan exists, 0% otherwise)
+  const nutritionProgress = nutritionPlan ? 100 : 0;
 
-  // Load motivation quote
+  // Calculate weekly activity data using actual workout completion
+  const weeklyActivityData = (() => {
+    const weeklyProg = getWeeklyProgress ? getWeeklyProgress() : { completed: 0, total: 0 };
+    // Generate 7 values for Mon-Sun based on completion pattern
+    // For now, use simplified logic - in production, track daily completion
+    return [
+      weeklyProg.completed > 0 ? 100 : 30, // Mo
+      weeklyProg.completed > 1 ? 100 : 30, // Di  
+      weeklyProg.completed > 2 ? 100 : 30, // Mi
+      weeklyProg.completed > 3 ? 100 : 30, // Do
+      weeklyProg.completed > 4 ? 100 : 30, // Fr
+      0, // Sa (rest day)
+      weeklyProg.completed > 5 ? 100 : 30  // So
+    ];
+  })();
+
+  // Load motivation quote from fallback (DB table will be created later)
   useEffect(() => {
     const loadQuote = () => {
-      // Use fallback quote for now (database table will be created later)
+      // Use fallback quotes for now (motivationszitate table will be created later)
       const randomQuote = fallbackQuotes[Math.floor(Math.random() * fallbackQuotes.length)];
       setQuote(randomQuote.text);
       setQuoteAuthor(randomQuote.author);
       setIsLoadingQuote(false);
     };
 
-    // Small delay to show skeleton briefly
+    // Small delay for skeleton
     const timer = setTimeout(loadQuote, 500);
     return () => clearTimeout(timer);
   }, []);
@@ -81,8 +97,17 @@ const HomeView: React.FC<HomeViewProps> = ({
     return <HomeSkeleton />;
   }
 
-  // Get user's first name
-  const firstName = profile?.first_name || "Nutzer";
+  // Get user's first name from full_name or email
+  const firstName = (() => {
+    if (profile?.full_name) {
+      return profile.full_name.split(' ')[0];
+    }
+    if (profile?.email) {
+      return profile.email.split('@')[0];
+    }
+    return "Nutzer";
+  })();
+  
   const avatarUrl = getAvatarUrl(profile?.avatar_path);
   const progressPercentage = workoutProgress.total > 0 
     ? (workoutProgress.completed / workoutProgress.total) * 100 
@@ -153,88 +178,65 @@ const HomeView: React.FC<HomeViewProps> = ({
         <MotivationSkeleton />
       ) : (
         <GradientCard>
-          <div className="space-y-3">
-            <h2 className="text-sm font-medium text-primary/80">
-              Motivationsspruch
-            </h2>
-            <blockquote className="text-lg font-medium text-foreground leading-relaxed">
-              "{quote}"
-            </blockquote>
-            {quoteAuthor && (
-              <cite className="text-sm text-muted-foreground not-italic">
-                — {quoteAuthor}
-              </cite>
-            )}
-          </div>
+          <blockquote className="text-lg font-medium text-foreground leading-relaxed mb-3">
+            "{quote}"
+          </blockquote>
+          {quoteAuthor && (
+            <cite className="text-sm text-muted-foreground not-italic">
+              — {quoteAuthor}
+            </cite>
+          )}
         </GradientCard>
       )}
 
       {/* Progress Rows */}
       <motion.div
-        className="space-y-4"
+        className="space-y-3"
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.4, delay: 0.2 }}
       >
         {/* Today's Training Progress */}
-        <div className="flex items-center justify-between py-3">
+        <div className="flex items-center justify-between p-4 bg-card/70 backdrop-blur rounded-2xl ring-1 ring-border/50">
           <div className="flex items-center gap-3">
             <div className="p-2 rounded-lg bg-primary/20">
-              <Dumbbell className="h-5 w-5 text-primary" aria-hidden="true" />
+              <Dumbbell className="h-4 w-4 text-primary" aria-hidden="true" />
             </div>
             <div>
               <h3 className="font-medium text-foreground">Heutiges Training</h3>
-              <p className="text-sm text-muted-foreground">
-                {workoutProgress.completed} von {workoutProgress.total} Übungen
+              <p className="text-xs text-muted-foreground">
+                {todayTrainingProgress.label}
               </p>
             </div>
           </div>
           <ProgressPill 
-            value={Math.round(workoutProgressPercentage)} 
-            aria-label={`Training Fortschritt: ${Math.round(workoutProgressPercentage)} Prozent`}
+            value={todayTrainingProgress.value} 
+            aria-label={`Training Fortschritt: ${todayTrainingProgress.value} Prozent`}
           />
         </div>
 
         {/* Nutrition Progress */}
-        <div className="flex items-center justify-between py-3">
+        <div className="flex items-center justify-between p-4 bg-card/70 backdrop-blur rounded-2xl ring-1 ring-border/50">
           <div className="flex items-center gap-3">
-            <div className="p-2 rounded-lg bg-info/20">
-              <Utensils className="h-5 w-5 text-info" aria-hidden="true" />
+            <div className="p-2 rounded-lg bg-success/20">
+              <Utensils className="h-4 w-4 text-success" aria-hidden="true" />
             </div>
             <div>
               <h3 className="font-medium text-foreground">Ernährung</h3>
-              <p className="text-sm text-muted-foreground">
-                Tagesziel erreicht
+              <p className="text-xs text-muted-foreground">
+                {nutritionProgress > 0 ? "Plan verfügbar" : "Kein Plan"}
               </p>
             </div>
           </div>
           <ProgressPill 
-            value={nutritionProgressPercentage} 
-            aria-label={`Ernährungs-Fortschritt: ${nutritionProgressPercentage} Prozent`}
+            value={nutritionProgress} 
+            aria-label={`Ernährungs-Fortschritt: ${nutritionProgress} Prozent`}
           />
         </div>
       </motion.div>
 
       {/* Weekly Activity Chart */}
       <WeeklyActivity data={weeklyActivityData} />
-
-      {/* Generate Plans Button */}
-      <motion.div
-        className="pt-4"
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.4, delay: 0.4 }}
-      >
-        <Button 
-          className="w-full gradient-primary text-primary-foreground shadow-glow hover-scale" 
-          onClick={onGeneratePlans}
-          disabled={generatingPlans}
-          size="lg"
-        >
-          <RefreshCw className={`mr-2 h-4 w-4 ${generatingPlans ? 'animate-spin' : ''}`} />
-          {generatingPlans ? "Pläne werden erstellt..." : (workoutPlan || nutritionPlan ? "Pläne neu generieren" : "Neue Pläne erstellen")}
-        </Button>
-      </motion.div>
     </div>
   );
 };

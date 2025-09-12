@@ -804,6 +804,9 @@ const Dashboard = () => {
                             onGeneratePlans={generatePlans}
                             profile={profile}
                             workoutProgress={getWeeklyProgress()}
+                            getTodayWorkout={getTodayWorkout}
+                            isDayCompleted={isDayCompleted}
+                            getWeeklyProgress={getWeeklyProgress}
                           />
                         </div>
                       </Suspense>
@@ -859,6 +862,10 @@ const Dashboard = () => {
                             profile={profile}
                             onProfileUpdate={fetchProfile}
                             workoutProgress={getWeeklyProgress()}
+                            generatingPlans={generatingPlans}
+                            workoutPlan={workoutPlan}
+                            nutritionPlan={nutritionPlan}
+                            onGeneratePlans={generatePlans}
                           />
                         </div>
                       </Suspense>
