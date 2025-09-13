@@ -235,6 +235,7 @@
     "restDay": "Ruhetag",
     "restDone": "Als erledigt markieren",
     "week": "Woche {{num}}",
+    "weekLabel": "Woche {{num}}",
     "thisWeekProgress": "{{done}} / {{total}} Tage diese Woche abgeschlossen",
     "exercisesCount": "{{count}} Übungen",
     "noExercises": "Keine Übungen für diesen Tag",
@@ -242,6 +243,9 @@
     "calendar": { "prev": "Vorherige Woche", "next": "Nächste Woche" },
     "stepper": { "week": "Woche {{num}}", "past": "Abgeschlossen", "current": "Aktuell", "future": "Bevorstehend" },
     "weekShort": "W{{num}}",
+    "planProgress": {
+      "title": "Fortschritt im Plan"
+    },
     "weekAria": {
       "current": "W{{num}} — aktuelle Woche",
       "past": "W{{num}} — abgeschlossen", 

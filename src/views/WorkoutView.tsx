@@ -444,78 +444,89 @@ const WorkoutView: React.FC<WorkoutViewProps> = React.memo(({
         </CardContent>
       </Card>
 
-      {/* Plan Stepper */}
-      <section aria-label={t('workout.planWeeks')} className="select-none">
-        <div
-          role="tablist"
-          aria-label={t('workout.weekSelection')}
-          className="flex items-center justify-center gap-0 px-2"
-        >
-          {[1, 2, 3, 4].map((weekNum, index, arr) => {
-            const weekKey = `week${weekNum}`;
-            const isActive = currentWeekNum === weekNum;
-            const isPast = currentWeekNum > weekNum;
-            const isFuture = currentWeekNum < weekNum;
-            const isFocused = focusedWeek === weekNum;
+      {/* Plan Progress Stepper */}
+      <Card className="border-border">
+        <CardHeader className="pb-4">
+          <CardTitle className="text-lg">
+            {t('workout.planProgress.title')}
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="flex items-center justify-between">
+            {[1, 2, 3, 4].map((weekNum, index, arr) => {
+              const weekKey = `week${weekNum}`;
+              const isActive = currentWeekNum === weekNum;
+              const isPast = currentWeekNum > weekNum;
+              const isFuture = currentWeekNum < weekNum;
+              const isFocused = focusedWeek === weekNum;
 
-            // Get aria-label based on state
-            const getAriaLabel = () => {
-              if (isActive) return t('workout.weekAria.current', { num: weekNum });
-              if (isPast) return t('workout.weekAria.past', { num: weekNum });
-              return t('workout.weekAria.future', { num: weekNum });
-            };
+              // Get aria-label based on state
+              const getAriaLabel = () => {
+                if (isActive) return t('workout.weekAria.current', { num: weekNum });
+                if (isPast) return t('workout.weekAria.past', { num: weekNum });
+                return t('workout.weekAria.future', { num: weekNum });
+              };
 
-            return (
-              <React.Fragment key={weekKey}>
-                <motion.button
-                  type="button"
-                  role="tab"
-                  aria-label={getAriaLabel()}
-                  aria-selected={isActive}
-                  tabIndex={isFocused ? 0 : -1}
-                  onClick={() => handleWeekActivation(weekNum)}
-                  onKeyDown={(e) => handleStepperKeyDown(e, weekNum)}
-                  onFocus={() => setFocusedWeek(weekNum)}
-                  whileTap={!window.matchMedia('(prefers-reduced-motion: reduce)').matches ? { scale: 0.96 } : {}}
-                  transition={{ duration: 0.15, ease: 'easeOut' }}
-                  className={[
-                    'relative flex items-center justify-center min-w-[44px] min-h-[44px] h-11 px-4 rounded-full text-sm font-medium transition-all duration-200',
-                    'outline-none ring-offset-background focus-visible:ring-2 focus-visible:ring-primary/60 focus-visible:ring-offset-2',
-                    isActive
-                      ? 'bg-primary text-primary-foreground shadow-lg shadow-primary/25'
-                      : isPast
-                        ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300 shadow-sm'
-                        : 'bg-muted text-muted-foreground hover:bg-muted/80 hover:text-foreground'
-                  ].join(' ')}
-                >
-                  <span className="flex-shrink-0">{t('workout.weekShort', { num: weekNum })}</span>
-                </motion.button>
-
-                {/* Connector line except after the last item */}
-                {index < arr.length - 1 && (
-                  <div className="flex items-center h-11">
-                    <div
-                      aria-hidden="true"
+              return (
+                <React.Fragment key={weekKey}>
+                  <div className="flex flex-col items-center gap-2">
+                    <motion.button
+                      type="button"
+                      aria-label={getAriaLabel()}
+                      aria-current={isActive ? "step" : undefined}
+                      tabIndex={isFocused ? 0 : -1}
+                      onClick={() => handleWeekActivation(weekNum)}
+                      onKeyDown={(e) => handleStepperKeyDown(e, weekNum)}
+                      onFocus={() => setFocusedWeek(weekNum)}
+                      whileTap={!window.matchMedia('(prefers-reduced-motion: reduce)').matches ? { scale: 0.95 } : {}}
+                      transition={{ duration: 0.15, ease: 'easeOut' }}
                       className={[
-                        'h-0.5 w-8 rounded-full transition-colors duration-300',
-                        (isPast || isActive)
-                          ? 'bg-emerald-400 dark:bg-emerald-300'
-                          : 'bg-border'
+                        'relative flex items-center justify-center min-w-[44px] min-h-[44px] w-11 h-11 rounded-full text-sm font-medium transition-all duration-200',
+                        'outline-none ring-offset-background focus-visible:ring-2 focus-visible:ring-primary/60 focus-visible:ring-offset-2',
+                        isActive
+                          ? 'bg-primary text-primary-foreground shadow-lg ring-2 ring-accent ring-offset-2'
+                          : isPast
+                            ? 'bg-primary text-primary-foreground shadow-md'
+                            : 'bg-muted text-muted-foreground hover:bg-muted/80'
                       ].join(' ')}
-                    />
+                    >
+                      <span className="flex-shrink-0">{weekNum}</span>
+                    </motion.button>
+                    
+                    <span className={[
+                      'text-xs transition-colors duration-200',
+                      isActive ? 'font-semibold text-foreground' : 'text-muted-foreground'
+                    ].join(' ')}>
+                      {t('workout.weekLabel', { num: weekNum })}
+                    </span>
                   </div>
-                )}
-              </React.Fragment>
-            );
-          })}
-        </div>
 
-        {/* Screen reader navigation instructions */}
-        <div className="sr-only">
-          Verwenden Sie die Pfeiltasten links und rechts, um zwischen den Wochen zu navigieren. 
-          Drücken Sie Enter oder Leertaste, um eine Woche auszuwählen.
-        </div>
-      </section>
+                  {/* Connector line except after the last item */}
+                  {index < arr.length - 1 && (
+                    <div className="flex-1 flex items-center px-2">
+                      <div
+                        aria-hidden="true"
+                        className={[
+                          'h-0.5 w-full rounded-full transition-colors duration-300',
+                          (isPast || (isActive && index < arr.length - 1))
+                            ? 'bg-primary'
+                            : 'bg-border'
+                        ].join(' ')}
+                      />
+                    </div>
+                  )}
+                </React.Fragment>
+              );
+            })}
+          </div>
+
+          {/* Screen reader navigation instructions */}
+          <div className="sr-only">
+            Verwenden Sie die Pfeiltasten links und rechts, um zwischen den Wochen zu navigieren. 
+            Drücken Sie Enter oder Leertaste, um eine Woche auszuwählen.
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Week Section */}
       <Card className="border-border">
