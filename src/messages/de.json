@@ -228,5 +228,18 @@
     "updateError": "Fehler beim Aktualisieren des Profils",
     "avatarUploadSuccess": "Profilbild erfolgreich hochgeladen",
     "avatarUploadError": "Fehler beim Hochladen des Profilbilds"
+  },
+  "workout": {
+    "title": "Trainingsplan",
+    "today": "Heutiges Training",
+    "restDay": "Ruhetag",
+    "restDone": "Als erledigt markieren",
+    "week": "Woche {{num}}",
+    "thisWeekProgress": "{{done}} / {{total}} Tage diese Woche abgeschlossen",
+    "exercisesCount": "{{count}} Übungen",
+    "noExercises": "Keine Übungen für diesen Tag",
+    "infoSoon": "Bald verfügbar",
+    "calendar": { "prev": "Vorherige Woche", "next": "Nächste Woche" },
+    "stepper": { "week": "Woche {{num}}", "past": "Abgeschlossen", "current": "Aktuell", "future": "Bevorstehend" }
   }
 }

@@ -120,6 +120,7 @@ const Dashboard = () => {
   const [activeWeek, setActiveWeek] = useState<string | null>(null);
   const [currentWeekProgress, setCurrentWeekProgress] = useState({ completed: 0, total: 0 });
   const [activeDays, setActiveDays] = useState<Set<string>>(new Set());
+  const [activeDayIndex, setActiveDayIndex] = useState<number>(0);
 
   // Hash-based navigation helpers
   const hashToTab = (hash: string): 'dashboard' | 'workout' | 'nutrition' | 'profile' | null => {
@@ -817,28 +818,27 @@ const Dashboard = () => {
                     <div className="space-y-6">
                       <Suspense fallback={<WorkoutSkeleton />}>
                         <div ref={(el) => setViewRef('workout', el)}>
-                          <WorkoutView
-                            workoutPlan={workoutPlan}
-                            workoutLogs={workoutLogs}
-                            completingWorkout={completingWorkout}
-                            activeWeek={activeWeek}
-                            currentWeekProgress={currentWeekProgress}
-                            activeDays={activeDays}
-                            getTodayWorkout={getTodayWorkout}
-                            findNextWorkoutInCurrentWeek={findNextWorkoutInCurrentWeek}
-                            findNextWorkoutAcrossWeeks={findNextWorkoutAcrossWeeks}
-                            isDayCompleted={isDayCompleted}
-                            isDayInFuture={isDayInFuture}
-                            isTodayInWeekDay={isTodayInWeekDay}
-                            getDateFor={getDateFor}
-                            getWeekTitle={getWeekTitle}
-                            getWeekProgress={getWeekProgress}
-                            getWeeklyProgress={getWeeklyProgress}
-                            toggleDayComplete={toggleDayComplete}
-                            setActiveWeek={setActiveWeek}
-                            setActiveDays={setActiveDays}
-                            toggleDay={toggleDay}
-                          />
+            <WorkoutView
+              workoutPlan={workoutPlan}
+              workoutLogs={workoutLogs}
+              completingWorkout={completingWorkout}
+              activeWeek={activeWeek}
+              currentWeekProgress={currentWeekProgress}
+              activeDayIndex={activeDayIndex}
+              getTodayWorkout={getTodayWorkout}
+              findNextWorkoutInCurrentWeek={findNextWorkoutInCurrentWeek}
+              findNextWorkoutAcrossWeeks={findNextWorkoutAcrossWeeks}
+              isDayCompleted={isDayCompleted}
+              isDayInFuture={isDayInFuture}
+              isTodayInWeekDay={isTodayInWeekDay}
+              getDateFor={getDateFor}
+              getWeekTitle={getWeekTitle}
+              getWeekProgress={getWeekProgress}
+              getWeeklyProgress={getWeeklyProgress}
+              toggleDayComplete={toggleDayComplete}
+              setActiveWeek={setActiveWeek}
+              setActiveDayIndex={setActiveDayIndex}
+            />
                         </div>
                       </Suspense>
                     </div>
