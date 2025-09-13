@@ -237,6 +237,7 @@
     "week": "Woche {{num}}",
     "weekLabel": "Woche {{num}}",
     "thisWeekProgress": "{{done}} / {{total}} Tage diese Woche abgeschlossen",
+    "weekEmpty": "Keine Trainingseinheiten für diese Woche geplant.",
     "exercisesCount": "{{count}} Übungen",
     "noExercises": "Keine Übungen für diesen Tag",
     "infoSoon": "Bald verfügbar",

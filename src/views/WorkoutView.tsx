@@ -541,7 +541,15 @@ const WorkoutView: React.FC<WorkoutViewProps> = React.memo(({
           </div>
         </CardHeader>
         <CardContent className="space-y-3">
-          {weekData.map((day: any, dayIndex: number) => {
+          {/* Debug info to identify data issues */}
+          {console.debug('WEEK DATA:', wk, 'length:', weekData.length, 'content keys:', Object.keys(workoutPlan?.content || {}))}
+          
+          {weekData.length === 0 ? (
+            <div className="text-center py-8 text-muted-foreground">
+              <p className="text-sm">{t('workout.weekEmpty')}</p>
+            </div>
+          ) : (
+            weekData.map((day: any, dayIndex: number) => {
             const date = getDateFor(wk, dayIndex);
             const dayName = date ? formatDateForDisplay(date, 'EEEE') : `Tag ${dayIndex + 1}`;
             const isCompleted = isDayCompleted(wk, dayIndex);
@@ -637,8 +645,9 @@ const WorkoutView: React.FC<WorkoutViewProps> = React.memo(({
                   </CollapsibleContent>
                 </Collapsible>
               </motion.div>
-            );
-          })}
+              );
+            })
+          )}
         </CardContent>
       </Card>
     </motion.div>
