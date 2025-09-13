@@ -31,7 +31,7 @@ const ProfileView: React.FC<ProfileViewProps> = React.memo(({
         animate={{ opacity: 1, x: 0 }}
         exit={{ opacity: 0, x: -20 }}
         transition={{ duration: 0.3 }}
-        className="space-y-6"
+        className="px-4 md:px-6 space-y-6"
       >
         <ProfileCard 
           profile={profile}

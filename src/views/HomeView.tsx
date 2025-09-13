@@ -114,7 +114,7 @@ const HomeView: React.FC<HomeViewProps> = ({
     : 0;
 
   return (
-    <div className="space-y-6">
+    <div className="px-4 md:px-6 space-y-6">
       {/* Welcome Header */}
       <motion.div 
         className="flex items-center justify-between"
