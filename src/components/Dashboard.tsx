@@ -34,6 +34,7 @@ import { toast } from "sonner";
 import { format, addDays, isSameDay, startOfWeek, differenceInCalendarDays } from "date-fns";
 import { toZonedTime } from 'date-fns-tz';
 import BottomNav from './BottomNav';
+import BottomNavPortal from './BottomNavPortal';
 import { default as SectionSkeleton, WorkoutSkeleton, NutritionSkeleton, ProfileSkeleton } from "@/components/skeletons/SectionSkeleton";
 import HomeSkeleton from "@/components/skeletons/HomeSkeleton";
 
@@ -878,19 +879,21 @@ const Dashboard = () => {
         </motion.div>
       </motion.div>
       
-      <BottomNav 
-        ref={bottomNavRef}
-        activeTab={activeTab} 
-        onChange={(tab) => {
-          setHashForTab(tab);
-          setActiveTab(tab);  // Immediately update state for instant UI response
-          
-          // Optional haptic feedback for supported devices
-          try {
-            if (navigator.vibrate) navigator.vibrate(8); // very subtle
-          } catch {}
-        }}
-      />
+      <BottomNavPortal>
+        <BottomNav 
+          ref={bottomNavRef}
+          activeTab={activeTab} 
+          onChange={(tab) => {
+            setHashForTab(tab);
+            setActiveTab(tab);  // Immediately update state for instant UI response
+            
+            // Optional haptic feedback for supported devices
+            try {
+              if (navigator.vibrate) navigator.vibrate(8); // very subtle
+            } catch {}
+          }}
+        />
+      </BottomNavPortal>
     </div>
   );
 };

@@ -88,7 +88,7 @@ export default forwardRef<HTMLElement, BottomNavProps>(function BottomNav({ acti
     <nav 
       ref={ref}
       role="tablist" 
-      className="fixed bottom-0 left-0 right-0 z-40 md:hidden bg-background/80 backdrop-blur border-t"
+      className="fixed inset-x-0 bottom-0 z-50 md:hidden bg-background/80 backdrop-blur border-t"
       style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
     >
       <div className="mx-auto max-w-screen-sm flex">
