@@ -69,7 +69,7 @@ const WorkoutView: React.FC<WorkoutViewProps> = React.memo(({
   const { toast } = useToast();
   const [expandedDay, setExpandedDay] = useState<number | null>(null);
   const dayRefs = useRef<{ [key: number]: HTMLDivElement | null }>({});
-
+  
   // Ensure any inbound key becomes canonical like "week1", "week2", ...
   const normalizeWeekKey = (key?: string | null) => {
     const num = String(key ?? 'week1').match(/\d+/)?.[0];
@@ -78,9 +78,11 @@ const WorkoutView: React.FC<WorkoutViewProps> = React.memo(({
 
   // Canonical week key used everywhere in this component
   const wk = normalizeWeekKey(activeWeek);
-
+  
   // Robust week number for titles like "Woche 3"
   const currentWeekNum = Number(wk.match(/\d+/)?.[0] ?? 1);
+  const [focusedWeek, setFocusedWeek] = useState<number>(currentWeekNum);
+
   const weekNumbers = [1, 2, 3, 4];
 
   // Handle week navigation
@@ -108,6 +110,46 @@ const WorkoutView: React.FC<WorkoutViewProps> = React.memo(({
         dayElement.scrollIntoView({ behavior: 'smooth', block: 'start' });
       }
     }, 100);
+  };
+
+  // Handle week activation with animation
+  const handleWeekActivation = (weekNum: number) => {
+    setActiveWeek(normalizeWeekKey(`week${weekNum}`));
+    
+    // Optional haptic feedback on mobile
+    if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
+      try {
+        navigator.vibrate(8);
+      } catch (e) {
+        // Ignore vibration errors
+      }
+    }
+  };
+
+  // Handle keyboard navigation in stepper
+  const handleStepperKeyDown = (e: React.KeyboardEvent, weekNum: number) => {
+    const weeks = [1, 2, 3, 4];
+    const currentIndex = weeks.indexOf(weekNum);
+    
+    switch (e.key) {
+      case 'ArrowLeft':
+        e.preventDefault();
+        if (currentIndex > 0) {
+          setFocusedWeek(weeks[currentIndex - 1]);
+        }
+        break;
+      case 'ArrowRight':
+        e.preventDefault();
+        if (currentIndex < weeks.length - 1) {
+          setFocusedWeek(weeks[currentIndex + 1]);
+        }
+        break;
+      case 'Enter':
+      case ' ':
+        e.preventDefault();
+        handleWeekActivation(weekNum);
+        break;
+    }
   };
 
   // Handle exercise info click
@@ -300,13 +342,14 @@ const WorkoutView: React.FC<WorkoutViewProps> = React.memo(({
         <div
           role="tablist"
           aria-label="Wochen Auswahl"
-          className="flex items-center justify-center gap-2 px-2"
+          className="flex items-center justify-center gap-0 px-2"
         >
           {[1, 2, 3, 4].map((weekNum, index, arr) => {
             const weekKey = `week${weekNum}`;
             const isActive = currentWeekNum === weekNum;
             const isPast = currentWeekNum > weekNum;
             const isFuture = currentWeekNum < weekNum;
+            const isFocused = focusedWeek === weekNum;
 
             // Get aria-label based on state
             const getAriaLabel = () => {
@@ -317,49 +360,56 @@ const WorkoutView: React.FC<WorkoutViewProps> = React.memo(({
 
             return (
               <React.Fragment key={weekKey}>
-                <button
+                <motion.button
                   type="button"
                   role="tab"
                   aria-label={getAriaLabel()}
-                  aria-current={isActive ? 'page' : undefined}
-                  onClick={() => setActiveWeek(normalizeWeekKey(weekKey))}
+                  aria-selected={isActive}
+                  tabIndex={isFocused ? 0 : -1}
+                  onClick={() => handleWeekActivation(weekNum)}
+                  onKeyDown={(e) => handleStepperKeyDown(e, weekNum)}
+                  onFocus={() => setFocusedWeek(weekNum)}
+                  whileTap={!window.matchMedia('(prefers-reduced-motion: reduce)').matches ? { scale: 0.96 } : {}}
+                  transition={{ duration: 0.15, ease: 'easeOut' }}
                   className={[
-                    'flex items-center justify-center gap-1 h-11 px-3 rounded-full text-sm font-medium transition-all min-h-[44px]',
-                    'outline-none ring-offset-background focus-visible:ring-2 focus-visible:ring-primary/40',
+                    'relative flex items-center justify-center gap-1.5 min-w-[44px] min-h-[44px] h-11 px-4 rounded-full text-sm font-medium transition-all duration-200',
+                    'outline-none ring-offset-background focus-visible:ring-2 focus-visible:ring-primary/60 focus-visible:ring-offset-2',
                     isActive
-                      ? 'bg-primary text-primary-foreground shadow-sm'
+                      ? 'bg-primary text-primary-foreground shadow-lg shadow-primary/25'
                       : isPast
-                        ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300'
-                        : 'bg-muted text-muted-foreground hover:bg-muted/80'
+                        ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300 shadow-sm'
+                        : 'bg-muted text-muted-foreground hover:bg-muted/80 hover:text-foreground'
                   ].join(' ')}
                 >
                   {isPast && (
-                    <Check className="h-3 w-3" aria-hidden="true" />
+                    <Check className="h-3.5 w-3.5 flex-shrink-0" aria-hidden="true" />
                   )}
-                  <span>{t('workout.weekShort', { num: weekNum })}</span>
-                </button>
+                  <span className="flex-shrink-0">{t('workout.weekShort', { num: weekNum })}</span>
+                </motion.button>
 
                 {/* Connector line except after the last item */}
                 {index < arr.length - 1 && (
-                  <div
-                    aria-hidden="true"
-                    className={[
-                      'h-0.5 w-6 rounded-full transition-colors',
-                      (isPast || isActive)
-                        ? 'bg-emerald-400 dark:bg-emerald-300'
-                        : 'bg-muted'
-                    ].join(' ')}
-                  />
+                  <div className="flex items-center h-11">
+                    <div
+                      aria-hidden="true"
+                      className={[
+                        'h-0.5 w-8 rounded-full transition-colors duration-300',
+                        (isPast || isActive)
+                          ? 'bg-emerald-400 dark:bg-emerald-300'
+                          : 'bg-border'
+                      ].join(' ')}
+                    />
+                  </div>
                 )}
               </React.Fragment>
             );
           })}
         </div>
 
-        {/* Optional: mini legend for clarity (DE-only, subtle) */}
+        {/* Screen reader navigation instructions */}
         <div className="sr-only">
-          Reihenfolge der Wochen: Vergangene Wochen sind grün markiert, aktuelle Woche ist hervorgehoben,
-          zukünftige Wochen sind inaktiv dargestellt.
+          Verwenden Sie die Pfeiltasten links und rechts, um zwischen den Wochen zu navigieren. 
+          Drücken Sie Enter oder Leertaste, um eine Woche auszuwählen.
         </div>
       </section>
 
