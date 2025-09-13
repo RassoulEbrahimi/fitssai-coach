@@ -165,7 +165,7 @@ const WorkoutView: React.FC<WorkoutViewProps> = React.memo(({
               <ChevronLeft className="h-4 w-4" />
             </Button>
             
-            <h3 className="text-lg font-semibold text-foreground">
+            <h3 className="mt-0 text-lg font-semibold text-foreground">
               {monthYear}
             </h3>
             
