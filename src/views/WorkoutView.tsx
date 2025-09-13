@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect, Suspense } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -17,6 +17,9 @@ import { useTranslation } from "react-i18next";
 import { formatDateForDisplay } from "@/lib/dateUtils";
 import { format } from 'date-fns';
 import { de } from 'date-fns/locale';
+import ExerciseListSkeleton from "@/components/skeletons/ExerciseListSkeleton";
+
+const ExerciseList = React.lazy(() => import("@/views/ExerciseList"));
 
 interface WorkoutViewProps {
   workoutPlan: any;
@@ -552,35 +555,9 @@ const WorkoutView: React.FC<WorkoutViewProps> = React.memo(({
                       transition={{ duration: 0.3 }}
                       className="px-4 pb-4"
                     >
-                      {exercises.length > 0 ? (
-                        <div className="space-y-2">
-                          {exercises.map((exercise: any, exerciseIndex: number) => (
-                            <div key={exerciseIndex} className="flex items-center justify-between bg-background/50 rounded-lg p-3">
-                              <div>
-                                <span className="font-medium text-sm">{exercise.name}</span>
-                                <div className="text-xs text-muted-foreground">
-                                  {exercise.sets} Sätze × {exercise.reps} Wiederholungen
-                                </div>
-                              </div>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={handleExerciseInfo}
-                                aria-label={t('workout.infoSoon')}
-                                className="h-8 w-8 p-0"
-                              >
-                                <Info className="h-4 w-4" />
-                              </Button>
-                            </div>
-                          ))}
-                        </div>
-                      ) : (
-                        <div className="text-center py-4">
-                          <p className="text-sm text-muted-foreground">
-                            {t('workout.restDay')} - Erholung ist wichtig für deine Fortschritte.
-                          </p>
-                        </div>
-                      )}
+                      <Suspense fallback={<ExerciseListSkeleton />}>
+                        <ExerciseList exercises={exercises} />
+                      </Suspense>
                     </motion.div>
                   </CollapsibleContent>
                 </Collapsible>

@@ -259,6 +259,7 @@
     "restUncompleted": "Ruhetag als nicht erledigt markiert",
     "workoutCompleted": "Training als erledigt markiert",
     "workoutUncompleted": "Training als nicht erledigt markiert",
+    "setsReps": "{{sets}} Sätze × {{reps}} Wiederholungen",
     "planWeeks": "Plan-Wochen",
     "weekSelection": "Wochen Auswahl"
   }
