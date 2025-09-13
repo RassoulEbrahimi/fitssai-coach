@@ -240,6 +240,12 @@
     "noExercises": "Keine Übungen für diesen Tag",
     "infoSoon": "Bald verfügbar",
     "calendar": { "prev": "Vorherige Woche", "next": "Nächste Woche" },
-    "stepper": { "week": "Woche {{num}}", "past": "Abgeschlossen", "current": "Aktuell", "future": "Bevorstehend" }
+    "stepper": { "week": "Woche {{num}}", "past": "Abgeschlossen", "current": "Aktuell", "future": "Bevorstehend" },
+    "weekShort": "W{{num}}",
+    "weekAria": {
+      "current": "W{{num}} — aktuelle Woche",
+      "past": "W{{num}} — abgeschlossen", 
+      "future": "W{{num}} — zukünftig"
+    }
   }
 }

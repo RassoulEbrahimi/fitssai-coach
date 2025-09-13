@@ -300,51 +300,58 @@ const WorkoutView: React.FC<WorkoutViewProps> = React.memo(({
         <div
           role="tablist"
           aria-label="Wochen Auswahl"
-          className="flex items-center justify-between gap-2 px-2"
+          className="flex items-center justify-center gap-2 px-2"
         >
-          {([1, 2, 3, 4] as const).map((weekNum, index, arr) => {
+          {[1, 2, 3, 4].map((weekNum, index, arr) => {
             const weekKey = `week${weekNum}`;
             const isActive = currentWeekNum === weekNum;
             const isPast = currentWeekNum > weekNum;
             const isFuture = currentWeekNum < weekNum;
 
+            // Get aria-label based on state
+            const getAriaLabel = () => {
+              if (isActive) return t('workout.weekAria.current', { num: weekNum });
+              if (isPast) return t('workout.weekAria.past', { num: weekNum });
+              return t('workout.weekAria.future', { num: weekNum });
+            };
+
             return (
-              <div key={weekKey} className="flex items-center gap-2">
+              <React.Fragment key={weekKey}>
                 <button
                   type="button"
                   role="tab"
-                  aria-label={`Woche ${weekNum}`}
+                  aria-label={getAriaLabel()}
                   aria-current={isActive ? 'page' : undefined}
-                  aria-pressed={isActive}
                   onClick={() => setActiveWeek(normalizeWeekKey(weekKey))}
                   className={[
-                    'h-10 w-16 rounded-xl text-sm font-medium transition-all',
+                    'flex items-center justify-center gap-1 h-11 px-3 rounded-full text-sm font-medium transition-all min-h-[44px]',
                     'outline-none ring-offset-background focus-visible:ring-2 focus-visible:ring-primary/40',
                     isActive
                       ? 'bg-primary text-primary-foreground shadow-sm'
                       : isPast
-                        ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-300'
+                        ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300'
                         : 'bg-muted text-muted-foreground hover:bg-muted/80'
                   ].join(' ')}
                 >
-                  {isPast ? 'W' + weekNum : isActive ? 'W' + weekNum : 'W' + weekNum}
+                  {isPast && (
+                    <Check className="h-3 w-3" aria-hidden="true" />
+                  )}
+                  <span>{t('workout.weekShort', { num: weekNum })}</span>
                 </button>
 
                 {/* Connector line except after the last item */}
                 {index < arr.length - 1 && (
-                  <span
+                  <div
                     aria-hidden="true"
                     className={[
-                      'block h-0.5 w-8 rounded-full',
-                      isPast
-                        ? 'bg-emerald-400/80 dark:bg-emerald-300/60'
-                        : isActive
-                          ? 'bg-primary/70'
-                          : 'bg-border'
+                      'h-0.5 w-6 rounded-full transition-colors',
+                      (isPast || isActive)
+                        ? 'bg-emerald-400 dark:bg-emerald-300'
+                        : 'bg-muted'
                     ].join(' ')}
                   />
                 )}
-              </div>
+              </React.Fragment>
             );
           })}
         </div>
