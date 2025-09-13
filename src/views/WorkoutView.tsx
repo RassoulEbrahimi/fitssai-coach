@@ -1,4 +1,4 @@
-import React, { useState, useRef } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -82,6 +82,53 @@ const WorkoutView: React.FC<WorkoutViewProps> = React.memo(({
   // Robust week number for titles like "Woche 3"
   const currentWeekNum = Number(wk.match(/\d+/)?.[0] ?? 1);
   const [focusedWeek, setFocusedWeek] = useState<number>(currentWeekNum);
+
+  // URL deep-linking helpers
+  const parseHashQuery = () => {
+    const hash = window.location.hash;
+    const match = hash.match(/[#/?]workout\?(.+)/);
+    if (!match) return { w: null, d: null };
+    
+    const params = new URLSearchParams(match[1]);
+    const w = params.get('w');
+    const d = params.get('d');
+    
+    return {
+      w: w && /^[1-4]$/.test(w) ? parseInt(w) : null,
+      d: d && /^[0-6]$/.test(d) ? parseInt(d) : null
+    };
+  };
+
+  const updateHash = (weekNum: number, dayIndex: number) => {
+    const newHash = `#/workout?w=${weekNum}&d=${dayIndex}`;
+    if (window.location.hash !== newHash) {
+      history.replaceState(null, '', newHash);
+    }
+  };
+
+  // Parse URL on mount and update state accordingly
+  useEffect(() => {
+    const { w, d } = parseHashQuery();
+    
+    if (w !== null && w >= 1 && w <= 4) {
+      const weekKey = `week${w}`;
+      if (activeWeek !== weekKey) {
+        setActiveWeek(weekKey);
+      }
+    }
+    
+    if (d !== null && d >= 0 && d <= 6) {
+      if (activeDayIndex !== d) {
+        setActiveDayIndex?.(d);
+      }
+    }
+  }, []); // Only run on mount
+
+  // Update hash whenever activeWeek or activeDayIndex changes
+  useEffect(() => {
+    const weekNum = Number(wk.match(/\d+/)?.[0] ?? 1);
+    updateHash(weekNum, activeDayIndex);
+  }, [activeWeek, activeDayIndex, wk]);
 
 
   // Handle week navigation
