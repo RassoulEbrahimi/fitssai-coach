@@ -148,7 +148,7 @@ const WorkoutView: React.FC<WorkoutViewProps> = React.memo(({
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.4, delay: 0.1 }}
-      className="px-4 pt-0 md:pt-6 space-y-4 md:space-y-6"
+      className="px-4 md:px-6 space-y-4 md:space-y-6"
     >
       {/* Weekly Calendar */}
       <Card className="border-primary/20">
