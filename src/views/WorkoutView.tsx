@@ -15,6 +15,8 @@ import {
 import { motion, AnimatePresence } from "framer-motion";
 import { useTranslation } from "react-i18next";
 import { formatDateForDisplay } from "@/lib/dateUtils";
+import { format } from 'date-fns';
+import { de } from 'date-fns/locale';
 
 interface WorkoutViewProps {
   workoutPlan: any;
@@ -137,6 +139,10 @@ const WorkoutView: React.FC<WorkoutViewProps> = React.memo(({
   const weekData = workoutPlan.content[wk] || [];
   const weekProgress = getWeekProgress(wk);
 
+  // Compute header date from active day or fallback to day 0
+  const headerDate = getDateFor(wk, activeDayIndex ?? 0) ?? getDateFor(wk, 0);
+  const monthYear = headerDate ? format(headerDate, 'MMM yyyy', { locale: de }) : '';
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 20 }}
@@ -159,9 +165,9 @@ const WorkoutView: React.FC<WorkoutViewProps> = React.memo(({
               <ChevronLeft className="h-4 w-4" />
             </Button>
             
-            <h2 className="text-lg font-semibold text-primary">
-              {t('workout.week', { num: currentWeekNum })}
-            </h2>
+            <h3 className="text-lg font-semibold text-foreground">
+              {monthYear}
+            </h3>
             
             <Button
               variant="ghost"
@@ -185,22 +191,22 @@ const WorkoutView: React.FC<WorkoutViewProps> = React.memo(({
               const isToday = isTodayInWeekDay(wk, i);
               
               return (
-                <Button
+                <button
                   key={i}
-                  variant={isActive ? "default" : "ghost"}
-                  size="sm"
                   onClick={() => handleDayClick(i)}
-                  className={`h-12 flex flex-col p-1 text-xs ${
-                    isToday ? 'ring-2 ring-primary ring-offset-2' : ''
-                  } ${isCompleted ? 'bg-green-100 dark:bg-green-900/20' : ''}`}
-                  style={{ minHeight: '44px' }}
+                  className={[
+                    "flex h-12 min-h-[44px] w-10 flex-col items-center justify-center rounded-xl text-xs transition-colors",
+                    isToday ? "ring-2 ring-primary ring-offset-2" : "",
+                    isCompleted ? "bg-primary/10 text-primary" : "bg-muted/50",
+                    activeDayIndex === i ? "outline outline-2 outline-primary/60" : ""
+                  ].join(" ")}
+                  aria-pressed={activeDayIndex === i}
+                  aria-label={`${dayName} ${dayNumber}`}
+                  type="button"
                 >
-                  <span className="font-medium">{dayName}</span>
-                  <span className="text-xs opacity-75">{dayNumber}</span>
-                  {isCompleted && (
-                    <CheckCircle2 className="h-3 w-3 text-green-600 mt-1" />
-                  )}
-                </Button>
+                  <span className="leading-3">{dayName}</span>
+                  <span className="text-sm font-medium">{dayNumber}</span>
+                </button>
               );
             })}
           </div>
