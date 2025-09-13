@@ -72,8 +72,8 @@ const WorkoutView: React.FC<WorkoutViewProps> = React.memo(({
   
   // Hoisted function declaration to avoid temporal dead zone
   function normalizeWeekKey(key?: string | null) {
-    const num = String(key ?? 'week1').match(/\d+/)?.[0];
-    return `week${num ?? 1}`;
+    const num = String(key ?? 'Week 1').match(/\d+/)?.[0];
+    return `Week ${num ?? 1}`;
   }
 
   // Single source of truth helper for week progress from DB logs
@@ -148,7 +148,7 @@ const WorkoutView: React.FC<WorkoutViewProps> = React.memo(({
     const { w, d } = parseHashQuery();
     
     if (w !== null && w >= 1 && w <= 4) {
-      const weekKey = `week${w}`;
+      const weekKey = normalizeWeekKey(`Week ${w}`);
       if (activeWeek !== weekKey) {
         setActiveWeek(weekKey);
       }
@@ -171,13 +171,13 @@ const WorkoutView: React.FC<WorkoutViewProps> = React.memo(({
   // Handle week navigation
   const handlePrevWeek = () => {
     if (currentWeekNum > 1) {
-      setActiveWeek(normalizeWeekKey(`week${currentWeekNum - 1}`));
+      setActiveWeek(normalizeWeekKey(`Week ${currentWeekNum - 1}`));
     }
   };
 
   const handleNextWeek = () => {
     if (currentWeekNum < 4) {
-      setActiveWeek(normalizeWeekKey(`week${currentWeekNum + 1}`));
+      setActiveWeek(normalizeWeekKey(`Week ${currentWeekNum + 1}`));
     }
   };
 
@@ -197,7 +197,7 @@ const WorkoutView: React.FC<WorkoutViewProps> = React.memo(({
 
   // Handle week activation with animation
   const handleWeekActivation = (weekNum: number) => {
-    setActiveWeek(normalizeWeekKey(`week${weekNum}`));
+    setActiveWeek(normalizeWeekKey(`Week ${weekNum}`));
     
     // Optional haptic feedback on mobile
     if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
@@ -261,7 +261,8 @@ const WorkoutView: React.FC<WorkoutViewProps> = React.memo(({
     );
   }
 
-  const weekData = workoutPlan.content[wk] || [];
+  // Get week data with fallback to legacy format for backward compatibility
+  const weekData = workoutPlan.content[wk] || workoutPlan.content[wk.toLowerCase().replace(' ', '')] || [];
 
   // Compute header date from active day or fallback to day 0
   const headerDate = getDateFor(wk, activeDayIndex ?? 0) ?? getDateFor(wk, 0);
