@@ -246,6 +246,20 @@
       "current": "W{{num}} — aktuelle Woche",
       "past": "W{{num}} — abgeschlossen", 
       "future": "W{{num}} — zukünftig"
-    }
+    },
+    "futureLocked": "Nur für heutige oder vergangene Tage verfügbar",
+    "nextWorkout": "Nächstes Training",
+    "noUpcoming": "Kein bevorstehendes Training",
+    "futureDay": "Zukünftiger Tag",
+    "restDayDescription": "Kein Training für heute geplant",
+    "markComplete": "Als erledigt markieren",
+    "futureWorkout": "Zukünftiges Training",
+    "moreExercises": "+{{count}} weitere Übungen",
+    "restCompleted": "Ruhetag als erledigt markiert",
+    "restUncompleted": "Ruhetag als nicht erledigt markiert",
+    "workoutCompleted": "Training als erledigt markiert",
+    "workoutUncompleted": "Training als nicht erledigt markiert",
+    "planWeeks": "Plan-Wochen",
+    "weekSelection": "Wochen Auswahl"
   }
 }

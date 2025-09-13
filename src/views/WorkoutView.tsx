@@ -409,10 +409,10 @@ const WorkoutView: React.FC<WorkoutViewProps> = React.memo(({
       </Card>
 
       {/* Plan Stepper */}
-      <section aria-label="Plan-Wochen" className="select-none">
+      <section aria-label={t('workout.planWeeks')} className="select-none">
         <div
           role="tablist"
-          aria-label="Wochen Auswahl"
+          aria-label={t('workout.weekSelection')}
           className="flex items-center justify-center gap-0 px-2"
         >
           {[1, 2, 3, 4].map((weekNum, index, arr) => {
