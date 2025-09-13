@@ -251,6 +251,18 @@
       "past": "W{{num}} — abgeschlossen", 
       "future": "W{{num}} — zukünftig"
     },
+    "weekSection": {
+      "title": "Woche"
+    },
+    "day": {
+      "rest": "Ruhetag",
+      "exercises": "{{count}} Übungen",
+      "futureLocked": "Zukünftige Tage sind gesperrt",
+      "markDone": "Als erledigt markieren"
+    },
+    "rest": {
+      "note": "Erholung ist wichtig für deine Fortschritte."
+    },
     "futureLocked": "Nur für heutige oder vergangene Tage verfügbar",
     "nextWorkout": "Nächstes Training",
     "noUpcoming": "Kein bevorstehendes Training",

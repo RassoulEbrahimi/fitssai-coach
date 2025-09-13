@@ -533,7 +533,7 @@ const WorkoutView: React.FC<WorkoutViewProps> = React.memo(({
         <CardHeader>
           <div className="flex items-center justify-between">
             <CardTitle className="text-lg">
-              {t('workout.week', { num: currentWeekNum })}
+              {t('workout.weekSection.title')} {currentWeekNum}
             </CardTitle>
             <span className="text-sm text-muted-foreground">
               {t('workout.thisWeekProgress', { done: weekProgress.completed, total: weekProgress.total })}
@@ -545,6 +545,7 @@ const WorkoutView: React.FC<WorkoutViewProps> = React.memo(({
             const date = getDateFor(wk, dayIndex);
             const dayName = date ? formatDateForDisplay(date, 'EEEE') : `Tag ${dayIndex + 1}`;
             const isCompleted = isDayCompleted(wk, dayIndex);
+            const isFutureDay = isDayInFuture(wk, dayIndex);
             const isExpanded = expandedDay === dayIndex;
             const exercises = day?.exercises || [];
             const isRestDay = !exercises.length;
@@ -560,7 +561,16 @@ const WorkoutView: React.FC<WorkoutViewProps> = React.memo(({
               >
                 <Collapsible open={isExpanded} onOpenChange={(open) => {
                   setExpandedDay(open ? dayIndex : null);
-                  if (open) setActiveDayIndex?.(dayIndex);
+                  if (open) {
+                    setActiveDayIndex?.(dayIndex);
+                    // Smooth scroll to expanded row
+                    setTimeout(() => {
+                      const dayElement = dayRefs.current[dayIndex];
+                      if (dayElement && !window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+                        dayElement.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                      }
+                    }, 100);
+                  }
                 }}>
                   <CollapsibleTrigger asChild>
                     <Button
@@ -569,20 +579,38 @@ const WorkoutView: React.FC<WorkoutViewProps> = React.memo(({
                       style={{ minHeight: '44px' }}
                     >
                       <div className="flex items-center justify-between w-full">
-                        <div className="flex items-center gap-3">
-                          <span className="font-medium">{dayName}</span>
-                          <span className="text-sm text-muted-foreground">
-                            {isRestDay ? t('workout.restDay') : t('workout.exercisesCount', { count: exercises.length })}
-                          </span>
+                        <div className="flex-1">
+                          <div className="font-medium">{dayName}</div>
+                          <div className="text-sm text-muted-foreground">
+                            {isRestDay ? t('workout.day.rest') : t('workout.day.exercises', { count: exercises.length })}
+                          </div>
                         </div>
                         <div className="flex items-center gap-2">
-                          <Checkbox
-                            checked={isCompleted}
-                            onCheckedChange={(checked) => {
-                              toggleDayComplete(wk, dayIndex);
-                            }}
-                            onClick={(e) => e.stopPropagation()}
-                          />
+                          {isFutureDay ? (
+                            <div
+                              title={t('workout.day.futureLocked')}
+                              className="p-2 text-muted-foreground cursor-not-allowed"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <div className="w-4 h-4 rounded border-2 border-muted-foreground/50"></div>
+                            </div>
+                          ) : (
+                            <Checkbox
+                              checked={isCompleted}
+                              onCheckedChange={(checked) => {
+                                toggleDayComplete(wk, dayIndex);
+                                toast({
+                                  title: checked 
+                                    ? (isRestDay ? t('workout.restCompleted') : t('workout.workoutCompleted'))
+                                    : (isRestDay ? t('workout.restUncompleted') : t('workout.workoutUncompleted')),
+                                  description: "",
+                                });
+                              }}
+                              onClick={(e) => e.stopPropagation()}
+                              title={t('workout.day.markDone')}
+                              className={isCompleted ? 'border-green-600 bg-green-600' : ''}
+                            />
+                          )}
                           {isCompleted && <CheckCircle2 className="h-4 w-4 text-green-600" />}
                         </div>
                       </div>
@@ -596,9 +624,15 @@ const WorkoutView: React.FC<WorkoutViewProps> = React.memo(({
                       transition={{ duration: 0.3 }}
                       className="px-4 pb-4"
                     >
-                      <Suspense fallback={<ExerciseListSkeleton />}>
-                        <ExerciseList exercises={exercises} />
-                      </Suspense>
+                      {isRestDay ? (
+                        <div className="text-sm text-muted-foreground p-3 bg-muted/30 rounded-lg">
+                          {t('workout.rest.note')}
+                        </div>
+                      ) : (
+                        <Suspense fallback={<ExerciseListSkeleton />}>
+                          <ExerciseList exercises={exercises} />
+                        </Suspense>
+                      )}
                     </motion.div>
                   </CollapsibleContent>
                 </Collapsible>
