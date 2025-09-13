@@ -81,9 +81,9 @@ const WorkoutView: React.FC<WorkoutViewProps> = React.memo(({
   
   // Robust week number for titles like "Woche 3"
   const currentWeekNum = Number(wk.match(/\d+/)?.[0] ?? 1);
+  const weekNumbers = [1, 2, 3, 4];
   const [focusedWeek, setFocusedWeek] = useState<number>(currentWeekNum);
 
-  const weekNumbers = [1, 2, 3, 4];
 
   // Handle week navigation
   const handlePrevWeek = () => {
