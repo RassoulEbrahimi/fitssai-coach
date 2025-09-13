@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, Suspense } from "react";
+import React, { useState, useRef, useEffect, Suspense, useMemo } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -14,7 +14,7 @@ import {
 import { motion, AnimatePresence } from "framer-motion";
 import { useTranslation } from "react-i18next";
 import { formatDateForDisplay } from "@/lib/dateUtils";
-import { format } from 'date-fns';
+import { format, addDays } from 'date-fns';
 import { de } from 'date-fns/locale';
 import ExerciseListSkeleton from "@/components/skeletons/ExerciseListSkeleton";
 
@@ -25,7 +25,6 @@ interface WorkoutViewProps {
   workoutLogs: any[];
   completingWorkout: number | null;
   activeWeek: string | null;
-  currentWeekProgress: { completed: number; total: number };
   activeDayIndex?: number;
   
   // Helper functions
@@ -51,7 +50,6 @@ const WorkoutView: React.FC<WorkoutViewProps> = React.memo(({
   workoutLogs,
   completingWorkout,
   activeWeek,
-  currentWeekProgress,
   activeDayIndex = 0,
   getTodayWorkout,
   findNextWorkoutInCurrentWeek,
@@ -78,12 +76,49 @@ const WorkoutView: React.FC<WorkoutViewProps> = React.memo(({
     return `week${num ?? 1}`;
   }
 
+  // Single source of truth helper for week progress from DB logs
+  const getWeekProgressFromLogs = (weekKey: string, workoutPlan: any, workoutLogs: any[]) => {
+    if (!workoutPlan || !workoutLogs) return { completed: 0, total: 7 };
+    
+    const total = workoutPlan.content[weekKey]?.length || 7;
+    
+    // Get unique dayIndex entries for this week from logs
+    const weekNumber = parseInt(weekKey.replace(/\D/g, '')) - 1;
+    const planCreatedDate = new Date(workoutPlan.created_at);
+    
+    const completedDays = new Set<number>();
+    
+    workoutLogs.forEach(log => {
+      if (!log.completed) return;
+      
+      // Convert log date back to dayIndex
+      const logDate = new Date(log.workout_day);
+      const daysDiff = Math.floor((logDate.getTime() - planCreatedDate.getTime()) / (24 * 60 * 60 * 1000));
+      const logWeekNumber = Math.floor(daysDiff / 7);
+      const dayIndex = daysDiff % 7;
+      
+      if (logWeekNumber === weekNumber && dayIndex >= 0 && dayIndex < 7) {
+        completedDays.add(dayIndex);
+      }
+    });
+    
+    return {
+      completed: Math.min(completedDays.size, total),
+      total
+    };
+  };
+
   // Canonical week key used everywhere in this component
   const wk = normalizeWeekKey(activeWeek);
   
   // Robust week number for titles like "Woche 3"
   const currentWeekNum = Number(wk.match(/\d+/)?.[0] ?? 1);
   const [focusedWeek, setFocusedWeek] = useState<number>(currentWeekNum);
+
+  // Memoized week progress calculation
+  const weekProgress = useMemo(() => {
+    return getWeekProgressFromLogs(wk, workoutPlan, workoutLogs);
+  }, [wk, workoutPlan, workoutLogs]);
 
   // URL deep-linking helpers
   const parseHashQuery = () => {
@@ -227,7 +262,6 @@ const WorkoutView: React.FC<WorkoutViewProps> = React.memo(({
   }
 
   const weekData = workoutPlan.content[wk] || [];
-  const weekProgress = getWeekProgress(wk);
 
   // Compute header date from active day or fallback to day 0
   const headerDate = getDateFor(wk, activeDayIndex ?? 0) ?? getDateFor(wk, 0);

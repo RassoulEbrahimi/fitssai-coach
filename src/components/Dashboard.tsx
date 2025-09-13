@@ -119,7 +119,6 @@ const Dashboard = () => {
   const [workoutLogs, setWorkoutLogs] = useState<any[]>([]);
   const [completingWorkout, setCompletingWorkout] = useState<number | null>(null);
   const [activeWeek, setActiveWeek] = useState<string | null>(null);
-  const [currentWeekProgress, setCurrentWeekProgress] = useState({ completed: 0, total: 0 });
   const [activeDays, setActiveDays] = useState<Set<string>>(new Set());
   const [activeDayIndex, setActiveDayIndex] = useState<number>(0);
 
@@ -645,13 +644,6 @@ const Dashboard = () => {
     }
   }, [workoutPlan]);
 
-  // Update current week progress
-  useEffect(() => {
-    if (activeWeek && workoutLogs.length > 0) {
-      const progress = getWeekProgress(activeWeek);
-      setCurrentWeekProgress(progress);
-    }
-  }, [activeWeek, workoutLogs]);
 
 
   // Accurate weekly progress calculation using Berlin timezone
@@ -824,7 +816,6 @@ const Dashboard = () => {
               workoutLogs={workoutLogs}
               completingWorkout={completingWorkout}
               activeWeek={activeWeek}
-              currentWeekProgress={currentWeekProgress}
               activeDayIndex={activeDayIndex}
               getTodayWorkout={getTodayWorkout}
               findNextWorkoutInCurrentWeek={findNextWorkoutInCurrentWeek}
