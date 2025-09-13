@@ -148,7 +148,8 @@ const WorkoutView: React.FC<WorkoutViewProps> = React.memo(({
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.4, delay: 0.1 }}
-      className="px-4 pt-2 md:pt-6 space-y-4 md:space-y-6"
+      className="px-4 md:px-6 md:pt-6 space-y-4 md:space-y-6"
+      style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 8px)' }}
     >
       {/* Weekly Calendar */}
       <Card className="border-primary/20">
@@ -296,42 +297,65 @@ const WorkoutView: React.FC<WorkoutViewProps> = React.memo(({
       </Card>
 
       {/* Plan Stepper */}
-      <Card className="border-border">
-        <CardContent className="p-4">
-          <div className="flex items-center justify-between">
-            {weekNumbers.map((weekNum, index) => {
-              const weekKey = `week${weekNum}`;
-              const isActive = currentWeekNum === weekNum;
-              const isPast = currentWeekNum > weekNum;
-              const isFuture = currentWeekNum < weekNum;
-              
-              return (
-                <div key={weekNum} className="flex items-center">
-                  <Button
-                    variant={isActive ? "default" : isPast ? "secondary" : "outline"}
-                    size="sm"
-                    onClick={() => setActiveWeek(normalizeWeekKey(weekKey))}
-                    className={`h-10 w-16 ${
-                      isPast ? 'bg-green-100 dark:bg-green-900/20 text-green-700 dark:text-green-300' :
-                      isFuture ? 'opacity-60' : ''
-                    }`}
-                    disabled={isFuture}
-                  >
-                    {isPast && <CheckCircle2 className="h-3 w-3 mr-1" />}
-                    W{weekNum}
-                  </Button>
-                  
-                  {index < weekNumbers.length - 1 && (
-                    <div className={`h-0.5 w-8 mx-2 ${
-                      isPast ? 'bg-green-300' : 'bg-border'
-                    }`} />
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        </CardContent>
-      </Card>
+      <section aria-label="Plan-Wochen" className="select-none">
+        <div
+          role="tablist"
+          aria-label="Wochen Auswahl"
+          className="flex items-center justify-between gap-2 px-2"
+        >
+          {([1, 2, 3, 4] as const).map((weekNum, index, arr) => {
+            const weekKey = `week${weekNum}`;
+            const isActive = currentWeekNum === weekNum;
+            const isPast = currentWeekNum > weekNum;
+            const isFuture = currentWeekNum < weekNum;
+
+            return (
+              <div key={weekKey} className="flex items-center gap-2">
+                <button
+                  type="button"
+                  role="tab"
+                  aria-label={`Woche ${weekNum}`}
+                  aria-current={isActive ? 'page' : undefined}
+                  aria-pressed={isActive}
+                  onClick={() => setActiveWeek(normalizeWeekKey(weekKey))}
+                  className={[
+                    'h-10 w-16 rounded-xl text-sm font-medium transition-all',
+                    'outline-none ring-offset-background focus-visible:ring-2 focus-visible:ring-primary/40',
+                    isActive
+                      ? 'bg-primary text-primary-foreground shadow-sm'
+                      : isPast
+                        ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-300'
+                        : 'bg-muted text-muted-foreground hover:bg-muted/80'
+                  ].join(' ')}
+                >
+                  {isPast ? 'W' + weekNum : isActive ? 'W' + weekNum : 'W' + weekNum}
+                </button>
+
+                {/* Connector line except after the last item */}
+                {index < arr.length - 1 && (
+                  <span
+                    aria-hidden="true"
+                    className={[
+                      'block h-0.5 w-8 rounded-full',
+                      isPast
+                        ? 'bg-emerald-400/80 dark:bg-emerald-300/60'
+                        : isActive
+                          ? 'bg-primary/70'
+                          : 'bg-border'
+                    ].join(' ')}
+                  />
+                )}
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Optional: mini legend for clarity (DE-only, subtle) */}
+        <div className="sr-only">
+          Reihenfolge der Wochen: Vergangene Wochen sind grün markiert, aktuelle Woche ist hervorgehoben,
+          zukünftige Wochen sind inaktiv dargestellt.
+        </div>
+      </section>
 
       {/* Week Section */}
       <Card className="border-border">
