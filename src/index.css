@@ -267,3 +267,16 @@
 .pwa-install-btn { 
   @apply bg-background border-border text-foreground hover:bg-muted; 
 }
+
+/* Responsive header height variable */
+:root {
+  /* Mobile: no top offset */
+  --nav-h: 0px;
+}
+
+@media (min-width: 768px) {
+  :root {
+    /* Desktop: set to actual Navbar height (adjust if your Navbar is different) */
+    --nav-h: 64px;
+  }
+}
