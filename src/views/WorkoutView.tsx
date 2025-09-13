@@ -314,6 +314,7 @@ const WorkoutView: React.FC<WorkoutViewProps> = React.memo(({
             
             if (!todayWorkout || todayWorkout.__restDay) {
               const isCompleted = todayWorkout ? isDayCompleted(todayWorkout.weekKey, todayWorkout.dayIndex) : false;
+              const isFuture = todayWorkout ? isDayInFuture(todayWorkout.weekKey, todayWorkout.dayIndex) : false;
               
               return (
                 <div className="space-y-4">
@@ -321,17 +322,26 @@ const WorkoutView: React.FC<WorkoutViewProps> = React.memo(({
                     <div>
                       <h3 className="font-semibold text-muted-foreground">{t('workout.restDay')}</h3>
                       <p className="text-sm text-muted-foreground">
-                        Kein Training für heute geplant.
+                        {isFuture ? t('workout.futureDay') : t('workout.restDayDescription')}
                       </p>
                     </div>
                     <div className="flex items-center space-x-2">
                       <Checkbox
                         id="rest-day"
                         checked={isCompleted}
-                        onCheckedChange={() => todayWorkout && toggleDayComplete(todayWorkout.weekKey, todayWorkout.dayIndex)}
+                        disabled={isFuture}
+                        onCheckedChange={(checked) => {
+                          if (todayWorkout && !isFuture) {
+                            toggleDayComplete(todayWorkout.weekKey, todayWorkout.dayIndex);
+                            toast({
+                              title: checked ? t('workout.restCompleted') : t('workout.restUncompleted'),
+                              description: "",
+                            });
+                          }
+                        }}
                       />
-                      <label htmlFor="rest-day" className="text-sm font-medium">
-                        {t('workout.restDone')}
+                      <label htmlFor="rest-day" className={`text-sm font-medium ${isFuture ? 'text-muted-foreground' : ''}`}>
+                        {t('workout.markComplete')}
                       </label>
                     </div>
                   </div>
@@ -340,6 +350,7 @@ const WorkoutView: React.FC<WorkoutViewProps> = React.memo(({
             }
 
             const isCompleted = isDayCompleted(todayWorkout.weekKey, todayWorkout.dayIndex);
+            const isFuture = isDayInFuture(todayWorkout.weekKey, todayWorkout.dayIndex);
             const exercises = todayWorkout.dayData.exercises || [];
 
             return (
@@ -349,15 +360,29 @@ const WorkoutView: React.FC<WorkoutViewProps> = React.memo(({
                     <h3 className="font-semibold text-primary">
                       {t('workout.exercisesCount', { count: exercises.length })}
                     </h3>
+                    {isFuture && (
+                      <p className="text-sm text-muted-foreground">
+                        {t('workout.futureWorkout')}
+                      </p>
+                    )}
                   </div>
                   <div className="flex items-center space-x-2">
                     <Checkbox
                       id="today-workout"
                       checked={isCompleted}
-                      onCheckedChange={() => toggleDayComplete(todayWorkout.weekKey, todayWorkout.dayIndex)}
+                      disabled={isFuture}
+                      onCheckedChange={(checked) => {
+                        if (!isFuture) {
+                          toggleDayComplete(todayWorkout.weekKey, todayWorkout.dayIndex);
+                          toast({
+                            title: checked ? t('workout.workoutCompleted') : t('workout.workoutUncompleted'),
+                            description: "",
+                          });
+                        }
+                      }}
                     />
-                    <label htmlFor="today-workout" className="text-sm font-medium">
-                      Als erledigt markieren
+                    <label htmlFor="today-workout" className={`text-sm font-medium ${isFuture ? 'text-muted-foreground' : ''}`}>
+                      {t('workout.markComplete')}
                     </label>
                   </div>
                 </div>
@@ -373,7 +398,7 @@ const WorkoutView: React.FC<WorkoutViewProps> = React.memo(({
                   ))}
                   {exercises.length > 3 && (
                     <div className="text-sm text-muted-foreground text-center">
-                      +{exercises.length - 3} weitere Übungen
+                      {t('workout.moreExercises', { count: exercises.length - 3 })}
                     </div>
                   )}
                 </div>
