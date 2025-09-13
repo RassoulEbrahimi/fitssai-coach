@@ -68,20 +68,29 @@ const WorkoutView: React.FC<WorkoutViewProps> = React.memo(({
   const [expandedDay, setExpandedDay] = useState<number | null>(null);
   const dayRefs = useRef<{ [key: number]: HTMLDivElement | null }>({});
 
-  // Get current week number for stepper
-  const currentWeekNum = activeWeek ? parseInt(activeWeek.replace('week', '')) : 1;
+  // Ensure any inbound key becomes canonical like "week1", "week2", ...
+  const normalizeWeekKey = (key?: string | null) => {
+    const num = String(key ?? 'week1').match(/\d+/)?.[0];
+    return `week${num ?? 1}`;
+  };
+
+  // Canonical week key used everywhere in this component
+  const wk = normalizeWeekKey(activeWeek);
+
+  // Robust week number for titles like "Woche 3"
+  const currentWeekNum = Number(wk.match(/\d+/)?.[0] ?? 1);
   const weekNumbers = [1, 2, 3, 4];
 
   // Handle week navigation
   const handlePrevWeek = () => {
     if (currentWeekNum > 1) {
-      setActiveWeek(`week${currentWeekNum - 1}`);
+      setActiveWeek(normalizeWeekKey(`week${currentWeekNum - 1}`));
     }
   };
 
   const handleNextWeek = () => {
     if (currentWeekNum < 4) {
-      setActiveWeek(`week${currentWeekNum + 1}`);
+      setActiveWeek(normalizeWeekKey(`week${currentWeekNum + 1}`));
     }
   };
 
@@ -125,8 +134,8 @@ const WorkoutView: React.FC<WorkoutViewProps> = React.memo(({
     );
   }
 
-  const weekData = workoutPlan.content[activeWeek || 'week1'] || [];
-  const weekProgress = getWeekProgress(activeWeek || 'week1');
+  const weekData = workoutPlan.content[wk] || [];
+  const weekProgress = getWeekProgress(wk);
 
   return (
     <motion.div
@@ -168,12 +177,12 @@ const WorkoutView: React.FC<WorkoutViewProps> = React.memo(({
           
           <div className="grid grid-cols-7 gap-2">
             {Array.from({ length: 7 }, (_, i) => {
-              const date = getDateFor(activeWeek || 'week1', i);
+              const date = getDateFor(wk, i);
               const dayName = date ? formatDateForDisplay(date, 'E') : '';
               const dayNumber = date ? formatDateForDisplay(date, 'd') : '';
               const isActive = activeDayIndex === i;
-              const isCompleted = isDayCompleted(activeWeek || 'week1', i);
-              const isToday = isTodayInWeekDay(activeWeek || 'week1', i);
+              const isCompleted = isDayCompleted(wk, i);
+              const isToday = isTodayInWeekDay(wk, i);
               
               return (
                 <Button
@@ -295,7 +304,7 @@ const WorkoutView: React.FC<WorkoutViewProps> = React.memo(({
                   <Button
                     variant={isActive ? "default" : isPast ? "secondary" : "outline"}
                     size="sm"
-                    onClick={() => setActiveWeek(weekKey)}
+                    onClick={() => setActiveWeek(normalizeWeekKey(weekKey))}
                     className={`h-10 w-16 ${
                       isPast ? 'bg-green-100 dark:bg-green-900/20 text-green-700 dark:text-green-300' :
                       isFuture ? 'opacity-60' : ''
@@ -332,9 +341,9 @@ const WorkoutView: React.FC<WorkoutViewProps> = React.memo(({
         </CardHeader>
         <CardContent className="space-y-3">
           {weekData.map((day: any, dayIndex: number) => {
-            const date = getDateFor(activeWeek || 'week1', dayIndex);
+            const date = getDateFor(wk, dayIndex);
             const dayName = date ? formatDateForDisplay(date, 'EEEE') : `Tag ${dayIndex + 1}`;
-            const isCompleted = isDayCompleted(activeWeek || 'week1', dayIndex);
+            const isCompleted = isDayCompleted(wk, dayIndex);
             const isExpanded = expandedDay === dayIndex;
             const exercises = day?.exercises || [];
             const isRestDay = !exercises.length;
@@ -369,7 +378,7 @@ const WorkoutView: React.FC<WorkoutViewProps> = React.memo(({
                           <Checkbox
                             checked={isCompleted}
                             onCheckedChange={(checked) => {
-                              toggleDayComplete(activeWeek || 'week1', dayIndex);
+                              toggleDayComplete(wk, dayIndex);
                             }}
                             onClick={(e) => e.stopPropagation()}
                           />
