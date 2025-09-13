@@ -70,18 +70,17 @@ const WorkoutView: React.FC<WorkoutViewProps> = React.memo(({
   const [expandedDay, setExpandedDay] = useState<number | null>(null);
   const dayRefs = useRef<{ [key: number]: HTMLDivElement | null }>({});
   
-  // Ensure any inbound key becomes canonical like "week1", "week2", ...
-  const normalizeWeekKey = (key?: string | null) => {
+  // Hoisted function declaration to avoid temporal dead zone
+  function normalizeWeekKey(key?: string | null) {
     const num = String(key ?? 'week1').match(/\d+/)?.[0];
     return `week${num ?? 1}`;
-  };
+  }
 
   // Canonical week key used everywhere in this component
   const wk = normalizeWeekKey(activeWeek);
   
   // Robust week number for titles like "Woche 3"
   const currentWeekNum = Number(wk.match(/\d+/)?.[0] ?? 1);
-  const weekNumbers = [1, 2, 3, 4];
   const [focusedWeek, setFocusedWeek] = useState<number>(currentWeekNum);
 
 
