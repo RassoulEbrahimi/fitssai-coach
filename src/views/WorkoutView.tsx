@@ -8,7 +8,6 @@ import { useToast } from "@/hooks/use-toast";
 import { 
   ChevronLeft, 
   ChevronRight, 
-  Check,
   CheckCircle2,
   Info
 } from "lucide-react";
@@ -446,7 +445,7 @@ const WorkoutView: React.FC<WorkoutViewProps> = React.memo(({
                   whileTap={!window.matchMedia('(prefers-reduced-motion: reduce)').matches ? { scale: 0.96 } : {}}
                   transition={{ duration: 0.15, ease: 'easeOut' }}
                   className={[
-                    'relative flex items-center justify-center gap-1.5 min-w-[44px] min-h-[44px] h-11 px-4 rounded-full text-sm font-medium transition-all duration-200',
+                    'relative flex items-center justify-center min-w-[44px] min-h-[44px] h-11 px-4 rounded-full text-sm font-medium transition-all duration-200',
                     'outline-none ring-offset-background focus-visible:ring-2 focus-visible:ring-primary/60 focus-visible:ring-offset-2',
                     isActive
                       ? 'bg-primary text-primary-foreground shadow-lg shadow-primary/25'
@@ -455,9 +454,6 @@ const WorkoutView: React.FC<WorkoutViewProps> = React.memo(({
                         : 'bg-muted text-muted-foreground hover:bg-muted/80 hover:text-foreground'
                   ].join(' ')}
                 >
-                  {isPast && (
-                    <Check className="h-3.5 w-3.5 flex-shrink-0" aria-hidden="true" />
-                  )}
                   <span className="flex-shrink-0">{t('workout.weekShort', { num: weekNum })}</span>
                 </motion.button>
 
