@@ -622,9 +622,9 @@ const WorkoutView: React.FC<WorkoutViewProps> = React.memo(({
                         {!isRestDay && (
                           <div className="px-3 py-1.5 border-b border-border/50">
                             <div className="grid grid-cols-[1fr_48px_64px] gap-2 text-xs text-muted-foreground font-medium items-baseline">
-                              <span>Übungen</span>
+                              <span>Übung</span>
                               <span className="text-center tabular-nums">Sätze</span>
-                              <span className="text-right tabular-nums">Wiederholungen</span>
+                              <span className="text-right tabular-nums">Reps</span>
                             </div>
                           </div>
                         )}
