@@ -585,18 +585,18 @@ const WorkoutView: React.FC<WorkoutViewProps> = React.memo(({
                       aria-expanded={isExpanded}
                     >
                       <div className="flex items-center justify-between w-full">
-                        <div className="flex items-center gap-2">
-                          <div className="font-bold">{dayName}</div>
-                          {isToday && (
-                            <Badge variant="secondary" className="text-xs px-2 py-0.5 h-5">
-                              Heute
-                            </Badge>
-                          )}
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <span className="text-sm text-muted-foreground font-bold">
-                            {isRestDay ? 'Ruhetag' : `${exercises.length} Übungen`}
-                          </span>
+                       <div className="flex items-center gap-2">
+                         <div className="font-medium">{dayName}</div>
+                         {isToday && (
+                           <Badge variant="secondary" className="text-xs px-2 py-0.5 h-5">
+                             Heute
+                           </Badge>
+                         )}
+                       </div>
+                       <div className="flex items-center gap-2">
+                         <span className="text-sm text-muted-foreground">
+                           {isRestDay ? 'Ruhetag' : `${exercises.length} Übungen`}
+                         </span>
                           {isCompleted && (
                             <div className="w-4 h-4 rounded-full bg-green-600 flex-shrink-0"></div>
                           )}
@@ -638,15 +638,12 @@ const WorkoutView: React.FC<WorkoutViewProps> = React.memo(({
                                 <div className="flex-1 font-bold text-sm min-w-0 whitespace-nowrap overflow-hidden text-ellipsis">
                                   {exercise.name}
                                 </div>
-                                <div className="text-lg font-bold text-center w-8 tabular-nums">
-                                  {exercise.sets}
-                                </div>
-                                <div className="text-lg font-bold text-center w-8 tabular-nums">
-                                  {exercise.reps}
-                                </div>
-                                <Button variant="ghost" size="sm" className="h-7 w-7 p-0 flex-shrink-0">
-                                  <ArrowUpDown className="h-4 w-4" />
-                                </Button>
+                               <div className="text-xs text-center w-8 tabular-nums whitespace-nowrap">
+                                 {exercise.sets}
+                               </div>
+                               <div className="text-xs text-center w-8 tabular-nums whitespace-nowrap">
+                                 {exercise.reps}
+                               </div>
                               </div>
                             ))}
                           </div>
