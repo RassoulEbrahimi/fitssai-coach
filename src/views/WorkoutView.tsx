@@ -533,12 +533,12 @@ const WorkoutView: React.FC<WorkoutViewProps> = React.memo(({
 
       {/* Week Section */}
       <Card className="border-border">
-        <CardHeader className="pb-2 px-4 pt-3">
-          <div className="flex items-center gap-3 flex-wrap">
-            <CardTitle className="text-2xl font-bold">
+        <CardHeader className="px-4 py-3">
+          <div className="flex items-baseline justify-between">
+            <CardTitle className="text-lg font-bold">
               Woche {currentWeekNum}
             </CardTitle>
-            <p className="text-sm text-muted-foreground flex-1 min-w-0">
+            <p className="text-sm text-muted-foreground tabular-nums">
               {weekProgress.completed} / {weekProgress.total} Tage abgeschlossen
             </p>
           </div>
@@ -610,17 +610,23 @@ const WorkoutView: React.FC<WorkoutViewProps> = React.memo(({
                     </Button>
                   </CollapsibleTrigger>
                   
-                  <CollapsibleContent>
-                    <div className="border-t bg-muted/20">
-                      {!isRestDay && (
-                        <div className="px-3 py-1.5 border-b border-border/30">
-                          <div className="grid grid-cols-3 gap-4 text-xs text-muted-foreground font-medium">
-                            <span>Übungen</span>
-                            <span>Sätze</span>
-                            <span>Wiederholungen</span>
-                          </div>
-                        </div>
-                      )}
+                   <CollapsibleContent>
+                     <motion.div 
+                       initial={{ opacity: 0, height: 0 }}
+                       animate={{ opacity: 1, height: "auto" }}
+                       exit={{ opacity: 0, height: 0 }}
+                       transition={{ duration: 0.2, ease: "easeInOut" }}
+                       className="border-t bg-muted/20"
+                     >
+                       {!isRestDay && (
+                         <div className="px-3 py-1 border-b border-border/50">
+                           <div className="flex items-center justify-between text-xs text-muted-foreground font-medium">
+                             <span className="flex-1">Übungen</span>
+                             <span className="w-12 text-center">Sätze</span>
+                             <span className="w-16 text-right">Wiederholungen</span>
+                           </div>
+                         </div>
+                       )}
                       
                       {/* Exercise content */}
                       <div className="p-3 pt-2">
@@ -629,49 +635,49 @@ const WorkoutView: React.FC<WorkoutViewProps> = React.memo(({
                             {t('workout.rest.note')}
                           </div>
                         ) : (
-                          <div className="space-y-1">
-                            {exercises.map((exercise: any, exerciseIndex: number) => (
-                              <div key={exerciseIndex} className="flex items-center gap-2 p-3 bg-background rounded-md border shadow-sm h-12">
-                                <div className="w-7 h-7 rounded-full bg-green-600 flex items-center justify-center flex-shrink-0">
-                                  <CheckCircle2 className="h-4 w-4 text-white" />
+                           <div className="space-y-1">
+                             {exercises.map((exercise: any, exerciseIndex: number) => (
+                               <div key={exerciseIndex} className="flex items-center gap-2 p-3 bg-background rounded-md border shadow-sm h-12">
+                                 <div className="w-7 h-7 rounded-full bg-green-600 flex items-center justify-center flex-shrink-0">
+                                   <CheckCircle2 className="h-4 w-4 text-white" />
+                                 </div>
+                                 <div className="flex-1 font-bold text-sm min-w-0 truncate">
+                                   {exercise.name}
+                                 </div>
+                                <div className="w-12 text-center text-xs tabular-nums">
+                                  {exercise.sets}
                                 </div>
-                                <div className="flex-1 font-bold text-sm min-w-0 whitespace-nowrap overflow-hidden text-ellipsis">
-                                  {exercise.name}
+                                <div className="w-16 text-right text-xs tabular-nums whitespace-nowrap leading-tight">
+                                  {exercise.reps}
                                 </div>
-                               <div className="text-xs text-center w-8 tabular-nums whitespace-nowrap">
-                                 {exercise.sets}
                                </div>
-                               <div className="text-xs text-center w-8 tabular-nums whitespace-nowrap">
-                                 {exercise.reps}
-                               </div>
-                              </div>
-                            ))}
-                          </div>
+                             ))}
+                           </div>
                         )}
                         
-                        {!isRestDay && !isFutureDay && (
-                          <div className="mt-4 pt-3 border-t border-border/50">
-                            <div className="flex items-center gap-2">
-                              <Checkbox
-                                checked={isCompleted}
-                                onCheckedChange={(checked) => {
-                                  toggleDayComplete(wk, dayIndex);
-                                  toast({
-                                    title: checked ? t('workout.workoutCompleted') : t('workout.workoutUncompleted'),
-                                    description: "",
-                                  });
-                                }}
-                                className={isCompleted ? 'border-green-600 bg-green-600' : ''}
-                              />
-                              <label className="text-sm font-medium">
-                                {t('workout.markComplete')}
-                              </label>
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  </CollapsibleContent>
+                         {!isRestDay && !isFutureDay && (
+                           <div className="mt-3 pt-2 border-t border-border/50">
+                             <div className="flex items-center gap-2">
+                               <Checkbox
+                                 checked={isCompleted}
+                                 onCheckedChange={(checked) => {
+                                   toggleDayComplete(wk, dayIndex);
+                                   toast({
+                                     title: checked ? t('workout.workoutCompleted') : t('workout.workoutUncompleted'),
+                                     description: "",
+                                   });
+                                 }}
+                                 className={isCompleted ? 'border-green-600 bg-green-600' : ''}
+                               />
+                               <label className="text-xs font-medium">
+                                 {t('workout.markComplete')}
+                               </label>
+                             </div>
+                           </div>
+                         )}
+                       </div>
+                     </motion.div>
+                   </CollapsibleContent>
                 </Collapsible>
               </motion.div>
               );
