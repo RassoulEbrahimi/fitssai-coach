@@ -534,7 +534,7 @@ const WorkoutView: React.FC<WorkoutViewProps> = React.memo(({
       {/* Week Section */}
       <Card className="border-border">
         <CardHeader className="pb-3">
-          <div className="space-y-1">
+          <div className="flex items-center justify-between flex-wrap gap-2">
             <CardTitle className="text-2xl font-bold">
               Woche {currentWeekNum}
             </CardTitle>
@@ -543,7 +543,7 @@ const WorkoutView: React.FC<WorkoutViewProps> = React.memo(({
             </p>
           </div>
         </CardHeader>
-        <CardContent className="p-4 space-y-3">
+        <CardContent className="p-4 space-y-2">
           {weekData.length === 0 ? (
             <div className="text-center py-8 text-muted-foreground">
               <p className="text-sm">{t('workout.weekEmpty')}</p>
@@ -581,7 +581,7 @@ const WorkoutView: React.FC<WorkoutViewProps> = React.memo(({
                   <CollapsibleTrigger asChild>
                     <Button
                       variant="ghost"
-                      className="w-full p-3 h-14 justify-between text-left hover:bg-muted/50 rounded-lg"
+                      className="w-full px-3 py-2 h-14 justify-between text-left hover:bg-muted/50 rounded-lg"
                     >
                       <div className="flex items-center justify-between w-full">
                         <div className="font-bold">{dayName}</div>
@@ -592,7 +592,11 @@ const WorkoutView: React.FC<WorkoutViewProps> = React.memo(({
                           {isCompleted && (
                             <div className="w-4 h-4 rounded-full bg-green-600 flex-shrink-0"></div>
                           )}
-                          <ChevronRight className={`h-4 w-4 text-muted-foreground transition-transform ${isExpanded ? 'rotate-90' : ''}`} />
+                          {isExpanded ? (
+                            <ChevronUp className="h-4 w-4 text-muted-foreground" />
+                          ) : (
+                            <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                          )}
                         </div>
                       </div>
                     </Button>
@@ -600,36 +604,15 @@ const WorkoutView: React.FC<WorkoutViewProps> = React.memo(({
                   
                   <CollapsibleContent>
                     <div className="border-t bg-muted/20">
-                      {/* Expanded header */}
-                      <div className="p-3 pb-2 border-b border-border/50">
-                        <div className="flex items-center justify-between mb-2">
-                          <div className="flex items-center gap-2">
-                            <span className="font-bold">{dayName}</span>
-                            {isToday && (
-                              <Badge variant="secondary" className="text-xs px-2 py-0.5">
-                                Heute
-                              </Badge>
-                            )}
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <span className="font-bold text-sm">
-                              {isRestDay ? 'Ruhetag' : `${exercises.length} Übungen`}
-                            </span>
-                            {isCompleted && (
-                              <div className="w-4 h-4 rounded-full bg-green-600 flex-shrink-0"></div>
-                            )}
-                            <ChevronUp className="h-4 w-4 text-muted-foreground" />
-                          </div>
-                        </div>
-                        
-                        {!isRestDay && (
+                      {!isRestDay && (
+                        <div className="px-3 py-2 border-b border-border/30">
                           <div className="grid grid-cols-3 gap-4 text-xs text-muted-foreground font-medium">
                             <span>Übungen</span>
                             <span>Sätze</span>
                             <span>Wiederholungen</span>
                           </div>
-                        )}
-                      </div>
+                        </div>
+                      )}
                       
                       {/* Exercise content */}
                       <div className="p-3 pt-2">
@@ -638,23 +621,23 @@ const WorkoutView: React.FC<WorkoutViewProps> = React.memo(({
                             {t('workout.rest.note')}
                           </div>
                         ) : (
-                          <div className="space-y-2">
+                          <div className="space-y-1">
                             {exercises.map((exercise: any, exerciseIndex: number) => (
-                              <div key={exerciseIndex} className="flex items-center gap-3 p-3 bg-background rounded-lg border shadow-sm">
-                                <div className="w-5 h-5 rounded-full bg-green-600 flex items-center justify-center flex-shrink-0">
-                                  <CheckCircle2 className="h-3 w-3 text-white" />
+                              <div key={exerciseIndex} className="flex items-center gap-2 p-2 bg-background rounded-md border shadow-sm h-12">
+                                <div className="w-4 h-4 rounded-full bg-green-600 flex items-center justify-center flex-shrink-0">
+                                  <CheckCircle2 className="h-2.5 w-2.5 text-white" />
                                 </div>
-                                <div className="flex-1 font-bold text-sm">
+                                <div className="flex-1 font-bold text-sm min-w-0">
                                   {exercise.name}
                                 </div>
-                                <div className="text-lg font-bold text-center w-8">
+                                <div className="text-base font-bold text-center w-6">
                                   {exercise.sets}
                                 </div>
-                                <div className="text-lg font-bold text-center w-8">
+                                <div className="text-base font-bold text-center w-6">
                                   {exercise.reps}
                                 </div>
-                                <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
-                                  <ArrowUpDown className="h-4 w-4" />
+                                <Button variant="ghost" size="sm" className="h-6 w-6 p-0 flex-shrink-0">
+                                  <ArrowUpDown className="h-3 w-3" />
                                 </Button>
                               </div>
                             ))}
