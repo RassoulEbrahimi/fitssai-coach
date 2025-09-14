@@ -9,7 +9,9 @@ import {
   ChevronLeft, 
   ChevronRight, 
   CheckCircle2,
-  Info
+  ArrowUpDown,
+  ChevronUp,
+  ChevronDown
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useTranslation } from "react-i18next";
@@ -273,7 +275,7 @@ const WorkoutView: React.FC<WorkoutViewProps> = React.memo(({
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.4, delay: 0.1 }}
-      className="px-4 md:px-6 space-y-4 md:space-y-6"
+      className="p-4 space-y-3"
     >
       {/* Weekly Calendar */}
       <Card className="border-primary/20">
@@ -533,7 +535,7 @@ const WorkoutView: React.FC<WorkoutViewProps> = React.memo(({
       <Card className="border-border">
         <CardHeader className="pb-3">
           <div className="space-y-1">
-            <CardTitle className="text-xl font-bold">
+            <CardTitle className="text-2xl font-bold">
               Woche {currentWeekNum}
             </CardTitle>
             <p className="text-sm text-muted-foreground">
@@ -579,18 +581,11 @@ const WorkoutView: React.FC<WorkoutViewProps> = React.memo(({
                   <CollapsibleTrigger asChild>
                     <Button
                       variant="ghost"
-                      className="w-full p-4 h-14 justify-between text-left hover:bg-muted/50"
+                      className="w-full p-3 h-14 justify-between text-left hover:bg-muted/50 rounded-lg"
                     >
                       <div className="flex items-center justify-between w-full">
-                        <div className="flex items-center gap-3">
-                          <div className="font-bold">{dayName}</div>
-                          {isToday && !isExpanded && (
-                            <Badge variant="secondary" className="text-xs px-2 py-0.5">
-                              Heute
-                            </Badge>
-                          )}
-                        </div>
-                        <div className="flex items-center gap-3">
+                        <div className="font-bold">{dayName}</div>
+                        <div className="flex items-center gap-2">
                           <span className="text-sm text-muted-foreground">
                             {isRestDay ? 'Ruhetag' : `${exercises.length} Übungen`}
                           </span>
@@ -606,8 +601,8 @@ const WorkoutView: React.FC<WorkoutViewProps> = React.memo(({
                   <CollapsibleContent>
                     <div className="border-t bg-muted/20">
                       {/* Expanded header */}
-                      <div className="p-4 pb-2 border-b border-border/50">
-                        <div className="flex items-center justify-between mb-3">
+                      <div className="p-3 pb-2 border-b border-border/50">
+                        <div className="flex items-center justify-between mb-2">
                           <div className="flex items-center gap-2">
                             <span className="font-bold">{dayName}</span>
                             {isToday && (
@@ -623,7 +618,7 @@ const WorkoutView: React.FC<WorkoutViewProps> = React.memo(({
                             {isCompleted && (
                               <div className="w-4 h-4 rounded-full bg-green-600 flex-shrink-0"></div>
                             )}
-                            <ChevronRight className="h-4 w-4 text-muted-foreground rotate-90" />
+                            <ChevronUp className="h-4 w-4 text-muted-foreground" />
                           </div>
                         </div>
                         
@@ -637,7 +632,7 @@ const WorkoutView: React.FC<WorkoutViewProps> = React.memo(({
                       </div>
                       
                       {/* Exercise content */}
-                      <div className="p-4 pt-3">
+                      <div className="p-3 pt-2">
                         {isRestDay ? (
                           <div className="text-sm text-muted-foreground p-3 bg-muted/30 rounded-lg">
                             {t('workout.rest.note')}
@@ -646,8 +641,8 @@ const WorkoutView: React.FC<WorkoutViewProps> = React.memo(({
                           <div className="space-y-2">
                             {exercises.map((exercise: any, exerciseIndex: number) => (
                               <div key={exerciseIndex} className="flex items-center gap-3 p-3 bg-background rounded-lg border shadow-sm">
-                                <div className="w-8 h-8 rounded-full bg-green-600 flex items-center justify-center flex-shrink-0">
-                                  <CheckCircle2 className="h-4 w-4 text-white" />
+                                <div className="w-5 h-5 rounded-full bg-green-600 flex items-center justify-center flex-shrink-0">
+                                  <CheckCircle2 className="h-3 w-3 text-white" />
                                 </div>
                                 <div className="flex-1 font-bold text-sm">
                                   {exercise.name}
@@ -659,7 +654,7 @@ const WorkoutView: React.FC<WorkoutViewProps> = React.memo(({
                                   {exercise.reps}
                                 </div>
                                 <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
-                                  <Info className="h-4 w-4" />
+                                  <ArrowUpDown className="h-4 w-4" />
                                 </Button>
                               </div>
                             ))}
