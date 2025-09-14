@@ -121,6 +121,7 @@ const Dashboard = () => {
   const [activeWeek, setActiveWeek] = useState<string | null>(null);
   const [activeDays, setActiveDays] = useState<Set<string>>(new Set());
   const [activeDayIndex, setActiveDayIndex] = useState<number>(0);
+  const [selectedDate, setSelectedDate] = useState<Date>(new Date()); // New date selection state
 
   // Hash-based navigation helpers
   const hashToTab = (hash: string): 'dashboard' | 'workout' | 'nutrition' | 'profile' | null => {
@@ -447,11 +448,38 @@ const Dashboard = () => {
     return isBerlinFuture(targetDateStr);
   };
 
-  // Get current week based on today's date
+  // Get current week based on selected date
   const getCurrentWeek = () => {
     if (!workoutPlan || !workoutPlan.content) return null;
-    const weekKeys = Object.keys(workoutPlan.content);
-    return weekKeys[0]; // For demo purposes, return first week. In real app, calculate based on start date
+    return getWeekKeyForDate(selectedDate);
+  };
+
+  // Get week key for a specific date
+  const getWeekKeyForDate = (date: Date): string => {
+    const startMonday = getPlanStartMonday();
+    if (!startMonday) return 'Week 1'; // fallback
+    
+    const daysDiff = differenceInCalendarDays(date, startMonday);
+    const weekNumber = Math.max(1, Math.min(4, Math.floor(daysDiff / 7) + 1));
+    return `Week ${weekNumber}`;
+  };
+
+  // Get week content with fallback to Week 1 for missing weeks
+  const getWeekContentWithFallback = (weekKey: string) => {
+    if (!workoutPlan?.content) return [];
+    
+    // If week exists in plan, return it
+    const existing = workoutPlan.content[weekKey] || workoutPlan.content[weekKey.toLowerCase().replace(' ', '')];
+    if (existing) return existing;
+    
+    // Fallback: mirror Week 1 structure for weeks 2-4
+    const weekNumber = parseInt(weekKey.replace(/\D/g, ''));
+    if (weekNumber > 1 && weekNumber <= 4) {
+      const week1 = workoutPlan.content['Week 1'] || workoutPlan.content['week1'];
+      return week1 || [];
+    }
+    
+    return [];
   };
 
   // Get week progress for a specific week (accurate calculation)
@@ -628,21 +656,36 @@ const Dashboard = () => {
     setActiveDays(newActiveDays);
   };
 
-  // Set initial active week and today's day on load
+  // Set initial active week and today's day on load, sync with date changes
   useEffect(() => {
-    if (workoutPlan && !activeWeek) {
+    if (workoutPlan) {
       const currentWeek = getCurrentWeek();
       setActiveWeek(currentWeek);
       
-      // Auto-expand today's day
-      if (currentWeek) {
+      // Auto-expand today's day if it's today
+      if (currentWeek && isSameDay(selectedDate, new Date())) {
         const todayDayIndex = getTodayDayIndex(currentWeek);
         if (todayDayIndex !== -1) {
           setActiveDays(new Set([`${currentWeek}-${todayDayIndex}`]));
         }
       }
     }
-  }, [workoutPlan]);
+  }, [workoutPlan, selectedDate]); // Depend on selectedDate changes
+
+  // Handle date changes from calendar - update selected date and active week
+  const handleDateChange = (date: Date) => {
+    setSelectedDate(date);
+    
+    // Calculate day index within the week for the new date
+    const startMonday = getPlanStartMonday();
+    if (startMonday) {
+      const daysDiff = differenceInCalendarDays(date, startMonday);
+      const dayIndex = daysDiff % 7;
+      if (dayIndex >= 0 && dayIndex <= 6) {
+        setActiveDayIndex(dayIndex);
+      }
+    }
+  };
 
 
 
@@ -817,6 +860,7 @@ const Dashboard = () => {
               completingWorkout={completingWorkout}
               activeWeek={activeWeek}
               activeDayIndex={activeDayIndex}
+              selectedDate={selectedDate}
               getTodayWorkout={getTodayWorkout}
               findNextWorkoutInCurrentWeek={findNextWorkoutInCurrentWeek}
               findNextWorkoutAcrossWeeks={findNextWorkoutAcrossWeeks}
@@ -827,9 +871,12 @@ const Dashboard = () => {
               getWeekTitle={getWeekTitle}
               getWeekProgress={getWeekProgress}
               getWeeklyProgress={getWeeklyProgress}
+              getWeekContentWithFallback={getWeekContentWithFallback}
+              getWeekKeyForDate={getWeekKeyForDate}
               toggleDayComplete={toggleDayComplete}
               setActiveWeek={setActiveWeek}
               setActiveDayIndex={setActiveDayIndex}
+              handleDateChange={handleDateChange}
             />
                         </div>
                       </Suspense>

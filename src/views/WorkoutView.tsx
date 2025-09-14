@@ -28,6 +28,7 @@ interface WorkoutViewProps {
   completingWorkout: number | null;
   activeWeek: string | null;
   activeDayIndex?: number;
+  selectedDate: Date;
   
   // Helper functions
   getTodayWorkout: () => any;
@@ -40,11 +41,14 @@ interface WorkoutViewProps {
   getWeekTitle: (weekKey: string) => string;
   getWeekProgress: (weekKey: string) => { completed: number; total: number };
   getWeeklyProgress: () => { completed: number; total: number };
+  getWeekContentWithFallback: (weekKey: string) => any[];
+  getWeekKeyForDate: (date: Date) => string;
   
   // Actions
   toggleDayComplete: (weekKey: string, dayIndex: number) => void;
   setActiveWeek: (weekKey: string | null) => void;
   setActiveDayIndex?: (dayIndex: number) => void;
+  handleDateChange: (date: Date) => void;
 }
 
 const WorkoutView: React.FC<WorkoutViewProps> = React.memo(({
@@ -53,6 +57,7 @@ const WorkoutView: React.FC<WorkoutViewProps> = React.memo(({
   completingWorkout,
   activeWeek,
   activeDayIndex = 0,
+  selectedDate,
   getTodayWorkout,
   findNextWorkoutInCurrentWeek,
   findNextWorkoutAcrossWeeks,
@@ -63,9 +68,12 @@ const WorkoutView: React.FC<WorkoutViewProps> = React.memo(({
   getWeekTitle,
   getWeekProgress,
   getWeeklyProgress,
+  getWeekContentWithFallback,
+  getWeekKeyForDate,
   toggleDayComplete,
   setActiveWeek,
-  setActiveDayIndex
+  setActiveDayIndex,
+  handleDateChange
 }) => {
   const { t } = useTranslation();
   const { toast } = useToast();
@@ -145,7 +153,7 @@ const WorkoutView: React.FC<WorkoutViewProps> = React.memo(({
     }
   };
 
-  // Parse URL on mount and update state accordingly
+  // Parse URL on mount and sync with selected date
   useEffect(() => {
     const { w, d } = parseHashQuery();
     
@@ -153,6 +161,11 @@ const WorkoutView: React.FC<WorkoutViewProps> = React.memo(({
       const weekKey = normalizeWeekKey(`Week ${w}`);
       if (activeWeek !== weekKey) {
         setActiveWeek(weekKey);
+        // Update selected date to match URL week
+        const dateForWeek = getDateFor(weekKey, d || 0);
+        if (dateForWeek) {
+          handleDateChange(dateForWeek);
+        }
       }
     }
     
@@ -162,6 +175,14 @@ const WorkoutView: React.FC<WorkoutViewProps> = React.memo(({
       }
     }
   }, []); // Only run on mount
+
+  // Sync active week when selected date changes
+  useEffect(() => {
+    const weekForDate = getWeekKeyForDate(selectedDate);
+    if (weekForDate && weekForDate !== activeWeek) {
+      setActiveWeek(weekForDate);
+    }
+  }, [selectedDate, getWeekKeyForDate]); // Sync when date changes
 
   // Update hash whenever activeWeek or activeDayIndex changes
   useEffect(() => {
@@ -188,6 +209,12 @@ const WorkoutView: React.FC<WorkoutViewProps> = React.memo(({
     setActiveDayIndex?.(dayIndex);
     setExpandedDay(dayIndex);
     
+    // Update selected date when clicking on calendar day
+    const newDate = getDateFor(wk, dayIndex);
+    if (newDate) {
+      handleDateChange(newDate);
+    }
+    
     // Smooth scroll to day in list
     setTimeout(() => {
       const dayElement = dayRefs.current[dayIndex];
@@ -199,7 +226,14 @@ const WorkoutView: React.FC<WorkoutViewProps> = React.memo(({
 
   // Handle week activation with animation
   const handleWeekActivation = (weekNum: number) => {
-    setActiveWeek(normalizeWeekKey(`Week ${weekNum}`));
+    const newWeekKey = normalizeWeekKey(`Week ${weekNum}`);
+    setActiveWeek(newWeekKey);
+    
+    // Update selected date to first day of the selected week
+    const firstDayOfWeek = getDateFor(newWeekKey, activeDayIndex);
+    if (firstDayOfWeek) {
+      handleDateChange(firstDayOfWeek);
+    }
     
     // Optional haptic feedback on mobile
     if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
@@ -263,8 +297,8 @@ const WorkoutView: React.FC<WorkoutViewProps> = React.memo(({
     );
   }
 
-  // Get week data with fallback to legacy format for backward compatibility
-  const weekData = workoutPlan.content[wk] || workoutPlan.content[wk.toLowerCase().replace(' ', '')] || [];
+  // Get week data with fallback to Week 1 for missing weeks
+  const weekData = getWeekContentWithFallback(wk);
 
   // Compute header date from active day or fallback to day 0
   const headerDate = getDateFor(wk, activeDayIndex ?? 0) ?? getDateFor(wk, 0);
