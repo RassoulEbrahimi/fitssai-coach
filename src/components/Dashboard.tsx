@@ -454,17 +454,26 @@ const Dashboard = () => {
     return getWeekKeyForDate(selectedDate);
   };
 
-  // Get week key for a specific date
+  // Get week key for a specific date using month-based mapping
   const getWeekKeyForDate = (date: Date): string => {
-    const startMonday = getPlanStartMonday();
-    if (!startMonday) return 'Week 1'; // fallback
-    
-    const daysDiff = differenceInCalendarDays(date, startMonday);
+    const firstMondayOfMonth = getFirstMondayOfMonth(date);
+    const daysDiff = differenceInCalendarDays(date, firstMondayOfMonth);
     const weekNumber = Math.max(1, Math.min(4, Math.floor(daysDiff / 7) + 1));
     return `Week ${weekNumber}`;
   };
 
-  // Get week content with fallback to Week 1 for missing weeks
+  // Get the first Monday of the current month
+  const getFirstMondayOfMonth = (date: Date): Date => {
+    const firstOfMonth = new Date(date.getFullYear(), date.getMonth(), 1);
+    const firstMondayDate = startOfWeek(firstOfMonth, WEEK_OPTIONS);
+    // If first Monday is in previous month, move to first Monday of current month
+    if (firstMondayDate.getMonth() !== date.getMonth()) {
+      return addDays(firstMondayDate, 7);
+    }
+    return firstMondayDate;
+  };
+
+  // Get week content with fallback - mirror Week 2 to Weeks 3-4 if only Week 2 exists
   const getWeekContentWithFallback = (weekKey: string) => {
     if (!workoutPlan?.content) return [];
     
@@ -472,11 +481,25 @@ const Dashboard = () => {
     const existing = workoutPlan.content[weekKey] || workoutPlan.content[weekKey.toLowerCase().replace(' ', '')];
     if (existing) return existing;
     
-    // Fallback: mirror Week 1 structure for weeks 2-4
     const weekNumber = parseInt(weekKey.replace(/\D/g, ''));
-    if (weekNumber > 1 && weekNumber <= 4) {
-      const week1 = workoutPlan.content['Week 1'] || workoutPlan.content['week1'];
-      return week1 || [];
+    
+    // Special fallback logic: if only Week 2 exists, keep Week 1 empty, mirror Week 2 to Weeks 3-4
+    const week2 = workoutPlan.content['Week 2'] || workoutPlan.content['week2'];
+    const week1 = workoutPlan.content['Week 1'] || workoutPlan.content['week1'];
+    
+    if (weekNumber === 1 && !week1 && week2) {
+      // Keep Week 1 empty (return empty array)
+      return [];
+    }
+    
+    if ((weekNumber === 3 || weekNumber === 4) && !existing && week2) {
+      // Mirror Week 2 into Weeks 3-4
+      return week2;
+    }
+    
+    // Default fallback to Week 1
+    if (weekNumber > 1 && weekNumber <= 4 && week1) {
+      return week1;
     }
     
     return [];
@@ -543,13 +566,12 @@ const Dashboard = () => {
     return startOfWeek(createdAtBerlin, WEEK_OPTIONS); // Monday-aligned
   };
 
-  // Get calendar date for a given weekKey and dayIndex
+  // Get calendar date for a given weekKey and dayIndex using month-based mapping
   const getDateFor = (weekKey: string, dayIndex: number) => {
-    const startMonday = getPlanStartMonday();
-    if (!startMonday) return null;
+    const firstMonday = getFirstMondayOfMonth(selectedDate);
     const weekIdx = parseInt(weekKey.replace(/\D/g, '')) - 1; // week1 → 0
     const offsetDays = (weekIdx * 7) + dayIndex;
-    return addDays(startMonday, offsetDays); // Date object in Berlin timeline
+    return addDays(firstMonday, offsetDays);
   };
 
   // Get ordered week keys (week1..week4)
@@ -676,14 +698,18 @@ const Dashboard = () => {
   const handleDateChange = (date: Date) => {
     setSelectedDate(date);
     
-    // Calculate day index within the week for the new date
-    const startMonday = getPlanStartMonday();
-    if (startMonday) {
-      const daysDiff = differenceInCalendarDays(date, startMonday);
-      const dayIndex = daysDiff % 7;
-      if (dayIndex >= 0 && dayIndex <= 6) {
-        setActiveDayIndex(dayIndex);
-      }
+    // Calculate day index within the week for the new date using month-based mapping
+    const firstMonday = getFirstMondayOfMonth(date);
+    const daysDiff = differenceInCalendarDays(date, firstMonday);
+    const dayIndex = daysDiff % 7;
+    if (dayIndex >= 0 && dayIndex <= 6) {
+      setActiveDayIndex(dayIndex);
+    }
+    
+    // Update active week based on the new date
+    const newWeekKey = getWeekKeyForDate(date);
+    if (newWeekKey !== activeWeek) {
+      setActiveWeek(newWeekKey);
     }
   };
 

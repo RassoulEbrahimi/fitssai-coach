@@ -191,17 +191,15 @@ const WorkoutView: React.FC<WorkoutViewProps> = React.memo(({
   }, [activeWeek, activeDayIndex, wk]);
 
 
-  // Handle week navigation
+  // Handle week navigation by moving date by ±7 days
   const handlePrevWeek = () => {
-    if (currentWeekNum > 1) {
-      setActiveWeek(normalizeWeekKey(`Week ${currentWeekNum - 1}`));
-    }
+    const newDate = addDays(selectedDate, -7);
+    handleDateChange(newDate);
   };
 
   const handleNextWeek = () => {
-    if (currentWeekNum < 4) {
-      setActiveWeek(normalizeWeekKey(`Week ${currentWeekNum + 1}`));
-    }
+    const newDate = addDays(selectedDate, 7);
+    handleDateChange(newDate);
   };
 
   // Handle day click in calendar
@@ -224,15 +222,15 @@ const WorkoutView: React.FC<WorkoutViewProps> = React.memo(({
     }, 100);
   };
 
-  // Handle week activation with animation
+  // Handle week activation with animation - set selectedDate to that week's Monday
   const handleWeekActivation = (weekNum: number) => {
     const newWeekKey = normalizeWeekKey(`Week ${weekNum}`);
     setActiveWeek(newWeekKey);
     
-    // Update selected date to first day of the selected week
-    const firstDayOfWeek = getDateFor(newWeekKey, activeDayIndex);
-    if (firstDayOfWeek) {
-      handleDateChange(firstDayOfWeek);
+    // Update selected date to Monday of the selected week
+    const mondayOfWeek = getDateFor(newWeekKey, 0); // 0 = Monday
+    if (mondayOfWeek) {
+      handleDateChange(mondayOfWeek);
     }
     
     // Optional haptic feedback on mobile
@@ -319,7 +317,6 @@ const WorkoutView: React.FC<WorkoutViewProps> = React.memo(({
               variant="ghost"
               size="sm"
               onClick={handlePrevWeek}
-              disabled={currentWeekNum === 1}
               aria-label={t('workout.calendar.prev')}
               className="h-9 w-9 p-0"
             >
@@ -334,7 +331,6 @@ const WorkoutView: React.FC<WorkoutViewProps> = React.memo(({
               variant="ghost"
               size="sm"
               onClick={handleNextWeek}
-              disabled={currentWeekNum === 4}
               aria-label={t('workout.calendar.next')}
               className="h-9 w-9 p-0"
             >
