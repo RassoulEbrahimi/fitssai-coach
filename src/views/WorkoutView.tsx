@@ -493,7 +493,7 @@ const WorkoutView: React.FC<WorkoutViewProps> = React.memo(({
                             : 'bg-muted text-muted-foreground hover:bg-muted/80'
                       ].join(' ')}
                     >
-                      <span className="flex-shrink-0">{weekNum}</span>
+                      <span className="flex-shrink-0 tabular-nums">{weekNum}</span>
                     </motion.button>
                     
                     <span className={[
@@ -504,9 +504,9 @@ const WorkoutView: React.FC<WorkoutViewProps> = React.memo(({
                     </span>
                   </div>
 
-                  {/* Connector line except after the last item */}
+                  {/* Connector line except after the last item - centered to button center */}
                   {index < arr.length - 1 && (
-                    <div className="flex-1 flex items-center px-2">
+                    <div className="flex-1 flex items-center px-2" style={{ alignItems: 'center', height: '44px' }}>
                       <div
                         aria-hidden="true"
                         className={[
@@ -515,6 +515,7 @@ const WorkoutView: React.FC<WorkoutViewProps> = React.memo(({
                             ? 'bg-primary'
                             : 'bg-border'
                         ].join(' ')}
+                        style={{ marginTop: '-22px' }}
                       />
                     </div>
                   )}
@@ -533,12 +534,12 @@ const WorkoutView: React.FC<WorkoutViewProps> = React.memo(({
 
       {/* Week Section */}
       <Card className="border-border">
-        <CardHeader className="px-4 py-3">
-          <div className="flex items-baseline justify-between">
+        <CardHeader className="px-4 py-2">
+          <div className="flex items-baseline justify-between gap-2">
             <CardTitle className="text-lg font-bold">
               Woche {currentWeekNum}
             </CardTitle>
-            <p className="text-sm text-muted-foreground tabular-nums">
+            <p className="text-sm text-muted-foreground tabular-nums shrink-0">
               {weekProgress.completed} / {weekProgress.total} Tage abgeschlossen
             </p>
           </div>
@@ -593,40 +594,40 @@ const WorkoutView: React.FC<WorkoutViewProps> = React.memo(({
                            </Badge>
                          )}
                        </div>
-                       <div className="flex items-center gap-2">
-                         <span className="text-sm text-muted-foreground">
-                           {isRestDay ? 'Ruhetag' : `${exercises.length} Übungen`}
-                         </span>
-                          {isCompleted && (
-                            <div className="w-4 h-4 rounded-full bg-green-600 flex-shrink-0"></div>
-                          )}
-                          {isExpanded ? (
-                            <ChevronUp className="h-4 w-4 text-muted-foreground" />
-                          ) : (
-                            <ChevronRight className="h-4 w-4 text-muted-foreground" />
-                          )}
-                        </div>
+                        <div className="flex items-baseline gap-2">
+                          <span className="text-sm text-muted-foreground">
+                            {isRestDay ? 'Ruhetag' : `${exercises.length} Übungen`}
+                          </span>
+                           {isCompleted && (
+                             <div className="w-4 h-4 rounded-full bg-green-600 flex-shrink-0" style={{ alignSelf: 'center' }}></div>
+                           )}
+                           {isExpanded ? (
+                             <ChevronUp className="h-4 w-4 text-muted-foreground" style={{ alignSelf: 'center' }} />
+                           ) : (
+                             <ChevronRight className="h-4 w-4 text-muted-foreground" style={{ alignSelf: 'center' }} />
+                           )}
+                         </div>
                       </div>
                     </Button>
                   </CollapsibleTrigger>
                   
-                   <CollapsibleContent>
-                     <motion.div 
-                       initial={{ opacity: 0, height: 0 }}
-                       animate={{ opacity: 1, height: "auto" }}
-                       exit={{ opacity: 0, height: 0 }}
-                       transition={{ duration: 0.2, ease: "easeInOut" }}
-                       className="border-t bg-muted/20"
-                     >
-                       {!isRestDay && (
-                         <div className="px-3 py-1 border-b border-border/50">
-                           <div className="flex items-center justify-between text-xs text-muted-foreground font-medium">
-                             <span className="flex-1">Übungen</span>
-                             <span className="w-12 text-center">Sätze</span>
-                             <span className="w-16 text-right">Wiederholungen</span>
-                           </div>
-                         </div>
-                       )}
+                    <CollapsibleContent>
+                      <motion.div 
+                        initial={{ opacity: 0, height: 0 }}
+                        animate={{ opacity: 1, height: "auto" }}
+                        exit={{ opacity: 0, height: 0 }}
+                        transition={{ duration: 0.15, ease: "easeOut" }}
+                        className="border-t bg-muted/20"
+                      >
+                        {!isRestDay && (
+                          <div className="px-3 py-1.5 border-b border-border/50">
+                            <div className="grid grid-cols-[1fr_48px_64px] gap-2 text-xs text-muted-foreground font-medium items-baseline">
+                              <span>Übungen</span>
+                              <span className="text-center tabular-nums">Sätze</span>
+                              <span className="text-right tabular-nums">Wiederholungen</span>
+                            </div>
+                          </div>
+                        )}
                       
                       {/* Exercise content */}
                       <div className="p-3 pt-2">
@@ -635,46 +636,50 @@ const WorkoutView: React.FC<WorkoutViewProps> = React.memo(({
                             {t('workout.rest.note')}
                           </div>
                         ) : (
-                           <div className="space-y-1">
-                             {exercises.map((exercise: any, exerciseIndex: number) => (
-                               <div key={exerciseIndex} className="flex items-center gap-2 p-3 bg-background rounded-md border shadow-sm h-12">
-                                 <div className="w-7 h-7 rounded-full bg-green-600 flex items-center justify-center flex-shrink-0">
-                                   <CheckCircle2 className="h-4 w-4 text-white" />
-                                 </div>
-                                 <div className="flex-1 font-bold text-sm min-w-0 truncate">
-                                   {exercise.name}
-                                 </div>
-                                <div className="w-12 text-center text-xs tabular-nums">
-                                  {exercise.sets}
+                            <div className="space-y-1">
+                              {exercises.map((exercise: any, exerciseIndex: number) => (
+                                <div key={exerciseIndex} className="grid grid-cols-[1fr_48px_64px] gap-2 p-3 bg-background rounded-md border shadow-sm min-h-[48px] items-center">
+                                  <div className="flex items-center gap-2 min-w-0">
+                                    <div className="w-6 h-6 rounded-full bg-green-600 flex items-center justify-center flex-shrink-0">
+                                      <CheckCircle2 className="h-3.5 w-3.5 text-white" />
+                                    </div>
+                                    <div className="font-bold text-sm min-w-0 truncate">
+                                      {exercise.name}
+                                    </div>
+                                  </div>
+                                  <div className="text-center text-xs tabular-nums font-medium">
+                                    {exercise.sets}
+                                  </div>
+                                  <div className="text-right text-xs tabular-nums font-medium leading-tight max-w-full overflow-hidden">
+                                    <div className="break-words hyphens-auto text-right" style={{ lineHeight: '1.2' }}>
+                                      {exercise.reps}
+                                    </div>
+                                  </div>
                                 </div>
-                                <div className="w-16 text-right text-xs tabular-nums whitespace-nowrap leading-tight">
-                                  {exercise.reps}
-                                </div>
-                               </div>
-                             ))}
-                           </div>
+                              ))}
+                            </div>
                         )}
                         
-                         {!isRestDay && !isFutureDay && (
-                           <div className="mt-3 pt-2 border-t border-border/50">
-                             <div className="flex items-center gap-2">
-                               <Checkbox
-                                 checked={isCompleted}
-                                 onCheckedChange={(checked) => {
-                                   toggleDayComplete(wk, dayIndex);
-                                   toast({
-                                     title: checked ? t('workout.workoutCompleted') : t('workout.workoutUncompleted'),
-                                     description: "",
-                                   });
-                                 }}
-                                 className={isCompleted ? 'border-green-600 bg-green-600' : ''}
-                               />
-                               <label className="text-xs font-medium">
-                                 {t('workout.markComplete')}
-                               </label>
-                             </div>
-                           </div>
-                         )}
+                          {!isRestDay && !isFutureDay && (
+                            <div className="mt-2 pt-1.5 border-t border-border/50">
+                              <div className="flex items-center gap-2 min-h-[28px]">
+                                <Checkbox
+                                  checked={isCompleted}
+                                  onCheckedChange={(checked) => {
+                                    toggleDayComplete(wk, dayIndex);
+                                    toast({
+                                      title: checked ? t('workout.workoutCompleted') : t('workout.workoutUncompleted'),
+                                      description: "",
+                                    });
+                                  }}
+                                  className={isCompleted ? 'border-green-600 bg-green-600' : ''}
+                                />
+                                <label className="text-xs font-medium">
+                                  {t('workout.markComplete')}
+                                </label>
+                              </div>
+                            </div>
+                          )}
                        </div>
                      </motion.div>
                    </CollapsibleContent>
