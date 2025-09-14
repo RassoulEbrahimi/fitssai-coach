@@ -539,7 +539,7 @@ const WorkoutView: React.FC<WorkoutViewProps> = React.memo(({
               Woche {currentWeekNum}
             </CardTitle>
             <p className="text-sm text-muted-foreground flex-1 min-w-0">
-              {weekProgress.completed} / {weekProgress.total} Tage diese Woche abgeschlossen
+              {weekProgress.completed} / {weekProgress.total} Tage abgeschlossen
             </p>
           </div>
         </CardHeader>
