@@ -223,15 +223,15 @@ const WorkoutView: React.FC<WorkoutViewProps> = React.memo(({
     }, 100);
   };
 
-  // Handle week activation with animation - set selectedDate to that week's Monday
+  // Handle week activation with animation - set selectedDate to that week's Monday + activeDayIndex
   const handleWeekActivation = (weekNum: number) => {
     const newWeekKey = normalizeWeekKey(`Week ${weekNum}`);
     setActiveWeek(newWeekKey);
     
-    // Update selected date to Monday of the selected week
-    const mondayOfWeek = getDateFor(newWeekKey, 0); // 0 = Monday
-    if (mondayOfWeek) {
-      handleDateChange(mondayOfWeek);
+    // Update selected date to Monday of the selected week + activeDayIndex
+    const dayOfWeek = getDateFor(newWeekKey, activeDayIndex); // Keep current day within week
+    if (dayOfWeek) {
+      handleDateChange(dayOfWeek);
     }
     
     // Optional haptic feedback on mobile
