@@ -82,7 +82,6 @@ export type Database = {
           completed: boolean
           completed_at: string | null
           created_at: string
-          exercise_index: number | null
           id: string
           plan_id: string | null
           user_id: string
@@ -92,7 +91,6 @@ export type Database = {
           completed?: boolean
           completed_at?: string | null
           created_at?: string
-          exercise_index?: number | null
           id?: string
           plan_id?: string | null
           user_id: string
@@ -102,7 +100,6 @@ export type Database = {
           completed?: boolean
           completed_at?: string | null
           created_at?: string
-          exercise_index?: number | null
           id?: string
           plan_id?: string | null
           user_id?: string

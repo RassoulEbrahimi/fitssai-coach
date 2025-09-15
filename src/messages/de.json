@@ -278,13 +278,6 @@
     "workoutUncompleted": "Training als nicht erledigt markiert",
     "setsReps": "{{sets}} Sätze × {{reps}} Wiederholungen",
     "planWeeks": "Plan-Wochen",
-    "weekSelection": "Wochen Auswahl",
-    "exerciseCompleted": "Übung abgeschlossen",
-    "exerciseUncompleted": "Übung zurückgesetzt",
-    "error": {
-      "loadFailed": "Fehler beim Laden des Trainings",
-      "updateFailed": "Fehler beim Aktualisieren",
-      "noData": "Keine Trainingsdaten verfügbar"
-    }
+    "weekSelection": "Wochen Auswahl"
   }
 }

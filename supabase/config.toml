@@ -1,35 +1,7 @@
 project_id = "zkamhncwbgieifloosqn"
 
-[api]
-enabled = true
-port = 54321
-schemas = ["public", "graphql_public"]
-extra_search_path = ["public", "extensions"]
-max_rows = 1000
-
-[auth]
-enabled = true
-port = 54324
-site_url = "http://localhost:3000"
-additional_redirect_urls = ["https://lovable.dev"]
-jwt_expiry = 3600
-
-[db]
-enabled = true
-port = 54322
-major_version = 15
-
 [functions.generate-plans]
 verify_jwt = true
 
-[functions.get-daily-quote]  
-verify_jwt = false
-
 [functions.admin-fetch]
-verify_jwt = true
-
-[functions.get-today-workout]
-verify_jwt = true
-
-[functions.toggle-exercise]
 verify_jwt = true
