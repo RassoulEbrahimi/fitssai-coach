@@ -82,30 +82,36 @@ export type Database = {
           completed: boolean
           completed_at: string | null
           created_at: string
+          day_index: number | null
           exercise_index: number | null
           id: string
           plan_id: string | null
           user_id: string
+          week_key: string | null
           workout_day: string
         }
         Insert: {
           completed?: boolean
           completed_at?: string | null
           created_at?: string
+          day_index?: number | null
           exercise_index?: number | null
           id?: string
           plan_id?: string | null
           user_id: string
+          week_key?: string | null
           workout_day: string
         }
         Update: {
           completed?: boolean
           completed_at?: string | null
           created_at?: string
+          day_index?: number | null
           exercise_index?: number | null
           id?: string
           plan_id?: string | null
           user_id?: string
+          week_key?: string | null
           workout_day?: string
         }
         Relationships: [
