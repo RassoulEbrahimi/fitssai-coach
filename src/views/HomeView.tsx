@@ -11,7 +11,6 @@ import { ProgressPill } from "@/components/micro/ProgressPill";
 import { WeeklyActivity } from "@/components/charts/WeeklyActivity";
 import { MotivationSkeleton } from "@/components/skeletons/MotivationSkeleton";
 import HomeSkeleton from "@/components/skeletons/HomeSkeleton";
-import TodayWorkoutCard from "@/components/TodayWorkoutCard";
 
 interface HomeViewProps {
   generatingPlans: boolean;
@@ -239,12 +238,6 @@ const HomeView: React.FC<HomeViewProps> = ({
           />
         </div>
       </motion.div>
-
-      {/* Today's Workout Card */}
-      <TodayWorkoutCard 
-        selectedDate={selectedDate}
-        onProgressUpdate={onProgressUpdate}
-      />
 
       {/* Weekly Activity Chart */}
       <WeeklyActivity data={weeklyActivityData} />

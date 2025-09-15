@@ -19,6 +19,7 @@ import { formatDateForDisplay } from "@/lib/dateUtils";
 import { format, addDays } from 'date-fns';
 import { de } from 'date-fns/locale';
 import ExerciseListSkeleton from "@/components/skeletons/ExerciseListSkeleton";
+import TodayWorkoutCard from "@/components/TodayWorkoutCard";
 
 const ExerciseList = React.lazy(() => import("@/views/ExerciseList"));
 
@@ -370,7 +371,10 @@ const WorkoutView: React.FC<WorkoutViewProps> = React.memo(({
         </CardContent>
       </Card>
 
-      {/* Today Card has been removed - handled by TodayWorkoutCard in HomeView */}
+      {/* Today's Workout Card */}
+      <TodayWorkoutCard 
+        selectedDate={selectedDate}
+      />
 
       {/* Plan Progress Stepper */}
       <Card className="border-border">
