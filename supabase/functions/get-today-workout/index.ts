@@ -45,134 +45,44 @@ serve(async (req) => {
       return fail('Nicht autorisiert', 'AUTH');
     }
 
-    // Parse request body for target date
-    let targetDate = new Date().toISOString().split('T')[0]; // Default to today
-    try {
-      const body = await req.json();
-      if (body.date) {
-        targetDate = body.date;
-      }
-    } catch (e) {
-      // Use default date
+    // Parse request body for weekKey, dayIndex, and planId
+    const body = await req.json();
+    const { weekKey, dayIndex, planId } = body;
+
+    if (!weekKey || dayIndex === undefined || !planId) {
+      return fail('weekKey, dayIndex und planId sind erforderlich', 'MISSING_PARAMS');
     }
 
-    console.log(`Fetching workout for user ${user.id} on date ${targetDate}`);
+    console.log(`Loading completion map for user ${user.id}, plan ${planId}, ${weekKey} day ${dayIndex}`);
 
-    // Get user's latest workout plan
-    const { data: workoutPlan, error: planError } = await sb
-      .from('workout_plans')
-      .select('*')
-      .eq('user_id', user.id)
-      .order('created_at', { ascending: false })
-      .limit(1)
-      .maybeSingle();
-
-    if (planError || !workoutPlan) {
-      return ok({
-        weekday: getGermanWeekday(new Date(targetDate)),
-        fullDate: formatGermanDate(new Date(targetDate)),
-        exercises: [],
-        isRestDay: true,
-        isToday: isToday(targetDate),
-        message: 'Ruhetag — Kein Training für heute geplant'
-      });
-    }
-
-    // Find today's workout in the plan
-    const todayWorkout = findWorkoutForDate(workoutPlan.content, workoutPlan.created_at, targetDate);
-    
-    if (!todayWorkout || !todayWorkout.exercises || todayWorkout.exercises.length === 0) {
-      return ok({
-        weekday: getGermanWeekday(new Date(targetDate)),
-        fullDate: formatGermanDate(new Date(targetDate)),
-        exercises: [],
-        isRestDay: true,
-        isToday: isToday(targetDate),
-        message: 'Ruhetag — Kein Training für heute geplant'
-      });
-    }
-
-    // Get exercise completion logs for this date
+    // Get exercise completion logs for this week/day combination
     const { data: logs, error: logsError } = await sb
       .from('workout_logs')
       .select('*')
       .eq('user_id', user.id)
-      .eq('plan_id', workoutPlan.id)
-      .eq('workout_day', targetDate);
+      .eq('plan_id', planId)
+      .eq('week_key', weekKey)
+      .eq('day_index', dayIndex);
 
     if (logsError) {
       console.error('Error fetching logs:', logsError);
+      return fail('Fehler beim Laden der Übungsverläufe', 'LOGS_ERROR');
     }
 
-    // Build exercises with completion status and unique IDs
-    const exercises = todayWorkout.exercises.map((exercise: any, index: number) => ({
-      id: `${workoutPlan.id}-${targetDate}-${index}`,
-      name: exercise.name,
-      sets: exercise.sets,
-      reps: exercise.reps,
-      weight: exercise.weight || '',
-      rest: exercise.rest || '',
-      completed: logs?.some(log => log.exercise_index === index && log.completed) || false
-    }));
+    // Build completion map indexed by exercise_index
+    const completionMap: Record<string, boolean> = {};
+    logs?.forEach(log => {
+      if (log.exercise_index !== null) {
+        completionMap[log.exercise_index.toString()] = log.completed;
+      }
+    });
 
     return ok({
-      weekday: getGermanWeekday(new Date(targetDate)),
-      fullDate: formatGermanDate(new Date(targetDate)),
-      exercises,
-      isRestDay: false,
-      isToday: isToday(targetDate),
-      planId: workoutPlan.id
+      completionMap
     });
 
   } catch (error) {
     console.error('Error in get-today-workout function:', error);
-    return fail('Unerwarteter Fehler beim Laden des Trainings', 'UNEXPECTED_ERROR');
+    return fail('Unerwarteter Fehler beim Laden der Vervollständigungsdaten', 'UNEXPECTED_ERROR');
   }
 });
-
-function getGermanWeekday(date: Date): string {
-  const weekdays = ['Sonntag', 'Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag'];
-  return weekdays[date.getDay()];
-}
-
-function formatGermanDate(date: Date): string {
-  const weekday = getGermanWeekday(date);
-  const day = date.getDate().toString().padStart(2, '0');
-  const month = (date.getMonth() + 1).toString().padStart(2, '0');
-  const year = date.getFullYear();
-  return `${weekday} ${day}.${month}.${year}`;
-}
-
-function isToday(dateStr: string): boolean {
-  const today = new Date().toISOString().split('T')[0];
-  return dateStr === today;
-}
-
-function findWorkoutForDate(planContent: any, planCreatedAt: string, targetDate: string): any {
-  if (!planContent) return null;
-
-  const planStart = new Date(planCreatedAt);
-  const target = new Date(targetDate);
-  const daysDiff = Math.floor((target.getTime() - planStart.getTime()) / (1000 * 60 * 60 * 24));
-  
-  // Calculate week and day within plan
-  const weekIndex = Math.floor(daysDiff / 7);
-  const dayIndex = daysDiff % 7;
-  
-  // Look for the week in plan content
-  const weekKeys = [`Week ${weekIndex + 1}`, `week${weekIndex + 1}`, `week ${weekIndex + 1}`];
-  let weekData = null;
-  
-  for (const key of weekKeys) {
-    if (planContent[key]) {
-      weekData = planContent[key];
-      break;
-    }
-  }
-  
-  if (!weekData || !Array.isArray(weekData) || dayIndex >= weekData.length) {
-    return null;
-  }
-  
-  return weekData[dayIndex];
-}

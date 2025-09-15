@@ -374,6 +374,10 @@ const WorkoutView: React.FC<WorkoutViewProps> = React.memo(({
       {/* Today's Workout Card */}
       <TodayWorkoutCard 
         selectedDate={selectedDate}
+        weekKey={wk}
+        dayIndex={activeDayIndex}
+        workoutPlan={workoutPlan}
+        getWeekContentWithFallback={getWeekContentWithFallback}
       />
 
       {/* Plan Progress Stepper */}

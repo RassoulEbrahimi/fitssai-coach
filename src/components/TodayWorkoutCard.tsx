@@ -1,203 +1,171 @@
 import React, { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Skeleton } from "@/components/ui/skeleton";
 import { motion } from "framer-motion";
 import { useTranslation } from "react-i18next";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/integrations/supabase/client";
-import { toast } from "sonner";
 import { format } from "date-fns";
 import { de } from "date-fns/locale";
-import { toZonedTime } from "date-fns-tz";
-
-interface TodayWorkout {
-  date: string;
-  weekday: string;
-  formattedDate: string;
-  isRestDay: boolean;
-  exercises: Array<{
-    id: string;
-    name: string;
-    sets: number;
-    reps: number;
-    completed: boolean;
-  }>;
-  dayCompleted: boolean;
-  weeklyProgress: {
-    completed: number;
-    total: number;
-  };
-}
 
 interface TodayWorkoutCardProps {
   selectedDate: Date;
-  onProgressUpdate?: (weeklyProgress: { completed: number; total: number }) => void;
+  weekKey: string;
+  dayIndex: number;
+  workoutPlan: any;
+  getWeekContentWithFallback: (weekKey: string) => any[];
+  onProgressUpdate?: () => void;
 }
 
-const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({ 
-  selectedDate, 
-  onProgressUpdate 
+const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
+  selectedDate,
+  weekKey,
+  dayIndex,
+  workoutPlan,
+  getWeekContentWithFallback,
+  onProgressUpdate
 }) => {
-  const { t } = useTranslation();
   const { user } = useAuth();
-  const [workout, setWorkout] = useState<TodayWorkout | null>(null);
+  const [completionMap, setCompletionMap] = useState<Record<string, boolean>>({});
   const [loading, setLoading] = useState(true);
-  const [optimisticUpdates, setOptimisticUpdates] = useState<Set<string>>(new Set());
+  const [optimisticUpdates, setOptimisticUpdates] = useState<Record<string, boolean>>({});
 
-  // Format the selected date for Europe/Berlin timezone
-  const formatSelectedDate = (date: Date): string => {
-    const berlinTime = toZonedTime(date, 'Europe/Berlin');
-    return format(berlinTime, 'yyyy-MM-dd');
-  };
+  // Get exercises from the same source as the week list
+  const weekData = getWeekContentWithFallback(weekKey);
+  const dayData = weekData[dayIndex];
+  const exercises = dayData?.exercises || [];
+  const isRestDay = !exercises.length;
 
-  // Load today's workout from server
-  const loadTodayWorkout = async () => {
-    if (!user) return;
+  const loadCompletionMap = async () => {
+    if (!user || !workoutPlan) {
+      setLoading(false);
+      return;
+    }
 
     try {
       setLoading(true);
-      const targetDate = formatSelectedDate(selectedDate);
       
       const { data, error } = await supabase.functions.invoke('get-today-workout', {
-        body: { targetDate }
+        body: { 
+          weekKey,
+          dayIndex,
+          planId: workoutPlan.id
+        }
       });
 
-      if (error) throw error;
+      if (error) {
+        console.error('Error loading completion map:', error);
+        return;
+      }
 
-      if (data?.success) {
-        setWorkout(data.workout);
-        
-        // Update parent component with weekly progress
-        if (onProgressUpdate && data.workout?.weeklyProgress) {
-          onProgressUpdate(data.workout.weeklyProgress);
-        }
-      } else {
-        console.error('Failed to load workout:', data?.error);
-        toast.error(t('todayWorkout.loadError'));
+      if (data.success) {
+        setCompletionMap(data.completionMap || {});
       }
     } catch (error) {
-      console.error('Error loading today workout:', error);
-      toast.error(t('todayWorkout.loadError'));
+      console.error('Error loading completion map:', error);
     } finally {
       setLoading(false);
     }
   };
 
-  // Toggle exercise completion with optimistic UI
   const toggleExercise = async (exerciseIndex: number) => {
-    if (!workout || !user) return;
+    if (!user || !workoutPlan) return;
 
-    const exerciseId = `${workout.date}-${exerciseIndex}`;
-    const currentExercise = workout.exercises[exerciseIndex];
-    const newCompleted = !currentExercise.completed;
+    const exerciseKey = `${exerciseIndex}`;
+    const isNowCompleted = !(completionMap[exerciseKey] || optimisticUpdates[exerciseKey]);
 
     // Optimistic update
-    setOptimisticUpdates(prev => new Set(prev).add(exerciseId));
-    
-    setWorkout(prev => {
-      if (!prev) return prev;
-      const newExercises = [...prev.exercises];
-      newExercises[exerciseIndex] = { ...newExercises[exerciseIndex], completed: newCompleted };
-      
-      // Calculate if day is completed (all exercises checked)
-      const dayCompleted = newExercises.every(ex => ex.completed);
-      
-      return {
-        ...prev,
-        exercises: newExercises,
-        dayCompleted
-      };
-    });
+    setOptimisticUpdates(prev => ({
+      ...prev,
+      [exerciseKey]: isNowCompleted
+    }));
 
     try {
       const { data, error } = await supabase.functions.invoke('toggle-exercise', {
         body: {
-          planId: workout.exercises[0]?.id.split('-')[0], // Extract plan ID
-          workoutDay: workout.date,
+          planId: workoutPlan.id,
+          weekKey,
+          dayIndex,
           exerciseIndex,
-          completed: newCompleted
+          completed: isNowCompleted
         }
       });
 
-      if (error) throw error;
-
-      if (data?.success) {
-        // Update with server response
-        setWorkout(prev => {
-          if (!prev) return prev;
-          return {
-            ...prev,
-            weeklyProgress: data.weeklyProgress || prev.weeklyProgress
-          };
+      if (error || !data.success) {
+        // Revert optimistic update on error
+        setOptimisticUpdates(prev => {
+          const newUpdates = { ...prev };
+          delete newUpdates[exerciseKey];
+          return newUpdates;
         });
-
-        // Update parent component
-        if (onProgressUpdate && data.weeklyProgress) {
-          onProgressUpdate(data.weeklyProgress);
-        }
-
-        toast.success(data.message || (newCompleted ? t('todayWorkout.exerciseCompleted') : t('todayWorkout.exerciseUncompleted')));
-      } else {
-        throw new Error(data?.error || 'Unknown error');
+        console.error('Error toggling exercise:', error);
+        return;
       }
+
+      // Update completion map
+      setCompletionMap(prev => ({
+        ...prev,
+        [exerciseKey]: isNowCompleted
+      }));
+
+      // Clear optimistic update
+      setOptimisticUpdates(prev => {
+        const newUpdates = { ...prev };
+        delete newUpdates[exerciseKey];
+        return newUpdates;
+      });
+
+      onProgressUpdate?.();
+
     } catch (error) {
       console.error('Error toggling exercise:', error);
-      
-      // Rollback optimistic update
-      setWorkout(prev => {
-        if (!prev) return prev;
-        const rolledBackExercises = [...prev.exercises];
-        rolledBackExercises[exerciseIndex] = { ...rolledBackExercises[exerciseIndex], completed: !newCompleted };
-        
-        return {
-          ...prev,
-          exercises: rolledBackExercises,
-          dayCompleted: rolledBackExercises.every(ex => ex.completed)
-        };
-      });
-
-      toast.error(t('todayWorkout.toggleError'));
-    } finally {
+      // Revert optimistic update on error
       setOptimisticUpdates(prev => {
-        const updated = new Set(prev);
-        updated.delete(exerciseId);
-        return updated;
+        const newUpdates = { ...prev };
+        delete newUpdates[exerciseKey];
+        return newUpdates;
       });
     }
   };
 
-  // Load workout when date changes
   useEffect(() => {
-    loadTodayWorkout();
-  }, [selectedDate, user]);
+    loadCompletionMap();
+  }, [weekKey, dayIndex, workoutPlan, user]);
 
   if (loading) {
     return (
-      <Card className="border-primary/30 bg-gradient-to-r from-primary/5 to-primary/10">
-        <CardHeader className="pb-3">
-          <CardTitle className="text-lg font-bold text-primary">
-            <Skeleton className="h-6 w-40" />
-          </CardTitle>
+      <Card className="border-border">
+        <CardHeader className="pb-4">
+          <CardTitle className="text-lg">Heutiges Training</CardTitle>
         </CardHeader>
-        <CardContent className="space-y-3">
-          <Skeleton className="h-4 w-48" />
-          <Skeleton className="h-20 w-full" />
+        <CardContent>
+          <div className="space-y-3">
+            <div className="h-4 bg-muted animate-pulse rounded" />
+            <div className="h-4 bg-muted animate-pulse rounded w-3/4" />
+            <div className="space-y-2">
+              {[1, 2, 3].map((i) => (
+                <div key={i} className="flex items-center gap-2">
+                  <div className="w-6 h-6 bg-muted animate-pulse rounded" />
+                  <div className="flex-1 h-4 bg-muted animate-pulse rounded" />
+                </div>
+              ))}
+            </div>
+          </div>
         </CardContent>
       </Card>
     );
   }
 
-  if (!workout) {
+  if (isRestDay) {
     return (
-      <Card className="border-primary/30 bg-gradient-to-r from-primary/5 to-primary/10">
-        <CardHeader className="pb-3">
-          <CardTitle className="text-lg font-bold text-primary">
-            {t('todayWorkout.title')}
-          </CardTitle>
+      <Card className="border-border">
+        <CardHeader className="pb-4">
+          <CardTitle className="text-lg">Heutiges Training</CardTitle>
         </CardHeader>
         <CardContent>
-          <p className="text-muted-foreground">{t('todayWorkout.noData')}</p>
+          <div className="text-center py-6 text-muted-foreground">
+            <p className="text-sm">Ruhetag — Kein Training für heute geplant</p>
+          </div>
         </CardContent>
       </Card>
     );
@@ -209,62 +177,54 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.4 }}
     >
-      <Card className="border-primary/30 bg-gradient-to-r from-primary/5 to-primary/10">
-        <CardHeader className="pb-3">
-          <CardTitle className="text-lg font-bold text-primary">
-            {t('todayWorkout.title')} — {workout.weekday} {workout.formattedDate}
-          </CardTitle>
+      <Card className="border-border">
+        <CardHeader className="pb-4">
+          <div className="flex items-center justify-between">
+            <CardTitle className="text-lg">Heutiges Training</CardTitle>
+            <div className="text-right">
+              <div className="text-xs text-muted-foreground">
+                {format(selectedDate, 'EEEE', { locale: de })}
+              </div>
+              <div className="text-xs font-medium">
+                {format(selectedDate, 'dd.MM.yyyy')}
+              </div>
+            </div>
+          </div>
         </CardHeader>
         <CardContent>
-          {workout.isRestDay ? (
-            <div className="text-center py-4">
-              <p className="text-muted-foreground">
-                {t('todayWorkout.restDay')}
-              </p>
-            </div>
-          ) : (
-            <div className="space-y-3">
-              {workout.exercises.map((exercise, index) => {
-                const exerciseId = `${workout.date}-${index}`;
-                const isUpdating = optimisticUpdates.has(exerciseId);
-                
-                return (
-                  <motion.div
-                    key={index}
-                    className="flex items-center gap-3 p-3 bg-background/50 rounded-lg"
-                    whileHover={{ scale: 1.01 }}
-                    transition={{ duration: 0.2 }}
-                  >
-                    <Checkbox
-                      id={`exercise-${index}`}
-                      checked={exercise.completed}
-                      disabled={isUpdating}
-                      onCheckedChange={() => toggleExercise(index)}
-                      aria-label={t('todayWorkout.toggleExercise', { name: exercise.name })}
-                      className="h-5 w-5"
-                    />
-                    <div className="flex-1 min-w-0">
-                      <h4 className="font-medium text-foreground truncate">
-                        {exercise.name}
-                      </h4>
-                      <p className="text-sm text-muted-foreground">
-                        {exercise.sets} × {exercise.reps}
-                      </p>
+          <div className="space-y-3">
+            {exercises.map((exercise: any, index: number) => {
+              const exerciseKey = `${index}`;
+              const isCompleted = optimisticUpdates[exerciseKey] !== undefined 
+                ? optimisticUpdates[exerciseKey] 
+                : (completionMap[exerciseKey] || false);
+
+              return (
+                <motion.div
+                  key={index}
+                  initial={{ scale: 1 }}
+                  animate={{ scale: 1 }}
+                  whileTap={{ scale: 0.98 }}
+                  className="flex items-center gap-3 p-3 bg-background rounded-md border hover:bg-muted/50 transition-colors cursor-pointer"
+                  onClick={() => toggleExercise(index)}
+                >
+                  <Checkbox
+                    checked={isCompleted}
+                    onChange={() => {}} // Controlled by onClick on parent div
+                    className="pointer-events-none"
+                  />
+                  <div className="flex-1">
+                    <div className="font-medium text-sm">{exercise.name}</div>
+                    <div className="text-xs text-muted-foreground">
+                      {exercise.sets} Sätze × {exercise.reps} Wiederholungen
+                      {exercise.weight && ` • ${exercise.weight}`}
+                      {exercise.rest && ` • ${exercise.rest} Pause`}
                     </div>
-                    {isUpdating && (
-                      <div className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin" />
-                    )}
-                  </motion.div>
-                );
-              })}
-              
-              {workout.exercises.length === 0 && (
-                <p className="text-center text-muted-foreground py-4">
-                  {t('todayWorkout.noExercises')}
-                </p>
-              )}
-            </div>
-          )}
+                  </div>
+                </motion.div>
+              );
+            })}
+          </div>
         </CardContent>
       </Card>
     </motion.div>
