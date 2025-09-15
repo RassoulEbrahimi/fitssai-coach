@@ -867,9 +867,11 @@ const Dashboard = () => {
                             onGeneratePlans={generatePlans}
                             profile={profile}
                             workoutProgress={getWeeklyProgress()}
-                            getTodayWorkout={getTodayWorkout}
-                            isDayCompleted={isDayCompleted}
-                            getWeeklyProgress={getWeeklyProgress}
+                            selectedDate={selectedDate}
+                            onProgressUpdate={(progress) => {
+                              // Refresh workout logs to update weekly progress
+                              fetchWorkoutLogs();
+                            }}
                           />
                         </div>
                       </Suspense>

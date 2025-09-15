@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
-import { Bell, Dumbbell, Utensils } from "lucide-react";
+import { Bell, Utensils } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { supabase } from "@/integrations/supabase/client";
 import { getAvatarUrl } from "@/lib/avatarUtils";
@@ -11,6 +11,7 @@ import { ProgressPill } from "@/components/micro/ProgressPill";
 import { WeeklyActivity } from "@/components/charts/WeeklyActivity";
 import { MotivationSkeleton } from "@/components/skeletons/MotivationSkeleton";
 import HomeSkeleton from "@/components/skeletons/HomeSkeleton";
+import TodayWorkoutCard from "@/components/TodayWorkoutCard";
 
 interface HomeViewProps {
   generatingPlans: boolean;
@@ -19,9 +20,8 @@ interface HomeViewProps {
   onGeneratePlans: () => void;
   profile?: any;
   workoutProgress?: { completed: number; total: number };
-  getTodayWorkout?: () => any;
-  isDayCompleted?: (weekKey: string, dayIndex: number) => boolean;
-  getWeeklyProgress?: () => { completed: number; total: number };
+  selectedDate: Date;
+  onProgressUpdate?: (progress: { completed: number; total: number }) => void;
 }
 
 const HomeView: React.FC<HomeViewProps> = ({
@@ -31,9 +31,8 @@ const HomeView: React.FC<HomeViewProps> = ({
   onGeneratePlans,
   profile,
   workoutProgress = { completed: 0, total: 0 },
-  getTodayWorkout,
-  isDayCompleted,
-  getWeeklyProgress
+  selectedDate,
+  onProgressUpdate
 }) => {
   const { t } = useTranslation();
   const [quote, setQuote] = useState<string>("");
@@ -49,31 +48,23 @@ const HomeView: React.FC<HomeViewProps> = ({
     { text: "Jeder Tag ist eine neue Chance, besser zu werden.", author: "Unbekannt" }
   ];
 
-  // Calculate today's training progress
-  const todayWorkout = getTodayWorkout ? getTodayWorkout() : null;
-  const todayTrainingProgress = (() => {
-    if (!todayWorkout) return { value: 0, label: "Kein Training geplant" };
-    if (todayWorkout.__restDay) return { value: 0, label: "Ruhetag" };
-    if (todayWorkout.isCompleted) return { value: 100, label: "Training abgeschlossen" };
-    return { value: 0, label: "Training ausstehend" };
-  })();
+  // Workout progress will be managed by TodayWorkoutCard
 
   // Calculate nutrition progress (100% if plan exists, 0% otherwise)
   const nutritionProgress = nutritionPlan ? 100 : 0;
 
   // Calculate weekly activity data using actual workout completion
   const weeklyActivityData = (() => {
-    const weeklyProg = getWeeklyProgress ? getWeeklyProgress() : { completed: 0, total: 0 };
     // Generate 7 values for Mon-Sun based on completion pattern
     // For now, use simplified logic - in production, track daily completion
     return [
-      weeklyProg.completed > 0 ? 100 : 30, // Mo
-      weeklyProg.completed > 1 ? 100 : 30, // Di  
-      weeklyProg.completed > 2 ? 100 : 30, // Mi
-      weeklyProg.completed > 3 ? 100 : 30, // Do
-      weeklyProg.completed > 4 ? 100 : 30, // Fr
+      workoutProgress.completed > 0 ? 100 : 30, // Mo
+      workoutProgress.completed > 1 ? 100 : 30, // Di  
+      workoutProgress.completed > 2 ? 100 : 30, // Mi
+      workoutProgress.completed > 3 ? 100 : 30, // Do
+      workoutProgress.completed > 4 ? 100 : 30, // Fr
       0, // Sa (rest day)
-      weeklyProg.completed > 5 ? 100 : 30  // So
+      workoutProgress.completed > 5 ? 100 : 30  // So
     ];
   })();
 
@@ -189,34 +180,26 @@ const HomeView: React.FC<HomeViewProps> = ({
         </GradientCard>
       )}
 
-      {/* Progress Rows */}
+      {/* Today's Training Card */}
       <motion.div
-        className="space-y-3"
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.4, delay: 0.2 }}
       >
-        {/* Today's Training Progress */}
-        <div className="flex items-center justify-between p-4 bg-card/70 backdrop-blur rounded-2xl ring-1 ring-border/50">
-          <div className="flex items-center gap-3">
-            <div className="p-2 rounded-lg bg-primary/20">
-              <Dumbbell className="h-4 w-4 text-primary" aria-hidden="true" />
-            </div>
-            <div>
-              <h3 className="font-medium text-foreground">Heutiges Training</h3>
-              <p className="text-xs text-muted-foreground">
-                {todayTrainingProgress.label}
-              </p>
-            </div>
-          </div>
-          <ProgressPill 
-            value={todayTrainingProgress.value} 
-            aria-label={`Training Fortschritt: ${todayTrainingProgress.value} Prozent`}
-          />
-        </div>
+        <TodayWorkoutCard 
+          selectedDate={selectedDate}
+          onProgressUpdate={onProgressUpdate}
+        />
+      </motion.div>
 
-        {/* Nutrition Progress */}
-        <div className="flex items-center justify-between p-4 bg-card/70 backdrop-blur rounded-2xl ring-1 ring-border/50">
+      {/* Nutrition Progress */}
+      <motion.div
+        className="p-4 bg-card/70 backdrop-blur rounded-2xl ring-1 ring-border/50"
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.4, delay: 0.3 }}
+      >
+        <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="p-2 rounded-lg bg-success/20">
               <Utensils className="h-4 w-4 text-success" aria-hidden="true" />
