@@ -279,5 +279,16 @@
     "setsReps": "{{sets}} Sätze × {{reps}} Wiederholungen",
     "planWeeks": "Plan-Wochen",
     "weekSelection": "Wochen Auswahl"
+  },
+  "todayWorkout": {
+    "title": "Heutiges Training",
+    "restDay": "Ruhetag — Kein Training für heute geplant",
+    "noData": "Keine Trainingsdaten verfügbar",
+    "noExercises": "Keine Übungen geplant",
+    "loadError": "Fehler beim Laden der Trainingsdaten",
+    "toggleError": "Fehler beim Aktualisieren der Übung",
+    "exerciseCompleted": "Übung abgeschlossen",
+    "exerciseUncompleted": "Übung zurückgesetzt",
+    "toggleExercise": "{{name}} als erledigt markieren"
   }
 }

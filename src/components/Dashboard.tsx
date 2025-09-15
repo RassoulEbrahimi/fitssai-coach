@@ -860,17 +860,22 @@ const Dashboard = () => {
                     <div className="space-y-6">
                       <Suspense fallback={<HomeSkeleton />}>
                         <div ref={(el) => setViewRef('dashboard', el)}>
-                          <HomeView
-                            generatingPlans={generatingPlans}
-                            workoutPlan={workoutPlan}
-                            nutritionPlan={nutritionPlan}
-                            onGeneratePlans={generatePlans}
-                            profile={profile}
-                            workoutProgress={getWeeklyProgress()}
-                            getTodayWorkout={getTodayWorkout}
-                            isDayCompleted={isDayCompleted}
-                            getWeeklyProgress={getWeeklyProgress}
-                          />
+                           <HomeView
+                             generatingPlans={generatingPlans}
+                             workoutPlan={workoutPlan}
+                             nutritionPlan={nutritionPlan}
+                             onGeneratePlans={generatePlans}
+                             profile={profile}
+                             workoutProgress={getWeeklyProgress()}
+                             getTodayWorkout={getTodayWorkout}
+                             isDayCompleted={isDayCompleted}
+                             getWeeklyProgress={getWeeklyProgress}
+                             selectedDate={selectedDate}
+                             onProgressUpdate={(weeklyProgress) => {
+                               // Update weekly progress state
+                               fetchWorkoutLogs();
+                             }}
+                           />
                         </div>
                       </Suspense>
                     </div>

@@ -11,6 +11,7 @@ import { ProgressPill } from "@/components/micro/ProgressPill";
 import { WeeklyActivity } from "@/components/charts/WeeklyActivity";
 import { MotivationSkeleton } from "@/components/skeletons/MotivationSkeleton";
 import HomeSkeleton from "@/components/skeletons/HomeSkeleton";
+import TodayWorkoutCard from "@/components/TodayWorkoutCard";
 
 interface HomeViewProps {
   generatingPlans: boolean;
@@ -22,6 +23,8 @@ interface HomeViewProps {
   getTodayWorkout?: () => any;
   isDayCompleted?: (weekKey: string, dayIndex: number) => boolean;
   getWeeklyProgress?: () => { completed: number; total: number };
+  selectedDate: Date;
+  onProgressUpdate?: (weeklyProgress: { completed: number; total: number }) => void;
 }
 
 const HomeView: React.FC<HomeViewProps> = ({
@@ -33,7 +36,9 @@ const HomeView: React.FC<HomeViewProps> = ({
   workoutProgress = { completed: 0, total: 0 },
   getTodayWorkout,
   isDayCompleted,
-  getWeeklyProgress
+  getWeeklyProgress,
+  selectedDate,
+  onProgressUpdate
 }) => {
   const { t } = useTranslation();
   const [quote, setQuote] = useState<string>("");
@@ -234,6 +239,12 @@ const HomeView: React.FC<HomeViewProps> = ({
           />
         </div>
       </motion.div>
+
+      {/* Today's Workout Card */}
+      <TodayWorkoutCard 
+        selectedDate={selectedDate}
+        onProgressUpdate={onProgressUpdate}
+      />
 
       {/* Weekly Activity Chart */}
       <WeeklyActivity data={weeklyActivityData} />
