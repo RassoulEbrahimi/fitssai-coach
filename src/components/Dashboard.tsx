@@ -85,7 +85,7 @@ const useFocusManagement = (activeTab: string) => {
       const heading = activeElement.querySelector('h1, h2, [role="heading"]') as HTMLElement;
       if (heading) {
         heading.tabIndex = -1;
-        heading.focus();
+        heading.focus({ preventScroll: true } as any);
         // Remove tabIndex after focus to avoid affecting tab order
         setTimeout(() => { heading.tabIndex = 0; }, 100);
       }
@@ -139,7 +139,9 @@ const Dashboard = () => {
     } else {
       history.pushState(null, '', `#/${tab}`);
     }
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    if (tab === 'dashboard' || tab === 'workout') {
+      requestAnimationFrame(() => window.scrollTo({ top: 0, left: 0, behavior: 'auto' }));
+    }
   };
 
   const initialTab = hashToTab(location.hash) ?? 'dashboard'; // default to dashboard if null
@@ -221,11 +223,7 @@ const Dashboard = () => {
     };
     document.title = titles[activeTab];
     
-    // Restore scroll position for new tab after next paint
-    requestAnimationFrame(() => {
-      const savedPosition = scrollPosRef.current[activeTab];
-      window.scrollTo({ top: savedPosition, behavior: 'instant' });
-    });
+    // Note: Scroll restoration removed to prevent jump-to-bottom on back navigation
     
     previousTabRef.current = activeTab;
   }, [activeTab]);

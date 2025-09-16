@@ -80,6 +80,7 @@ const WorkoutView: React.FC<WorkoutViewProps> = React.memo(({
   const { toast } = useToast();
   const [expandedDay, setExpandedDay] = useState<number | null>(null);
   const dayRefs = useRef<{ [key: number]: HTMLDivElement | null }>({});
+  const userInitiatedScrollRef = useRef(false);
   
   // Hoisted function declaration to avoid temporal dead zone
   function normalizeWeekKey(key?: string | null) {
@@ -214,13 +215,13 @@ const WorkoutView: React.FC<WorkoutViewProps> = React.memo(({
       handleDateChange(newDate);
     }
     
-    // Smooth scroll to day in list
-    setTimeout(() => {
-      const dayElement = dayRefs.current[dayIndex];
-      if (dayElement && !window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
-        dayElement.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      }
-    }, 100);
+    // Scroll to day in list only on user interaction
+    userInitiatedScrollRef.current = true;
+    const dayElement = dayRefs.current[dayIndex];
+    if (userInitiatedScrollRef.current && dayElement) {
+      dayElement.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'auto' });
+      userInitiatedScrollRef.current = false;
+    }
   };
 
   // Handle week activation with animation - set selectedDate to that week's Monday + activeDayIndex
@@ -504,12 +505,12 @@ const WorkoutView: React.FC<WorkoutViewProps> = React.memo(({
                   setExpandedDay(open ? dayIndex : null);
                   if (open) {
                     setActiveDayIndex?.(dayIndex);
-                    setTimeout(() => {
-                      const dayElement = dayRefs.current[dayIndex];
-                      if (dayElement && !window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
-                        dayElement.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                      }
-                    }, 100);
+                    userInitiatedScrollRef.current = true;
+                    const dayElement = dayRefs.current[dayIndex];
+                    if (userInitiatedScrollRef.current && dayElement) {
+                      dayElement.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'auto' });
+                      userInitiatedScrollRef.current = false;
+                    }
                   }
                 }}>
                   <CollapsibleTrigger asChild>

@@ -26,6 +26,15 @@ const App = () => {
     document.documentElement.lang = 'de';
   }, []);
 
+  useEffect(() => {
+    // Prevent browser from auto-restoring scroll on back navigation
+    if ('scrollRestoration' in history) {
+      const prev = history.scrollRestoration;
+      history.scrollRestoration = 'manual';
+      return () => { history.scrollRestoration = prev; };
+    }
+  }, []);
+
   return (
     <QueryClientProvider client={queryClient}>
       <ThemeProvider>
