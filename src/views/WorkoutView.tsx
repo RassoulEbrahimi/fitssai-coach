@@ -71,6 +71,37 @@ const WorkoutView: React.FC<WorkoutViewProps> = React.memo(({
 }) => {
   const { t } = useTranslation();
   const { toast } = useToast();
+  
+  // Helper function to detect mirrored weeks and get source week
+  const getWeekMirrorInfo = (weekKey: string) => {
+    if (!workoutPlan?.content) return { isMirrored: false, sourceWeek: null };
+    
+    const weekNumber = parseInt(weekKey.replace(/\D/g, ''));
+    const existing = workoutPlan.content[weekKey] || workoutPlan.content[`week${weekNumber}`];
+    
+    // If week exists, it's not mirrored
+    if (existing) return { isMirrored: false, sourceWeek: null };
+    
+    const week2 = workoutPlan.content['Week 2'] || workoutPlan.content['week2'];
+    const week1 = workoutPlan.content['Week 1'] || workoutPlan.content['week1'];
+    
+    // Week 1 empty fallback to Week 2
+    if (weekNumber === 1 && !existing && week2) {
+      return { isMirrored: false, sourceWeek: null }; // Keep Week 1 empty, no mirroring
+    }
+    
+    // Weeks 3-4 mirror Week 2
+    if ((weekNumber === 3 || weekNumber === 4) && !existing && week2) {
+      return { isMirrored: true, sourceWeek: 2 };
+    }
+    
+    // Default fallback to Week 1 for missing weeks 2-4
+    if (weekNumber > 1 && weekNumber <= 4 && !existing && week1) {
+      return { isMirrored: true, sourceWeek: 1 };
+    }
+    
+    return { isMirrored: false, sourceWeek: null };
+  };
   const [expandedDay, setExpandedDay] = useState<number | null>(null);
   const dayRefs = useRef<{ [key: number]: HTMLDivElement | null }>({});
   const userInitiatedScrollRef = useRef(false);
@@ -294,6 +325,9 @@ const WorkoutView: React.FC<WorkoutViewProps> = React.memo(({
 
   // Get week data with fallback to Week 1 for missing weeks
   const weekData = getWeekContentWithFallback(wk);
+  
+  // Get mirror info for the current week
+  const mirrorInfo = getWeekMirrorInfo(wk);
 
   // Compute header date from active day or fallback to day 0
   const headerDate = getDateFor(wk, activeDayIndex ?? 0) ?? getDateFor(wk, 0);
@@ -374,6 +408,7 @@ const WorkoutView: React.FC<WorkoutViewProps> = React.memo(({
         dayIndex={activeDayIndex}
         workoutPlan={workoutPlan}
         getWeekContentWithFallback={getWeekContentWithFallback}
+        mirrorInfo={mirrorInfo}
       />
 
       {/* Plan Progress Stepper */}
@@ -465,8 +500,13 @@ const WorkoutView: React.FC<WorkoutViewProps> = React.memo(({
       <Card className="border-border">
         <CardHeader className="px-4 py-2">
           <div className="flex items-baseline justify-between gap-2">
-            <CardTitle className="text-lg font-bold">
+            <CardTitle className="text-lg font-bold flex items-center gap-2">
               Woche {currentWeekNum}
+              {mirrorInfo.isMirrored && mirrorInfo.sourceWeek && (
+                <span className="text-sm font-normal text-muted-foreground">
+                  🡐 (Kopiert von Woche {mirrorInfo.sourceWeek})
+                </span>
+              )}
             </CardTitle>
             <p className="text-sm text-muted-foreground tabular-nums shrink-0">
               {weekProgress.completed} / {weekProgress.total} Tage abgeschlossen

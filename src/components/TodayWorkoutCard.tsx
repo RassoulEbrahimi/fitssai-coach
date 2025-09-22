@@ -4,6 +4,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { motion } from "framer-motion";
 import { useTranslation } from "react-i18next";
 import { useAuth } from "@/hooks/useAuth";
+import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { format } from "date-fns";
 import { de } from "date-fns/locale";
@@ -15,6 +16,7 @@ interface TodayWorkoutCardProps {
   workoutPlan: any;
   getWeekContentWithFallback: (weekKey: string) => any[];
   onProgressUpdate?: () => void;
+  mirrorInfo?: { isMirrored: boolean; sourceWeek: number | null };
 }
 
 const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
@@ -23,9 +25,11 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
   dayIndex,
   workoutPlan,
   getWeekContentWithFallback,
-  onProgressUpdate
+  onProgressUpdate,
+  mirrorInfo
 }) => {
   const { user } = useAuth();
+  const { toast } = useToast();
   const [completionMap, setCompletionMap] = useState<Record<string, boolean>>({});
   const [loading, setLoading] = useState(true);
   const [optimisticUpdates, setOptimisticUpdates] = useState<Record<string, boolean>>({});
@@ -121,6 +125,14 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
         delete newUpdates[exerciseKey];
         return newUpdates;
       });
+
+      // Show special toast for mirrored weeks
+      if (isNowCompleted && mirrorInfo?.isMirrored && mirrorInfo.sourceWeek) {
+        toast({
+          title: "Übung abgeschlossen",
+          description: `Fortschritt wurde für Woche ${weekKey.replace(/\D/g, '')} gespeichert (Übungen aus Woche ${mirrorInfo.sourceWeek})`,
+        });
+      }
 
       onProgressUpdate?.();
 
