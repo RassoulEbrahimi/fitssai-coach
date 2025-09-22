@@ -102,7 +102,7 @@ const WorkoutView: React.FC<WorkoutViewProps> = React.memo(({
     
     return { isMirrored: false, sourceWeek: null };
   };
-  const [expandedDay, setExpandedDay] = useState<number | null>(null);
+  
   const dayRefs = useRef<{ [key: number]: HTMLDivElement | null }>({});
   
   // Helper function to get first Monday of month (similar to Dashboard logic)
@@ -126,6 +126,9 @@ const WorkoutView: React.FC<WorkoutViewProps> = React.memo(({
   // Derive all state from selectedDate (single source of truth)
   const activeWeek = useMemo(() => getWeekKeyForDate(selectedDate), [selectedDate, getWeekKeyForDate]);
   const activeDayIndex = useMemo(() => getDayIndexForDate(selectedDate), [selectedDate]);
+  
+  // Expanded day is always the currently selected day
+  const expandedDay = activeDayIndex;
   
   // Hoisted function declaration to avoid temporal dead zone
   function normalizeWeekKey(key?: string | null) {
@@ -233,9 +236,7 @@ const WorkoutView: React.FC<WorkoutViewProps> = React.memo(({
 
   // Handle day click in calendar
   const handleDayClick = (dayIndex: number) => {
-    setExpandedDay(dayIndex);
-    
-    // Update selected date when clicking on calendar day
+    // Update selected date - this will automatically update expandedDay via activeDayIndex
     const newDate = getDateFor(wk, dayIndex);
     if (newDate) {
       handleDateChange(newDate);
@@ -398,7 +399,7 @@ const WorkoutView: React.FC<WorkoutViewProps> = React.memo(({
       {/* Today's Workout Card */}
       <TodayWorkoutCard 
         selectedDate={selectedDate}
-        weekKey={activeWeek}
+        weekKey={wk}
         dayIndex={activeDayIndex}
         workoutPlan={workoutPlan}
         getWeekContentWithFallback={getWeekContentWithFallback}
@@ -531,9 +532,8 @@ const WorkoutView: React.FC<WorkoutViewProps> = React.memo(({
                 initial={false}
               >
                 <Collapsible open={isExpanded} onOpenChange={(open) => {
-                  setExpandedDay(open ? dayIndex : null);
                   if (open) {
-                    // Update selected date when expanding a day
+                    // Update selected date - this will automatically sync expandedDay
                     const newDate = getDateFor(wk, dayIndex);
                     if (newDate) {
                       handleDateChange(newDate);
