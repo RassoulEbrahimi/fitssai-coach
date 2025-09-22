@@ -295,5 +295,6 @@
     "copiedFromWeek": "Kopiert von Woche {{weekNumber}}",
     "mirrorProgressSaved": "Fortschritt gespeichert (kopierte Woche – deine Daten werden trotzdem hier gezählt)",
     "preview": "Vorschau"
-  }
+  },
+  "progress_saved_mirrored_week": "Fortschritt gespeichert (kopierte Woche – deine Daten werden trotzdem hier gezählt)"
 }

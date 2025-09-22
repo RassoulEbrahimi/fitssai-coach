@@ -32,6 +32,7 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
   const { user } = useAuth();
   const { toast } = useToast();
   const [completionMap, setCompletionMap] = useState<Record<string, boolean>>({});
+  const [lastToastTime, setLastToastTime] = useState<number>(0);
   const [loading, setLoading] = useState(true);
   const [optimisticUpdates, setOptimisticUpdates] = useState<Record<string, boolean>>({});
 
@@ -127,12 +128,17 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
         return newUpdates;
       });
 
-      // Show special toast for mirrored weeks
-      if (isNowCompleted && mirrorInfo?.isMirrored && mirrorInfo.sourceWeek) {
-        toast({
-          title: t('todayWorkout.exerciseCompleted'),
-          description: t('mirror.mirrorProgressSaved'),
-        });
+      // Show special toast for mirrored weeks (with debouncing)
+      if (mirrorInfo?.isMirrored && mirrorInfo.sourceWeek) {
+        const now = Date.now();
+        if (now - lastToastTime > 1000) { // Debounce for 1 second
+          setLastToastTime(now);
+          toast({
+            title: isNowCompleted ? t('todayWorkout.exerciseCompleted') : t('todayWorkout.exerciseUncompleted'),
+            description: t('progress_saved_mirrored_week'),
+            className: "fixed top-4 left-1/2 transform -translate-x-1/2 z-50 max-w-sm",
+          });
+        }
       }
 
       onProgressUpdate?.();
