@@ -28,6 +28,7 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
   onProgressUpdate,
   mirrorInfo
 }) => {
+  const { t } = useTranslation();
   const { user } = useAuth();
   const { toast } = useToast();
   const [completionMap, setCompletionMap] = useState<Record<string, boolean>>({});
@@ -129,8 +130,8 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
       // Show special toast for mirrored weeks
       if (isNowCompleted && mirrorInfo?.isMirrored && mirrorInfo.sourceWeek) {
         toast({
-          title: "Übung abgeschlossen",
-          description: `Fortschritt wurde für Woche ${weekKey.replace(/\D/g, '')} gespeichert (Übungen aus Woche ${mirrorInfo.sourceWeek})`,
+          title: t('todayWorkout.exerciseCompleted'),
+          description: t('mirror.mirrorProgressSaved'),
         });
       }
 
@@ -155,7 +156,14 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
     return (
       <Card className="border-border">
         <CardHeader className="pb-4">
-          <CardTitle className="text-lg">Heutiges Training</CardTitle>
+          <CardTitle className="text-lg flex items-center gap-2">
+            {t('todayWorkout.title')}
+            {mirrorInfo?.isMirrored && mirrorInfo.sourceWeek && (
+              <span className="text-sm font-normal text-muted-foreground">
+                🡐 ({t('mirror.copiedFromWeek', { weekNumber: mirrorInfo.sourceWeek })})
+              </span>
+            )}
+          </CardTitle>
         </CardHeader>
         <CardContent>
           <div className="space-y-3">
@@ -179,11 +187,18 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
     return (
       <Card className="border-border">
         <CardHeader className="pb-4">
-          <CardTitle className="text-lg">Heutiges Training</CardTitle>
+          <CardTitle className="text-lg flex items-center gap-2">
+            {t('todayWorkout.title')}
+            {mirrorInfo?.isMirrored && mirrorInfo.sourceWeek && (
+              <span className="text-sm font-normal text-muted-foreground">
+                🡐 ({t('mirror.copiedFromWeek', { weekNumber: mirrorInfo.sourceWeek })})
+              </span>
+            )}
+          </CardTitle>
         </CardHeader>
         <CardContent>
           <div className="text-center py-6 text-muted-foreground">
-            <p className="text-sm">Ruhetag — Kein Training für heute geplant</p>
+            <p className="text-sm">{t('todayWorkout.restDay')}</p>
           </div>
         </CardContent>
       </Card>
@@ -199,7 +214,14 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
       <Card className="border-border">
         <CardHeader className="pb-4">
           <div className="flex items-center justify-between">
-            <CardTitle className="text-lg">Heutiges Training</CardTitle>
+            <CardTitle className="text-lg flex items-center gap-2">
+              {t('todayWorkout.title')}
+              {mirrorInfo?.isMirrored && mirrorInfo.sourceWeek && (
+                <span className="text-sm font-normal text-muted-foreground">
+                  🡐 ({t('mirror.copiedFromWeek', { weekNumber: mirrorInfo.sourceWeek })})
+                </span>
+              )}
+            </CardTitle>
             <div className="text-right">
               <div className="text-xs text-muted-foreground">
                 {format(selectedDate, 'EEEE', { locale: de })}

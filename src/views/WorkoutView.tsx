@@ -501,10 +501,10 @@ const WorkoutView: React.FC<WorkoutViewProps> = React.memo(({
         <CardHeader className="px-4 py-2">
           <div className="flex items-baseline justify-between gap-2">
             <CardTitle className="text-lg font-bold flex items-center gap-2">
-              Woche {currentWeekNum}
+              {t('workout.week', { num: currentWeekNum })}
               {mirrorInfo.isMirrored && mirrorInfo.sourceWeek && (
                 <span className="text-sm font-normal text-muted-foreground">
-                  🡐 (Kopiert von Woche {mirrorInfo.sourceWeek})
+                  🡐 ({t('mirror.copiedFromWeek', { weekNumber: mirrorInfo.sourceWeek })})
                 </span>
               )}
             </CardTitle>
