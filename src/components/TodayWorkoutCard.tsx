@@ -135,8 +135,8 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
           setLastToastTime(now);
           toast({
             title: isNowCompleted ? t('todayWorkout.exerciseCompleted') : t('todayWorkout.exerciseUncompleted'),
-            description: t('progress_saved_mirrored_week'),
-            className: "fixed top-4 left-1/2 transform -translate-x-1/2 z-50 max-w-sm",
+            description: t('mirror.mirrorProgressSaved'),
+            className: "fixed top-4 left-1/2 transform -translate-x-1/2 z-[100] max-w-sm min-w-[280px] shadow-lg",
           });
         }
       }
