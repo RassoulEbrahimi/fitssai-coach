@@ -104,7 +104,6 @@ const WorkoutView: React.FC<WorkoutViewProps> = React.memo(({
   };
   const [expandedDay, setExpandedDay] = useState<number | null>(null);
   const dayRefs = useRef<{ [key: number]: HTMLDivElement | null }>({});
-  const userInitiatedScrollRef = useRef(false);
   
   // Helper function to get first Monday of month (similar to Dashboard logic)
   const getFirstMondayOfMonth = (date: Date): Date => {
@@ -242,13 +241,8 @@ const WorkoutView: React.FC<WorkoutViewProps> = React.memo(({
       handleDateChange(newDate);
     }
     
-    // Scroll to day in list only on user interaction
-    userInitiatedScrollRef.current = true;
-    const dayElement = dayRefs.current[dayIndex];
-    if (userInitiatedScrollRef.current && dayElement) {
-      dayElement.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'auto' });
-      userInitiatedScrollRef.current = false;
-    }
+    // No automatic scrolling - only expand the day section
+    // TodayWorkoutCard will already show the correct exercises
   };
 
   // Handle week activation with animation - set selectedDate to that week's Monday + current dayIndex
@@ -544,11 +538,11 @@ const WorkoutView: React.FC<WorkoutViewProps> = React.memo(({
                     if (newDate) {
                       handleDateChange(newDate);
                     }
-                    userInitiatedScrollRef.current = true;
+                    
+                    // Only scroll when user explicitly expands a day section
                     const dayElement = dayRefs.current[dayIndex];
-                    if (userInitiatedScrollRef.current && dayElement) {
-                      dayElement.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'auto' });
-                      userInitiatedScrollRef.current = false;
+                    if (dayElement) {
+                      dayElement.scrollIntoView({ behavior: 'auto', block: 'nearest' });
                     }
                   }
                 }}>
