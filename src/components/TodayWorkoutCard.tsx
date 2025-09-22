@@ -136,7 +136,7 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
           toast({
             title: isNowCompleted ? t('todayWorkout.exerciseCompleted') : t('todayWorkout.exerciseUncompleted'),
             description: t('mirror.mirrorProgressSaved'),
-            className: "fixed top-4 left-1/2 transform -translate-x-1/2 z-[100] max-w-sm min-w-[280px] shadow-lg",
+            className: "fixed top-safe-or-4 left-1/2 transform -translate-x-1/2 z-[200] max-w-sm min-w-[280px] shadow-2xl border border-border/50 bg-background/95 backdrop-blur-sm",
           });
         }
       }
@@ -164,11 +164,12 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
         <CardHeader className="pb-4">
           <CardTitle className="text-lg flex items-center gap-2">
             {t('todayWorkout.title')}
-            {mirrorInfo?.isMirrored && mirrorInfo.sourceWeek && (
-              <span className="text-sm font-normal text-muted-foreground">
-                🡐 ({t('mirror.copiedFromWeek', { weekNumber: mirrorInfo.sourceWeek })})
-              </span>
-            )}
+              {mirrorInfo?.isMirrored && mirrorInfo.sourceWeek && (
+                <span className="text-xs font-normal text-muted-foreground/80 select-none">
+                  <span className="inline-block mr-1" style={{ fontFamily: 'system-ui, -apple-system' }}>←</span>
+                  ({t('mirror.copiedFromWeek', { weekNumber: mirrorInfo.sourceWeek })})
+                </span>
+              )}
           </CardTitle>
         </CardHeader>
         <CardContent>
@@ -195,11 +196,12 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
         <CardHeader className="pb-4">
           <CardTitle className="text-lg flex items-center gap-2">
             {t('todayWorkout.title')}
-            {mirrorInfo?.isMirrored && mirrorInfo.sourceWeek && (
-              <span className="text-sm font-normal text-muted-foreground">
-                🡐 ({t('mirror.copiedFromWeek', { weekNumber: mirrorInfo.sourceWeek })})
-              </span>
-            )}
+              {mirrorInfo?.isMirrored && mirrorInfo.sourceWeek && (
+                <span className="text-xs font-normal text-muted-foreground/80 select-none">
+                  <span className="inline-block mr-1" style={{ fontFamily: 'system-ui, -apple-system' }}>←</span>
+                  ({t('mirror.copiedFromWeek', { weekNumber: mirrorInfo.sourceWeek })})
+                </span>
+              )}
           </CardTitle>
         </CardHeader>
         <CardContent>
@@ -223,8 +225,9 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
             <CardTitle className="text-lg flex items-center gap-2">
               {t('todayWorkout.title')}
               {mirrorInfo?.isMirrored && mirrorInfo.sourceWeek && (
-                <span className="text-sm font-normal text-muted-foreground">
-                  🡐 ({t('mirror.copiedFromWeek', { weekNumber: mirrorInfo.sourceWeek })})
+                <span className="text-xs font-normal text-muted-foreground/80 select-none">
+                  <span className="inline-block mr-1" style={{ fontFamily: 'system-ui, -apple-system' }}>←</span>
+                  ({t('mirror.copiedFromWeek', { weekNumber: mirrorInfo.sourceWeek })})
                 </span>
               )}
             </CardTitle>
@@ -252,7 +255,7 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
                   initial={{ scale: 1 }}
                   animate={{ scale: 1 }}
                   whileTap={{ scale: 0.98 }}
-                  className="flex items-center gap-3 p-3 bg-background rounded-md border hover:bg-muted/50 transition-colors cursor-pointer"
+                  className="flex items-center gap-3 p-4 bg-background rounded-lg border hover:bg-muted/50 active:bg-muted/70 transition-all duration-150 cursor-pointer min-h-[56px] touch-manipulation"
                   onClick={() => toggleExercise(index)}
                 >
                   <Checkbox

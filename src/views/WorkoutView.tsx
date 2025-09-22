@@ -344,7 +344,7 @@ const WorkoutView: React.FC<WorkoutViewProps> = React.memo(({
               size="sm"
               onClick={handlePrevWeek}
               aria-label={t('workout.calendar.prev')}
-              className="h-9 w-9 p-0"
+              className="min-h-[44px] min-w-[44px] h-11 w-11 p-0 rounded-xl hover:bg-muted/80 active:bg-muted touch-manipulation"
             >
               <ChevronLeft className="h-4 w-4" />
             </Button>
@@ -358,13 +358,13 @@ const WorkoutView: React.FC<WorkoutViewProps> = React.memo(({
               size="sm"
               onClick={handleNextWeek}
               aria-label={t('workout.calendar.next')}
-              className="h-9 w-9 p-0"
+              className="min-h-[44px] min-w-[44px] h-11 w-11 p-0 rounded-xl hover:bg-muted/80 active:bg-muted touch-manipulation"
             >
               <ChevronRight className="h-4 w-4" />
             </Button>
           </div>
           
-          <div className="grid grid-cols-7 gap-2">
+          <div className="grid grid-cols-7 gap-3">
             {Array.from({ length: 7 }, (_, i) => {
               const date = getDateFor(wk, i);
               const dayName = date ? formatDateForDisplay(date, 'E') : '';
@@ -378,7 +378,7 @@ const WorkoutView: React.FC<WorkoutViewProps> = React.memo(({
                   key={i}
                   onClick={() => handleDayClick(i)}
                   className={[
-                    "flex h-12 min-h-[44px] w-10 flex-col items-center justify-center rounded-xl text-xs transition-colors",
+                    "flex min-h-[44px] min-w-[44px] h-12 w-full flex-col items-center justify-center rounded-xl text-xs transition-all duration-200 touch-manipulation active:scale-95",
                     isToday ? "ring-2 ring-primary ring-offset-2" : "",
                     isCompleted ? "bg-primary/10 text-primary" : "bg-muted/50",
                     activeDayIndex === i ? "outline outline-2 outline-primary/60" : ""

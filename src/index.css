@@ -2,6 +2,30 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Mobile-specific utilities */
+.top-safe-or-4 {
+  top: max(1rem, env(safe-area-inset-top));
+}
+
+.pb-safe-or-4 {
+  padding-bottom: max(1rem, env(safe-area-inset-bottom));
+}
+
+.touch-manipulation {
+  touch-action: manipulation;
+}
+
+/* Enhanced toast visibility on mobile */
+.toast-mobile-enhanced {
+  position: fixed !important;
+  top: max(1rem, env(safe-area-inset-top)) !important;
+  left: 50% !important;
+  transform: translateX(-50%) !important;
+  z-index: 200 !important;
+  max-width: calc(100vw - 2rem) !important;
+  min-width: min(280px, calc(100vw - 2rem)) !important;
+}
+
 /* DE-only mode: RTL support disabled but kept for future re-enable */
 /*
 [dir="rtl"] {

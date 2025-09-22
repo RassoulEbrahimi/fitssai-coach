@@ -292,7 +292,7 @@
     "toggleExercise": "{{name}} als erledigt markieren"
   },
   "mirror": {
-    "copiedFromWeek": "Kopiert von Woche {{weekNumber}}",
+    "copiedFromWeek": "Kopiert von W{{weekNumber}}",
     "mirrorProgressSaved": "Fortschritt gespeichert (kopierte Woche – deine Daten werden trotzdem hier gezählt)",
     "preview": "Vorschau"
   }
