@@ -887,8 +887,6 @@ const Dashboard = () => {
               workoutPlan={workoutPlan}
               workoutLogs={workoutLogs}
               completingWorkout={completingWorkout}
-              activeWeek={activeWeek}
-              activeDayIndex={activeDayIndex}
               selectedDate={selectedDate}
               getTodayWorkout={getTodayWorkout}
               findNextWorkoutInCurrentWeek={findNextWorkoutInCurrentWeek}
@@ -903,8 +901,6 @@ const Dashboard = () => {
               getWeekContentWithFallback={getWeekContentWithFallback}
               getWeekKeyForDate={getWeekKeyForDate}
               toggleDayComplete={toggleDayComplete}
-              setActiveWeek={setActiveWeek}
-              setActiveDayIndex={setActiveDayIndex}
               handleDateChange={handleDateChange}
             />
                         </div>

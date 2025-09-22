@@ -16,10 +16,11 @@ import {
 import { motion, AnimatePresence } from "framer-motion";
 import { useTranslation } from "react-i18next";
 import { formatDateForDisplay } from "@/lib/dateUtils";
-import { format, addDays } from 'date-fns';
+import { format, addDays, differenceInCalendarDays, startOfWeek } from 'date-fns';
 import { de } from 'date-fns/locale';
 import ExerciseListSkeleton from "@/components/skeletons/ExerciseListSkeleton";
 import TodayWorkoutCard from "@/components/TodayWorkoutCard";
+import { WEEK_OPTIONS } from "@/lib/dateUtils";
 
 const ExerciseList = React.lazy(() => import("@/views/ExerciseList"));
 
@@ -27,8 +28,6 @@ interface WorkoutViewProps {
   workoutPlan: any;
   workoutLogs: any[];
   completingWorkout: number | null;
-  activeWeek: string | null;
-  activeDayIndex?: number;
   selectedDate: Date;
   
   // Helper functions
@@ -47,8 +46,6 @@ interface WorkoutViewProps {
   
   // Actions
   toggleDayComplete: (weekKey: string, dayIndex: number) => void;
-  setActiveWeek: (weekKey: string | null) => void;
-  setActiveDayIndex?: (dayIndex: number) => void;
   handleDateChange: (date: Date) => void;
 }
 
@@ -56,8 +53,6 @@ const WorkoutView: React.FC<WorkoutViewProps> = React.memo(({
   workoutPlan,
   workoutLogs,
   completingWorkout,
-  activeWeek,
-  activeDayIndex = 0,
   selectedDate,
   getTodayWorkout,
   findNextWorkoutInCurrentWeek,
@@ -72,8 +67,6 @@ const WorkoutView: React.FC<WorkoutViewProps> = React.memo(({
   getWeekContentWithFallback,
   getWeekKeyForDate,
   toggleDayComplete,
-  setActiveWeek,
-  setActiveDayIndex,
   handleDateChange
 }) => {
   const { t } = useTranslation();
@@ -81,6 +74,28 @@ const WorkoutView: React.FC<WorkoutViewProps> = React.memo(({
   const [expandedDay, setExpandedDay] = useState<number | null>(null);
   const dayRefs = useRef<{ [key: number]: HTMLDivElement | null }>({});
   const userInitiatedScrollRef = useRef(false);
+  
+  // Helper function to get first Monday of month (similar to Dashboard logic)
+  const getFirstMondayOfMonth = (date: Date): Date => {
+    const firstOfMonth = new Date(date.getFullYear(), date.getMonth(), 1);
+    const firstMondayDate = startOfWeek(firstOfMonth, WEEK_OPTIONS);
+    // If first Monday is in previous month, move to first Monday of current month
+    if (firstMondayDate.getMonth() !== date.getMonth()) {
+      return addDays(firstMondayDate, 7);
+    }
+    return firstMondayDate;
+  };
+
+  // Get day index from selectedDate (0 = Monday, 6 = Sunday)
+  const getDayIndexForDate = (date: Date): number => {
+    const firstMonday = getFirstMondayOfMonth(date);
+    const daysDiff = differenceInCalendarDays(date, firstMonday);
+    return Math.max(0, Math.min(6, daysDiff % 7));
+  };
+
+  // Derive all state from selectedDate (single source of truth)
+  const activeWeek = useMemo(() => getWeekKeyForDate(selectedDate), [selectedDate, getWeekKeyForDate]);
+  const activeDayIndex = useMemo(() => getDayIndexForDate(selectedDate), [selectedDate]);
   
   // Hoisted function declaration to avoid temporal dead zone
   function normalizeWeekKey(key?: string | null) {
@@ -159,32 +174,14 @@ const WorkoutView: React.FC<WorkoutViewProps> = React.memo(({
   useEffect(() => {
     const { w, d } = parseHashQuery();
     
-    if (w !== null && w >= 1 && w <= 4) {
+    if (w !== null && w >= 1 && w <= 4 && d !== null && d >= 0 && d <= 6) {
       const weekKey = normalizeWeekKey(`Week ${w}`);
-      if (activeWeek !== weekKey) {
-        setActiveWeek(weekKey);
-        // Update selected date to match URL week
-        const dateForWeek = getDateFor(weekKey, d || 0);
-        if (dateForWeek) {
-          handleDateChange(dateForWeek);
-        }
-      }
-    }
-    
-    if (d !== null && d >= 0 && d <= 6) {
-      if (activeDayIndex !== d) {
-        setActiveDayIndex?.(d);
+      const dateForWeek = getDateFor(weekKey, d);
+      if (dateForWeek) {
+        handleDateChange(dateForWeek);
       }
     }
   }, []); // Only run on mount
-
-  // Sync active week when selected date changes
-  useEffect(() => {
-    const weekForDate = getWeekKeyForDate(selectedDate);
-    if (weekForDate && weekForDate !== activeWeek) {
-      setActiveWeek(weekForDate);
-    }
-  }, [selectedDate, getWeekKeyForDate]); // Sync when date changes
 
   // Update hash whenever activeWeek or activeDayIndex changes
   useEffect(() => {
@@ -206,7 +203,6 @@ const WorkoutView: React.FC<WorkoutViewProps> = React.memo(({
 
   // Handle day click in calendar
   const handleDayClick = (dayIndex: number) => {
-    setActiveDayIndex?.(dayIndex);
     setExpandedDay(dayIndex);
     
     // Update selected date when clicking on calendar day
@@ -224,13 +220,12 @@ const WorkoutView: React.FC<WorkoutViewProps> = React.memo(({
     }
   };
 
-  // Handle week activation with animation - set selectedDate to that week's Monday + activeDayIndex
+  // Handle week activation with animation - set selectedDate to that week's Monday + current dayIndex
   const handleWeekActivation = (weekNum: number) => {
     const newWeekKey = normalizeWeekKey(`Week ${weekNum}`);
-    setActiveWeek(newWeekKey);
     
-    // Update selected date to Monday of the selected week + activeDayIndex
-    const dayOfWeek = getDateFor(newWeekKey, activeDayIndex); // Keep current day within week
+    // Update selected date to keep current day within the new week
+    const dayOfWeek = getDateFor(newWeekKey, activeDayIndex);
     if (dayOfWeek) {
       handleDateChange(dayOfWeek);
     }
@@ -375,7 +370,7 @@ const WorkoutView: React.FC<WorkoutViewProps> = React.memo(({
       {/* Today's Workout Card */}
       <TodayWorkoutCard 
         selectedDate={selectedDate}
-        weekKey={wk}
+        weekKey={activeWeek}
         dayIndex={activeDayIndex}
         workoutPlan={workoutPlan}
         getWeekContentWithFallback={getWeekContentWithFallback}
@@ -504,7 +499,11 @@ const WorkoutView: React.FC<WorkoutViewProps> = React.memo(({
                 <Collapsible open={isExpanded} onOpenChange={(open) => {
                   setExpandedDay(open ? dayIndex : null);
                   if (open) {
-                    setActiveDayIndex?.(dayIndex);
+                    // Update selected date when expanding a day
+                    const newDate = getDateFor(wk, dayIndex);
+                    if (newDate) {
+                      handleDateChange(newDate);
+                    }
                     userInitiatedScrollRef.current = true;
                     const dayElement = dayRefs.current[dayIndex];
                     if (userInitiatedScrollRef.current && dayElement) {
