@@ -30,11 +30,15 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
   const [loading, setLoading] = useState(true);
   const [optimisticUpdates, setOptimisticUpdates] = useState<Record<string, boolean>>({});
 
-  // Get exercises from the same source as the week list
+  // Get exercises from the same source as the week list (may be mirrored for UI display)
   const weekData = getWeekContentWithFallback(weekKey);
   const dayData = weekData[dayIndex];
   const exercises = dayData?.exercises || [];
   const isRestDay = !exercises.length;
+  
+  // SAFEGUARD: weekKey and dayIndex props are the real selected week/day.
+  // Even if exercises are displayed from a mirrored source (week1/week2),
+  // all backend operations use the actual weekKey/dayIndex passed as props.
 
   const loadCompletionMap = async () => {
     if (!user || !workoutPlan) {
@@ -47,8 +51,8 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
       
       const { data, error } = await supabase.functions.invoke('get-today-workout', {
         body: { 
-          weekKey,
-          dayIndex,
+          weekKey, // Real selected week - used for fetching completion status
+          dayIndex, // Real selected day - used for fetching completion status
           planId: workoutPlan.id
         }
       });
@@ -81,11 +85,14 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
     }));
 
     try {
+      // CRITICAL: Always use the actual passed weekKey and dayIndex for backend operations,
+      // never the mirror source (week1/week2). This ensures completion logs are recorded
+      // for the real selected week, even if UI displays mirrored content.
       const { data, error } = await supabase.functions.invoke('toggle-exercise', {
         body: {
           planId: workoutPlan.id,
-          weekKey,
-          dayIndex,
+          weekKey, // Real selected week - never the mirror source
+          dayIndex, // Real selected day - never the mirror source
           exerciseIndex,
           completed: isNowCompleted
         }

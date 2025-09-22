@@ -49,6 +49,8 @@ serve(async (req) => {
     const body = await req.json();
     const { weekKey, dayIndex, planId } = body;
 
+    // SAFEGUARD: weekKey and dayIndex are the real selected week/day.
+    // We fetch completion status for the actual selected week, not any mirror source.
     if (!weekKey || dayIndex === undefined || !planId) {
       return fail('weekKey, dayIndex und planId sind erforderlich', 'MISSING_PARAMS');
     }

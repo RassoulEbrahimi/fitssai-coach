@@ -472,6 +472,9 @@ const Dashboard = () => {
   };
 
   // Get week content with fallback - mirror Week 2 to Weeks 3-4 if only Week 2 exists
+  // IMPORTANT: This function only provides UI display data (exercise lists).
+  // When users interact with exercises (mark complete, etc.), the actual weekKey 
+  // passed to backend functions MUST be the real selected week, never the mirror source.
   const getWeekContentWithFallback = (weekKey: string) => {
     if (!workoutPlan?.content) return [];
     
@@ -486,16 +489,16 @@ const Dashboard = () => {
     const week1 = workoutPlan.content['Week 1'] || workoutPlan.content['week1'];
     
     if (weekNumber === 1 && !week1 && week2) {
-      // Keep Week 1 empty (return empty array)
+      // Keep Week 1 empty (return empty array) - UI only
       return [];
     }
     
     if ((weekNumber === 3 || weekNumber === 4) && !existing && week2) {
-      // Mirror Week 2 into Weeks 3-4
+      // Mirror Week 2 into Weeks 3-4 - UI display only, backend still uses actual weekKey
       return week2;
     }
     
-    // Default fallback to Week 1
+    // Default fallback to Week 1 - UI display only, backend still uses actual weekKey
     if (weekNumber > 1 && weekNumber <= 4 && week1) {
       return week1;
     }

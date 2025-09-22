@@ -48,6 +48,9 @@ serve(async (req) => {
     const body = await req.json();
     const { planId, weekKey, dayIndex, exerciseIndex, completed } = body;
 
+    // CRITICAL: weekKey and dayIndex are the real selected week/day, never the mirror source.
+    // This ensures completion logs are recorded for the actual selected week,
+    // even if the UI displays exercises from a mirrored week (week1/week2 fallback).
     if (!planId || !weekKey || dayIndex === undefined || exerciseIndex === undefined || completed === undefined) {
       return fail('planId, weekKey, dayIndex, exerciseIndex und completed sind erforderlich', 'MISSING_PARAMS');
     }
