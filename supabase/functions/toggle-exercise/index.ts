@@ -68,6 +68,7 @@ serve(async (req) => {
         exercise_index: exerciseIndex,
         completed,
         completed_at: completed ? new Date().toISOString() : null,
+        workout_day: new Date().toISOString().split('T')[0], // Add required workout_day field
       }, {
         onConflict: 'user_id,plan_id,week_key,day_index,exercise_index',
       });
