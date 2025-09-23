@@ -497,7 +497,7 @@ const WorkoutView: React.FC<WorkoutViewProps> = React.memo(({
       </Card>
 
       {/* Week Section */}
-      <Card className="border-border">
+      <Card className="border-border" id="weekCard">
         <CardHeader className="px-4 py-2">
           <div className="flex items-baseline justify-between gap-2">
             <CardTitle className="text-lg font-bold flex items-center gap-2">

@@ -63,7 +63,7 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
   const scrollToWeekCard = () => {
     const weekCardElement = document.getElementById('weekCard');
     if (weekCardElement) {
-      weekCardElement.scrollIntoView({ behavior: 'smooth' });
+      weekCardElement.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
   };
   
@@ -214,6 +214,7 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
                 variant="ghost"
                 size="sm"
                 onClick={scrollToWeekCard}
+                aria-label="Zu Wochenplan springen"
                 className="text-xs text-muted-foreground hover:text-foreground"
               >
                 <PencilIcon className="w-4 h-4 mr-1" />
@@ -258,6 +259,7 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
                 variant="ghost"
                 size="sm"
                 onClick={scrollToWeekCard}
+                aria-label="Zu Wochenplan springen"
                 className="text-xs text-muted-foreground hover:text-foreground"
               >
                 <PencilIcon className="w-4 h-4 mr-1" />
