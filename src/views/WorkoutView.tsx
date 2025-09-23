@@ -404,6 +404,11 @@ const WorkoutView: React.FC<WorkoutViewProps> = React.memo(({
         workoutPlan={workoutPlan}
         getWeekContentWithFallback={getWeekContentWithFallback}
         mirrorInfo={mirrorInfo}
+        onProgressUpdate={() => {
+          // Trigger parent component to refresh workout logs
+          // This ensures completion state is updated after exercise toggle
+          window.dispatchEvent(new CustomEvent('workoutLogsChanged'));
+        }}
       />
 
       {/* Plan Progress Stepper */}

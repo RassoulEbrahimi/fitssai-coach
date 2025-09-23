@@ -308,6 +308,16 @@ const Dashboard = () => {
     }
   }, [workoutPlan]);
 
+  // Listen for workout logs changes from TodayWorkoutCard
+  useEffect(() => {
+    const handleWorkoutLogsChanged = () => {
+      fetchWorkoutLogs();
+    };
+    
+    window.addEventListener('workoutLogsChanged', handleWorkoutLogsChanged);
+    return () => window.removeEventListener('workoutLogsChanged', handleWorkoutLogsChanged);
+  }, [workoutPlan]);
+
   // Robust workout logging with timezone handling and toggle functionality
   const toggleDayComplete = async (weekKey: string, dayIndex: number) => {
     if (!user || !workoutPlan || completingWorkout === dayIndex) return;

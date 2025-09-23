@@ -142,6 +142,8 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
       }
 
       onProgressUpdate?.();
+      
+      console.log('Exercise toggled successfully:', { exerciseIndex, completed: isNowCompleted, weekKey, dayIndex });
 
     } catch (error) {
       console.error('Error toggling exercise:', error);
