@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Button } from "@/components/ui/button";
 import { motion } from "framer-motion";
 import { useTranslation } from "react-i18next";
 import { useAuth } from "@/hooks/useAuth";
@@ -8,6 +9,8 @@ import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { format } from "date-fns";
 import { de } from "date-fns/locale";
+import { isBerlinToday, isBerlinPast, isBerlinFuture } from "@/lib/dateUtils";
+import { CalendarIcon } from "lucide-react";
 
 interface TodayWorkoutCardProps {
   selectedDate: Date;
@@ -41,6 +44,28 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
   const dayData = weekData[dayIndex];
   const exercises = dayData?.exercises || [];
   const isRestDay = !exercises.length;
+  
+  // Date context logic
+  const selectedDateStr = format(selectedDate, 'yyyy-MM-dd');
+  const isToday = isBerlinToday(selectedDateStr);
+  const isPast = isBerlinPast(selectedDateStr);
+  const isFuture = isBerlinFuture(selectedDateStr);
+  
+  // Get contextual title and styling
+  const getCardTitle = () => {
+    if (isToday) return { text: t('todayWorkout.title'), className: "text-lg text-primary" };
+    if (isPast) return { text: t('todayWorkout.pastTitle'), className: "text-base text-muted-foreground" };
+    if (isFuture) return { text: t('todayWorkout.futureTitle'), className: "text-base text-blue-400" };
+    return { text: t('todayWorkout.title'), className: "text-lg" };
+  };
+  
+  // Scroll to Week Card function
+  const scrollToWeekCard = () => {
+    const weekCardElement = document.getElementById('weekCard');
+    if (weekCardElement) {
+      weekCardElement.scrollIntoView({ behavior: 'smooth' });
+    }
+  };
   
   // SAFEGUARD: weekKey and dayIndex props are the real selected week/day.
   // Even if exercises are displayed from a mirrored source (week1/week2),
@@ -128,18 +153,6 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
         return newUpdates;
       });
 
-      // Show special toast for mirrored weeks (with debouncing)
-      if (mirrorInfo?.isMirrored && mirrorInfo.sourceWeek) {
-        const now = Date.now();
-        if (now - lastToastTime > 1000) { // Debounce for 1 second
-          setLastToastTime(now);
-          toast({
-            title: isNowCompleted ? t('todayWorkout.exerciseCompleted') : t('todayWorkout.exerciseUncompleted'),
-            description: t('mirror.mirrorProgressSaved'),
-            className: "fixed top-safe-or-4 left-1/2 transform -translate-x-1/2 z-[200] max-w-sm min-w-[280px] shadow-2xl border border-border/50 bg-background/95 backdrop-blur-sm",
-          });
-        }
-      }
 
       onProgressUpdate?.();
       
@@ -161,17 +174,12 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
   }, [weekKey, dayIndex, workoutPlan, user]);
 
   if (loading) {
+    const cardTitle = getCardTitle();
     return (
       <Card className="border-border">
         <CardHeader className="pb-4">
-          <CardTitle className="text-lg flex items-center gap-2">
-            {t('todayWorkout.title')}
-              {mirrorInfo?.isMirrored && mirrorInfo.sourceWeek && (
-                <span className="text-xs font-normal text-muted-foreground/80 select-none">
-                  <span className="inline-block mr-1" style={{ fontFamily: 'system-ui, -apple-system' }}>←</span>
-                  ({t('mirror.copiedFromWeek', { weekNumber: mirrorInfo.sourceWeek })})
-                </span>
-              )}
+          <CardTitle className={cardTitle.className}>
+            {cardTitle.text}
           </CardTitle>
         </CardHeader>
         <CardContent>
@@ -193,18 +201,34 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
   }
 
   if (isRestDay) {
+    const cardTitle = getCardTitle();
     return (
       <Card className="border-border">
         <CardHeader className="pb-4">
-          <CardTitle className="text-lg flex items-center gap-2">
-            {t('todayWorkout.title')}
-              {mirrorInfo?.isMirrored && mirrorInfo.sourceWeek && (
-                <span className="text-xs font-normal text-muted-foreground/80 select-none">
-                  <span className="inline-block mr-1" style={{ fontFamily: 'system-ui, -apple-system' }}>←</span>
-                  ({t('mirror.copiedFromWeek', { weekNumber: mirrorInfo.sourceWeek })})
-                </span>
-              )}
-          </CardTitle>
+          <div className="flex items-center justify-between">
+            <CardTitle className={cardTitle.className}>
+              {cardTitle.text}
+            </CardTitle>
+            {isFuture && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={scrollToWeekCard}
+                className="text-xs text-muted-foreground hover:text-foreground"
+              >
+                <CalendarIcon className="w-4 h-4 mr-1" />
+                {t('todayWorkout.goToWeekCard')}
+              </Button>
+            )}
+            <div className="text-right">
+              <div className="text-xs text-muted-foreground">
+                {format(selectedDate, 'EEEE', { locale: de })}
+              </div>
+              <div className="text-xs font-medium">
+                {format(selectedDate, 'dd.MM.yyyy')}
+              </div>
+            </div>
+          </div>
         </CardHeader>
         <CardContent>
           <div className="text-center py-6 text-muted-foreground">
@@ -215,6 +239,8 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
     );
   }
 
+  const cardTitle = getCardTitle();
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 20 }}
@@ -224,15 +250,20 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
       <Card className="border-border">
         <CardHeader className="pb-4">
           <div className="flex items-center justify-between">
-            <CardTitle className="text-lg flex items-center gap-2">
-              {t('todayWorkout.title')}
-              {mirrorInfo?.isMirrored && mirrorInfo.sourceWeek && (
-                <span className="text-xs font-normal text-muted-foreground/80 select-none">
-                  <span className="inline-block mr-1" style={{ fontFamily: 'system-ui, -apple-system' }}>←</span>
-                  ({t('mirror.copiedFromWeek', { weekNumber: mirrorInfo.sourceWeek })})
-                </span>
-              )}
+            <CardTitle className={cardTitle.className}>
+              {cardTitle.text}
             </CardTitle>
+            {isFuture && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={scrollToWeekCard}
+                className="text-xs text-muted-foreground hover:text-foreground"
+              >
+                <CalendarIcon className="w-4 h-4 mr-1" />
+                {t('todayWorkout.goToWeekCard')}
+              </Button>
+            )}
             <div className="text-right">
               <div className="text-xs text-muted-foreground">
                 {format(selectedDate, 'EEEE', { locale: de })}
