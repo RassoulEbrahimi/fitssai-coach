@@ -10,7 +10,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { format } from "date-fns";
 import { de } from "date-fns/locale";
 import { isBerlinToday, isBerlinPast, isBerlinFuture } from "@/lib/dateUtils";
-import { CalendarIcon } from "lucide-react";
+import { CalendarIcon, PencilIcon } from "lucide-react";
 
 interface TodayWorkoutCardProps {
   selectedDate: Date;
@@ -216,7 +216,7 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
                 onClick={scrollToWeekCard}
                 className="text-xs text-muted-foreground hover:text-foreground"
               >
-                <CalendarIcon className="w-4 h-4 mr-1" />
+                <PencilIcon className="w-4 h-4 mr-1" />
                 {t('todayWorkout.goToWeekCard')}
               </Button>
             )}
@@ -260,7 +260,7 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
                 onClick={scrollToWeekCard}
                 className="text-xs text-muted-foreground hover:text-foreground"
               >
-                <CalendarIcon className="w-4 h-4 mr-1" />
+                <PencilIcon className="w-4 h-4 mr-1" />
                 {t('todayWorkout.goToWeekCard')}
               </Button>
             )}
