@@ -298,8 +298,14 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
             }} whileTap={{
               scale: 0.98
             }} onClick={() => toggleExercise(index)} className="flex items-center gap-3 p-4 bg-background rounded-lg border hover:bg-muted/50 active:bg-muted/70 transition-all duration-150 cursor-pointer min-h-[56px] touch-manipulation px-[12px] py-[12px]">
-                  <div className="w-6 h-6 rounded-full bg-green-600 flex items-center justify-center flex-shrink-0">
-                    <CheckCircle2 className={`h-3.5 w-3.5 ${isCompleted ? 'text-white' : 'text-white/50'}`} />
+                  <div className={`w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 transition-all duration-200 ${
+                    isCompleted 
+                      ? 'bg-green-600' 
+                      : 'border-2 border-muted-foreground/30 bg-transparent'
+                  }`}>
+                    {isCompleted && (
+                      <CheckCircle2 className="h-3.5 w-3.5 text-white animate-scale-in" />
+                    )}
                   </div>
                   <div className="flex-1">
                     <div className="font-medium text-sm">{exercise.name}</div>
