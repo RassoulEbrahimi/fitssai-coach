@@ -304,7 +304,7 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
                   <div className="flex-1">
                     <div className="font-medium text-sm">{exercise.name}</div>
                     <div className="text-xs text-muted-foreground">
-                      {exercise.sets} Sätze × {exercise.reps} Wiederholungen
+                      {exercise.sets} Sätze × {exercise.reps} Reps
                       {exercise.weight && ` • ${exercise.weight}`}
                       {exercise.rest && ` • ${exercise.rest} Pause`}
                     </div>
