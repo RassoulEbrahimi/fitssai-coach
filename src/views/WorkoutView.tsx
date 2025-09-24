@@ -472,11 +472,6 @@ const WorkoutView: React.FC<WorkoutViewProps> = React.memo(({
               {t('workout.week', {
               num: currentWeekNum
             })}
-              {mirrorInfo.isMirrored && mirrorInfo.sourceWeek && <span className="text-sm font-normal text-muted-foreground">
-                  🡐 ({t('mirror.copiedFromWeek', {
-                weekNumber: mirrorInfo.sourceWeek
-              })})
-                </span>}
             </CardTitle>
             <p className="text-sm text-muted-foreground tabular-nums shrink-0">
               {weekProgress.completed} / {weekProgress.total} Tage abgeschlossen
