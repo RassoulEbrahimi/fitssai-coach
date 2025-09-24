@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Button } from "@/components/ui/button";
 import { motion } from "framer-motion";
 import { useTranslation } from "react-i18next";
@@ -10,7 +9,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { format } from "date-fns";
 import { de } from "date-fns/locale";
 import { isBerlinToday, isBerlinPast, isBerlinFuture } from "@/lib/dateUtils";
-import { CalendarIcon, PencilIcon } from "lucide-react";
+import { CalendarIcon, PencilIcon, CheckCircle2 } from "lucide-react";
 interface TodayWorkoutCardProps {
   selectedDate: Date;
   weekKey: string;
@@ -288,29 +287,45 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
           </div>
         </CardHeader>
         <CardContent>
-          <div className="space-y-3">
-            {exercises.map((exercise: any, index: number) => {
-            const exerciseKey = `${index}`;
-            const isCompleted = optimisticUpdates[exerciseKey] !== undefined ? optimisticUpdates[exerciseKey] : completionMap[exerciseKey] || false;
-            return <motion.div key={index} initial={{
-              scale: 1
-            }} animate={{
-              scale: 1
-            }} whileTap={{
-              scale: 0.98
-            }} onClick={() => toggleExercise(index)} className="flex items-center gap-3 p-4 bg-background rounded-lg border hover:bg-muted/50 active:bg-muted/70 transition-all duration-150 cursor-pointer min-h-[56px] touch-manipulation px-[12px] py-[12px]">
-                  <Checkbox checked={isCompleted} onChange={() => {}} // Controlled by onClick on parent div
-              className="pointer-events-none" />
-                  <div className="flex-1">
-                    <div className="font-medium text-sm">{exercise.name}</div>
-                    <div className="text-xs text-muted-foreground">
-                      {exercise.sets} Sätze × {exercise.reps} Reps
-                      {exercise.weight && ` • ${exercise.weight}`}
-                      {exercise.rest && ` • ${exercise.rest} Pause`}
+          <div className="p-3 pt-2 px-[8px] py-[7px]">
+            {/* Column headers */}
+            <div className="px-3 py-1.5 border-b border-border/50">
+              <div className="grid grid-cols-[1fr_48px_64px] gap-2 text-xs text-muted-foreground font-medium items-baseline">
+                <span>Übung</span>
+                <span className="text-center tabular-nums">Sätze</span>
+                <span className="text-right tabular-nums">Reps</span>
+              </div>
+            </div>
+            
+            {/* Exercise list */}
+            <div className="space-y-1 pt-2">
+              {exercises.map((exercise: any, index: number) => {
+              const exerciseKey = `${index}`;
+              const isCompleted = optimisticUpdates[exerciseKey] !== undefined ? optimisticUpdates[exerciseKey] : completionMap[exerciseKey] || false;
+              return <motion.div key={index} initial={{
+                scale: 1
+              }} animate={{
+                scale: 1
+              }} whileTap={{
+                scale: 0.98
+              }} onClick={() => toggleExercise(index)} className="grid grid-cols-[1fr_48px_64px] gap-2 p-3 bg-background rounded-md border shadow-sm min-h-[48px] items-center cursor-pointer hover:bg-muted/50 active:bg-muted/70 transition-all duration-150 touch-manipulation">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <div className="w-6 h-6 rounded-full bg-green-600 flex items-center justify-center flex-shrink-0">
+                        <CheckCircle2 className="h-3.5 w-3.5 text-white" />
+                      </div>
+                      <div className="font-bold text-sm min-w-0 truncate">
+                        {exercise.name}
+                      </div>
                     </div>
-                  </div>
-                </motion.div>;
-          })}
+                    <div className="text-center text-xs tabular-nums font-medium">
+                      {exercise.sets}
+                    </div>
+                    <div className="text-right text-xs tabular-nums font-medium leading-tight max-w-full overflow-hidden">
+                      {exercise.reps}
+                    </div>
+                  </motion.div>;
+            })}
+            </div>
           </div>
         </CardContent>
       </Card>
