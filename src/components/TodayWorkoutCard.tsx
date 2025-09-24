@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Button } from "@/components/ui/button";
 import { motion } from "framer-motion";
 import { useTranslation } from "react-i18next";
@@ -10,7 +9,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { format } from "date-fns";
 import { de } from "date-fns/locale";
 import { isBerlinToday, isBerlinPast, isBerlinFuture } from "@/lib/dateUtils";
-import { CalendarIcon, PencilIcon } from "lucide-react";
+import { CalendarIcon, PencilIcon, CheckCircle2 } from "lucide-react";
 interface TodayWorkoutCardProps {
   selectedDate: Date;
   weekKey: string;
@@ -299,8 +298,9 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
             }} whileTap={{
               scale: 0.98
             }} onClick={() => toggleExercise(index)} className="flex items-center gap-3 p-4 bg-background rounded-lg border hover:bg-muted/50 active:bg-muted/70 transition-all duration-150 cursor-pointer min-h-[56px] touch-manipulation px-[12px] py-[12px]">
-                  <Checkbox checked={isCompleted} onChange={() => {}} // Controlled by onClick on parent div
-              className="pointer-events-none" />
+                  <div className="w-6 h-6 rounded-full bg-green-600 flex items-center justify-center flex-shrink-0">
+                    <CheckCircle2 className={`h-3.5 w-3.5 ${isCompleted ? 'text-white' : 'text-white/50'}`} />
+                  </div>
                   <div className="flex-1">
                     <div className="font-medium text-sm">{exercise.name}</div>
                     <div className="text-xs text-muted-foreground">
