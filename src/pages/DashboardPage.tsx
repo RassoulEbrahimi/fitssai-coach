@@ -47,7 +47,7 @@ const DashboardPage = () => {
   }
   return <div className="min-h-screen bg-background">
       <Navbar />
-      <div className="pt-16 py-[32px]">
+      <div className="pt-16 rounded-none py-[32px]">
         <Dashboard />
       </div>
     </div>;
