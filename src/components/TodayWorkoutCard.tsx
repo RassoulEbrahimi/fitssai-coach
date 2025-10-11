@@ -64,15 +64,15 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
   const getCardTitle = () => {
     if (isToday) return {
       text: t('todayWorkout.title'),
-      className: "text-lg text-primary"
+      className: "text-lg font-bold text-primary animate-in fade-in-0 duration-300"
     };
     if (isPast) return {
       text: t('todayWorkout.pastTitle'),
-      className: "text-base text-muted-foreground"
+      className: "text-base text-muted-foreground/70 animate-in fade-in-0 duration-300"
     };
     if (isFuture) return {
       text: t('todayWorkout.futureTitle'),
-      className: "text-base text-blue-400"
+      className: "text-base text-blue-500/80 animate-in fade-in-0 duration-300"
     };
     return {
       text: t('todayWorkout.title'),
@@ -301,15 +301,33 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
             }} whileTap={{
               scale: 0.98
             }} onClick={() => toggleExercise(index)} className="flex items-center gap-3 p-4 bg-background rounded-lg border hover:bg-muted/50 active:bg-muted/70 transition-all duration-150 cursor-pointer min-h-[56px] touch-manipulation px-[12px] py-[12px]">
-                  <div className={`w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 transition-all duration-200 ${
-                    isCompleted 
-                      ? 'bg-green-600' 
-                      : 'border-2 border-muted-foreground/30 bg-transparent'
-                  }`}>
+                  <motion.div 
+                    className={`w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 ${
+                      isCompleted 
+                        ? 'bg-green-600' 
+                        : 'border-2 border-muted-foreground/30 bg-transparent'
+                    }`}
+                    initial={false}
+                    animate={{
+                      scale: isCompleted ? [1, 1.2, 1] : 1,
+                      opacity: isCompleted ? [1, 1, 1] : 1
+                    }}
+                    transition={{
+                      duration: 0.3,
+                      ease: "easeOut"
+                    }}
+                  >
                     {isCompleted && (
-                      <CheckCircle2 className="h-3.5 w-3.5 text-white animate-scale-in" />
+                      <motion.div
+                        initial={{ scale: 0, opacity: 0 }}
+                        animate={{ scale: 1, opacity: 1 }}
+                        exit={{ scale: 0, opacity: 0 }}
+                        transition={{ duration: 0.2 }}
+                      >
+                        <CheckCircle2 className="h-3.5 w-3.5 text-white" />
+                      </motion.div>
                     )}
-                  </div>
+                  </motion.div>
                   <div className="flex-1">
                     <div className="font-medium text-sm">{exercise.name}</div>
                     <div className="text-xs text-muted-foreground">

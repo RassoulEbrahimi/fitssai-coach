@@ -645,37 +645,60 @@ const WorkoutView: React.FC<WorkoutViewProps> = React.memo(({
                            {isRestDay ? <div className="text-sm text-muted-foreground p-3 bg-muted/30 rounded-lg">
                                {t('workout.rest.note')}
                              </div> : <div className="space-y-1">
-                                  {exercises.map((exercise: any, exerciseIndex: number) => {
-                                   const exerciseKey = `${exerciseIndex}`;
-                                   const isExerciseCompleted = completionMap[`${dayIndex}`]?.[exerciseKey] || false;
-                                   
-                                   return <div key={exerciseIndex} className="grid grid-cols-[1fr_48px_64px] gap-2 p-3 bg-background rounded-md border shadow-sm min-h-[48px] items-center">
-                                     <div className="flex items-center gap-2 min-w-0">
-                                       <div className={`w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 transition-all duration-200 ${
-                                         isExerciseCompleted 
-                                           ? 'bg-green-600' 
-                                           : 'border-2 border-muted-foreground/30 bg-transparent'
-                                       }`}>
-                                         {isExerciseCompleted && (
-                                           <CheckCircle2 className="h-3.5 w-3.5 text-white" />
-                                         )}
-                                       </div>
-                                       <div className="font-bold text-sm min-w-0 truncate">
-                                         {exercise.name}
-                                       </div>
-                                     </div>
-                                     <div className="text-center text-xs tabular-nums font-medium">
-                                       {exercise.sets}
-                                     </div>
-                                     <div className="text-right text-xs tabular-nums font-medium leading-tight max-w-full overflow-hidden">
-                                       <div className="break-words hyphens-auto text-right" style={{
-                               lineHeight: '1.2'
-                             }}>
-                                         {exercise.reps}
-                                       </div>
-                                     </div>
-                                   </div>;
-                                 })}
+                                   {exercises.map((exercise: any, exerciseIndex: number) => {
+                                    const exerciseKey = `${exerciseIndex}`;
+                                    const isExerciseCompleted = completionMap[`${dayIndex}`]?.[exerciseKey] || false;
+                                    
+                                    return <motion.div 
+                                      key={exerciseIndex} 
+                                      className="grid grid-cols-[1fr_48px_64px] gap-2 p-3 bg-background rounded-md border shadow-sm min-h-[48px] items-center"
+                                      initial={{ opacity: 0, y: -5 }}
+                                      animate={{ opacity: 1, y: 0 }}
+                                      transition={{ duration: 0.2, delay: exerciseIndex * 0.02 }}
+                                    >
+                                      <div className="flex items-center gap-2 min-w-0">
+                                        <motion.div 
+                                          className={`w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 ${
+                                            isExerciseCompleted 
+                                              ? 'bg-green-600' 
+                                              : 'border-2 border-muted-foreground/30 bg-transparent'
+                                          }`}
+                                          initial={false}
+                                          animate={{
+                                            scale: isExerciseCompleted ? [1, 1.15, 1] : 1,
+                                          }}
+                                          transition={{
+                                            duration: 0.3,
+                                            ease: "easeOut"
+                                          }}
+                                        >
+                                          {isExerciseCompleted && (
+                                            <motion.div
+                                              initial={{ scale: 0, opacity: 0 }}
+                                              animate={{ scale: 1, opacity: 1 }}
+                                              exit={{ scale: 0, opacity: 0 }}
+                                              transition={{ duration: 0.2 }}
+                                            >
+                                              <CheckCircle2 className="h-3.5 w-3.5 text-white" />
+                                            </motion.div>
+                                          )}
+                                        </motion.div>
+                                        <div className="font-bold text-sm min-w-0 truncate">
+                                          {exercise.name}
+                                        </div>
+                                      </div>
+                                      <div className="text-center text-xs tabular-nums font-medium">
+                                        {exercise.sets}
+                                      </div>
+                                      <div className="text-right text-xs tabular-nums font-medium leading-tight max-w-full overflow-hidden">
+                                        <div className="break-words hyphens-auto text-right" style={{
+                                lineHeight: '1.2'
+                              }}>
+                                          {exercise.reps}
+                                        </div>
+                                      </div>
+                                    </motion.div>;
+                                  })}
                                </div>}
                            
                              {!isRestDay && !isFutureDay && <div className="mt-2 pt-1.5 border-t border-border/50">

@@ -282,8 +282,8 @@
   },
   "todayWorkout": {
     "title": "Heutiges Training",
-    "pastTitle": "Vergangen",
-    "futureTitle": "Nächstes Training",
+    "pastTitle": "Vergangenes Training",
+    "futureTitle": "Kommendes Training",
     "goToWeekCard": "Planen",
     "restDay": "Ruhetag — Kein Training für heute geplant",
     "noData": "Keine Trainingsdaten verfügbar",
