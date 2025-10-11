@@ -8,7 +8,8 @@ import { useTranslation } from "react-i18next";
 import { useAuth } from "@/hooks/useAuth";
 import { format } from "date-fns";
 import { de } from "date-fns/locale";
-import { isBerlinToday, isBerlinPast, isBerlinFuture } from "@/lib/dateUtils";
+import { isBerlinPast, isBerlinFuture } from "@/lib/dateUtils";
+import { useBerlinToday } from "@/hooks/useBerlinToday";
 import { CalendarIcon, PencilIcon, CheckCircle2, WifiOff } from "lucide-react";
 import WorkoutErrorBoundary from "@/components/WorkoutErrorBoundary";
 import { logEvent } from "@/lib/telemetryClient";
@@ -57,6 +58,9 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
   const { t } = useTranslation();
   const { user } = useAuth();
   const [lastToastTime, setLastToastTime] = useState<number>(0);
+  
+  // Reactive Berlin "today" - updates automatically at midnight
+  const berlinToday = useBerlinToday();
 
   // Get exercises from the same source as the week list (may be mirrored for UI display)
   const weekData = getWeekContentWithFallback(weekKey);
@@ -64,9 +68,9 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
   const exercises = dayData?.exercises || [];
   const isRestDay = !exercises.length;
 
-  // Date context logic
+  // Date context logic - using reactive today
   const selectedDateStr = format(selectedDate, 'yyyy-MM-dd');
-  const isToday = isBerlinToday(selectedDateStr);
+  const isToday = selectedDateStr === berlinToday;
   const isPast = isBerlinPast(selectedDateStr);
   const isFuture = isBerlinFuture(selectedDateStr);
 

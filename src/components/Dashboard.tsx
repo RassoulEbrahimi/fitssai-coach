@@ -96,9 +96,7 @@ const useFocusManagement = (activeTab: string) => {
 };
 import { 
   getBerlinNow, 
-  getBerlinToday, 
   getBerlinCurrentWeek, 
-  isBerlinToday, 
   isBerlinFuture, 
   isBerlinPast,
   formatDateForDisplay,
@@ -112,10 +110,15 @@ import {
   getWorkoutWeekDay,
   getWorkoutDateString 
 } from "@/lib/workoutDateUtils";
+import { useBerlinToday } from "@/hooks/useBerlinToday";
 
 const Dashboard = () => {
   const { t, i18n } = useTranslation();
   const { user } = useAuth();
+  
+  // Reactive Berlin "today" - updates automatically at midnight
+  const berlinToday = useBerlinToday();
+  
   const [profile, setProfile] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState(false);
@@ -329,7 +332,6 @@ const Dashboard = () => {
     if (!user || !workoutPlan || completingWorkout === dayIndex) return;
 
     // Calculate the workout date using Berlin timezone
-    const berlinToday = getBerlinToday();
     const weekNumber = parseInt(weekKey.replace(/\D/g, '')) - 1;
     const totalDaysFromStart = (weekNumber * 7) + dayIndex;
     
@@ -428,7 +430,7 @@ const Dashboard = () => {
     if (!workoutPlan?.created_at) return false;
     
     const targetStr = getWorkoutDateString(workoutPlan.created_at, weekKey, dayIndex);
-    return isBerlinToday(targetStr);
+    return targetStr === berlinToday;
   };
 
   // Check if a day is in the future (Berlin timezone)
