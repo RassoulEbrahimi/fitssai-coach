@@ -325,4 +325,5 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
       </Card>
     </motion.div>;
 };
-export default TodayWorkoutCard;
+
+export default React.memo(TodayWorkoutCard);
