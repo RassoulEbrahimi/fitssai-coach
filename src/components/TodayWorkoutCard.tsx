@@ -270,7 +270,7 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
       <Card className="border-border">
         <CardHeader className="pb-4">
           <div className="flex items-center justify-between">
-            <CardTitle className={cardTitle.className}>
+            <CardTitle className={cardTitle.className} role="heading" aria-level={2}>
               {cardTitle.text}
             </CardTitle>
             {isFuture && <Button variant="ghost" size="sm" onClick={scrollToWeekCard} aria-label="Zu Wochenplan springen" className="text-xs text-muted-foreground hover:text-foreground">
@@ -294,13 +294,24 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
             {exercises.map((exercise: any, index: number) => {
             const exerciseKey = `${index}`;
             const isCompleted = optimisticUpdates[exerciseKey] !== undefined ? optimisticUpdates[exerciseKey] : completionMap[exerciseKey] || false;
-            return <motion.div key={index} initial={{
-              scale: 1
-            }} animate={{
-              scale: 1
-            }} whileTap={{
-              scale: 0.98
-            }} onClick={() => toggleExercise(index)} className="flex items-center gap-3 p-4 bg-background rounded-lg border hover:bg-muted/50 active:bg-muted/70 transition-all duration-150 cursor-pointer min-h-[56px] touch-manipulation px-[12px] py-[12px]">
+            return <motion.div 
+              key={index} 
+              initial={{ scale: 1 }} 
+              animate={{ scale: 1 }} 
+              whileTap={{ scale: 0.98 }} 
+              onClick={() => toggleExercise(index)} 
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  toggleExercise(index);
+                }
+              }}
+              className="flex items-center gap-3 p-4 bg-background rounded-lg border hover:bg-muted/50 active:bg-muted/70 transition-all duration-150 cursor-pointer min-h-[56px] touch-manipulation px-[12px] py-[12px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
+              role="checkbox"
+              aria-checked={isCompleted}
+              aria-label={`${exercise.name}, ${exercise.sets} Sätze, ${exercise.reps} Wiederholungen${isCompleted ? ' - abgeschlossen' : ' - offen'}`}
+              tabIndex={0}
+            >
                   <motion.div 
                     className={`w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 ${
                       isCompleted 

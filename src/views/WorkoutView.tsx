@@ -425,7 +425,7 @@ const WorkoutView: React.FC<WorkoutViewProps> = React.memo(({
       <Card className="border-primary/20">
         <CardContent className="p-4">
           <div className="flex items-center justify-between mb-4">
-            <Button variant="ghost" size="sm" onClick={handlePrevWeek} aria-label={t('workout.calendar.prev')} className="min-h-[44px] min-w-[44px] h-11 w-11 p-0 rounded-xl hover:bg-muted/80 active:bg-muted touch-manipulation">
+            <Button variant="ghost" size="sm" onClick={handlePrevWeek} aria-label={t('workout.calendar.prev')} className="min-h-[44px] min-w-[44px] h-11 w-11 p-0 rounded-xl hover:bg-muted/80 active:bg-muted touch-manipulation focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2">
               <ChevronLeft className="h-4 w-4" />
             </Button>
             
@@ -433,7 +433,7 @@ const WorkoutView: React.FC<WorkoutViewProps> = React.memo(({
               {monthYear}
             </h3>
             
-            <Button variant="ghost" size="sm" onClick={handleNextWeek} aria-label={t('workout.calendar.next')} className="min-h-[44px] min-w-[44px] h-11 w-11 p-0 rounded-xl hover:bg-muted/80 active:bg-muted touch-manipulation">
+            <Button variant="ghost" size="sm" onClick={handleNextWeek} aria-label={t('workout.calendar.next')} className="min-h-[44px] min-w-[44px] h-11 w-11 p-0 rounded-xl hover:bg-muted/80 active:bg-muted touch-manipulation focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2">
               <ChevronRight className="h-4 w-4" />
             </Button>
           </div>
@@ -448,7 +448,7 @@ const WorkoutView: React.FC<WorkoutViewProps> = React.memo(({
             const isActive = activeDayIndex === i;
             const isCompleted = isDayCompleted(wk, i);
             const isToday = isTodayInWeekDay(wk, i);
-            return <button key={i} onClick={() => handleDayClick(i)} className={["flex min-h-[44px] min-w-[44px] h-12 w-full flex-col items-center justify-center rounded-xl text-xs transition-all duration-200 touch-manipulation active:scale-95", isToday ? "ring-2 ring-primary ring-offset-2" : "", isCompleted ? "bg-primary/10 text-primary" : "bg-muted/50", activeDayIndex === i ? "outline outline-2 outline-primary/60" : ""].join(" ")} aria-pressed={activeDayIndex === i} aria-label={`${dayName} ${dayNumber}`} type="button">
+            return <button key={i} onClick={() => handleDayClick(i)} className={["flex min-h-[44px] min-w-[44px] h-12 w-full flex-col items-center justify-center rounded-xl text-xs transition-all duration-200 touch-manipulation active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2", isToday ? "ring-2 ring-primary ring-offset-2" : "", isCompleted ? "bg-primary/10 text-primary" : "bg-muted/50", activeDayIndex === i ? "outline outline-2 outline-primary/60" : ""].join(" ")} aria-pressed={activeDayIndex === i} aria-label={`${dayName} ${dayNumber}${isCompleted ? ' - abgeschlossen' : ''}${isToday ? ' - heute' : ''}`} type="button">
                   <span className="leading-3">{dayName}</span>
                   <span className="text-sm font-medium">{dayNumber}</span>
                 </button>;
@@ -509,12 +509,12 @@ const WorkoutView: React.FC<WorkoutViewProps> = React.memo(({
             };
             return <React.Fragment key={weekKey}>
                   <div className="flex flex-col items-center gap-2">
-                    <motion.button type="button" aria-label={getAriaLabel()} aria-current={isActive ? "step" : undefined} tabIndex={isFocused ? 0 : -1} onClick={() => handleWeekActivation(weekNum)} onKeyDown={e => handleStepperKeyDown(e, weekNum)} onFocus={() => setFocusedWeek(weekNum)} whileTap={!window.matchMedia('(prefers-reduced-motion: reduce)').matches ? {
+                    <motion.button type="button" aria-label={getAriaLabel()} aria-current={isActive ? "page" : undefined} tabIndex={isFocused ? 0 : -1} onClick={() => handleWeekActivation(weekNum)} onKeyDown={e => handleStepperKeyDown(e, weekNum)} onFocus={() => setFocusedWeek(weekNum)} whileTap={!window.matchMedia('(prefers-reduced-motion: reduce)').matches ? {
                   scale: 0.95
                 } : {}} transition={{
                   duration: 0.15,
                   ease: 'easeOut'
-                }} className={['relative flex items-center justify-center min-w-[44px] min-h-[44px] w-11 h-11 rounded-full text-sm font-medium transition-all duration-200', 'outline-none ring-offset-background focus-visible:ring-2 focus-visible:ring-primary/60 focus-visible:ring-offset-2', isActive ? 'bg-primary text-primary-foreground shadow-lg ring-2 ring-accent ring-offset-2' : isPast ? 'bg-primary text-primary-foreground shadow-md' : 'bg-muted text-muted-foreground hover:bg-muted/80'].join(' ')}>
+                }} className={['relative flex items-center justify-center min-w-[44px] min-h-[44px] w-11 h-11 rounded-full text-sm font-medium transition-all duration-200', 'outline-none ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2', isActive ? 'bg-primary text-primary-foreground shadow-lg ring-2 ring-accent ring-offset-2' : isPast ? 'bg-primary text-primary-foreground shadow-md' : 'bg-muted text-muted-foreground hover:bg-muted/80'].join(' ')}>
                       <span className="flex-shrink-0 tabular-nums">{weekNum}</span>
                     </motion.button>
                     
@@ -592,7 +592,12 @@ const WorkoutView: React.FC<WorkoutViewProps> = React.memo(({
               }
             }}>
                   <CollapsibleTrigger asChild>
-                    <Button variant="ghost" className="w-full px-3 py-2 h-14 justify-between text-left hover:bg-muted/50 rounded-lg" aria-expanded={isExpanded}>
+                    <Button 
+                      variant="ghost" 
+                      className="w-full px-3 py-2 h-14 justify-between text-left hover:bg-muted/50 rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2" 
+                      aria-expanded={isExpanded}
+                      aria-label={`${dayName}${isToday ? ' - Heute' : ''}${isRestDay ? ' - Ruhetag' : ` - ${exercises.length} Übungen`}${isCompleted ? ' - abgeschlossen' : ''}`}
+                    >
                       <div className="flex items-center justify-between w-full">
                        <div className="flex items-center gap-2">
                          <div className="font-medium">{dayName}</div>
@@ -606,7 +611,7 @@ const WorkoutView: React.FC<WorkoutViewProps> = React.memo(({
                           </span>
                            {isCompleted && <div className="w-4 h-4 rounded-full bg-green-600 flex-shrink-0" style={{
                         alignSelf: 'center'
-                      }}></div>}
+                      }} aria-label="Tag abgeschlossen"></div>}
                            {isExpanded ? <ChevronUp className="h-4 w-4 text-muted-foreground" style={{
                         alignSelf: 'center'
                       }} /> : <ChevronRight className="h-4 w-4 text-muted-foreground" style={{
@@ -649,12 +654,14 @@ const WorkoutView: React.FC<WorkoutViewProps> = React.memo(({
                                     const exerciseKey = `${exerciseIndex}`;
                                     const isExerciseCompleted = completionMap[`${dayIndex}`]?.[exerciseKey] || false;
                                     
-                                    return <motion.div 
+                                     return <motion.div 
                                       key={exerciseIndex} 
                                       className="grid grid-cols-[1fr_48px_64px] gap-2 p-3 bg-background rounded-md border shadow-sm min-h-[48px] items-center"
                                       initial={{ opacity: 0, y: -5 }}
                                       animate={{ opacity: 1, y: 0 }}
                                       transition={{ duration: 0.2, delay: exerciseIndex * 0.02 }}
+                                      role="status"
+                                      aria-label={`${exercise.name} ${isExerciseCompleted ? 'abgeschlossen' : 'offen'}`}
                                     >
                                       <div className="flex items-center gap-2 min-w-0">
                                         <motion.div 
@@ -671,6 +678,7 @@ const WorkoutView: React.FC<WorkoutViewProps> = React.memo(({
                                             duration: 0.3,
                                             ease: "easeOut"
                                           }}
+                                          aria-hidden="true"
                                         >
                                           {isExerciseCompleted && (
                                             <motion.div

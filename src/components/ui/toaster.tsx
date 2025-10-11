@@ -19,6 +19,8 @@ export function Toaster() {
             key={id} 
             {...props}
             className="animate-in slide-in-from-top-2 fade-in-0"
+            role="alert"
+            aria-live="assertive"
           >
             <div className="grid gap-1">
               {title && <ToastTitle>{title}</ToastTitle>}

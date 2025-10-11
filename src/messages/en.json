@@ -228,5 +228,75 @@
     "updateError": "Error updating profile",
     "avatarUploadSuccess": "Avatar uploaded successfully",
     "avatarUploadError": "Error uploading avatar"
+  },
+  "workout": {
+    "title": "Workout Plan",
+    "today": "Today's Workout",
+    "restDay": "Rest Day",
+    "restDone": "Mark as done",
+    "week": "Week {{num}}",
+    "weekLabel": "Week {{num}}",
+    "thisWeekProgress": "{{done}} / {{total}} days completed this week",
+    "weekEmpty": "No workouts planned for this week.",
+    "exercisesCount": "{{count}} exercises",
+    "noExercises": "No exercises for this day",
+    "infoSoon": "Coming soon",
+    "calendar": { "prev": "Previous week", "next": "Next week" },
+    "stepper": { "week": "Week {{num}}", "past": "Completed", "current": "Current", "future": "Upcoming" },
+    "weekShort": "W{{num}}",
+    "planProgress": {
+      "title": "Plan Progress"
+    },
+    "weekAria": {
+      "current": "Week {{num}} — current week",
+      "past": "Week {{num}} — completed", 
+      "future": "Week {{num}} — upcoming"
+    },
+    "weekSection": {
+      "title": "Week"
+    },
+    "day": {
+      "rest": "Rest day",
+      "exercises": "{{count}} exercises",
+      "futureLocked": "Future days are locked",
+      "markDone": "Mark as done"
+    },
+    "rest": {
+      "note": "Rest is important for your progress."
+    },
+    "futureLocked": "Available only for today or past days",
+    "nextWorkout": "Next Workout",
+    "noUpcoming": "No upcoming workout",
+    "futureDay": "Future day",
+    "restDayDescription": "No workout planned for today",
+    "markComplete": "Mark as complete",
+    "futureWorkout": "Future workout",
+    "moreExercises": "+{{count}} more exercises",
+    "restCompleted": "Rest day marked as complete",
+    "restUncompleted": "Rest day marked as incomplete",
+    "workoutCompleted": "Workout marked as complete",
+    "workoutUncompleted": "Workout marked as incomplete",
+    "setsReps": "{{sets}} sets × {{reps}} reps",
+    "planWeeks": "Plan Weeks",
+    "weekSelection": "Week Selection"
+  },
+  "todayWorkout": {
+    "title": "Today's Workout",
+    "pastTitle": "Past Workout",
+    "futureTitle": "Upcoming Workout",
+    "goToWeekCard": "Schedule",
+    "restDay": "Rest day — No workout planned for today",
+    "noData": "No workout data available",
+    "noExercises": "No exercises planned",
+    "loadError": "Error loading workout data",
+    "toggleError": "Error updating exercise",
+    "exerciseCompleted": "Exercise completed",
+    "exerciseUncompleted": "Exercise reset",
+    "toggleExercise": "Mark {{name}} as complete"
+  },
+  "mirror": {
+    "copiedFromWeek": "Copied from W{{weekNumber}}",
+    "mirrorProgressSaved": "Progress saved (mirrored week — your data still counts here)",
+    "preview": "Preview"
   }
 }
