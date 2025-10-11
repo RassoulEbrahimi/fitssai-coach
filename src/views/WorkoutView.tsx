@@ -203,12 +203,38 @@ const WorkoutView: React.FC<WorkoutViewProps> = React.memo(({
     toggleExercise,
     isToggling,
     isOnline,
-    refetch: refetchCompletion
+    refetch: refetchCompletion,
+    prefetchWeekCompletion,
+    isCached,
+    dataUpdatedAt
   } = useWeekCompletion({
     planId: workoutPlan?.id,
     weekKey: wk,
     enabled: !!user && !!workoutPlan
   });
+
+  // Prefetch adjacent weeks when current week loads
+  useEffect(() => {
+    if (!workoutPlan?.id || !wk || !prefetchWeekCompletion) return;
+
+    const weekNum = Number(wk.match(/\d+/)?.[0] ?? 1);
+    
+    // Prefetch next week (N+1)
+    if (weekNum < 4) {
+      const nextWeekKey = `Week ${weekNum + 1}`;
+      prefetchWeekCompletion(workoutPlan.id, nextWeekKey).catch(() => {
+        // Silent fail - prefetch is optional
+      });
+    }
+
+    // Prefetch previous week (N-1) for back navigation
+    if (weekNum > 1) {
+      const prevWeekKey = `Week ${weekNum - 1}`;
+      prefetchWeekCompletion(workoutPlan.id, prevWeekKey).catch(() => {
+        // Silent fail - prefetch is optional
+      });
+    }
+  }, [wk, workoutPlan?.id, prefetchWeekCompletion]);
 
   // Memoized week progress calculation
   const weekProgress = useMemo(() => {
@@ -484,6 +510,8 @@ const WorkoutView: React.FC<WorkoutViewProps> = React.memo(({
         toggleExercise={toggleExercise}
         isToggling={isToggling}
         isOnline={isOnline}
+        isCached={isCached}
+        dataUpdatedAt={dataUpdatedAt}
       />
 
       {/* Plan Progress Stepper */}

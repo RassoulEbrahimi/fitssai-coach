@@ -4,6 +4,7 @@ import { useAuth } from './useAuth';
 import { useToast } from './use-toast';
 import { useOfflineQueue } from './useOfflineQueue';
 import { logEvent, logError, logRetry } from '@/lib/telemetryClient';
+import { useEffect } from 'react';
 
 export type CompletionMap = Record<string, Record<string, boolean>>;
 
@@ -60,6 +61,29 @@ export const useWeekCompletion = ({ planId, weekKey, enabled = true }: UseWeekCo
   const { toast } = useToast();
   const { isOnline, addToQueue } = useOfflineQueue();
 
+  // Prefetch helper function
+  const prefetchWeekCompletion = async (targetPlanId: string, targetWeekKey: string) => {
+    logEvent('prefetch_week', { planId: targetPlanId, weekKey: targetWeekKey });
+    
+    await queryClient.prefetchQuery({
+      queryKey: ['week-completion', targetPlanId, targetWeekKey],
+      queryFn: async () => {
+        if (!user) throw new Error('User not available');
+
+        const { data, error } = await supabase.functions.invoke('get-week-completion', {
+          body: { planId: targetPlanId, weekKey: targetWeekKey },
+        });
+
+        if (error || !data?.success) {
+          throw new Error(error?.message || 'Prefetch failed');
+        }
+
+        return data;
+      },
+      staleTime: 30000, // 30 seconds
+    });
+  };
+
   const query = useQuery<WeekCompletionResponse>({
     queryKey: ['week-completion', planId, weekKey],
     queryFn: async () => {
@@ -107,11 +131,23 @@ export const useWeekCompletion = ({ planId, weekKey, enabled = true }: UseWeekCo
         throw error;
       }
     },
-    enabled: enabled && !!user && !!planId && isOnline,
+    enabled: enabled && !!user && !!planId, // Allow queries even when offline to use cache
     staleTime: 30000, // 30 seconds
     gcTime: 5 * 60 * 1000, // 5 minutes
     retry: false, // We handle retries manually with exponential backoff
+    networkMode: 'offlineFirst', // Use cache when offline, fetch when online
   });
+
+  // Log offline fallback usage
+  useEffect(() => {
+    if (!isOnline && query.data && !query.isFetching) {
+      logEvent('offline_fallback', { 
+        planId, 
+        weekKey, 
+        cacheAge: query.dataUpdatedAt ? Date.now() - query.dataUpdatedAt : 0 
+      });
+    }
+  }, [isOnline, query.data, query.isFetching, planId, weekKey, query.dataUpdatedAt]);
 
   const toggleMutation = useMutation({
     mutationFn: async (params: ToggleExerciseParams) => {
@@ -247,5 +283,8 @@ export const useWeekCompletion = ({ planId, weekKey, enabled = true }: UseWeekCo
     isToggling: toggleMutation.isPending,
     isOnline,
     refetch: query.refetch,
+    prefetchWeekCompletion, // Expose prefetch function
+    isCached: !!query.data && query.isStale, // True if data exists but is stale
+    dataUpdatedAt: query.dataUpdatedAt, // Timestamp of last update
   };
 };

@@ -1,7 +1,8 @@
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { QueryClient } from "@tanstack/react-query";
+import { PersistQueryClientProvider } from "@tanstack/react-query-persist-client";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { useEffect } from "react";
 import { useTranslation } from "react-i18next";
@@ -15,7 +16,48 @@ import AdminPanel from './pages/AdminPanel';
 import NotFound from './pages/NotFound';
 import "./lib/i18n";
 
-const queryClient = new QueryClient();
+// Create persistent query client with 24h cache expiration
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      gcTime: 1000 * 60 * 60 * 24, // 24 hours
+      staleTime: 1000 * 60 * 5, // 5 minutes
+    },
+  },
+});
+
+// Create persister using localStorage with manual implementation
+const persister = {
+  persistClient: async (client: any) => {
+    try {
+      if (typeof window !== 'undefined' && window.localStorage) {
+        window.localStorage.setItem('FITSSAI_CACHE', JSON.stringify(client));
+      }
+    } catch (error) {
+      // Silent fail - storage not available
+    }
+  },
+  restoreClient: async () => {
+    try {
+      if (typeof window !== 'undefined' && window.localStorage) {
+        const cached = window.localStorage.getItem('FITSSAI_CACHE');
+        return cached ? JSON.parse(cached) : undefined;
+      }
+    } catch (error) {
+      // Silent fail - storage not available
+    }
+    return undefined;
+  },
+  removeClient: async () => {
+    try {
+      if (typeof window !== 'undefined' && window.localStorage) {
+        window.localStorage.removeItem('FITSSAI_CACHE');
+      }
+    } catch (error) {
+      // Silent fail
+    }
+  },
+};
 
 const App = () => {
   const { i18n } = useTranslation();
@@ -36,7 +78,14 @@ const App = () => {
   }, []);
 
   return (
-    <QueryClientProvider client={queryClient}>
+    <PersistQueryClientProvider
+      client={queryClient}
+      persistOptions={{
+        persister,
+        maxAge: 1000 * 60 * 60 * 24, // 24 hours
+        buster: 'fitssai-v1', // Increment to invalidate all caches
+      }}
+    >
       <ThemeProvider>
         <AuthProvider>
           <TooltipProvider>
@@ -56,7 +105,7 @@ const App = () => {
           </TooltipProvider>
         </AuthProvider>
       </ThemeProvider>
-    </QueryClientProvider>
+    </PersistQueryClientProvider>
   );
 };
 

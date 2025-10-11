@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { motion } from "framer-motion";
 import { useTranslation } from "react-i18next";
 import { useAuth } from "@/hooks/useAuth";
@@ -33,6 +34,8 @@ interface TodayWorkoutCardProps {
   }) => void;
   isToggling: boolean;
   isOnline?: boolean;
+  isCached?: boolean;
+  dataUpdatedAt?: number;
 }
 const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
   selectedDate,
@@ -46,6 +49,8 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
   toggleExercise: toggleExerciseMutation,
   isToggling,
   isOnline = true,
+  isCached = false,
+  dataUpdatedAt,
 }) => {
   const {
     t
@@ -69,6 +74,14 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
   const isToday = isBerlinToday(selectedDateStr);
   const isPast = isBerlinPast(selectedDateStr);
   const isFuture = isBerlinFuture(selectedDateStr);
+
+  // Check if data is from offline cache
+  const isOfflineData = !isOnline && isCached;
+  
+  // Calculate cache age in hours
+  const cacheAgeHours = dataUpdatedAt 
+    ? Math.floor((Date.now() - dataUpdatedAt) / (1000 * 60 * 60))
+    : 0;
 
   // Get contextual title and styling
   const getCardTitle = () => {
@@ -211,9 +224,21 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
         <Card className="border-border">
         <CardHeader className="pb-4">
           <div className="flex items-center justify-between">
-            <CardTitle className={cardTitle.className} role="heading" aria-level={2}>
-              {cardTitle.text}
-            </CardTitle>
+            <div className="flex items-center gap-2">
+              <CardTitle className={cardTitle.className} role="heading" aria-level={2}>
+                {cardTitle.text}
+              </CardTitle>
+              {isOfflineData && (
+                <Badge 
+                  variant="outline" 
+                  className="text-xs bg-muted/50 border-muted-foreground/20 text-muted-foreground"
+                  aria-label="Offline gespeicherte Daten"
+                >
+                  <WifiOff className="w-3 h-3 mr-1" />
+                  Offline {cacheAgeHours > 0 && `(${cacheAgeHours}h)`}
+                </Badge>
+              )}
+            </div>
             {isFuture && <Button variant="ghost" size="sm" onClick={scrollToWeekCard} aria-label="Zu Wochenplan springen" className="text-xs text-muted-foreground hover:text-foreground">
                 <PencilIcon className="w-4 h-4 mr-1" />
                 {t('todayWorkout.goToWeekCard')}

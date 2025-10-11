@@ -53,7 +53,7 @@ const getUserId = async (): Promise<string | undefined> => {
 };
 
 /**
- * Log a user event (e.g., week switch, exercise toggle)
+ * Log a user event (e.g., week switch, exercise toggle, cache hit, prefetch)
  * Fire-and-forget - does not block UI rendering
  */
 export const logEvent = (eventName: string, payload?: object) => {
@@ -69,6 +69,12 @@ export const logEvent = (eventName: string, payload?: object) => {
     };
     
     sendToConsole('Event', event);
+    
+    // Special handling for cache/prefetch events
+    if (eventName === 'cache_hit' || eventName === 'prefetch_week' || eventName === 'offline_fallback') {
+      console.log(`[Telemetry:${eventName.toUpperCase()}]`, payload);
+    }
+    
     saveToSupabase('event', event).catch(() => {});
   });
 };
