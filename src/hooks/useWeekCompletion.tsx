@@ -1,6 +1,8 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from './useAuth';
+import { useToast } from './use-toast';
+import { useOfflineQueue } from './useOfflineQueue';
 
 export type CompletionMap = Record<string, Record<string, boolean>>;
 
@@ -10,6 +12,31 @@ interface WeekCompletionResponse {
   weekKey: string;
   planId: string;
 }
+
+// Exponential backoff retry utility
+const retryWithBackoff = async <T,>(
+  fn: () => Promise<T>,
+  maxRetries = 3,
+  initialDelay = 1000
+): Promise<T> => {
+  let lastError: any;
+  
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      return await fn();
+    } catch (error) {
+      lastError = error;
+      
+      if (attempt < maxRetries) {
+        const delay = initialDelay * Math.pow(2, attempt);
+        console.log(`Retry attempt ${attempt + 1}/${maxRetries} after ${delay}ms`);
+        await new Promise((resolve) => setTimeout(resolve, delay));
+      }
+    }
+  }
+  
+  throw lastError;
+};
 
 interface UseWeekCompletionParams {
   planId: string | undefined;
@@ -28,6 +55,8 @@ interface ToggleExerciseParams {
 export const useWeekCompletion = ({ planId, weekKey, enabled = true }: UseWeekCompletionParams) => {
   const { user } = useAuth();
   const queryClient = useQueryClient();
+  const { toast } = useToast();
+  const { isOnline, addToQueue } = useOfflineQueue();
 
   const query = useQuery<WeekCompletionResponse>({
     queryKey: ['week-completion', planId, weekKey],
@@ -36,47 +65,111 @@ export const useWeekCompletion = ({ planId, weekKey, enabled = true }: UseWeekCo
         throw new Error('User or planId not available');
       }
 
-      const { data, error } = await supabase.functions.invoke('get-week-completion', {
-        body: {
-          planId,
-          weekKey,
-        },
-      });
+      try {
+        const data = await retryWithBackoff(async () => {
+          const { data, error } = await supabase.functions.invoke('get-week-completion', {
+            body: {
+              planId,
+              weekKey,
+            },
+          });
 
-      if (error) {
-        console.error('Error fetching week completion:', error);
+          if (error) {
+            console.error('Error fetching week completion:', error);
+            throw new Error(error.message || 'Failed to fetch week completion');
+          }
+
+          if (!data?.success) {
+            throw new Error('Invalid response from server');
+          }
+
+          return data;
+        }, 3, 1000);
+
+        return data;
+      } catch (error: any) {
+        console.error('Failed to fetch week completion after retries:', error);
+        
+        toast({
+          variant: 'destructive',
+          title: 'Fehler beim Laden',
+          description: 'Trainingsplan konnte nicht geladen werden. Bitte versuche es erneut.',
+          duration: 3000,
+          role: 'alert',
+        });
+        
         throw error;
       }
-
-      if (!data.success) {
-        throw new Error('Failed to fetch week completion');
-      }
-
-      return data;
     },
-    enabled: enabled && !!user && !!planId,
+    enabled: enabled && !!user && !!planId && isOnline,
     staleTime: 30000, // 30 seconds
-    gcTime: 5 * 60 * 1000, // 5 minutes (formerly cacheTime)
-    retry: 2,
+    gcTime: 5 * 60 * 1000, // 5 minutes
+    retry: false, // We handle retries manually with exponential backoff
   });
 
   const toggleMutation = useMutation({
     mutationFn: async (params: ToggleExerciseParams) => {
-      const { data, error } = await supabase.functions.invoke('toggle-exercise', {
-        body: {
-          planId: params.planId,
-          weekKey: params.weekKey,
-          dayIndex: params.dayIndex,
-          exerciseIndex: params.exerciseIndex,
-          completed: params.completed,
-        },
-      });
-
-      if (error || !data.success) {
-        throw error || new Error('Failed to toggle exercise');
+      // Check if offline
+      if (!isOnline) {
+        // Queue for later
+        addToQueue(
+          async () => {
+            const { data, error } = await supabase.functions.invoke('toggle-exercise', {
+              body: params,
+            });
+            
+            if (error || !data?.success) {
+              throw error || new Error('Failed to toggle exercise');
+            }
+            
+            return data;
+          },
+          params
+        );
+        
+        // Return success for optimistic update
+        return { success: true };
       }
 
-      return data;
+      // Online: retry with exponential backoff
+      try {
+        const data = await retryWithBackoff(async () => {
+          const { data, error } = await supabase.functions.invoke('toggle-exercise', {
+            body: {
+              planId: params.planId,
+              weekKey: params.weekKey,
+              dayIndex: params.dayIndex,
+              exerciseIndex: params.exerciseIndex,
+              completed: params.completed,
+            },
+          });
+
+          if (error) {
+            console.error('Error toggling exercise:', error);
+            throw new Error(error.message || 'Failed to toggle exercise');
+          }
+
+          if (!data?.success) {
+            throw new Error('Invalid response from server');
+          }
+
+          return data;
+        }, 3, 1000);
+
+        return data;
+      } catch (error: any) {
+        console.error('Failed to toggle exercise after retries:', error);
+        
+        toast({
+          variant: 'destructive',
+          title: 'Fehler',
+          description: 'Änderung konnte nicht gespeichert werden. Bitte versuche es erneut.',
+          duration: 3000,
+          role: 'alert',
+        });
+        
+        throw error;
+      }
     },
     onMutate: async (params) => {
       // Cancel outgoing refetches
@@ -118,13 +211,14 @@ export const useWeekCompletion = ({ planId, weekKey, enabled = true }: UseWeekCo
       return { previousData };
     },
     onError: (error, params, context) => {
-      // Rollback on error
-      if (context?.previousData) {
+      // Only rollback if not offline (offline operations are queued)
+      if (isOnline && context?.previousData) {
         queryClient.setQueryData(
           ['week-completion', params.planId, params.weekKey],
           context.previousData
         );
       }
+      
       console.error('Error toggling exercise:', error);
     },
     onSuccess: (data, params) => {
@@ -140,5 +234,7 @@ export const useWeekCompletion = ({ planId, weekKey, enabled = true }: UseWeekCo
     error: query.error,
     toggleExercise: toggleMutation.mutate,
     isToggling: toggleMutation.isPending,
+    isOnline,
+    refetch: query.refetch,
   };
 };

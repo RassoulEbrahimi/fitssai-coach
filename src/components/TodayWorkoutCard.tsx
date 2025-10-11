@@ -8,7 +8,8 @@ import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
 import { de } from "date-fns/locale";
 import { isBerlinToday, isBerlinPast, isBerlinFuture } from "@/lib/dateUtils";
-import { CalendarIcon, PencilIcon, CheckCircle2 } from "lucide-react";
+import { CalendarIcon, PencilIcon, CheckCircle2, WifiOff } from "lucide-react";
+import WorkoutErrorBoundary from "@/components/WorkoutErrorBoundary";
 
 interface TodayWorkoutCardProps {
   selectedDate: Date;
@@ -30,6 +31,7 @@ interface TodayWorkoutCardProps {
     completed: boolean;
   }) => void;
   isToggling: boolean;
+  isOnline?: boolean;
 }
 const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
   selectedDate,
@@ -41,7 +43,8 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
   completionMap,
   isLoading,
   toggleExercise: toggleExerciseMutation,
-  isToggling
+  isToggling,
+  isOnline = true,
 }) => {
   const {
     t
@@ -184,16 +187,19 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
       </Card>;
   }
   const cardTitle = getCardTitle();
-  return <motion.div initial={{
-    opacity: 0,
-    y: 20
-  }} animate={{
-    opacity: 1,
-    y: 0
-  }} transition={{
-    duration: 0.4
-  }}>
-      <Card className="border-border">
+  
+  return (
+    <WorkoutErrorBoundary>
+      <motion.div initial={{
+        opacity: 0,
+        y: 20
+      }} animate={{
+        opacity: 1,
+        y: 0
+      }} transition={{
+        duration: 0.4
+      }}>
+        <Card className="border-border">
         <CardHeader className="pb-4">
           <div className="flex items-center justify-between">
             <CardTitle className={cardTitle.className} role="heading" aria-level={2}>
@@ -278,7 +284,9 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
           </div>
         </CardContent>
       </Card>
-    </motion.div>;
+    </motion.div>
+    </WorkoutErrorBoundary>
+  );
 };
 
 export default React.memo(TodayWorkoutCard);

@@ -5,7 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { useToast } from "@/hooks/use-toast";
-import { ChevronLeft, ChevronRight, CheckCircle2, ArrowUpDown, ChevronUp, ChevronDown } from "lucide-react";
+import { ChevronLeft, ChevronRight, CheckCircle2, ArrowUpDown, ChevronUp, ChevronDown, WifiOff, RefreshCw, AlertCircle } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useTranslation } from "react-i18next";
 import { formatDateForDisplay } from "@/lib/dateUtils";
@@ -16,6 +16,7 @@ import TodayWorkoutCard from "@/components/TodayWorkoutCard";
 import { WEEK_OPTIONS } from "@/lib/dateUtils";
 import { useAuth } from "@/hooks/useAuth";
 import { useWeekCompletion } from "@/hooks/useWeekCompletion";
+import WorkoutErrorBoundary from "@/components/WorkoutErrorBoundary";
 
 const ExerciseList = React.lazy(() => import("@/views/ExerciseList"));
 interface WorkoutViewProps {
@@ -197,8 +198,11 @@ const WorkoutView: React.FC<WorkoutViewProps> = React.memo(({
   const {
     completionMap,
     isLoading: isLoadingCompletion,
+    isError: isCompletionError,
     toggleExercise,
-    isToggling
+    isToggling,
+    isOnline,
+    refetch: refetchCompletion
   } = useWeekCompletion({
     planId: workoutPlan?.id,
     weekKey: wk,
@@ -374,17 +378,59 @@ const WorkoutView: React.FC<WorkoutViewProps> = React.memo(({
   const monthYear = headerDate ? format(headerDate, 'MMM yyyy', {
     locale: de
   }) : '';
-  return <motion.div initial={{
-    opacity: 0,
-    y: 20
-  }} animate={{
-    opacity: 1,
-    y: 0
-  }} transition={{
-    duration: 0.4,
-    delay: 0.1
-  }} className="p-4 space-y-3 px-[12px] py-[12px]">
-      {/* Weekly Calendar */}
+  
+  return (
+    <WorkoutErrorBoundary>
+      <motion.div initial={{
+        opacity: 0,
+        y: 20
+      }} animate={{
+        opacity: 1,
+        y: 0
+      }} transition={{
+        duration: 0.4,
+        delay: 0.1
+      }} className="p-4 space-y-3 px-[12px] py-[12px]">
+        {/* Offline Indicator */}
+        {!isOnline && (
+          <Card className="border-warning bg-warning/5">
+            <CardContent className="py-3 px-4">
+              <div className="flex items-center gap-2 text-warning">
+                <WifiOff className="h-4 w-4" />
+                <span className="text-sm font-medium">
+                  Offline-Modus - Änderungen werden synchronisiert
+                </span>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Error State */}
+        {isCompletionError && (
+          <Card className="border-destructive/50 bg-destructive/5">
+            <CardContent className="py-3 px-4">
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2 text-destructive">
+                  <AlertCircle className="h-4 w-4" />
+                  <span className="text-sm font-medium">
+                    Fehler beim Laden des Trainingsplans
+                  </span>
+                </div>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => refetchCompletion()}
+                  className="h-8"
+                >
+                  <RefreshCw className="h-4 w-4 mr-1" />
+                  Erneut versuchen
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Weekly Calendar */}
       <Card className="border-primary/20">
         <CardContent className="p-4">
           <div className="flex items-center justify-between mb-4">
@@ -432,6 +478,7 @@ const WorkoutView: React.FC<WorkoutViewProps> = React.memo(({
         isLoading={isLoadingCompletion}
         toggleExercise={toggleExercise}
         isToggling={isToggling}
+        isOnline={isOnline}
       />
 
       {/* Plan Progress Stepper */}
@@ -687,7 +734,9 @@ const WorkoutView: React.FC<WorkoutViewProps> = React.memo(({
         })}
         </CardContent>
       </Card>
-    </motion.div>;
+    </motion.div>
+    </WorkoutErrorBoundary>
+  );
 });
 WorkoutView.displayName = 'WorkoutView';
 export default WorkoutView;
