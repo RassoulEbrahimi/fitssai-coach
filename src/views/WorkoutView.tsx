@@ -14,8 +14,9 @@ import { de } from 'date-fns/locale';
 import ExerciseListSkeleton from "@/components/skeletons/ExerciseListSkeleton";
 import TodayWorkoutCard from "@/components/TodayWorkoutCard";
 import { WEEK_OPTIONS } from "@/lib/dateUtils";
-import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
+import { useWeekCompletion } from "@/hooks/useWeekCompletion";
+
 const ExerciseList = React.lazy(() => import("@/views/ExerciseList"));
 interface WorkoutViewProps {
   workoutPlan: any;
@@ -74,9 +75,6 @@ const WorkoutView: React.FC<WorkoutViewProps> = React.memo(({
     toast
   } = useToast();
   const { user } = useAuth();
-
-  // Shared completion map state - used by both TodayWorkoutCard and WeekCard
-  const [completionMap, setCompletionMap] = useState<Record<string, Record<string, boolean>>>({});
 
   // Helper function to detect mirrored weeks and get source week
   const getWeekMirrorInfo = (weekKey: string) => {
@@ -195,37 +193,17 @@ const WorkoutView: React.FC<WorkoutViewProps> = React.memo(({
   const currentWeekNum = Number(wk.match(/\d+/)?.[0] ?? 1);
   const [focusedWeek, setFocusedWeek] = useState<number>(currentWeekNum);
 
-  // Load completion status for all days in the current week
-  const loadWeekCompletionMap = async () => {
-    if (!user || !workoutPlan) return;
-    
-    try {
-      const weekData = getWeekContentWithFallback(wk);
-      const newCompletionMap: Record<string, Record<string, boolean>> = {};
-      
-      // Load completion for all 7 days in parallel
-      const promises = weekData.map(async (day: any, dayIdx: number) => {
-        if (!day?.exercises?.length) return;
-        
-        const { data, error } = await supabase.functions.invoke('get-today-workout', {
-          body: {
-            weekKey: wk,
-            dayIndex: dayIdx,
-            planId: workoutPlan.id
-          }
-        });
-        
-        if (!error && data?.success) {
-          newCompletionMap[`${dayIdx}`] = data.completionMap || {};
-        }
-      });
-      
-      await Promise.all(promises);
-      setCompletionMap(newCompletionMap);
-    } catch (error) {
-      console.error('Error loading week completion map:', error);
-    }
-  };
+  // React Query: Fetch week completion data with batched API call
+  const {
+    completionMap,
+    isLoading: isLoadingCompletion,
+    toggleExercise,
+    isToggling
+  } = useWeekCompletion({
+    planId: workoutPlan?.id,
+    weekKey: wk,
+    enabled: !!user && !!workoutPlan
+  });
 
   // Memoized week progress calculation
   const weekProgress = useMemo(() => {
@@ -275,21 +253,6 @@ const WorkoutView: React.FC<WorkoutViewProps> = React.memo(({
     const weekNum = Number(wk.match(/\d+/)?.[0] ?? 1);
     updateHash(weekNum, activeDayIndex);
   }, [activeWeek, activeDayIndex, wk]);
-
-  // Load completion map when week or workout plan changes
-  useEffect(() => {
-    loadWeekCompletionMap();
-  }, [wk, workoutPlan, user]);
-
-  // Listen for workout updates from TodayWorkoutCard
-  useEffect(() => {
-    const handleWorkoutUpdate = () => {
-      loadWeekCompletionMap();
-    };
-    
-    window.addEventListener('workoutLogsChanged', handleWorkoutUpdate);
-    return () => window.removeEventListener('workoutLogsChanged', handleWorkoutUpdate);
-  }, [wk, workoutPlan, user]);
 
   // Handle week navigation by moving date by ±7 days
   const handlePrevWeek = () => {
@@ -466,17 +429,9 @@ const WorkoutView: React.FC<WorkoutViewProps> = React.memo(({
         getWeekContentWithFallback={getWeekContentWithFallback} 
         mirrorInfo={mirrorInfo}
         completionMap={completionMap[`${activeDayIndex}`] || {}}
-        setCompletionMap={(dayCompletionMap) => {
-          setCompletionMap(prev => ({
-            ...prev,
-            [`${activeDayIndex}`]: dayCompletionMap
-          }));
-        }}
-        onProgressUpdate={() => {
-          // Trigger parent component to refresh workout logs
-          // This ensures completion state is updated after exercise toggle
-          window.dispatchEvent(new CustomEvent('workoutLogsChanged'));
-        }} 
+        isLoading={isLoadingCompletion}
+        toggleExercise={toggleExercise}
+        isToggling={isToggling}
       />
 
       {/* Plan Progress Stepper */}

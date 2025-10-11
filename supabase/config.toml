@@ -9,5 +9,8 @@ verify_jwt = true
 [functions.get-today-workout]
 verify_jwt = true
 
+[functions.get-week-completion]
+verify_jwt = true
+
 [functions.toggle-exercise]
 verify_jwt = true
