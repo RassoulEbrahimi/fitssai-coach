@@ -13,6 +13,7 @@ import { CalendarIcon, PencilIcon, CheckCircle2, WifiOff } from "lucide-react";
 import WorkoutErrorBoundary from "@/components/WorkoutErrorBoundary";
 import { logEvent } from "@/lib/telemetryClient";
 import { toastSuccess } from "@/lib/toastWithIcon";
+import { CompletionState, isExerciseCompleted } from "@/lib/completionUtils";
 
 interface TodayWorkoutCardProps {
   selectedDate: Date;
@@ -24,7 +25,7 @@ interface TodayWorkoutCardProps {
     isMirrored: boolean;
     sourceWeek: number | null;
   };
-  completionMap: Record<string, boolean>;
+  completionMap: CompletionState;
   isLoading: boolean;
   toggleExercise: (params: {
     planId: string;
@@ -115,14 +116,16 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
   const handleToggleExercise = async (exerciseIndex: number) => {
     if (!user || !workoutPlan) return;
     
-    const exerciseKey = `${exerciseIndex}`;
-    const isNowCompleted = !completionMap[exerciseKey];
+    // Use helper to check current completion state
+    const isCurrentlyCompleted = isExerciseCompleted(completionMap, weekKey, dayIndex, exerciseIndex);
+    const isNowCompleted = !isCurrentlyCompleted;
 
     logEvent('exercise_toggle_ui', {
       weekKey,
       dayIndex,
       exerciseIndex,
       completed: isNowCompleted,
+      completionKey: `${weekKey}_${dayIndex}_${exerciseIndex}`,
       exerciseName: exercises[exerciseIndex]?.name
     });
 
@@ -265,8 +268,8 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
         <CardContent>
           <div className="space-y-3">
             {exercises.map((exercise: any, index: number) => {
-            const exerciseKey = `${index}`;
-            const isCompleted = completionMap[exerciseKey] || false;
+            // Use helper to check completion in flat state
+            const isCompleted = isExerciseCompleted(completionMap, weekKey, dayIndex, index);
             return <AnimatePresence mode="wait" key={index}>
               <motion.div 
                 layout

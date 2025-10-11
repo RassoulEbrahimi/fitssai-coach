@@ -5,12 +5,14 @@ import { useOfflineQueue } from './useOfflineQueue';
 import { logEvent, logError, logRetry } from '@/lib/telemetryClient';
 import { toastError } from '@/lib/toastWithIcon';
 import { useEffect } from 'react';
+import { CompletionState, normalizeCompletionMap, setExerciseCompletion } from '@/lib/completionUtils';
 
-export type CompletionMap = Record<string, Record<string, boolean>>;
+// Legacy server response format (nested)
+type ServerCompletionMap = Record<string, Record<string, boolean>>;
 
 interface WeekCompletionResponse {
   success: boolean;
-  completionMap: CompletionMap;
+  completionMap: ServerCompletionMap;
   weekKey: string;
   planId: string;
 }
@@ -83,7 +85,7 @@ export const useWeekCompletion = ({ planId, weekKey, enabled = true }: UseWeekCo
     });
   };
 
-  const query = useQuery<WeekCompletionResponse>({
+  const query = useQuery<CompletionState>({
     queryKey: ['week-completion', planId, weekKey],
     queryFn: async () => {
       if (!user || !planId) {
@@ -114,7 +116,10 @@ export const useWeekCompletion = ({ planId, weekKey, enabled = true }: UseWeekCo
         }, 3, 1000);
 
         logEvent('fetch_week_completion_success', { planId, weekKey });
-        return data;
+        
+        // Normalize nested server response to flat structure
+        const flatState = normalizeCompletionMap(data.completionMap, weekKey);
+        return flatState;
       } catch (error: any) {
         console.error('Failed to fetch week completion after retries:', error);
         logError(error, `fetch_week_completion_failed: ${planId} ${weekKey}`);
@@ -149,7 +154,11 @@ export const useWeekCompletion = ({ planId, weekKey, enabled = true }: UseWeekCo
 
   const toggleMutation = useMutation({
     mutationFn: async (params: ToggleExerciseParams) => {
-      logEvent('toggle_exercise_start', { ...params, isOnline });
+      logEvent('toggle_exercise_start', { 
+        ...params, 
+        isOnline,
+        completionKey: `${params.weekKey}_${params.dayIndex}_${params.exerciseIndex}`
+      });
 
       // Check if offline
       if (!isOnline) {
@@ -199,7 +208,10 @@ export const useWeekCompletion = ({ planId, weekKey, enabled = true }: UseWeekCo
           return data;
         }, 3, 1000);
 
-        logEvent('toggle_exercise_success', params);
+        logEvent('toggle_exercise_success', {
+          ...params,
+          completionKey: `${params.weekKey}_${params.dayIndex}_${params.exerciseIndex}`
+        });
         return data;
       } catch (error: any) {
         console.error('Failed to toggle exercise after retries:', error);
@@ -220,35 +232,26 @@ export const useWeekCompletion = ({ planId, weekKey, enabled = true }: UseWeekCo
       await queryClient.cancelQueries({ queryKey: ['week-completion', params.planId, params.weekKey] });
 
       // Snapshot previous value
-      const previousData = queryClient.getQueryData<WeekCompletionResponse>([
+      const previousData = queryClient.getQueryData<CompletionState>([
         'week-completion',
         params.planId,
         params.weekKey,
       ]);
 
-      // Optimistically update
-      queryClient.setQueryData<WeekCompletionResponse>(
+      // Optimistically update flat state
+      queryClient.setQueryData<CompletionState>(
         ['week-completion', params.planId, params.weekKey],
         (old) => {
           if (!old) return old;
           
-          const newCompletionMap = { ...old.completionMap };
-          const dayKey = `${params.dayIndex}`;
-          const exerciseKey = `${params.exerciseIndex}`;
-          
-          if (!newCompletionMap[dayKey]) {
-            newCompletionMap[dayKey] = {};
-          }
-          
-          newCompletionMap[dayKey] = {
-            ...newCompletionMap[dayKey],
-            [exerciseKey]: params.completed,
-          };
-
-          return {
-            ...old,
-            completionMap: newCompletionMap,
-          };
+          // Use helper to set completion in flat structure
+          return setExerciseCompletion(
+            old,
+            params.weekKey,
+            params.dayIndex,
+            params.exerciseIndex,
+            params.completed
+          );
         }
       );
 
@@ -272,7 +275,7 @@ export const useWeekCompletion = ({ planId, weekKey, enabled = true }: UseWeekCo
   });
 
   return {
-    completionMap: query.data?.completionMap || {},
+    completionMap: query.data || {},
     isLoading: query.isLoading,
     isError: query.isError,
     error: query.error,
