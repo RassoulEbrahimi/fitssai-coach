@@ -1,5 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2";
+import { getWeekDateRange } from "../_shared/dateUtils.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -76,21 +77,13 @@ Deno.serve(async (req) => {
       );
     }
 
-    const planCreatedDate = new Date(plan.created_at);
-    const weekNumber = parseInt(weekKey.replace(/\D/g, "")) - 1;
+    // Calculate date range for the week using Berlin timezone
+    const { startStr: weekStartStr, endStr: weekEndStr } = getWeekDateRange(
+      plan.created_at,
+      weekKey
+    );
 
-    // Calculate date range for the week
-    const weekStartOffset = weekNumber * 7;
-    const weekStartDate = new Date(planCreatedDate);
-    weekStartDate.setDate(weekStartDate.getDate() + weekStartOffset);
-    
-    const weekEndDate = new Date(weekStartDate);
-    weekEndDate.setDate(weekEndDate.getDate() + 6);
-
-    const weekStartStr = weekStartDate.toISOString().split("T")[0];
-    const weekEndStr = weekEndDate.toISOString().split("T")[0];
-
-    console.log(`[get-week-completion] Week date range: ${weekStartStr} to ${weekEndStr}`);
+    console.log(`[get-week-completion] Week date range (Berlin): ${weekStartStr} to ${weekEndStr}`);
 
     // Fetch all logs for this week in ONE query
     const { data: logs, error: logsError } = await sb
@@ -111,27 +104,17 @@ Deno.serve(async (req) => {
 
     console.log(`[get-week-completion] Found ${logs?.length || 0} logs for week ${weekKey}`);
 
-    // Build completion map: { "0": { "0": true, "1": false }, "1": {...}, ... }
-    const completionMap: Record<string, Record<string, boolean>> = {};
-
-    for (let dayIndex = 0; dayIndex < 7; dayIndex++) {
-      completionMap[`${dayIndex}`] = {};
-    }
+    // Build flat completion map: { "Week 1_0_0": true, "Week 1_0_1": false, ... }
+    const completionMap: Record<string, boolean> = {};
 
     if (logs && logs.length > 0) {
       for (const log of logs) {
-        const dayKey = `${log.day_index}`;
-        const exerciseKey = `${log.exercise_index}`;
-        
-        if (!completionMap[dayKey]) {
-          completionMap[dayKey] = {};
-        }
-        
-        completionMap[dayKey][exerciseKey] = log.completed;
+        const completionKey = `${weekKey}_${log.day_index}_${log.exercise_index}`;
+        completionMap[completionKey] = log.completed;
       }
     }
 
-    console.log(`[get-week-completion] Returning completion map for ${Object.keys(completionMap).length} days`);
+    console.log(`[get-week-completion] Returning flat completion map with ${Object.keys(completionMap).length} entries`);
 
     return new Response(
       JSON.stringify({

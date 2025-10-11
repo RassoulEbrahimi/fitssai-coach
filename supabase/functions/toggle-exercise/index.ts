@@ -1,6 +1,7 @@
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { getBerlinToday, getWorkoutDateString } from "../_shared/dateUtils.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -57,6 +58,25 @@ serve(async (req) => {
 
     console.log(`Toggling exercise for user ${user.id}, plan ${planId}, ${weekKey} day ${dayIndex} exercise ${exerciseIndex} to ${completed}`);
 
+    // Fetch workout plan to get created_at for date calculation
+    const { data: plan, error: planError } = await sb
+      .from('workout_plans')
+      .select('id, created_at')
+      .eq('id', planId)
+      .eq('user_id', user.id)
+      .single();
+
+    if (planError || !plan) {
+      console.error('Plan fetch error:', planError);
+      return fail('Plan nicht gefunden', 'PLAN_NOT_FOUND');
+    }
+
+    // Calculate workout_day using Berlin timezone and plan-based date calculation
+    const workoutDay = getWorkoutDateString(plan.created_at, weekKey, dayIndex);
+    const completedAt = completed ? new Date().toISOString() : null;
+
+    console.log(`[toggle-exercise] Workout day (Berlin): ${workoutDay}, completed_at: ${completedAt}`);
+
     // Use upsert to handle both insert and update
     const { data, error } = await sb
       .from('workout_logs')
@@ -67,8 +87,8 @@ serve(async (req) => {
         day_index: dayIndex,
         exercise_index: exerciseIndex,
         completed,
-        completed_at: completed ? new Date().toISOString() : null,
-        workout_day: new Date().toISOString().split('T')[0], // Add required workout_day field
+        completed_at: completedAt,
+        workout_day: workoutDay, // Berlin-based date calculation
       }, {
         onConflict: 'user_id,plan_id,week_key,day_index,exercise_index',
       });
