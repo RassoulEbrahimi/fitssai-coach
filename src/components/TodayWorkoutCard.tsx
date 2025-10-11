@@ -21,6 +21,8 @@ interface TodayWorkoutCardProps {
     isMirrored: boolean;
     sourceWeek: number | null;
   };
+  completionMap: Record<string, boolean>;
+  setCompletionMap: (map: Record<string, boolean>) => void;
 }
 const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
   selectedDate,
@@ -29,7 +31,9 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
   workoutPlan,
   getWeekContentWithFallback,
   onProgressUpdate,
-  mirrorInfo
+  mirrorInfo,
+  completionMap,
+  setCompletionMap
 }) => {
   const {
     t
@@ -40,7 +44,6 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
   const {
     toast
   } = useToast();
-  const [completionMap, setCompletionMap] = useState<Record<string, boolean>>({});
   const [lastToastTime, setLastToastTime] = useState<number>(0);
   const [loading, setLoading] = useState(true);
   const [optimisticUpdates, setOptimisticUpdates] = useState<Record<string, boolean>>({});
@@ -165,11 +168,11 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
         return;
       }
 
-      // Update completion map
-      setCompletionMap(prev => ({
-        ...prev,
+      // Update completion map in parent
+      setCompletionMap({
+        ...completionMap,
         [exerciseKey]: isNowCompleted
-      }));
+      });
 
       // Clear optimistic update
       setOptimisticUpdates(prev => {
