@@ -9,7 +9,8 @@ import { ChevronLeft, ChevronRight, CheckCircle2, ArrowUpDown, ChevronUp, Chevro
 import { motion, AnimatePresence } from "framer-motion";
 import { useTranslation } from "react-i18next";
 import { formatDateForDisplay } from "@/lib/dateUtils";
-import { format, addDays, differenceInCalendarDays, startOfWeek } from 'date-fns';
+import { format } from 'date-fns';
+import { getWorkoutWeekDay } from "@/lib/workoutDateUtils";
 import { de } from 'date-fns/locale';
 import ExerciseListSkeleton from "@/components/skeletons/ExerciseListSkeleton";
 import TodayWorkoutCard from "@/components/TodayWorkoutCard";
@@ -128,22 +129,11 @@ const WorkoutView: React.FC<WorkoutViewProps> = React.memo(({
     [key: number]: HTMLDivElement | null;
   }>({});
 
-  // Helper function to get first Monday of month (similar to Dashboard logic)
-  const getFirstMondayOfMonth = (date: Date): Date => {
-    const firstOfMonth = new Date(date.getFullYear(), date.getMonth(), 1);
-    const firstMondayDate = startOfWeek(firstOfMonth, WEEK_OPTIONS);
-    // If first Monday is in previous month, move to first Monday of current month
-    if (firstMondayDate.getMonth() !== date.getMonth()) {
-      return addDays(firstMondayDate, 7);
-    }
-    return firstMondayDate;
-  };
-
-  // Get day index from selectedDate (0 = Monday, 6 = Sunday)
+  // Get day index from selectedDate (0 = Monday, 6 = Sunday) using plan-based calculation
   const getDayIndexForDate = (date: Date): number => {
-    const firstMonday = getFirstMondayOfMonth(date);
-    const daysDiff = differenceInCalendarDays(date, firstMonday);
-    return Math.max(0, Math.min(6, daysDiff % 7));
+    if (!workoutPlan?.created_at) return 0;
+    const { dayIndex } = getWorkoutWeekDay(workoutPlan.created_at, date);
+    return dayIndex;
   };
 
   // Derive all state from selectedDate (single source of truth)
@@ -311,14 +301,41 @@ const WorkoutView: React.FC<WorkoutViewProps> = React.memo(({
 
   // Handle week navigation by moving date by ±7 days
   const handlePrevWeek = () => {
-    const newDate = addDays(selectedDate, -7);
-    logEvent('week_navigation', { direction: 'prev', fromWeek: wk, toDate: newDate.toISOString() });
-    handleDateChange(newDate);
+    if (!workoutPlan?.created_at) return;
+    
+    // Get current week number
+    const currentWeekNum = Number(wk.match(/\d+/)?.[0] ?? 1);
+    
+    // Navigate to previous week (minimum Week 1)
+    const newWeekNum = Math.max(1, currentWeekNum - 1);
+    const newWeekKey = `Week ${newWeekNum}`;
+    
+    // Get date for the same day in the previous week
+    const newDate = getDateFor(newWeekKey, activeDayIndex);
+    
+    if (newDate) {
+      logEvent('week_navigation', { direction: 'prev', fromWeek: wk, toWeek: newWeekKey });
+      handleDateChange(newDate);
+    }
   };
+  
   const handleNextWeek = () => {
-    const newDate = addDays(selectedDate, 7);
-    logEvent('week_navigation', { direction: 'next', fromWeek: wk, toDate: newDate.toISOString() });
-    handleDateChange(newDate);
+    if (!workoutPlan?.created_at) return;
+    
+    // Get current week number
+    const currentWeekNum = Number(wk.match(/\d+/)?.[0] ?? 1);
+    
+    // Navigate to next week (maximum Week 4)
+    const newWeekNum = Math.min(4, currentWeekNum + 1);
+    const newWeekKey = `Week ${newWeekNum}`;
+    
+    // Get date for the same day in the next week
+    const newDate = getDateFor(newWeekKey, activeDayIndex);
+    
+    if (newDate) {
+      logEvent('week_navigation', { direction: 'next', fromWeek: wk, toWeek: newWeekKey });
+      handleDateChange(newDate);
+    }
   };
 
   // Helper to check if element is fully visible in viewport

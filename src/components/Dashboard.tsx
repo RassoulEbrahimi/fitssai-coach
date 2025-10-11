@@ -106,6 +106,12 @@ import {
   TARGET_TIMEZONE,
   WEEK_OPTIONS
 } from "@/lib/dateUtils";
+import { 
+  getPlanStartMonday, 
+  getWorkoutDate, 
+  getWorkoutWeekDay,
+  getWorkoutDateString 
+} from "@/lib/workoutDateUtils";
 
 const Dashboard = () => {
   const { t, i18n } = useTranslation();
@@ -411,74 +417,39 @@ const Dashboard = () => {
 
   // Check if a specific day in a specific week is completed (timezone-aware)
   const isDayCompleted = (weekKey: string, dayIndex: number) => {
-    if (!workoutPlan) return false;
+    if (!workoutPlan?.created_at) return false;
     
-    const weekNumber = parseInt(weekKey.replace(/\D/g, '')) - 1;
-    const totalDaysFromStart = (weekNumber * 7) + dayIndex;
-    const planCreatedDate = new Date(workoutPlan.created_at);
-    const workoutDate = addDays(planCreatedDate, totalDaysFromStart);
-    const dateString = format(workoutDate, 'yyyy-MM-dd');
-    
+    const dateString = getWorkoutDateString(workoutPlan.created_at, weekKey, dayIndex);
     return workoutLogs.some(log => log.workout_day === dateString && log.completed);
   };
 
   // Check if today matches a specific week and day (Berlin timezone)
   const isTodayInWeekDay = (weekKey: string, dayIndex: number) => {
     if (!workoutPlan?.created_at) return false;
-
-    // 1) Plan creation instant → Berlin local time
-    const createdAt = new Date(workoutPlan.created_at);
-    const createdAtBerlin = toZonedTime(createdAt, TARGET_TIMEZONE);
-
-    // 2) Align start to Monday of that week (German standard)
-    const planStartMonday = startOfWeek(createdAtBerlin, WEEK_OPTIONS);
-
-    // 3) Advance by (weekIndex*7 + dayIndex)
-    const weekIndex = parseInt(weekKey.replace(/\D/g, '')) - 1; // Week1 → 0
-    const offsetDays = weekIndex * 7 + dayIndex;
-    const targetDate = addDays(planStartMonday, offsetDays);
-
-    // 4) Compare with Berlin "today" using our utility (DATE-only compare)
-    const targetStr = format(targetDate, 'yyyy-MM-dd');
+    
+    const targetStr = getWorkoutDateString(workoutPlan.created_at, weekKey, dayIndex);
     return isBerlinToday(targetStr);
   };
 
   // Check if a day is in the future (Berlin timezone)
   const isDayInFuture = (weekKey: string, dayIndex: number) => {
-    if (!workoutPlan) return false;
+    if (!workoutPlan?.created_at) return false;
     
-    const weekNumber = parseInt(weekKey.replace(/\D/g, '')) - 1;
-    const totalDaysFromStart = (weekNumber * 7) + dayIndex;
-    const planCreatedDate = new Date(workoutPlan.created_at);
-    const targetDate = addDays(planCreatedDate, totalDaysFromStart);
-    const targetDateStr = format(targetDate, 'yyyy-MM-dd');
-    
+    const targetDateStr = getWorkoutDateString(workoutPlan.created_at, weekKey, dayIndex);
     return isBerlinFuture(targetDateStr);
   };
 
   // Get current week based on selected date
   const getCurrentWeek = () => {
-    if (!workoutPlan || !workoutPlan.content) return null;
+    if (!workoutPlan?.created_at) return null;
     return getWeekKeyForDate(selectedDate);
   };
 
-  // Get week key for a specific date using month-based mapping
+  // Get week key for a specific date using plan-based mapping
   const getWeekKeyForDate = (date: Date): string => {
-    const firstMondayOfMonth = getFirstMondayOfMonth(date);
-    const daysDiff = differenceInCalendarDays(date, firstMondayOfMonth);
-    const weekNumber = Math.max(1, Math.min(4, Math.floor(daysDiff / 7) + 1));
-    return `Week ${weekNumber}`;
-  };
-
-  // Get the first Monday of the current month
-  const getFirstMondayOfMonth = (date: Date): Date => {
-    const firstOfMonth = new Date(date.getFullYear(), date.getMonth(), 1);
-    const firstMondayDate = startOfWeek(firstOfMonth, WEEK_OPTIONS);
-    // If first Monday is in previous month, move to first Monday of current month
-    if (firstMondayDate.getMonth() !== date.getMonth()) {
-      return addDays(firstMondayDate, 7);
-    }
-    return firstMondayDate;
+    if (!workoutPlan?.created_at) return 'Week 1';
+    const { weekKey } = getWorkoutWeekDay(workoutPlan.created_at, date);
+    return weekKey;
   };
 
   // Get week content with fallback - mirror Week 2 to Weeks 3-4 if only Week 2 exists
@@ -569,20 +540,10 @@ const Dashboard = () => {
     return day;
   };
 
-  // Get plan start Monday from created_at
-  const getPlanStartMonday = () => {
+  // Get calendar date for a given weekKey and dayIndex using plan-based mapping
+  const getDateFor = (weekKey: string, dayIndex: number): Date | null => {
     if (!workoutPlan?.created_at) return null;
-    const createdAt = new Date(workoutPlan.created_at);
-    const createdAtBerlin = toZonedTime(createdAt, TARGET_TIMEZONE);
-    return startOfWeek(createdAtBerlin, WEEK_OPTIONS); // Monday-aligned
-  };
-
-  // Get calendar date for a given weekKey and dayIndex using month-based mapping
-  const getDateFor = (weekKey: string, dayIndex: number) => {
-    const firstMonday = getFirstMondayOfMonth(selectedDate);
-    const weekIdx = parseInt(weekKey.replace(/\D/g, '')) - 1; // week1 → 0
-    const offsetDays = (weekIdx * 7) + dayIndex;
-    return addDays(firstMonday, offsetDays);
+    return getWorkoutDate(workoutPlan.created_at, weekKey, dayIndex);
   };
 
   // Get ordered week keys (week1..week4)
@@ -595,13 +556,10 @@ const Dashboard = () => {
 
   // Get current week key based on days since plan start
   const getCurrentWeekKey = () => {
-    const startMonday = getPlanStartMonday();
-    if (!startMonday) return null;
-    const today = new Date(); // Berlin alignment is handled in isTodayInWeekDay()
-    const days = differenceInCalendarDays(today, startMonday);
-    const idx = Math.max(0, Math.min(3, Math.floor(days / 7))); // clamp 0..3
-    const weekKeys = getOrderedWeekKeys();
-    return weekKeys[idx] || weekKeys[0] || null;
+    if (!workoutPlan?.created_at) return null;
+    const today = getBerlinNow();
+    const { weekKey } = getWorkoutWeekDay(workoutPlan.created_at, today);
+    return weekKey;
   };
 
   // Finds the next workout (>= today) in the current week; returns { weekKey, dayIndex } or null
@@ -626,10 +584,10 @@ const Dashboard = () => {
 
   // Find next workout across all weeks (start from *next* week)
   const findNextWorkoutAcrossWeeks = () => {
-    const startMonday = getPlanStartMonday();
+    if (!workoutPlan?.created_at) return null;
     const weekKeys = getOrderedWeekKeys();
     const currentKey = getCurrentWeekKey();
-    if (!startMonday || weekKeys.length === 0 || !currentKey) return null;
+    if (weekKeys.length === 0 || !currentKey) return null;
 
     const currentIdx = Math.max(0, weekKeys.indexOf(currentKey));
     for (let w = currentIdx + 1; w < weekKeys.length; w++) {
@@ -637,8 +595,7 @@ const Dashboard = () => {
       for (let d = 0; d < 7; d++) {
         const day = getWorkoutAt(wk, d);
         if (day) {
-          const offsetDays = (w * 7) + d;
-          const targetDate = addDays(startMonday, offsetDays);
+          const targetDate = getWorkoutDate(workoutPlan.created_at, wk, d);
           return { weekKey: wk, dayIndex: d, date: targetDate };
         }
       }
@@ -709,18 +666,18 @@ const Dashboard = () => {
   const handleDateChange = (date: Date) => {
     setSelectedDate(date);
     
-    // Calculate day index within the week for the new date using month-based mapping
-    const firstMonday = getFirstMondayOfMonth(date);
-    const daysDiff = differenceInCalendarDays(date, firstMonday);
-    const dayIndex = daysDiff % 7;
+    if (!workoutPlan?.created_at) return;
+    
+    // Calculate day index and week key using plan-based mapping
+    const { weekKey, dayIndex } = getWorkoutWeekDay(workoutPlan.created_at, date);
+    
     if (dayIndex >= 0 && dayIndex <= 6) {
       setActiveDayIndex(dayIndex);
     }
     
     // Update active week based on the new date
-    const newWeekKey = getWeekKeyForDate(date);
-    if (newWeekKey !== activeWeek) {
-      setActiveWeek(newWeekKey);
+    if (weekKey !== activeWeek) {
+      setActiveWeek(weekKey);
     }
   };
 
