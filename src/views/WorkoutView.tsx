@@ -241,6 +241,29 @@ const WorkoutView: React.FC<WorkoutViewProps> = React.memo(({
     return getWeekProgressFromLogs(wk, workoutPlan, workoutLogs);
   }, [wk, workoutPlan, workoutLogs]);
 
+  // Keyboard shortcuts for week navigation
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Only handle if not typing in an input
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
+        return;
+      }
+
+      if (e.key === 'ArrowLeft' && !e.ctrlKey && !e.metaKey) {
+        e.preventDefault();
+        handlePrevWeek();
+        logEvent('keyboard_shortcut_used', { action: 'prev_week', key: 'ArrowLeft' });
+      } else if (e.key === 'ArrowRight' && !e.ctrlKey && !e.metaKey) {
+        e.preventDefault();
+        handleNextWeek();
+        logEvent('keyboard_shortcut_used', { action: 'next_week', key: 'ArrowRight' });
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [selectedDate, handleDateChange]);
+
   // URL deep-linking helpers
   const parseHashQuery = () => {
     const hash = window.location.hash;
@@ -412,54 +435,81 @@ const WorkoutView: React.FC<WorkoutViewProps> = React.memo(({
   
   return (
     <WorkoutErrorBoundary>
-      <motion.div initial={{
-        opacity: 0,
-        y: 20
-      }} animate={{
-        opacity: 1,
-        y: 0
-      }} transition={{
-        duration: 0.4,
-        delay: 0.1
-      }} className="p-4 space-y-3 px-[12px] py-[12px]">
+      <motion.div 
+        key={wk}
+        initial={{ opacity: 0, x: -10 }} 
+        animate={{ opacity: 1, x: 0 }} 
+        exit={{ opacity: 0, x: 10 }}
+        transition={{ duration: 0.3, ease: "easeOut" }} 
+        className="p-4 space-y-3 px-[12px] py-[12px]"
+      >
+        {/* Screen reader announcement for week changes */}
+        <div 
+          role="status" 
+          aria-live="polite" 
+          aria-atomic="true" 
+          className="sr-only"
+        >
+          Woche {currentWeekNum} geladen. {weekProgress.completed} von {weekProgress.total} Trainingseinheiten abgeschlossen.
+        </div>
+
         {/* Offline Indicator */}
-        {!isOnline && (
-          <Card className="border-warning bg-warning/5">
-            <CardContent className="py-3 px-4">
-              <div className="flex items-center gap-2 text-warning">
-                <WifiOff className="h-4 w-4" />
-                <span className="text-sm font-medium">
-                  Offline-Modus - Änderungen werden synchronisiert
-                </span>
-              </div>
-            </CardContent>
-          </Card>
-        )}
+        <AnimatePresence>
+          {!isOnline && (
+            <motion.div
+              initial={{ opacity: 0, y: -10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              transition={{ duration: 0.2 }}
+            >
+              <Card className="border-warning bg-warning/5">
+                <CardContent className="py-3 px-4">
+                  <div className="flex items-center gap-2 text-warning">
+                    <WifiOff className="h-4 w-4" aria-hidden="true" />
+                    <span className="text-sm font-medium" role="status" aria-live="polite">
+                      Offline-Modus - Änderungen werden synchronisiert
+                    </span>
+                  </div>
+                </CardContent>
+              </Card>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
         {/* Error State */}
-        {isCompletionError && (
-          <Card className="border-destructive/50 bg-destructive/5">
-            <CardContent className="py-3 px-4">
-              <div className="flex items-center justify-between gap-2">
-                <div className="flex items-center gap-2 text-destructive">
-                  <AlertCircle className="h-4 w-4" />
-                  <span className="text-sm font-medium">
-                    Fehler beim Laden des Trainingsplans
-                  </span>
-                </div>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => refetchCompletion()}
-                  className="h-8"
-                >
-                  <RefreshCw className="h-4 w-4 mr-1" />
-                  Erneut versuchen
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        )}
+        <AnimatePresence>
+          {isCompletionError && (
+            <motion.div
+              initial={{ opacity: 0, y: -10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              transition={{ duration: 0.2 }}
+            >
+              <Card className="border-destructive/50 bg-destructive/5">
+                <CardContent className="py-3 px-4">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2 text-destructive">
+                      <AlertCircle className="h-4 w-4" aria-hidden="true" />
+                      <span className="text-sm font-medium" role="alert" aria-live="assertive">
+                        Fehler beim Laden des Trainingsplans
+                      </span>
+                    </div>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => refetchCompletion()}
+                      className="h-8"
+                      aria-label="Trainingsplan erneut laden"
+                    >
+                      <RefreshCw className="h-4 w-4 mr-1" aria-hidden="true" />
+                      Erneut versuchen
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
         {/* Weekly Calendar */}
       <Card className="border-primary/20">

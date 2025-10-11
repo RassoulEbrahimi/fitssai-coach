@@ -1,9 +1,9 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from './useAuth';
-import { useToast } from './use-toast';
 import { useOfflineQueue } from './useOfflineQueue';
 import { logEvent, logError, logRetry } from '@/lib/telemetryClient';
+import { toastError } from '@/lib/toastWithIcon';
 import { useEffect } from 'react';
 
 export type CompletionMap = Record<string, Record<string, boolean>>;
@@ -58,7 +58,6 @@ interface ToggleExerciseParams {
 export const useWeekCompletion = ({ planId, weekKey, enabled = true }: UseWeekCompletionParams) => {
   const { user } = useAuth();
   const queryClient = useQueryClient();
-  const { toast } = useToast();
   const { isOnline, addToQueue } = useOfflineQueue();
 
   // Prefetch helper function
@@ -119,14 +118,13 @@ export const useWeekCompletion = ({ planId, weekKey, enabled = true }: UseWeekCo
       } catch (error: any) {
         console.error('Failed to fetch week completion after retries:', error);
         logError(error, `fetch_week_completion_failed: ${planId} ${weekKey}`);
+        logEvent('aria_announcement_triggered', { context: 'fetch_error' });
         
-        toast({
-          variant: 'destructive',
-          title: 'Fehler beim Laden',
-          description: 'Trainingsplan konnte nicht geladen werden. Bitte versuche es erneut.',
-          duration: 3000,
-          role: 'alert',
-        });
+        toastError(
+          'Fehler beim Laden',
+          'Trainingsplan konnte nicht geladen werden. Bitte versuche es erneut.',
+          3000
+        );
         
         throw error;
       }
@@ -206,14 +204,13 @@ export const useWeekCompletion = ({ planId, weekKey, enabled = true }: UseWeekCo
       } catch (error: any) {
         console.error('Failed to toggle exercise after retries:', error);
         logError(error, `toggle_exercise_failed: ${JSON.stringify(params)}`);
+        logEvent('aria_announcement_triggered', { context: 'toggle_error' });
         
-        toast({
-          variant: 'destructive',
-          title: 'Fehler',
-          description: 'Änderung konnte nicht gespeichert werden. Bitte versuche es erneut.',
-          duration: 3000,
-          role: 'alert',
-        });
+        toastError(
+          'Fehler',
+          'Änderung konnte nicht gespeichert werden. Bitte versuche es erneut.',
+          3000
+        );
         
         throw error;
       }

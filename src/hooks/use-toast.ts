@@ -13,6 +13,7 @@ type ToasterToast = ToastProps & {
   title?: React.ReactNode
   description?: React.ReactNode
   action?: ToastActionElement
+  icon?: React.ComponentType<{ className?: string; 'aria-hidden'?: boolean }>
 }
 
 const actionTypes = {

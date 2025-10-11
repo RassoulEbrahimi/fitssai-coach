@@ -2,16 +2,17 @@ import React, { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { motion } from "framer-motion";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { motion, AnimatePresence } from "framer-motion";
 import { useTranslation } from "react-i18next";
 import { useAuth } from "@/hooks/useAuth";
-import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
 import { de } from "date-fns/locale";
 import { isBerlinToday, isBerlinPast, isBerlinFuture } from "@/lib/dateUtils";
 import { CalendarIcon, PencilIcon, CheckCircle2, WifiOff } from "lucide-react";
 import WorkoutErrorBoundary from "@/components/WorkoutErrorBoundary";
 import { logEvent } from "@/lib/telemetryClient";
+import { toastSuccess } from "@/lib/toastWithIcon";
 
 interface TodayWorkoutCardProps {
   selectedDate: Date;
@@ -52,15 +53,8 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
   isCached = false,
   dataUpdatedAt,
 }) => {
-  const {
-    t
-  } = useTranslation();
-  const {
-    user
-  } = useAuth();
-  const {
-    toast
-  } = useToast();
+  const { t } = useTranslation();
+  const { user } = useAuth();
   const [lastToastTime, setLastToastTime] = useState<number>(0);
 
   // Get exercises from the same source as the week list (may be mirrored for UI display)
@@ -145,12 +139,12 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
     const now = Date.now();
     if (now - lastToastTime >= 2000) {
       setLastToastTime(now);
-      toast({
-        title: isNowCompleted ? t('todayWorkout.completed') : t('todayWorkout.uncompleted'),
-        duration: 2500,
-        role: "alert",
-        className: "animate-in slide-in-from-top-2 fade-in-0"
-      });
+      logEvent('aria_announcement_triggered', { context: 'exercise_toggle', completed: isNowCompleted });
+      toastSuccess(
+        isNowCompleted ? t('todayWorkout.completed') : t('todayWorkout.uncompleted'),
+        undefined,
+        2500
+      );
     }
   };
 
@@ -229,14 +223,27 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
                 {cardTitle.text}
               </CardTitle>
               {isOfflineData && (
-                <Badge 
-                  variant="outline" 
-                  className="text-xs bg-muted/50 border-muted-foreground/20 text-muted-foreground"
-                  aria-label="Offline gespeicherte Daten"
-                >
-                  <WifiOff className="w-3 h-3 mr-1" />
-                  Offline {cacheAgeHours > 0 && `(${cacheAgeHours}h)`}
-                </Badge>
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Badge 
+                        variant="outline" 
+                        className="text-xs bg-muted/50 border-muted-foreground/20 text-muted-foreground cursor-help"
+                        aria-label="Offline gespeicherte Daten"
+                      >
+                        <WifiOff className="w-3 h-3 mr-1" aria-hidden="true" />
+                        Offline {cacheAgeHours > 0 && `(${cacheAgeHours}h)`}
+                      </Badge>
+                    </TooltipTrigger>
+                    <TooltipContent side="bottom" className="max-w-xs">
+                      <p className="text-sm">
+                        Diese Daten wurden vor {cacheAgeHours > 0 ? `${cacheAgeHours} Stunden` : 'weniger als 1 Stunde'} 
+                        {' '}zwischengespeichert und sind offline verfügbar. Änderungen werden synchronisiert, 
+                        sobald die Verbindung wiederhergestellt ist.
+                      </p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
               )}
             </div>
             {isFuture && <Button variant="ghost" size="sm" onClick={scrollToWeekCard} aria-label="Zu Wochenplan springen" className="text-xs text-muted-foreground hover:text-foreground">
@@ -260,24 +267,27 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
             {exercises.map((exercise: any, index: number) => {
             const exerciseKey = `${index}`;
             const isCompleted = completionMap[exerciseKey] || false;
-            return <motion.div 
-              key={index} 
-              initial={{ scale: 1 }} 
-              animate={{ scale: 1 }} 
-              whileTap={{ scale: 0.98 }} 
-              onClick={() => handleToggleExercise(index)} 
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' || e.key === ' ') {
-                  e.preventDefault();
-                  handleToggleExercise(index);
-                }
-              }}
-              className="flex items-center gap-3 p-4 bg-background rounded-lg border hover:bg-muted/50 active:bg-muted/70 transition-all duration-150 cursor-pointer min-h-[56px] touch-manipulation px-[12px] py-[12px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
-              role="checkbox"
-              aria-checked={isCompleted}
-              aria-label={`${exercise.name}, ${exercise.sets} Sätze, ${exercise.reps} Wiederholungen${isCompleted ? ' - abgeschlossen' : ' - offen'}`}
-              tabIndex={0}
-            >
+            return <AnimatePresence mode="wait" key={index}>
+              <motion.div 
+                layout
+                initial={{ opacity: 0, y: 10 }} 
+                animate={{ opacity: 1, y: 0, scale: 1 }} 
+                exit={{ opacity: 0, scale: 0.95 }}
+                whileTap={{ scale: 0.98 }} 
+                transition={{ duration: 0.2 }}
+                onClick={() => handleToggleExercise(index)} 
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    handleToggleExercise(index);
+                  }
+                }}
+                className="flex items-center gap-3 p-4 bg-background rounded-lg border hover:bg-muted/50 active:bg-muted/70 transition-all duration-150 cursor-pointer min-h-[56px] touch-manipulation px-[12px] py-[12px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
+                role="checkbox"
+                aria-checked={isCompleted}
+                aria-label={`${exercise.name}, ${exercise.sets} Sätze, ${exercise.reps} Wiederholungen${isCompleted ? ' - abgeschlossen' : ' - offen'}`}
+                tabIndex={0}
+              >
                   <motion.div 
                     className={`w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 ${
                       isCompleted 
@@ -286,24 +296,26 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
                     }`}
                     initial={false}
                     animate={{
-                      scale: isCompleted ? [1, 1.2, 1] : 1,
-                      opacity: isCompleted ? [1, 1, 1] : 1
+                      scale: isCompleted ? [1, 1.15, 1] : 1,
+                      backgroundColor: isCompleted ? ['#16a34a', '#22c55e', '#16a34a'] : undefined
                     }}
                     transition={{
-                      duration: 0.3,
+                      duration: 0.4,
                       ease: "easeOut"
                     }}
                   >
-                    {isCompleted && (
-                      <motion.div
-                        initial={{ scale: 0, opacity: 0 }}
-                        animate={{ scale: 1, opacity: 1 }}
-                        exit={{ scale: 0, opacity: 0 }}
-                        transition={{ duration: 0.2 }}
-                      >
-                        <CheckCircle2 className="h-3.5 w-3.5 text-white" />
-                      </motion.div>
-                    )}
+                    <AnimatePresence mode="wait">
+                      {isCompleted && (
+                        <motion.div
+                          initial={{ scale: 0, opacity: 0, rotate: -90 }}
+                          animate={{ scale: 1, opacity: 1, rotate: 0 }}
+                          exit={{ scale: 0, opacity: 0, rotate: 90 }}
+                          transition={{ duration: 0.25, ease: "easeOut" }}
+                        >
+                          <CheckCircle2 className="h-3.5 w-3.5 text-white" aria-hidden="true" />
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
                   </motion.div>
                   <div className="flex-1">
                     <div className="font-medium text-sm">{exercise.name}</div>
@@ -313,7 +325,8 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
                       {exercise.rest && ` • ${exercise.rest} Pause`}
                     </div>
                   </div>
-                </motion.div>;
+                </motion.div>
+              </AnimatePresence>;
           })}
           </div>
         </CardContent>

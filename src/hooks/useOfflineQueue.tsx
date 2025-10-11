@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { useToast } from '@/hooks/use-toast';
+import { toastWithIcon, toastOffline } from '@/lib/toastWithIcon';
 import { logEvent } from '@/lib/telemetryClient';
 
 interface QueuedOperation {
@@ -12,29 +12,32 @@ interface QueuedOperation {
 export const useOfflineQueue = () => {
   const [queue, setQueue] = useState<QueuedOperation[]>([]);
   const [isOnline, setIsOnline] = useState(navigator.onLine);
-  const { toast } = useToast();
 
   // Monitor online/offline status
   useEffect(() => {
     const handleOnline = () => {
       setIsOnline(true);
       logEvent('connection_restored', { queueLength: queue.length });
-      toast({
+      logEvent('aria_announcement_triggered', { context: 'connection_restored' });
+      toastWithIcon({
         title: 'Verbindung wiederhergestellt',
         description: 'Änderungen werden synchronisiert...',
+        variant: 'success',
         duration: 2500,
+        role: 'status',
+        'aria-live': 'polite',
       });
     };
 
     const handleOffline = () => {
       setIsOnline(false);
       logEvent('offline_mode_activated', { queueLength: queue.length });
-      toast({
-        title: 'Offline-Modus',
-        description: 'Änderungen werden synchronisiert, sobald du online bist.',
-        duration: 3000,
-        role: 'alert',
-      });
+      logEvent('aria_announcement_triggered', { context: 'offline_mode' });
+      toastOffline(
+        'Offline-Modus',
+        'Änderungen werden synchronisiert, sobald du online bist.',
+        3000
+      );
     };
 
     window.addEventListener('online', handleOnline);
@@ -44,7 +47,7 @@ export const useOfflineQueue = () => {
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
     };
-  }, [toast]);
+  }, []);
 
   // Process queue when coming back online
   useEffect(() => {
