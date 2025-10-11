@@ -10,6 +10,7 @@ import { de } from "date-fns/locale";
 import { isBerlinToday, isBerlinPast, isBerlinFuture } from "@/lib/dateUtils";
 import { CalendarIcon, PencilIcon, CheckCircle2, WifiOff } from "lucide-react";
 import WorkoutErrorBoundary from "@/components/WorkoutErrorBoundary";
+import { logEvent } from "@/lib/telemetryClient";
 
 interface TodayWorkoutCardProps {
   selectedDate: Date;
@@ -109,6 +110,14 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
     
     const exerciseKey = `${exerciseIndex}`;
     const isNowCompleted = !completionMap[exerciseKey];
+
+    logEvent('exercise_toggle_ui', {
+      weekKey,
+      dayIndex,
+      exerciseIndex,
+      completed: isNowCompleted,
+      exerciseName: exercises[exerciseIndex]?.name
+    });
 
     // Call mutation with optimistic update handled by React Query
     toggleExerciseMutation({

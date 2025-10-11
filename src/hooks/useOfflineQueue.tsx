@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useToast } from '@/hooks/use-toast';
+import { logEvent } from '@/lib/telemetryClient';
 
 interface QueuedOperation {
   id: string;
@@ -17,6 +18,7 @@ export const useOfflineQueue = () => {
   useEffect(() => {
     const handleOnline = () => {
       setIsOnline(true);
+      logEvent('connection_restored', { queueLength: queue.length });
       toast({
         title: 'Verbindung wiederhergestellt',
         description: 'Änderungen werden synchronisiert...',
@@ -26,6 +28,7 @@ export const useOfflineQueue = () => {
 
     const handleOffline = () => {
       setIsOnline(false);
+      logEvent('offline_mode_activated', { queueLength: queue.length });
       toast({
         title: 'Offline-Modus',
         description: 'Änderungen werden synchronisiert, sobald du online bist.',
@@ -54,11 +57,15 @@ export const useOfflineQueue = () => {
     const operations = [...queue];
     setQueue([]);
 
+    logEvent('queue_processing_start', { operationCount: operations.length });
+
     for (const operation of operations) {
       try {
         await operation.fn();
+        logEvent('queue_operation_success', { operationId: operation.id });
       } catch (error) {
         console.error('Failed to process queued operation:', error);
+        logEvent('queue_operation_failed', { operationId: operation.id });
         // Re-queue on failure
         setQueue((prev) => [...prev, operation]);
       }
@@ -73,6 +80,7 @@ export const useOfflineQueue = () => {
       timestamp: Date.now(),
     };
 
+    logEvent('queue_operation_added', { operationId: operation.id, params });
     setQueue((prev) => [...prev, operation]);
   }, []);
 

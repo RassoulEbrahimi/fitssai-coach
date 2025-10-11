@@ -3,6 +3,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from './useAuth';
 import { useToast } from './use-toast';
 import { useOfflineQueue } from './useOfflineQueue';
+import { logEvent, logError, logRetry } from '@/lib/telemetryClient';
 
 export type CompletionMap = Record<string, Record<string, boolean>>;
 
@@ -30,6 +31,7 @@ const retryWithBackoff = async <T,>(
       if (attempt < maxRetries) {
         const delay = initialDelay * Math.pow(2, attempt);
         console.log(`Retry attempt ${attempt + 1}/${maxRetries} after ${delay}ms`);
+        logRetry('retry_with_backoff', attempt + 1, delay);
         await new Promise((resolve) => setTimeout(resolve, delay));
       }
     }
@@ -65,6 +67,8 @@ export const useWeekCompletion = ({ planId, weekKey, enabled = true }: UseWeekCo
         throw new Error('User or planId not available');
       }
 
+      logEvent('fetch_week_completion_start', { planId, weekKey });
+
       try {
         const data = await retryWithBackoff(async () => {
           const { data, error } = await supabase.functions.invoke('get-week-completion', {
@@ -86,9 +90,11 @@ export const useWeekCompletion = ({ planId, weekKey, enabled = true }: UseWeekCo
           return data;
         }, 3, 1000);
 
+        logEvent('fetch_week_completion_success', { planId, weekKey });
         return data;
       } catch (error: any) {
         console.error('Failed to fetch week completion after retries:', error);
+        logError(error, `fetch_week_completion_failed: ${planId} ${weekKey}`);
         
         toast({
           variant: 'destructive',
@@ -109,8 +115,11 @@ export const useWeekCompletion = ({ planId, weekKey, enabled = true }: UseWeekCo
 
   const toggleMutation = useMutation({
     mutationFn: async (params: ToggleExerciseParams) => {
+      logEvent('toggle_exercise_start', { ...params, isOnline });
+
       // Check if offline
       if (!isOnline) {
+        logEvent('toggle_exercise_queued', params);
         // Queue for later
         addToQueue(
           async () => {
@@ -156,9 +165,11 @@ export const useWeekCompletion = ({ planId, weekKey, enabled = true }: UseWeekCo
           return data;
         }, 3, 1000);
 
+        logEvent('toggle_exercise_success', params);
         return data;
       } catch (error: any) {
         console.error('Failed to toggle exercise after retries:', error);
+        logError(error, `toggle_exercise_failed: ${JSON.stringify(params)}`);
         
         toast({
           variant: 'destructive',

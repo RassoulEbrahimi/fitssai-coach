@@ -17,6 +17,7 @@ import { WEEK_OPTIONS } from "@/lib/dateUtils";
 import { useAuth } from "@/hooks/useAuth";
 import { useWeekCompletion } from "@/hooks/useWeekCompletion";
 import WorkoutErrorBoundary from "@/components/WorkoutErrorBoundary";
+import { logEvent } from "@/lib/telemetryClient";
 
 const ExerciseList = React.lazy(() => import("@/views/ExerciseList"));
 interface WorkoutViewProps {
@@ -261,10 +262,12 @@ const WorkoutView: React.FC<WorkoutViewProps> = React.memo(({
   // Handle week navigation by moving date by ±7 days
   const handlePrevWeek = () => {
     const newDate = addDays(selectedDate, -7);
+    logEvent('week_navigation', { direction: 'prev', fromWeek: wk, toDate: newDate.toISOString() });
     handleDateChange(newDate);
   };
   const handleNextWeek = () => {
     const newDate = addDays(selectedDate, 7);
+    logEvent('week_navigation', { direction: 'next', fromWeek: wk, toDate: newDate.toISOString() });
     handleDateChange(newDate);
   };
 
@@ -297,6 +300,8 @@ const WorkoutView: React.FC<WorkoutViewProps> = React.memo(({
   // Handle week activation with animation - set selectedDate to that week's Monday + current dayIndex
   const handleWeekActivation = (weekNum: number) => {
     const newWeekKey = normalizeWeekKey(`Week ${weekNum}`);
+
+    logEvent('week_activation', { fromWeek: wk, toWeek: newWeekKey, dayIndex: activeDayIndex });
 
     // Update selected date to keep current day within the new week
     const dayOfWeek = getDateFor(newWeekKey, activeDayIndex);
