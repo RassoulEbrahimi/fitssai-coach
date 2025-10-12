@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useMemo } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -67,6 +67,79 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
   const dayData = weekData[dayIndex];
   const exercises = dayData?.exercises || [];
   const isRestDay = !exercises.length;
+
+  // Memoized exercise list rendering
+  const exerciseListContent = useMemo(() => {
+    return (exercises || []).map((exercise: any, index: number) => {
+      const isCompleted = isExerciseCompleted(completionMap, weekKey, dayIndex, index);
+      const displaySets = typeof exercise.sets === 'string'
+        ? (parseInt(exercise.sets) || exercise.sets)
+        : exercise.sets;
+
+      return (
+        <AnimatePresence mode="wait" key={index}>
+          <motion.div 
+            layout
+            initial={{ opacity: 0, y: 10 }} 
+            animate={{ opacity: 1, y: 0, scale: 1 }} 
+            exit={{ opacity: 0, scale: 0.95 }}
+            whileTap={{ scale: 0.98 }} 
+            transition={{ duration: 0.2 }}
+            onClick={() => handleToggleExercise(index)} 
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                handleToggleExercise(index);
+              }
+            }}
+            className="flex items-center gap-3 p-4 bg-background rounded-lg border hover:bg-muted/50 active:bg-muted/70 transition-all duration-150 cursor-pointer min-h-[56px] touch-manipulation px-[12px] py-[12px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
+            role="checkbox"
+            aria-checked={isCompleted}
+            aria-label={`${exercise.name}, ${displaySets} Sätze, ${exercise.reps} Wiederholungen${isCompleted ? ' - abgeschlossen' : ' - offen'}`}
+            tabIndex={0}
+          >
+            <motion.div 
+              className={`w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 ${
+                isCompleted 
+                  ? 'bg-green-600' 
+                  : 'border-2 border-muted-foreground/30 bg-transparent'
+              }`}
+              initial={false}
+              animate={{
+                scale: isCompleted ? [1, 1.15, 1] : 1,
+                backgroundColor: isCompleted ? ['#16a34a', '#22c55e', '#16a34a'] : undefined
+              }}
+              transition={{
+                duration: 0.4,
+                ease: "easeOut"
+              }}
+            >
+              <AnimatePresence mode="wait">
+                {isCompleted && (
+                  <motion.div
+                    initial={{ scale: 0, opacity: 0, rotate: -90 }}
+                    animate={{ scale: 1, opacity: 1, rotate: 0 }}
+                    exit={{ scale: 0, opacity: 0, rotate: 90 }}
+                    transition={{ duration: 0.25, ease: "easeOut" }}
+                  >
+                    <CheckCircle2 className="h-3.5 w-3.5 text-white" aria-hidden="true" />
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </motion.div>
+            <div className="flex-1">
+              <div className="font-medium text-sm">{exercise.name}</div>
+              <div className="text-xs text-muted-foreground">
+                {displaySets} Sätze × {exercise.reps} Reps
+                {exercise.weight && ` • ${exercise.weight}`}
+                {exercise.rest && ` • ${exercise.rest} Pause`}
+              </div>
+            </div>
+          </motion.div>
+        </AnimatePresence>
+      );
+    });
+  }, [exercises, completionMap, weekKey, dayIndex, isToggling]);
 
   // Date context logic - using reactive today
   const selectedDateStr = format(selectedDate, 'yyyy-MM-dd');
@@ -271,73 +344,7 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
         </CardHeader>
         <CardContent>
           <div className="space-y-3">
-            {exercises.map((exercise: any, index: number) => {
-            // Use helper to check completion in flat state
-            const isCompleted = isExerciseCompleted(completionMap, weekKey, dayIndex, index);
-            // Coerce legacy string sets to numbers for display
-            const displaySets = typeof exercise.sets === 'string' ? parseInt(exercise.sets) || exercise.sets : exercise.sets;
-            
-            return <AnimatePresence mode="wait" key={index}>
-              <motion.div 
-                layout
-                initial={{ opacity: 0, y: 10 }} 
-                animate={{ opacity: 1, y: 0, scale: 1 }} 
-                exit={{ opacity: 0, scale: 0.95 }}
-                whileTap={{ scale: 0.98 }} 
-                transition={{ duration: 0.2 }}
-                onClick={() => handleToggleExercise(index)} 
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' || e.key === ' ') {
-                    e.preventDefault();
-                    handleToggleExercise(index);
-                  }
-                }}
-                className="flex items-center gap-3 p-4 bg-background rounded-lg border hover:bg-muted/50 active:bg-muted/70 transition-all duration-150 cursor-pointer min-h-[56px] touch-manipulation px-[12px] py-[12px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
-                role="checkbox"
-                aria-checked={isCompleted}
-                aria-label={`${exercise.name}, ${displaySets} Sätze, ${exercise.reps} Wiederholungen${isCompleted ? ' - abgeschlossen' : ' - offen'}`}
-                tabIndex={0}
-              >
-                  <motion.div 
-                    className={`w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 ${
-                      isCompleted 
-                        ? 'bg-green-600' 
-                        : 'border-2 border-muted-foreground/30 bg-transparent'
-                    }`}
-                    initial={false}
-                    animate={{
-                      scale: isCompleted ? [1, 1.15, 1] : 1,
-                      backgroundColor: isCompleted ? ['#16a34a', '#22c55e', '#16a34a'] : undefined
-                    }}
-                    transition={{
-                      duration: 0.4,
-                      ease: "easeOut"
-                    }}
-                  >
-                    <AnimatePresence mode="wait">
-                      {isCompleted && (
-                        <motion.div
-                          initial={{ scale: 0, opacity: 0, rotate: -90 }}
-                          animate={{ scale: 1, opacity: 1, rotate: 0 }}
-                          exit={{ scale: 0, opacity: 0, rotate: 90 }}
-                          transition={{ duration: 0.25, ease: "easeOut" }}
-                        >
-                          <CheckCircle2 className="h-3.5 w-3.5 text-white" aria-hidden="true" />
-                        </motion.div>
-                      )}
-                    </AnimatePresence>
-                  </motion.div>
-                  <div className="flex-1">
-                    <div className="font-medium text-sm">{exercise.name}</div>
-                    <div className="text-xs text-muted-foreground">
-                      {displaySets} Sätze × {exercise.reps} Reps
-                      {exercise.weight && ` • ${exercise.weight}`}
-                      {exercise.rest && ` • ${exercise.rest} Pause`}
-                    </div>
-                  </div>
-                </motion.div>
-              </AnimatePresence>;
-          })}
+            {exerciseListContent}
           </div>
         </CardContent>
       </Card>
@@ -346,4 +353,14 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
   );
 };
 
-export default TodayWorkoutCard;
+export default React.memo(TodayWorkoutCard, (prev, next) => {
+  return (
+    prev.selectedDate === next.selectedDate &&
+    prev.weekKey === next.weekKey &&
+    prev.dayIndex === next.dayIndex &&
+    prev.completionMap === next.completionMap &&
+    prev.isLoading === next.isLoading &&
+    prev.isToggling === next.isToggling &&
+    prev.workoutPlan?.id === next.workoutPlan?.id
+  );
+});

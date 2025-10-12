@@ -6,6 +6,14 @@ import { useTranslation } from "react-i18next";
 import EditableExerciseRow from "@/components/EditableExerciseRow";
 import type { Exercise } from "@/hooks/useExerciseEditor";
 
+const MemoizedEditableExerciseRow = React.memo(EditableExerciseRow, (prev, next) => {
+  return (
+    prev.exercise === next.exercise &&
+    prev.isEditing === next.isEditing &&
+    prev.exerciseIndex === next.exerciseIndex
+  );
+});
+
 interface ExerciseListProps {
   exercises: any[];
   // Optional editing support
@@ -52,7 +60,7 @@ const ExerciseList: React.FC<ExerciseListProps> = ({
 
         if (supportsEditing) {
           return (
-            <EditableExerciseRow
+            <MemoizedEditableExerciseRow
               key={exerciseIndex}
               exercise={exercise}
               exerciseIndex={exerciseIndex}
