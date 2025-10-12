@@ -11,6 +11,7 @@ import { ProgressPill } from "@/components/micro/ProgressPill";
 import { WeeklyActivity } from "@/components/charts/WeeklyActivity";
 import { MotivationSkeleton } from "@/components/skeletons/MotivationSkeleton";
 import HomeSkeleton from "@/components/skeletons/HomeSkeleton";
+import WorkoutErrorBoundary from "@/components/WorkoutErrorBoundary";
 
 interface HomeViewProps {
   generatingPlans: boolean;
@@ -118,7 +119,8 @@ const HomeView: React.FC<HomeViewProps> = ({
     : 0;
 
   return (
-    <div className="px-4 md:px-6 space-y-6">
+    <WorkoutErrorBoundary>
+      <div className="px-4 md:px-6 space-y-6">
       {/* Welcome Header */}
       <motion.div 
         className="flex items-center justify-between"
@@ -241,7 +243,8 @@ const HomeView: React.FC<HomeViewProps> = ({
 
       {/* Weekly Activity Chart */}
       <WeeklyActivity data={weeklyActivityData} />
-    </div>
+      </div>
+    </WorkoutErrorBoundary>
   );
 };
 

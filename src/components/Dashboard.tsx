@@ -127,6 +127,7 @@ const Dashboard = () => {
   const [workoutPlan, setWorkoutPlan] = useState<any>(null);
   const [nutritionPlan, setNutritionPlan] = useState<any>(null);
   const [generatingPlans, setGeneratingPlans] = useState(false);
+  const [isLoadingPlans, setIsLoadingPlans] = useState(false);
 
   // Subscribe to React Query for fresh workout plan data
   const workoutPlanId = workoutPlan?.id;
@@ -281,6 +282,7 @@ const Dashboard = () => {
       setProfile(data);
     } catch (error) {
       console.error('Error fetching profile:', error);
+      toast.error('Fehler beim Laden des Profils');
     } finally {
       setLoading(false);
     }
@@ -289,6 +291,7 @@ const Dashboard = () => {
   const fetchPlans = async () => {
     if (!user) return;
 
+    setIsLoadingPlans(true);
     try {
       // Fetch latest workout plan
       const { data: workoutData } = await supabase
@@ -310,6 +313,9 @@ const Dashboard = () => {
       setNutritionPlan(nutritionData?.[0] || null);
     } catch (error) {
       console.error('Error fetching plans:', error);
+      toast.error('Fehler beim Laden der Pläne');
+    } finally {
+      setIsLoadingPlans(false);
     }
   };
 
@@ -327,6 +333,7 @@ const Dashboard = () => {
       setWorkoutLogs(data || []);
     } catch (error) {
       console.error('Error fetching workout logs:', error);
+      toast.error('Fehler beim Laden der Trainingsprotokolle');
     }
   };
 

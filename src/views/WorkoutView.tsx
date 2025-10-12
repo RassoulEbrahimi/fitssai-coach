@@ -76,7 +76,7 @@ const WorkoutView: React.FC<WorkoutViewProps> = ({
 
   // React Query: Subscribe to live workout plan updates
   const planId = workoutPlan?.id;
-  const { data: livePlan } = useQuery({
+  const { data: livePlan, isLoading: isLoadingPlan } = useQuery({
     queryKey: ['workout-plan', planId],
     enabled: !!planId,
     initialData: workoutPlan,
@@ -402,6 +402,11 @@ const WorkoutView: React.FC<WorkoutViewProps> = ({
     setEditingExercise(null);
     logEvent('exercise_edit_cancelled');
   };
+  // Show loading skeleton while plan is being fetched
+  if (isLoadingPlan) {
+    return <ExerciseListSkeleton />;
+  }
+
   if (!livePlan) {
     return <motion.div initial={{
       opacity: 0,

@@ -20,8 +20,8 @@ export const normalizeWeekKey = (key?: string | null): string => {
  * @returns Tailwind color class
  */
 export const getProgressColor = (percent: number, isFuture: boolean): string => {
-  if (isFuture) return 'text-muted-foreground/30';
-  if (percent === 100) return 'text-emerald-400';
-  if (percent > 0) return 'text-amber-400';
-  return 'text-red-400';
+  if (isFuture) return 'text-muted-foreground/50';
+  if (percent === 100) return 'text-emerald-500';
+  if (percent > 0) return 'text-amber-500';
+  return 'text-red-500';
 };
