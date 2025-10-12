@@ -15,7 +15,6 @@ import { getWorkoutWeekDay } from "@/lib/workoutDateUtils";
 import { de } from 'date-fns/locale';
 import ExerciseListSkeleton from "@/components/skeletons/ExerciseListSkeleton";
 import TodayWorkoutCard from "@/components/TodayWorkoutCard";
-import { WEEK_OPTIONS } from "@/lib/dateUtils";
 import { useAuth } from "@/hooks/useAuth";
 import { useWeekCompletion } from "@/hooks/useWeekCompletion";
 import WorkoutErrorBoundary from "@/components/WorkoutErrorBoundary";
@@ -109,40 +108,10 @@ const WorkoutView: React.FC<WorkoutViewProps> = ({
 
   // Derive all state from selectedDate (single source of truth)
   const activeWeek = useMemo(() => getWeekKeyForDate(selectedDate), [selectedDate, getWeekKeyForDate]);
-  const activeDayIndex = useMemo(() => getDayIndexForDate(selectedDate), [selectedDate]);
+  const activeDayIndex = useMemo(() => getDayIndexForDate(selectedDate), [selectedDate, livePlan?.created_at]);
 
   // Expanded day is always the currently selected day
   const expandedDay = activeDayIndex;
-
-  // Single source of truth helper for week progress from DB logs
-  const getWeekProgressFromLogs = (weekKey: string, workoutPlan: any, workoutLogs: any[]) => {
-    if (!workoutPlan || !workoutLogs) return {
-      completed: 0,
-      total: 7
-    };
-    const total = workoutPlan.content[weekKey]?.length || 7;
-
-    // Get unique dayIndex entries for this week from logs
-    const weekNumber = parseInt(weekKey.replace(/\D/g, '')) - 1;
-    const planCreatedDate = new Date(workoutPlan.created_at);
-    const completedDays = new Set<number>();
-    workoutLogs.forEach(log => {
-      if (!log.completed) return;
-
-      // Convert log date back to dayIndex
-      const logDate = new Date(log.workout_day);
-      const daysDiff = Math.floor((logDate.getTime() - planCreatedDate.getTime()) / (24 * 60 * 60 * 1000));
-      const logWeekNumber = Math.floor(daysDiff / 7);
-      const dayIndex = daysDiff % 7;
-      if (logWeekNumber === weekNumber && dayIndex >= 0 && dayIndex < 7) {
-        completedDays.add(dayIndex);
-      }
-    });
-    return {
-      completed: Math.min(completedDays.size, total),
-      total
-    };
-  };
 
   // Canonical week key used everywhere in this component
   const wk = normalizeWeekKey(activeWeek);
@@ -216,15 +185,43 @@ const WorkoutView: React.FC<WorkoutViewProps> = ({
     });
   }, [user, livePlan?.id, queryClient]);
 
-  // Memoized week progress calculation
+  // Memoized week progress calculation using hook
   const weekProgress = useMemo(() => {
-    return getWeekProgressFromLogs(wk, livePlan, workoutLogs);
-  }, [wk, livePlan, workoutLogs]);
+    return calcWeekStats(wk, completionMap);
+  }, [wk, completionMap, calcWeekStats]);
+
+  // Handle week navigation
+  const handlePrevWeek = useCallback(() => {
+    if (!livePlan?.created_at) return;
+    
+    const currentWeekNum = Number(wk.match(/\d+/)?.[0] ?? 1);
+    const newWeekNum = Math.max(1, currentWeekNum - 1);
+    const newWeekKey = `Week ${newWeekNum}`;
+    const newDate = getDateFor(newWeekKey, activeDayIndex);
+    
+    if (newDate) {
+      logEvent('week_navigation', { direction: 'prev', fromWeek: wk, toWeek: newWeekKey });
+      handleDateChange(newDate);
+    }
+  }, [livePlan?.created_at, wk, activeDayIndex, getDateFor, handleDateChange]);
+  
+  const handleNextWeek = useCallback(() => {
+    if (!livePlan?.created_at) return;
+    
+    const currentWeekNum = Number(wk.match(/\d+/)?.[0] ?? 1);
+    const newWeekNum = Math.min(4, currentWeekNum + 1);
+    const newWeekKey = `Week ${newWeekNum}`;
+    const newDate = getDateFor(newWeekKey, activeDayIndex);
+    
+    if (newDate) {
+      logEvent('week_navigation', { direction: 'next', fromWeek: wk, toWeek: newWeekKey });
+      handleDateChange(newDate);
+    }
+  }, [livePlan?.created_at, wk, activeDayIndex, getDateFor, handleDateChange]);
 
   // Keyboard shortcuts for week navigation
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Only handle if not typing in an input
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
         return;
       }
@@ -242,7 +239,7 @@ const WorkoutView: React.FC<WorkoutViewProps> = ({
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [selectedDate, handleDateChange]);
+  }, [handlePrevWeek, handleNextWeek]);
 
   // URL deep-linking helpers
   const parseHashQuery = () => {
@@ -288,44 +285,6 @@ const WorkoutView: React.FC<WorkoutViewProps> = ({
     updateHash(weekNum, activeDayIndex);
   }, [activeWeek, activeDayIndex, wk]);
 
-  // Handle week navigation by moving date by ±7 days
-  const handlePrevWeek = () => {
-    if (!livePlan?.created_at) return;
-    
-    // Get current week number
-    const currentWeekNum = Number(wk.match(/\d+/)?.[0] ?? 1);
-    
-    // Navigate to previous week (minimum Week 1)
-    const newWeekNum = Math.max(1, currentWeekNum - 1);
-    const newWeekKey = `Week ${newWeekNum}`;
-    
-    // Get date for the same day in the previous week
-    const newDate = getDateFor(newWeekKey, activeDayIndex);
-    
-    if (newDate) {
-      logEvent('week_navigation', { direction: 'prev', fromWeek: wk, toWeek: newWeekKey });
-      handleDateChange(newDate);
-    }
-  };
-  
-  const handleNextWeek = () => {
-    if (!livePlan?.created_at) return;
-    
-    // Get current week number
-    const currentWeekNum = Number(wk.match(/\d+/)?.[0] ?? 1);
-    
-    // Navigate to next week (maximum Week 4)
-    const newWeekNum = Math.min(4, currentWeekNum + 1);
-    const newWeekKey = `Week ${newWeekNum}`;
-    
-    // Get date for the same day in the next week
-    const newDate = getDateFor(newWeekKey, activeDayIndex);
-    
-    if (newDate) {
-      logEvent('week_navigation', { direction: 'next', fromWeek: wk, toWeek: newWeekKey });
-      handleDateChange(newDate);
-    }
-  };
 
   // Helper to check if element is fully visible in viewport
   const isElementVisible = (element: HTMLElement): boolean => {

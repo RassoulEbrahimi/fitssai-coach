@@ -141,7 +141,7 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
         </AnimatePresence>
       );
     });
-  }, [exercises, completionMap, weekKey, dayIndex, isToggling]);
+  }, [exercises, completionMap, weekKey, dayIndex]);
 
   // Date context logic - using reactive today
   const selectedDateStr = format(selectedDate, 'yyyy-MM-dd');

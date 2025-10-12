@@ -474,32 +474,8 @@ const Dashboard = () => {
     return weekKey;
   };
 
-  // Use consolidated workout helpers hook
+  // Use consolidated workout helpers hook (not currently used in Dashboard but available)
   const { getWeekContentWithFallback } = useWorkoutHelpers(liveWorkoutPlan);
-
-  // Get week progress for a specific week (accurate calculation)
-  const getWeekProgress = (weekKey: string) => {
-    if (!liveWorkoutPlan || !liveWorkoutPlan.content) return { completed: 0, total: 0 };
-    
-    const weekData = liveWorkoutPlan.content[weekKey];
-    if (!Array.isArray(weekData)) return { completed: 0, total: 0 };
-    
-    // Count only non-rest days as total
-    const totalWorkoutDays = weekData.filter((day: any) => 
-      day.exercises && day.exercises.length > 0
-    ).length;
-    
-    // Count completed days, excluding future days
-    const completedDays = weekData.filter((_, dayIndex) => {
-      if (isDayInFuture(weekKey, dayIndex)) return false; // Exclude future days
-      return isDayCompleted(weekKey, dayIndex);
-    }).length;
-    
-    return { 
-      completed: Math.min(completedDays, totalWorkoutDays), // Cap at total
-      total: totalWorkoutDays 
-    };
-  };
 
   // Get today's day index for a specific week
   const getTodayDayIndex = (weekKey: string) => {
@@ -552,46 +528,6 @@ const Dashboard = () => {
     return weekKey;
   };
 
-  // Finds the next workout (>= today) in the current week; returns { weekKey, dayIndex } or null
-  const findNextWorkoutInCurrentWeek = () => {
-    if (!liveWorkoutPlan) return null;
-    const currentWeekKey = getCurrentWeekKey();
-    if (!currentWeekKey) return null;
-    
-    for (let i = 0; i < 7; i++) {
-      if (isTodayInWeekDay(currentWeekKey, i)) {
-        // start from today, look ahead including today
-        for (let d = i; d < 7; d++) {
-          if (getWorkoutAt(currentWeekKey, d)) {
-            return { weekKey: currentWeekKey, dayIndex: d };
-          }
-        }
-        break;
-      }
-    }
-    return null;
-  };
-
-  // Find next workout across all weeks (start from *next* week)
-  const findNextWorkoutAcrossWeeks = () => {
-    if (!liveWorkoutPlan?.created_at) return null;
-    const weekKeys = getOrderedWeekKeys();
-    const currentKey = getCurrentWeekKey();
-    if (weekKeys.length === 0 || !currentKey) return null;
-
-    const currentIdx = Math.max(0, weekKeys.indexOf(currentKey));
-    for (let w = currentIdx + 1; w < weekKeys.length; w++) {
-      const wk = weekKeys[w];
-      for (let d = 0; d < 7; d++) {
-        const day = getWorkoutAt(wk, d);
-        if (day) {
-          const targetDate = getWorkoutDate(liveWorkoutPlan.created_at, wk, d);
-          return { weekKey: wk, dayIndex: d, date: targetDate };
-        }
-      }
-    }
-    return null;
-  };
 
   // Get today's workout data
   const getTodayWorkout = () => {
