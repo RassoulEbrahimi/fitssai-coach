@@ -25,6 +25,7 @@ import ProgressRing from "@/components/ProgressRing";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useExerciseEditor, type Exercise } from "@/hooks/useExerciseEditor";
+import { useWorkoutHelpers } from "@/hooks/useWorkoutHelpers";
 
 const ExerciseList = React.lazy(() => import("@/views/ExerciseList"));
 interface WorkoutViewProps {
@@ -93,43 +94,8 @@ const WorkoutView: React.FC<WorkoutViewProps> = ({
     staleTime: 0,
   });
 
-  // Local helper that always reads from livePlan.content (reactive to React Query updates)
-  const getWeekContentWithFallback = useCallback((weekKey: string) => {
-    if (!livePlan?.content) return [];
-
-    const existing =
-      livePlan.content[weekKey] ||
-      livePlan.content[weekKey.toLowerCase().replace(' ', '')];
-
-    // Always return new references (week array + nested exercises arrays)
-    if (existing) {
-      return existing.map((d: any) =>
-        d
-          ? { ...d, exercises: Array.isArray(d.exercises) ? [...d.exercises] : [] }
-          : { day: null, exercises: [] }
-      );
-    }
-
-    const weekNumber = parseInt(weekKey.replace(/\D/g, ''), 10);
-    const week2 = livePlan.content['Week 2'] || livePlan.content['week2'];
-    const week1 = livePlan.content['Week 1'] || livePlan.content['week1'];
-
-    if ((weekNumber === 3 || weekNumber === 4) && week2) {
-      return week2.map((d: any) =>
-        d
-          ? { ...d, exercises: Array.isArray(d.exercises) ? [...d.exercises] : [] }
-          : { day: null, exercises: [] }
-      );
-    }
-    if (weekNumber > 1 && week1) {
-      return week1.map((d: any) =>
-        d
-          ? { ...d, exercises: Array.isArray(d.exercises) ? [...d.exercises] : [] }
-          : { day: null, exercises: [] }
-      );
-    }
-    return [];
-  }, [livePlan?.content]);
+  // Use consolidated workout helpers hook
+  const { getWeekContentWithFallback, calcWeekStats, getProgressColor, getWeekMirrorInfo } = useWorkoutHelpers(livePlan);
 
   // Exercise editing state (Phase 1)
   const [editingExercise, setEditingExercise] = useState<{
@@ -140,83 +106,6 @@ const WorkoutView: React.FC<WorkoutViewProps> = ({
   } | null>(null);
 
   const { updateExercise, isUpdating } = useExerciseEditor();
-
-  // Utility to calculate week stats from completion data
-  const calcWeekStats = useCallback((
-    weekKey: string,
-    completion: Record<string, boolean> | undefined,
-  ) => {
-    const week = getWeekContentWithFallback(weekKey) || [];
-    let total = 0, completed = 0;
-
-    week.forEach((day: any, dayIndex: number) => {
-      const exercises = day?.exercises || [];
-      exercises.forEach((_ex: any, exerciseIndex: number) => {
-        total += 1;
-        if (completion && completion[`${weekKey}_${dayIndex}_${exerciseIndex}`]) {
-          completed += 1;
-        }
-      });
-    });
-
-    const percent = total > 0 ? Math.round((completed / total) * 100) : 0;
-    const missed = total - completed;
-    return { completed, total, percent, missed };
-  }, [livePlan?.content, getWeekContentWithFallback]);
-
-  // Helper to get progress ring color based on completion
-  const getProgressColor = useCallback((percent: number, isFuture: boolean) => {
-    if (isFuture) return 'text-muted-foreground/30';
-    if (percent === 100) return 'text-emerald-400';
-    if (percent > 0) return 'text-amber-400';
-    return 'text-red-400';
-  }, []);
-
-  // Helper function to detect mirrored weeks and get source week
-  const getWeekMirrorInfo = (weekKey: string) => {
-    if (!livePlan?.content) return {
-      isMirrored: false,
-      sourceWeek: null
-    };
-    const weekNumber = parseInt(weekKey.replace(/\D/g, ''));
-    const existing = livePlan.content[weekKey] || livePlan.content[`week${weekNumber}`];
-
-    // If week exists, it's not mirrored
-    if (existing) return {
-      isMirrored: false,
-      sourceWeek: null
-    };
-    const week2 = livePlan.content['Week 2'] || livePlan.content['week2'];
-    const week1 = livePlan.content['Week 1'] || livePlan.content['week1'];
-
-    // Week 1 empty fallback to Week 2
-    if (weekNumber === 1 && !existing && week2) {
-      return {
-        isMirrored: false,
-        sourceWeek: null
-      }; // Keep Week 1 empty, no mirroring
-    }
-
-    // Weeks 3-4 mirror Week 2
-    if ((weekNumber === 3 || weekNumber === 4) && !existing && week2) {
-      return {
-        isMirrored: true,
-        sourceWeek: 2
-      };
-    }
-
-    // Default fallback to Week 1 for missing weeks 2-4
-    if (weekNumber > 1 && weekNumber <= 4 && !existing && week1) {
-      return {
-        isMirrored: true,
-        sourceWeek: 1
-      };
-    }
-    return {
-      isMirrored: false,
-      sourceWeek: null
-    };
-  };
   const dayRefs = useRef<{
     [key: number]: HTMLDivElement | null;
   }>({});
@@ -592,10 +481,10 @@ const WorkoutView: React.FC<WorkoutViewProps> = ({
   }
 
   // Memoize week data to prevent recalculation
-  const weekData = useMemo(() => getWeekContentWithFallback(wk), [wk, livePlan?.content, getWeekContentWithFallback]);
+  const weekData = useMemo(() => getWeekContentWithFallback(wk), [wk, getWeekContentWithFallback]);
 
   // Get mirror info for the current week
-  const mirrorInfo = useMemo(() => getWeekMirrorInfo(wk), [wk, livePlan?.content]);
+  const mirrorInfo = useMemo(() => getWeekMirrorInfo(wk), [wk, getWeekMirrorInfo]);
 
   // Compute header date from active day or fallback to day 0
   const headerDate = getDateFor(wk, activeDayIndex ?? 0) ?? getDateFor(wk, 0);
@@ -723,7 +612,6 @@ const WorkoutView: React.FC<WorkoutViewProps> = ({
         weekKey={wk} 
         dayIndex={activeDayIndex} 
         workoutPlan={livePlan} 
-        getWeekContentWithFallback={getWeekContentWithFallback} 
         mirrorInfo={mirrorInfo}
         completionMap={completionMap}
         isLoading={isLoadingCompletion}

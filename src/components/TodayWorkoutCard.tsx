@@ -15,13 +15,13 @@ import WorkoutErrorBoundary from "@/components/WorkoutErrorBoundary";
 import { logEvent } from "@/lib/telemetryClient";
 import { toastSuccess } from "@/lib/toastWithIcon";
 import { CompletionState, isExerciseCompleted } from "@/lib/completionUtils";
+import { useWorkoutHelpers } from "@/hooks/useWorkoutHelpers";
 
 interface TodayWorkoutCardProps {
   selectedDate: Date;
   weekKey: string;
   dayIndex: number;
   workoutPlan: any;
-  getWeekContentWithFallback: (weekKey: string) => any[];
   mirrorInfo?: {
     isMirrored: boolean;
     sourceWeek: number | null;
@@ -45,7 +45,6 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
   weekKey,
   dayIndex,
   workoutPlan,
-  getWeekContentWithFallback,
   mirrorInfo,
   completionMap,
   isLoading,
@@ -61,6 +60,9 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
   
   // Reactive Berlin "today" - updates automatically at midnight
   const berlinToday = useBerlinToday();
+
+  // Use consolidated workout helpers hook
+  const { getWeekContentWithFallback } = useWorkoutHelpers(workoutPlan);
 
   // Get exercises from the same source as the week list (may be mirrored for UI display)
   const weekData = getWeekContentWithFallback(weekKey);
