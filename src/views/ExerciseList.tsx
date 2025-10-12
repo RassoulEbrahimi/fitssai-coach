@@ -15,7 +15,7 @@ interface ExerciseListProps {
   onCancelEdit?: () => void;
 }
 
-const ExerciseList: React.FC<ExerciseListProps> = React.memo(({ 
+const ExerciseList: React.FC<ExerciseListProps> = ({ 
   exercises,
   editingExercise,
   onEditExercise,
@@ -110,8 +110,6 @@ const ExerciseList: React.FC<ExerciseListProps> = React.memo(({
       })}
     </div>
   );
-});
-
-ExerciseList.displayName = "ExerciseList";
+};
 
 export default ExerciseList;

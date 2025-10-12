@@ -98,17 +98,38 @@ const WorkoutView: React.FC<WorkoutViewProps> = ({
   // Local helper that always reads from livePlan.content (reactive to React Query updates)
   const getWeekContentWithFallback = useCallback((weekKey: string) => {
     if (!livePlan?.content) return [];
+
     const existing =
       livePlan.content[weekKey] ||
       livePlan.content[weekKey.toLowerCase().replace(' ', '')];
-    if (existing) return existing;
+
+    // Always return new references (week array + nested exercises arrays)
+    if (existing) {
+      return existing.map((d: any) =>
+        d
+          ? { ...d, exercises: Array.isArray(d.exercises) ? [...d.exercises] : [] }
+          : { day: null, exercises: [] }
+      );
+    }
 
     const weekNumber = parseInt(weekKey.replace(/\D/g, ''), 10);
     const week2 = livePlan.content['Week 2'] || livePlan.content['week2'];
     const week1 = livePlan.content['Week 1'] || livePlan.content['week1'];
 
-    if ((weekNumber === 3 || weekNumber === 4) && week2) return [...week2];
-    if (weekNumber > 1 && week1) return [...week1];
+    if ((weekNumber === 3 || weekNumber === 4) && week2) {
+      return week2.map((d: any) =>
+        d
+          ? { ...d, exercises: Array.isArray(d.exercises) ? [...d.exercises] : [] }
+          : { day: null, exercises: [] }
+      );
+    }
+    if (weekNumber > 1 && week1) {
+      return week1.map((d: any) =>
+        d
+          ? { ...d, exercises: Array.isArray(d.exercises) ? [...d.exercises] : [] }
+          : { day: null, exercises: [] }
+      );
+    }
     return [];
   }, [livePlan?.content]);
 
@@ -554,7 +575,7 @@ const WorkoutView: React.FC<WorkoutViewProps> = ({
   const weekData = useMemo(() => getWeekContentWithFallback(wk), [wk, livePlan?.content, getWeekContentWithFallback]);
 
   // Get mirror info for the current week
-  const mirrorInfo = useMemo(() => getWeekMirrorInfo(wk), [wk]);
+  const mirrorInfo = useMemo(() => getWeekMirrorInfo(wk), [wk, livePlan?.content]);
 
   // Compute header date from active day or fallback to day 0
   const headerDate = getDateFor(wk, activeDayIndex ?? 0) ?? getDateFor(wk, 0);

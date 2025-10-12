@@ -346,4 +346,4 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
   );
 };
 
-export default React.memo(TodayWorkoutCard);
+export default TodayWorkoutCard;
