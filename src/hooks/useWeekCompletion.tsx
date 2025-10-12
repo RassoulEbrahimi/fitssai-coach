@@ -4,7 +4,7 @@ import { useAuth } from './useAuth';
 import { useOfflineQueue } from './useOfflineQueue';
 import { logEvent, logError, logRetry } from '@/lib/telemetryClient';
 import { toastError } from '@/lib/toastWithIcon';
-import { useEffect } from 'react';
+import { useEffect, useMemo } from 'react';
 import { CompletionState, setExerciseCompletion } from '@/lib/completionUtils';
 
 // Server response format (flat completion map)
@@ -272,8 +272,10 @@ export const useWeekCompletion = ({ planId, weekKey, enabled = true }: UseWeekCo
     },
   });
 
+  const completionMap = useMemo(() => query.data || {}, [query.data]);
+
   return {
-    completionMap: query.data || {},
+    completionMap,
     isLoading: query.isLoading,
     isError: query.isError,
     error: query.error,

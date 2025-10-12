@@ -296,6 +296,28 @@ const WorkoutView: React.FC<WorkoutViewProps> = ({
     enabled: !!user && !!livePlan
   });
 
+  // Subscribe to all 4 weeks for reactive progress ring updates
+  const { data: week1Completion } = useQuery<Record<string, boolean>>({
+    queryKey: ['week-completion', livePlan?.id, 'Week 1'],
+    enabled: !!livePlan?.id && !!user,
+    staleTime: 0,
+  });
+  const { data: week2Completion } = useQuery<Record<string, boolean>>({
+    queryKey: ['week-completion', livePlan?.id, 'Week 2'],
+    enabled: !!livePlan?.id && !!user,
+    staleTime: 0,
+  });
+  const { data: week3Completion } = useQuery<Record<string, boolean>>({
+    queryKey: ['week-completion', livePlan?.id, 'Week 3'],
+    enabled: !!livePlan?.id && !!user,
+    staleTime: 0,
+  });
+  const { data: week4Completion } = useQuery<Record<string, boolean>>({
+    queryKey: ['week-completion', livePlan?.id, 'Week 4'],
+    enabled: !!livePlan?.id && !!user,
+    staleTime: 0,
+  });
+
   // Prefetch all 4 weeks for progress ring display
   useEffect(() => {
     if (!livePlan?.id || !user) return;
@@ -729,9 +751,12 @@ const WorkoutView: React.FC<WorkoutViewProps> = ({
               const isFuture = currentWeekNum < weekNum;
               const isFocused = focusedWeek === weekNum;
 
-              // Get completion data from cache
-              const weekCompletionFromCache = queryClient.getQueryData<Record<string, boolean>>(['week-completion', livePlan?.id, weekKey]);
-              const stats = calcWeekStats(weekKey, weekCompletionFromCache);
+              // Get completion data from subscribed queries
+              const weekCompletionData = weekNum === 1 ? week1Completion :
+                                         weekNum === 2 ? week2Completion :
+                                         weekNum === 3 ? week3Completion :
+                                         week4Completion;
+              const stats = calcWeekStats(weekKey, weekCompletionData);
               const progressColor = getProgressColor(stats.percent, isFuture);
 
               // Get aria-label with completion stats

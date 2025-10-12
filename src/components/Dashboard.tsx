@@ -131,6 +131,15 @@ const Dashboard = () => {
   const workoutPlanId = workoutPlan?.id;
   const { data: liveWorkoutPlan } = useQuery({
     queryKey: ['workout-plan', workoutPlanId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('workout_plans')
+        .select('*')
+        .eq('id', workoutPlanId)
+        .single();
+      if (error) throw error;
+      return data;
+    },
     enabled: !!workoutPlanId,
     initialData: workoutPlan,
     staleTime: 0,
@@ -346,7 +355,7 @@ const Dashboard = () => {
     const totalDaysFromStart = (weekNumber * 7) + dayIndex;
     
     // For demo, using plan creation date as reference. In production, use actual plan start date
-    const planCreatedDate = new Date(workoutPlan.created_at);
+    const planCreatedDate = new Date(liveWorkoutPlan.created_at);
     const workoutDate = addDays(planCreatedDate, totalDaysFromStart);
     const workoutDateStr = format(workoutDate, 'yyyy-MM-dd');
 
@@ -545,7 +554,7 @@ const Dashboard = () => {
 
   // Returns the workout object for a given (weekKey, dayIndex) or null
   const getWorkoutAt = (weekKey: string, dayIndex: number) => {
-    const days = workoutPlan?.content?.[weekKey];
+    const days = liveWorkoutPlan?.content?.[weekKey];
     if (!days) return null;
     const day = days[dayIndex];
     if (!day || !Array.isArray(day.exercises) || day.exercises.length === 0) return null;
@@ -617,9 +626,9 @@ const Dashboard = () => {
 
   // Get today's workout data
   const getTodayWorkout = () => {
-    if (!workoutPlan || !workoutPlan.content) return null;
+    if (!liveWorkoutPlan || !liveWorkoutPlan.content) return null;
     
-    for (const [weekKey, days] of Object.entries(workoutPlan.content)) {
+    for (const [weekKey, days] of Object.entries(liveWorkoutPlan.content)) {
       const weekData = days as any[];
       // Check full week (0..6) not just weekData.length
       for (let dayIndex = 0; dayIndex < 7; dayIndex++) {
