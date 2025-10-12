@@ -2,7 +2,8 @@ import React, { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
-import { Bell, Dumbbell, Utensils } from "lucide-react";
+import { Card, CardContent } from "@/components/ui/card";
+import { Bell, Dumbbell, Utensils, Sparkles, TrendingUp } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { supabase } from "@/integrations/supabase/client";
 import { getAvatarUrl } from "@/lib/avatarUtils";
@@ -25,6 +26,7 @@ interface HomeViewProps {
   getWeeklyProgress?: () => { completed: number; total: number };
   selectedDate: Date;
   onProgressUpdate?: (weeklyProgress: { completed: number; total: number }) => void;
+  isLoadingPlans?: boolean;
 }
 
 const HomeView: React.FC<HomeViewProps> = ({
@@ -38,7 +40,8 @@ const HomeView: React.FC<HomeViewProps> = ({
   isDayCompleted,
   getWeeklyProgress,
   selectedDate,
-  onProgressUpdate
+  onProgressUpdate,
+  isLoadingPlans = false
 }) => {
   const { t } = useTranslation();
   const [quote, setQuote] = useState<string>("");
@@ -98,8 +101,67 @@ const HomeView: React.FC<HomeViewProps> = ({
   }, []);
 
   // Show skeleton when initially loading or generating plans
-  if (generatingPlans && !workoutPlan && !nutritionPlan) {
+  if (isLoadingPlans || (generatingPlans && !workoutPlan && !nutritionPlan)) {
     return <HomeSkeleton />;
+  }
+
+  // Show empty state when no plans exist and not generating
+  if (!generatingPlans && !workoutPlan && !nutritionPlan) {
+    return (
+      <WorkoutErrorBoundary>
+        <div className="px-4 md:px-6 space-y-6">
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ duration: 0.4 }}
+            className="flex items-center justify-center min-h-[60vh]"
+          >
+            <Card className="max-w-lg w-full" role="status">
+              <CardContent className="pt-12 pb-12 text-center space-y-6">
+                <motion.div
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.1 }}
+                  className="flex justify-center"
+                >
+                  <div className="relative">
+                    <TrendingUp className="h-20 w-20 text-muted-foreground/40" aria-hidden="true" />
+                    <div className="absolute -bottom-1 -right-1 bg-primary/20 rounded-full p-2">
+                      <Sparkles className="h-6 w-6 text-primary" aria-hidden="true" />
+                    </div>
+                  </div>
+                </motion.div>
+                
+                <div className="space-y-3">
+                  <h2 className="text-2xl font-bold text-foreground" role="heading" aria-level={2}>
+                    {t('home.emptyState.title')}
+                  </h2>
+                  <p className="text-muted-foreground text-lg">
+                    {t('home.emptyState.description')}
+                  </p>
+                </div>
+
+                <motion.div
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  transition={{ delay: 0.2 }}
+                  className="pt-2"
+                >
+                  <Button 
+                    onClick={onGeneratePlans}
+                    size="lg"
+                    className="gap-2"
+                  >
+                    <Sparkles className="h-5 w-5" aria-hidden="true" />
+                    {t('home.emptyState.button')}
+                  </Button>
+                </motion.div>
+              </CardContent>
+            </Card>
+          </motion.div>
+        </div>
+      </WorkoutErrorBoundary>
+    );
   }
 
   // Get user's first name from full_name or email

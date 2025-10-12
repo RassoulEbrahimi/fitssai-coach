@@ -762,21 +762,22 @@ const Dashboard = () => {
                       <Suspense fallback={<HomeSkeleton />}>
                         <div ref={(el) => setViewRef('dashboard', el)}>
                            <HomeView
-                              generatingPlans={generatingPlans}
-                              workoutPlan={liveWorkoutPlan}
-                             nutritionPlan={nutritionPlan}
-                             onGeneratePlans={generatePlans}
-                             profile={profile}
-                             workoutProgress={getWeeklyProgress()}
-                             getTodayWorkout={getTodayWorkout}
-                             isDayCompleted={isDayCompleted}
-                             getWeeklyProgress={getWeeklyProgress}
-                             selectedDate={selectedDate}
-                             onProgressUpdate={(weeklyProgress) => {
-                               // Update weekly progress state
-                               fetchWorkoutLogs();
-                             }}
-                           />
+                               generatingPlans={generatingPlans}
+                               workoutPlan={liveWorkoutPlan}
+                              nutritionPlan={nutritionPlan}
+                              onGeneratePlans={generatePlans}
+                              profile={profile}
+                              workoutProgress={getWeeklyProgress()}
+                              getTodayWorkout={getTodayWorkout}
+                              isDayCompleted={isDayCompleted}
+                              getWeeklyProgress={getWeeklyProgress}
+                              selectedDate={selectedDate}
+                              isLoadingPlans={isLoadingPlans}
+                              onProgressUpdate={(weeklyProgress) => {
+                                // Update weekly progress state
+                                fetchWorkoutLogs();
+                              }}
+                            />
                         </div>
                       </Suspense>
                     </div>

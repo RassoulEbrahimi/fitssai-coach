@@ -24,6 +24,13 @@
     "profile": "Profil",
     "getStarted": "Loslegen"
   },
+  "home": {
+    "emptyState": {
+      "title": "Bereit durchzustarten?",
+      "description": "Erstelle jetzt deinen personalisierten Trainings- und Ernährungsplan.",
+      "button": "Plan erstellen"
+    }
+  },
   "hero": {
     "badge": "KI-gestützte Fitness-Revolution",
     "title": "Dein persönlicher",
@@ -119,6 +126,11 @@
   "dashboard": {
     "welcome": "Willkommen bei FitssAI",
     "subtitle": "Deine personalisierte Fitness-Reise beginnt hier",
+    "emptyState": {
+      "title": "Keine Pläne erstellt",
+      "description": "Erstelle deinen personalisierten Trainings- und Ernährungsplan, um loszulegen.",
+      "button": "Pläne jetzt erstellen"
+    },
     "tabs": {
       "workoutPlan": "Trainingsplan",
       "nutritionPlan": "Ernährungsplan",
