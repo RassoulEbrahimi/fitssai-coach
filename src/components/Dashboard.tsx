@@ -25,6 +25,7 @@ import {
 import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 import { useTranslation } from "react-i18next";
 import { useAuth } from "@/hooks/useAuth";
+import { useQuery } from '@tanstack/react-query';
 import { supabase } from "@/integrations/supabase/client";
 import { ProfileCard } from "@/components/ProfileCard";
 import VideoBackground from '@/components/VideoBackground';
@@ -125,6 +126,15 @@ const Dashboard = () => {
   const [workoutPlan, setWorkoutPlan] = useState<any>(null);
   const [nutritionPlan, setNutritionPlan] = useState<any>(null);
   const [generatingPlans, setGeneratingPlans] = useState(false);
+
+  // Subscribe to React Query for fresh workout plan data
+  const workoutPlanId = workoutPlan?.id;
+  const { data: liveWorkoutPlan } = useQuery({
+    queryKey: ['workout-plan', workoutPlanId],
+    enabled: !!workoutPlanId,
+    initialData: workoutPlan,
+    staleTime: 0,
+  });
   const [workoutLogs, setWorkoutLogs] = useState<any[]>([]);
   const [completingWorkout, setCompletingWorkout] = useState<number | null>(null);
   const [activeWeek, setActiveWeek] = useState<string | null>(null);
@@ -294,14 +304,14 @@ const Dashboard = () => {
   };
 
   const fetchWorkoutLogs = async () => {
-    if (!user || !workoutPlan) return;
+    if (!user || !liveWorkoutPlan) return;
 
     try {
       const { data, error } = await supabase
         .from('workout_logs')
         .select('*')
         .eq('user_id', user.id)
-        .eq('plan_id', workoutPlan.id);
+        .eq('plan_id', liveWorkoutPlan.id);
 
       if (error) throw error;
       setWorkoutLogs(data || []);
@@ -312,10 +322,10 @@ const Dashboard = () => {
 
   // Fetch workout logs when workout plan changes
   useEffect(() => {
-    if (workoutPlan) {
+    if (liveWorkoutPlan) {
       fetchWorkoutLogs();
     }
-  }, [workoutPlan]);
+  }, [liveWorkoutPlan]);
 
   // Listen for workout logs changes from TodayWorkoutCard
   useEffect(() => {
@@ -325,11 +335,11 @@ const Dashboard = () => {
     
     window.addEventListener('workoutLogsChanged', handleWorkoutLogsChanged);
     return () => window.removeEventListener('workoutLogsChanged', handleWorkoutLogsChanged);
-  }, [workoutPlan]);
+  }, [liveWorkoutPlan]);
 
   // Robust workout logging with timezone handling and toggle functionality
   const toggleDayComplete = async (weekKey: string, dayIndex: number) => {
-    if (!user || !workoutPlan || completingWorkout === dayIndex) return;
+    if (!user || !liveWorkoutPlan || completingWorkout === dayIndex) return;
 
     // Calculate the workout date using Berlin timezone
     const weekNumber = parseInt(weekKey.replace(/\D/g, '')) - 1;
@@ -419,38 +429,38 @@ const Dashboard = () => {
 
   // Check if a specific day in a specific week is completed (timezone-aware)
   const isDayCompleted = (weekKey: string, dayIndex: number) => {
-    if (!workoutPlan?.created_at) return false;
+    if (!liveWorkoutPlan?.created_at) return false;
     
-    const dateString = getWorkoutDateString(workoutPlan.created_at, weekKey, dayIndex);
+    const dateString = getWorkoutDateString(liveWorkoutPlan.created_at, weekKey, dayIndex);
     return workoutLogs.some(log => log.workout_day === dateString && log.completed);
   };
 
   // Check if today matches a specific week and day (Berlin timezone)
   const isTodayInWeekDay = (weekKey: string, dayIndex: number) => {
-    if (!workoutPlan?.created_at) return false;
+    if (!liveWorkoutPlan?.created_at) return false;
     
-    const targetStr = getWorkoutDateString(workoutPlan.created_at, weekKey, dayIndex);
+    const targetStr = getWorkoutDateString(liveWorkoutPlan.created_at, weekKey, dayIndex);
     return targetStr === berlinToday;
   };
 
   // Check if a day is in the future (Berlin timezone)
   const isDayInFuture = (weekKey: string, dayIndex: number) => {
-    if (!workoutPlan?.created_at) return false;
+    if (!liveWorkoutPlan?.created_at) return false;
     
-    const targetDateStr = getWorkoutDateString(workoutPlan.created_at, weekKey, dayIndex);
+    const targetDateStr = getWorkoutDateString(liveWorkoutPlan.created_at, weekKey, dayIndex);
     return isBerlinFuture(targetDateStr);
   };
 
   // Get current week based on selected date
   const getCurrentWeek = () => {
-    if (!workoutPlan?.created_at) return null;
+    if (!liveWorkoutPlan?.created_at) return null;
     return getWeekKeyForDate(selectedDate);
   };
 
   // Get week key for a specific date using plan-based mapping
   const getWeekKeyForDate = (date: Date): string => {
-    if (!workoutPlan?.created_at) return 'Week 1';
-    const { weekKey } = getWorkoutWeekDay(workoutPlan.created_at, date);
+    if (!liveWorkoutPlan?.created_at) return 'Week 1';
+    const { weekKey } = getWorkoutWeekDay(liveWorkoutPlan.created_at, date);
     return weekKey;
   };
 
@@ -459,17 +469,17 @@ const Dashboard = () => {
   // When users interact with exercises (mark complete, etc.), the actual weekKey 
   // passed to backend functions MUST be the real selected week, never the mirror source.
   const getWeekContentWithFallback = (weekKey: string) => {
-    if (!workoutPlan?.content) return [];
+    if (!liveWorkoutPlan?.content) return [];
     
     // If week exists in plan (even with empty/partial days), return it directly - no mirroring
-    const existing = workoutPlan.content[weekKey] || workoutPlan.content[weekKey.toLowerCase().replace(' ', '')];
+    const existing = liveWorkoutPlan.content[weekKey] || liveWorkoutPlan.content[weekKey.toLowerCase().replace(' ', '')];
     if (existing) return existing;
     
     const weekNumber = parseInt(weekKey.replace(/\D/g, ''));
     
     // Special fallback logic: if only Week 2 exists, keep Week 1 empty, mirror Week 2 to Weeks 3-4
-    const week2 = workoutPlan.content['Week 2'] || workoutPlan.content['week2'];
-    const week1 = workoutPlan.content['Week 1'] || workoutPlan.content['week1'];
+    const week2 = liveWorkoutPlan.content['Week 2'] || liveWorkoutPlan.content['week2'];
+    const week1 = liveWorkoutPlan.content['Week 1'] || liveWorkoutPlan.content['week1'];
     
     if (weekNumber === 1 && !week1 && week2) {
       // Keep Week 1 empty (return empty array) - UI only
@@ -491,9 +501,9 @@ const Dashboard = () => {
 
   // Get week progress for a specific week (accurate calculation)
   const getWeekProgress = (weekKey: string) => {
-    if (!workoutPlan || !workoutPlan.content) return { completed: 0, total: 0 };
+    if (!liveWorkoutPlan || !liveWorkoutPlan.content) return { completed: 0, total: 0 };
     
-    const weekData = workoutPlan.content[weekKey];
+    const weekData = liveWorkoutPlan.content[weekKey];
     if (!Array.isArray(weekData)) return { completed: 0, total: 0 };
     
     // Count only non-rest days as total
@@ -515,8 +525,8 @@ const Dashboard = () => {
 
   // Get today's day index for a specific week
   const getTodayDayIndex = (weekKey: string) => {
-    if (!workoutPlan || !workoutPlan.content) return -1;
-    const weekData = workoutPlan.content[weekKey];
+    if (!liveWorkoutPlan || !liveWorkoutPlan.content) return -1;
+    const weekData = liveWorkoutPlan.content[weekKey];
     if (!Array.isArray(weekData)) return -1;
     
     for (let dayIndex = 0; dayIndex < weekData.length; dayIndex++) {
@@ -544,29 +554,29 @@ const Dashboard = () => {
 
   // Get calendar date for a given weekKey and dayIndex using plan-based mapping
   const getDateFor = (weekKey: string, dayIndex: number): Date | null => {
-    if (!workoutPlan?.created_at) return null;
-    return getWorkoutDate(workoutPlan.created_at, weekKey, dayIndex);
+    if (!liveWorkoutPlan?.created_at) return null;
+    return getWorkoutDate(liveWorkoutPlan.created_at, weekKey, dayIndex);
   };
 
   // Get ordered week keys (week1..week4)
   const getOrderedWeekKeys = () => {
-    if (!workoutPlan?.content) return [];
+    if (!liveWorkoutPlan?.content) return [];
     // Sort keys by their numeric index: "week1","week2",...
-    return Object.keys(workoutPlan.content)
+    return Object.keys(liveWorkoutPlan.content)
       .sort((a, b) => (parseInt(a.replace(/\D/g, '')) - parseInt(b.replace(/\D/g, ''))));
   };
 
   // Get current week key based on days since plan start
   const getCurrentWeekKey = () => {
-    if (!workoutPlan?.created_at) return null;
+    if (!liveWorkoutPlan?.created_at) return null;
     const today = getBerlinNow();
-    const { weekKey } = getWorkoutWeekDay(workoutPlan.created_at, today);
+    const { weekKey } = getWorkoutWeekDay(liveWorkoutPlan.created_at, today);
     return weekKey;
   };
 
   // Finds the next workout (>= today) in the current week; returns { weekKey, dayIndex } or null
   const findNextWorkoutInCurrentWeek = () => {
-    if (!workoutPlan) return null;
+    if (!liveWorkoutPlan) return null;
     const currentWeekKey = getCurrentWeekKey();
     if (!currentWeekKey) return null;
     
@@ -586,7 +596,7 @@ const Dashboard = () => {
 
   // Find next workout across all weeks (start from *next* week)
   const findNextWorkoutAcrossWeeks = () => {
-    if (!workoutPlan?.created_at) return null;
+    if (!liveWorkoutPlan?.created_at) return null;
     const weekKeys = getOrderedWeekKeys();
     const currentKey = getCurrentWeekKey();
     if (weekKeys.length === 0 || !currentKey) return null;
@@ -597,7 +607,7 @@ const Dashboard = () => {
       for (let d = 0; d < 7; d++) {
         const day = getWorkoutAt(wk, d);
         if (day) {
-          const targetDate = getWorkoutDate(workoutPlan.created_at, wk, d);
+          const targetDate = getWorkoutDate(liveWorkoutPlan.created_at, wk, d);
           return { weekKey: wk, dayIndex: d, date: targetDate };
         }
       }
@@ -650,7 +660,7 @@ const Dashboard = () => {
 
   // Set initial active week and today's day on load, sync with date changes
   useEffect(() => {
-    if (workoutPlan) {
+    if (liveWorkoutPlan) {
       const currentWeek = getCurrentWeek();
       setActiveWeek(currentWeek);
       
@@ -662,16 +672,16 @@ const Dashboard = () => {
         }
       }
     }
-  }, [workoutPlan, selectedDate]); // Depend on selectedDate changes
+  }, [liveWorkoutPlan, selectedDate]); // Depend on selectedDate changes
 
   // Handle date changes from calendar - update selected date and active week
   const handleDateChange = (date: Date) => {
     setSelectedDate(date);
     
-    if (!workoutPlan?.created_at) return;
+    if (!liveWorkoutPlan?.created_at) return;
     
     // Calculate day index and week key using plan-based mapping
-    const { weekKey, dayIndex } = getWorkoutWeekDay(workoutPlan.created_at, date);
+    const { weekKey, dayIndex } = getWorkoutWeekDay(liveWorkoutPlan.created_at, date);
     
     if (dayIndex >= 0 && dayIndex <= 6) {
       setActiveDayIndex(dayIndex);
@@ -687,7 +697,7 @@ const Dashboard = () => {
 
   // Accurate weekly progress calculation using Berlin timezone
   const getWeeklyProgress = () => {
-    if (!workoutPlan || !workoutLogs) return { completed: 0, total: 0 };
+    if (!liveWorkoutPlan || !workoutLogs) return { completed: 0, total: 0 };
     
     const { startStr, endStr } = getBerlinCurrentWeek();
     
@@ -701,9 +711,9 @@ const Dashboard = () => {
     
     // Calculate total planned workout days for current week
     let totalPlannedDays = 0;
-    if (workoutPlan.content) {
+    if (liveWorkoutPlan.content) {
       // For demo, use first week's structure. In production, calculate based on current week
-      const firstWeek = Object.values(workoutPlan.content)[0] as any[];
+      const firstWeek = Object.values(liveWorkoutPlan.content)[0] as any[];
       totalPlannedDays = Array.isArray(firstWeek) 
         ? firstWeek.filter((day: any) => day.exercises && day.exercises.length > 0).length 
         : 0;
@@ -831,8 +841,8 @@ const Dashboard = () => {
                       <Suspense fallback={<HomeSkeleton />}>
                         <div ref={(el) => setViewRef('dashboard', el)}>
                            <HomeView
-                             generatingPlans={generatingPlans}
-                             workoutPlan={workoutPlan}
+                              generatingPlans={generatingPlans}
+                              workoutPlan={liveWorkoutPlan}
                              nutritionPlan={nutritionPlan}
                              onGeneratePlans={generatePlans}
                              profile={profile}
@@ -856,7 +866,7 @@ const Dashboard = () => {
                       <Suspense fallback={<WorkoutSkeleton />}>
                         <div ref={(el) => setViewRef('workout', el)}>
             <WorkoutView
-              workoutPlan={workoutPlan}
+              workoutPlan={liveWorkoutPlan}
               workoutLogs={workoutLogs}
               completingWorkout={completingWorkout}
               selectedDate={selectedDate}
@@ -870,7 +880,6 @@ const Dashboard = () => {
               getWeekTitle={getWeekTitle}
               getWeekProgress={getWeekProgress}
               getWeeklyProgress={getWeeklyProgress}
-              getWeekContentWithFallback={getWeekContentWithFallback}
               getWeekKeyForDate={getWeekKeyForDate}
               toggleDayComplete={toggleDayComplete}
               handleDateChange={handleDateChange}

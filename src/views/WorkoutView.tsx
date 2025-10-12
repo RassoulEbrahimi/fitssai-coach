@@ -50,7 +50,6 @@ interface WorkoutViewProps {
     completed: number;
     total: number;
   };
-  getWeekContentWithFallback: (weekKey: string) => any[];
   getWeekKeyForDate: (date: Date) => string;
 
   // Actions
@@ -72,7 +71,6 @@ const WorkoutView: React.FC<WorkoutViewProps> = ({
   getWeekTitle,
   getWeekProgress,
   getWeeklyProgress,
-  getWeekContentWithFallback: _getWeekContentWithFallbackProp, // Unused - we create our own
   getWeekKeyForDate,
   toggleDayComplete,
   handleDateChange
