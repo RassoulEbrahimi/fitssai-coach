@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useToast } from "@/hooks/use-toast";
 import { ChevronLeft, ChevronRight, CheckCircle2, ArrowUpDown, ChevronUp, ChevronDown, WifiOff, RefreshCw, AlertCircle } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
@@ -103,8 +104,17 @@ const WorkoutView: React.FC<WorkoutViewProps> = React.memo(({
     });
 
     const percent = total > 0 ? Math.round((completed / total) * 100) : 0;
-    return { completed, total, percent };
+    const missed = total - completed;
+    return { completed, total, percent, missed };
   }, [getWeekContentWithFallback]);
+
+  // Helper to get progress ring color based on completion
+  const getProgressColor = useCallback((percent: number, isFuture: boolean) => {
+    if (isFuture) return 'text-muted-foreground/30';
+    if (percent === 100) return 'text-emerald-400';
+    if (percent > 0) return 'text-amber-400';
+    return 'text-red-400';
+  }, []);
 
   // Helper function to detect mirrored weeks and get source week
   const getWeekMirrorInfo = (weekKey: string) => {
@@ -616,78 +626,82 @@ const WorkoutView: React.FC<WorkoutViewProps> = React.memo(({
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="flex items-center justify-between">
-            {[1, 2, 3, 4].map((weekNum, index, arr) => {
-            const weekKey = `Week ${weekNum}`;
-            const isActive = currentWeekNum === weekNum;
-            const isPast = currentWeekNum > weekNum;
-            const isFuture = currentWeekNum < weekNum;
-            const isFocused = focusedWeek === weekNum;
+          <TooltipProvider>
+            <div className="flex items-center justify-between">
+              {[1, 2, 3, 4].map((weekNum, index, arr) => {
+              const weekKey = `Week ${weekNum}`;
+              const isActive = currentWeekNum === weekNum;
+              const isPast = currentWeekNum > weekNum;
+              const isFuture = currentWeekNum < weekNum;
+              const isFocused = focusedWeek === weekNum;
 
-            // Get completion data from cache
-            const weekCompletionFromCache = queryClient.getQueryData<Record<string, boolean>>(['week-completion', workoutPlan?.id, weekKey]);
-            const stats = calcWeekStats(weekKey, weekCompletionFromCache);
+              // Get completion data from cache
+              const weekCompletionFromCache = queryClient.getQueryData<Record<string, boolean>>(['week-completion', workoutPlan?.id, weekKey]);
+              const stats = calcWeekStats(weekKey, weekCompletionFromCache);
+              const progressColor = getProgressColor(stats.percent, isFuture);
 
-            // Get aria-label with completion stats
-            const getAriaLabel = () => {
-              const baseLabel = `Week ${weekNum}: ${stats.completed} of ${stats.total} exercises completed (${stats.percent}%).`;
-              if (isActive) return `${baseLabel} Current week.`;
-              if (isPast) return `${baseLabel} Past week.`;
-              return `${baseLabel} Future week.`;
-            };
-            
-            return <React.Fragment key={weekKey}>
-                  <div className="flex flex-col items-center gap-2">
-                    <motion.button 
-                      type="button" 
-                      aria-label={getAriaLabel()} 
-                      aria-current={isActive ? "page" : undefined} 
-                      tabIndex={isFocused ? 0 : -1} 
-                      onClick={() => handleWeekActivation(weekNum)} 
-                      onKeyDown={e => handleStepperKeyDown(e, weekNum)} 
-                      onFocus={() => setFocusedWeek(weekNum)} 
-                      whileTap={!window.matchMedia('(prefers-reduced-motion: reduce)').matches ? { scale: 0.95 } : {}} 
-                      transition={{ duration: 0.15, ease: 'easeOut' }} 
-                      className="relative outline-none ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
-                    >
-                      <ProgressRing
-                        size={44}
-                        strokeWidth={4}
-                        progress={stats.percent}
-                        trackClassName={isFuture ? 'text-muted-foreground/15' : 'text-muted-foreground/20'}
-                        progressClassName={
-                          stats.percent === 100 
-                            ? 'text-emerald-500' 
-                            : stats.percent > 0 
-                            ? 'text-emerald-400' 
-                            : 'text-muted-foreground/30'
-                        }
-                        className={isActive ? 'ring-2 ring-primary ring-offset-2' : ''}
-                      >
-                        <span className="text-xs font-bold tabular-nums">
-                          {stats.total > 0 ? `${stats.percent}%` : '0%'}
-                        </span>
-                      </ProgressRing>
-                    </motion.button>
-                    
-                    <span className={['text-xs transition-colors duration-200', isActive ? 'font-semibold text-foreground' : 'text-muted-foreground'].join(' ')}>
-                      {t('workout.weekLabel', { num: weekNum })}
-                    </span>
-                  </div>
-
-                  {/* Connector line except after the last item */}
-                  {index < arr.length - 1 && (
-                    <div className="flex-1 flex items-center px-2" style={{ alignItems: 'center', height: '44px' }}>
-                      <div 
-                        aria-hidden="true" 
-                        className={['h-0.5 w-full rounded-full transition-colors duration-300', isPast || (isActive && index < arr.length - 1) ? 'bg-primary' : 'bg-border'].join(' ')} 
-                        style={{ marginTop: '-22px' }} 
-                      />
+              // Get aria-label with completion stats
+              const ariaLabel = `Week ${weekNum}: ${stats.completed}/${stats.total} sessions done, ${stats.percent}% complete`;
+              
+              return <React.Fragment key={weekKey}>
+                    <div className="flex flex-col items-center gap-2">
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <motion.button 
+                            type="button" 
+                            aria-label={ariaLabel} 
+                            aria-current={isActive ? "page" : undefined} 
+                            tabIndex={isFocused ? 0 : -1} 
+                            onClick={() => handleWeekActivation(weekNum)} 
+                            onKeyDown={e => handleStepperKeyDown(e, weekNum)} 
+                            onFocus={() => setFocusedWeek(weekNum)} 
+                            whileTap={!window.matchMedia('(prefers-reduced-motion: reduce)').matches ? { scale: 0.95 } : {}} 
+                            transition={{ duration: 0.15, ease: 'easeOut' }} 
+                            className="relative outline-none ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
+                          >
+                            <ProgressRing
+                              size={44}
+                              strokeWidth={4}
+                              progress={stats.percent}
+                              trackClassName={isFuture ? 'text-muted-foreground/15' : 'text-muted-foreground/20'}
+                              progressClassName={progressColor}
+                              className={isActive ? 'ring-2 ring-primary ring-offset-2' : ''}
+                            >
+                              <span className="text-xs font-bold tabular-nums">
+                                {stats.total > 0 ? `${stats.percent}%` : '0%'}
+                              </span>
+                            </ProgressRing>
+                          </motion.button>
+                        </TooltipTrigger>
+                        <TooltipContent className="text-sm" sideOffset={5}>
+                          <div className="space-y-1">
+                            <div className="font-semibold">Week {weekNum} Summary:</div>
+                            <div>✅ {stats.completed} sessions completed</div>
+                            <div>❌ {stats.missed} sessions missed</div>
+                            <div>📊 {stats.percent}% complete</div>
+                          </div>
+                        </TooltipContent>
+                      </Tooltip>
+                      
+                      <span className={['text-xs transition-colors duration-200', isActive ? 'font-semibold text-foreground' : 'text-muted-foreground'].join(' ')}>
+                        {t('workout.weekLabel', { num: weekNum })}
+                      </span>
                     </div>
-                  )}
-                </React.Fragment>;
-          })}
-          </div>
+
+                    {/* Connector line except after the last item */}
+                    {index < arr.length - 1 && (
+                      <div className="flex-1 flex items-center px-2" style={{ alignItems: 'center', height: '44px' }}>
+                        <div 
+                          aria-hidden="true" 
+                          className={['h-0.5 w-full rounded-full transition-colors duration-300', isPast || (isActive && index < arr.length - 1) ? 'bg-primary' : 'bg-border'].join(' ')} 
+                          style={{ marginTop: '-22px' }} 
+                        />
+                      </div>
+                    )}
+                  </React.Fragment>;
+            })}
+            </div>
+          </TooltipProvider>
 
           {/* Screen reader navigation instructions */}
           <div className="sr-only">
