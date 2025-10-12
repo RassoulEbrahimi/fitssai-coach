@@ -132,9 +132,11 @@
     "nutritionPlan": {
       "title": "Dein Ernährungsleitfaden",
       "comingSoon": "Dein personalisierter Ernährungsplan wird hier basierend auf deinen Ernährungsvorlieben und Zielen generiert.",
-      "emptyTitle": "Noch kein Ernährungsplan",
-      "emptyDescription": "Dein personalisierter Ernährungsplan wird erstellt, wenn du deine Pläne generierst.",
-      "emptyAction": "Klicke auf \"Pläne erstellen\" im Dashboard, um zu beginnen."
+      "emptyState": {
+        "title": "Noch kein Ernährungsplan",
+        "description": "Generiere deinen personalisierten Ernährungsplan basierend auf deinen Zielen und Ernährungsvorlieben.",
+        "button": "Pläne jetzt erstellen"
+      }
     },
     "profile": {
       "title": "Dein Profil",

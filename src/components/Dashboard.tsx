@@ -810,7 +810,11 @@ const Dashboard = () => {
                     <div className="space-y-6">
                       <Suspense fallback={<NutritionSkeleton />}>
                         <div ref={(el) => setViewRef('nutrition', el)}>
-                          <NutritionView nutritionPlan={nutritionPlan} />
+                          <NutritionView 
+                            nutritionPlan={nutritionPlan} 
+                            onGeneratePlans={generatePlans}
+                            isGenerating={generatingPlans}
+                          />
                         </div>
                       </Suspense>
                     </div>

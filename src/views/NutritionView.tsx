@@ -1,15 +1,22 @@
 import React from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Apple } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Apple, Sparkles } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useTranslation } from "react-i18next";
 
 interface NutritionViewProps {
   nutritionPlan: any;
+  onGeneratePlans?: () => void;
+  isGenerating?: boolean;
 }
 
-const NutritionView: React.FC<NutritionViewProps> = React.memo(({ nutritionPlan }) => {
+const NutritionView: React.FC<NutritionViewProps> = React.memo(({ 
+  nutritionPlan, 
+  onGeneratePlans,
+  isGenerating = false 
+}) => {
   const { t } = useTranslation();
 
   return (
@@ -76,24 +83,48 @@ const NutritionView: React.FC<NutritionViewProps> = React.memo(({ nutritionPlan 
                 </div>
               ) : (
                 <motion.div 
-                  className="text-center py-12 space-y-4"
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  transition={{ duration: 0.3 }}
+                  className="text-center py-12 space-y-6"
+                  initial={{ opacity: 0, scale: 0.95 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  transition={{ duration: 0.4 }}
                   role="status"
                   aria-live="polite"
                 >
-                  <div className="space-y-2">
-                    <h3 className="text-lg font-semibold text-foreground">
-                      {t('dashboard.nutritionPlan.emptyTitle')}
-                    </h3>
-                    <p className="text-muted-foreground">
-                      {t('dashboard.nutritionPlan.emptyDescription')}
+                  <motion.div
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: 0.1 }}
+                    className="flex justify-center"
+                  >
+                    <Apple className="h-16 w-16 text-muted-foreground/40" aria-hidden="true" />
+                  </motion.div>
+                  
+                  <div className="space-y-3">
+                    <h2 className="text-xl font-semibold text-foreground" role="heading" aria-level={2}>
+                      {t('dashboard.nutritionPlan.emptyState.title')}
+                    </h2>
+                    <p className="text-muted-foreground max-w-md mx-auto">
+                      {t('dashboard.nutritionPlan.emptyState.description')}
                     </p>
                   </div>
-                  <p className="text-sm text-muted-foreground/70">
-                    {t('dashboard.nutritionPlan.emptyAction')}
-                  </p>
+
+                  {onGeneratePlans && (
+                    <motion.div
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      transition={{ delay: 0.2 }}
+                    >
+                      <Button 
+                        onClick={onGeneratePlans}
+                        disabled={isGenerating}
+                        className="gap-2"
+                        size="lg"
+                      >
+                        <Sparkles className="h-4 w-4" aria-hidden="true" />
+                        {isGenerating ? t('dashboard.stats.generating') : t('dashboard.nutritionPlan.emptyState.button')}
+                      </Button>
+                    </motion.div>
+                  )}
                 </motion.div>
               )}
             </CardContent>
