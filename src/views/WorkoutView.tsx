@@ -22,7 +22,7 @@ import WorkoutErrorBoundary from "@/components/WorkoutErrorBoundary";
 import { logEvent } from "@/lib/telemetryClient";
 import { isExerciseCompleted } from "@/lib/completionUtils";
 import ProgressRing from "@/components/ProgressRing";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useExerciseEditor, type Exercise } from "@/hooks/useExerciseEditor";
 
@@ -86,6 +86,15 @@ const WorkoutView: React.FC<WorkoutViewProps> = React.memo(({
   const { user } = useAuth();
   const queryClient = useQueryClient();
 
+  // React Query: Subscribe to live workout plan updates
+  const planId = workoutPlan?.id;
+  const { data: livePlan } = useQuery({
+    queryKey: ['workout-plan', planId],
+    enabled: !!planId,
+    initialData: workoutPlan,
+    staleTime: 0,
+  });
+
   // Exercise editing state (Phase 1)
   const [editingExercise, setEditingExercise] = useState<{
     weekKey: string;
@@ -129,20 +138,20 @@ const WorkoutView: React.FC<WorkoutViewProps> = React.memo(({
 
   // Helper function to detect mirrored weeks and get source week
   const getWeekMirrorInfo = (weekKey: string) => {
-    if (!workoutPlan?.content) return {
+    if (!livePlan?.content) return {
       isMirrored: false,
       sourceWeek: null
     };
     const weekNumber = parseInt(weekKey.replace(/\D/g, ''));
-    const existing = workoutPlan.content[weekKey] || workoutPlan.content[`week${weekNumber}`];
+    const existing = livePlan.content[weekKey] || livePlan.content[`week${weekNumber}`];
 
     // If week exists, it's not mirrored
     if (existing) return {
       isMirrored: false,
       sourceWeek: null
     };
-    const week2 = workoutPlan.content['Week 2'] || workoutPlan.content['week2'];
-    const week1 = workoutPlan.content['Week 1'] || workoutPlan.content['week1'];
+    const week2 = livePlan.content['Week 2'] || livePlan.content['week2'];
+    const week1 = livePlan.content['Week 1'] || livePlan.content['week1'];
 
     // Week 1 empty fallback to Week 2
     if (weekNumber === 1 && !existing && week2) {
@@ -178,8 +187,8 @@ const WorkoutView: React.FC<WorkoutViewProps> = React.memo(({
 
   // Get day index from selectedDate (0 = Monday, 6 = Sunday) using plan-based calculation
   const getDayIndexForDate = (date: Date): number => {
-    if (!workoutPlan?.created_at) return 0;
-    const { dayIndex } = getWorkoutWeekDay(workoutPlan.created_at, date);
+    if (!livePlan?.created_at) return 0;
+    const { dayIndex } = getWorkoutWeekDay(livePlan.created_at, date);
     return dayIndex;
   };
 
@@ -246,23 +255,23 @@ const WorkoutView: React.FC<WorkoutViewProps> = React.memo(({
     isCached,
     dataUpdatedAt
   } = useWeekCompletion({
-    planId: workoutPlan?.id,
+    planId: livePlan?.id,
     weekKey: wk,
-    enabled: !!user && !!workoutPlan
+    enabled: !!user && !!livePlan
   });
 
   // Prefetch all 4 weeks for progress ring display
   useEffect(() => {
-    if (!workoutPlan?.id || !user) return;
+    if (!livePlan?.id || !user) return;
     
     ['Week 1', 'Week 2', 'Week 3', 'Week 4'].forEach(weekKey => {
-      const key = ['week-completion', workoutPlan.id, weekKey];
+      const key = ['week-completion', livePlan.id, weekKey];
       if (!queryClient.getQueryData(key)) {
         queryClient.prefetchQuery({ 
           queryKey: key, 
           queryFn: async () => {
             const { data, error } = await supabase.functions.invoke('get-week-completion', { 
-              body: { planId: workoutPlan.id, weekKey } 
+              body: { planId: livePlan.id, weekKey } 
             });
             if (error) throw error;
             
@@ -274,12 +283,12 @@ const WorkoutView: React.FC<WorkoutViewProps> = React.memo(({
         });
       }
     });
-  }, [user, workoutPlan?.id, queryClient]);
+  }, [user, livePlan?.id, queryClient]);
 
   // Memoized week progress calculation
   const weekProgress = useMemo(() => {
-    return getWeekProgressFromLogs(wk, workoutPlan, workoutLogs);
-  }, [wk, workoutPlan, workoutLogs]);
+    return getWeekProgressFromLogs(wk, livePlan, workoutLogs);
+  }, [wk, livePlan, workoutLogs]);
 
   // Keyboard shortcuts for week navigation
   useEffect(() => {
@@ -350,7 +359,7 @@ const WorkoutView: React.FC<WorkoutViewProps> = React.memo(({
 
   // Handle week navigation by moving date by ±7 days
   const handlePrevWeek = () => {
-    if (!workoutPlan?.created_at) return;
+    if (!livePlan?.created_at) return;
     
     // Get current week number
     const currentWeekNum = Number(wk.match(/\d+/)?.[0] ?? 1);
@@ -369,7 +378,7 @@ const WorkoutView: React.FC<WorkoutViewProps> = React.memo(({
   };
   
   const handleNextWeek = () => {
-    if (!workoutPlan?.created_at) return;
+    if (!livePlan?.created_at) return;
     
     // Get current week number
     const currentWeekNum = Number(wk.match(/\d+/)?.[0] ?? 1);
@@ -486,10 +495,10 @@ const WorkoutView: React.FC<WorkoutViewProps> = React.memo(({
   };
 
   const handleSaveExercise = (exerciseIndex: number, updatedExercise: Exercise) => {
-    if (!editingExercise || !workoutPlan?.id) return;
+    if (!editingExercise || !livePlan?.id) return;
 
     updateExercise({
-      planId: workoutPlan.id,
+      planId: livePlan.id,
       weekKey: editingExercise.weekKey,
       dayIndex: editingExercise.dayIndex,
       exerciseIndex,
@@ -503,7 +512,7 @@ const WorkoutView: React.FC<WorkoutViewProps> = React.memo(({
     setEditingExercise(null);
     logEvent('exercise_edit_cancelled');
   };
-  if (!workoutPlan) {
+  if (!livePlan) {
     return <motion.div initial={{
       opacity: 0,
       y: 20
@@ -655,7 +664,7 @@ const WorkoutView: React.FC<WorkoutViewProps> = React.memo(({
         selectedDate={selectedDate} 
         weekKey={wk} 
         dayIndex={activeDayIndex} 
-        workoutPlan={workoutPlan} 
+        workoutPlan={livePlan} 
         getWeekContentWithFallback={getWeekContentWithFallback} 
         mirrorInfo={mirrorInfo}
         completionMap={completionMap}
@@ -685,7 +694,7 @@ const WorkoutView: React.FC<WorkoutViewProps> = React.memo(({
               const isFocused = focusedWeek === weekNum;
 
               // Get completion data from cache
-              const weekCompletionFromCache = queryClient.getQueryData<Record<string, boolean>>(['week-completion', workoutPlan?.id, weekKey]);
+              const weekCompletionFromCache = queryClient.getQueryData<Record<string, boolean>>(['week-completion', livePlan?.id, weekKey]);
               const stats = calcWeekStats(weekKey, weekCompletionFromCache);
               const progressColor = getProgressColor(stats.percent, isFuture);
 

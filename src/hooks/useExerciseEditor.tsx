@@ -154,10 +154,13 @@ export function useExerciseEditor() {
     onSuccess: (data, params) => {
       // Set query data with fresh content from edge function
       if (data.content) {
-        queryClient.setQueryData(['workout-plan', params.planId], (old: any) => {
-          if (!old) return { content: data.content };
-          return { ...old, content: data.content };
-        });
+        queryClient.setQueriesData(
+          { queryKey: ['workout-plan', params.planId] },
+          (old: any) => {
+            if (!old) return { content: data.content };
+            return { ...old, content: data.content };
+          }
+        );
       }
 
       // Invalidate queries to ensure fresh data
