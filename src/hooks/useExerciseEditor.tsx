@@ -93,30 +93,67 @@ export function useExerciseEditor() {
               throw new Error('Plan content not found');
             }
 
-            // Clone and update content
-            const newContent = { ...currentPlan.content };
-            const week = [...(newContent[params.weekKey] || [])];
-            
-            if (!week[params.dayIndex]) {
-              throw new Error(`Day ${params.dayIndex} not found in ${params.weekKey}`);
+            // Clone and ensure structure exists
+            const newContent = structuredClone(currentPlan.content);
+            let hadToAutofill = false;
+
+            // Ensure week array exists and has 7 days
+            if (!Array.isArray(newContent[params.weekKey])) {
+              newContent[params.weekKey] = [];
+              hadToAutofill = true;
             }
+            const week = newContent[params.weekKey];
             
-            const day = { ...week[params.dayIndex] };
-            const exercises = [...(day.exercises || [])];
-            
-            if (!exercises[params.exerciseIndex]) {
-              throw new Error(`Exercise ${params.exerciseIndex} not found`);
+            for (let i = 0; i < 7; i++) {
+              if (!week[i]) {
+                week[i] = { day: null, exercises: [] };
+                hadToAutofill = true;
+              }
+              if (!Array.isArray(week[i].exercises)) {
+                week[i].exercises = [];
+                hadToAutofill = true;
+              }
+            }
+
+            // Ensure day exists
+            const day = week[params.dayIndex];
+            if (!day.exercises) {
+              day.exercises = [];
+              hadToAutofill = true;
+            }
+
+            // Ensure exercises array is long enough
+            while (day.exercises.length <= params.exerciseIndex) {
+              day.exercises.push({ 
+                name: 'Custom', 
+                sets: 1, 
+                reps: '10', 
+                weight: undefined, 
+                rest: undefined, 
+                description: undefined 
+              });
+              hadToAutofill = true;
             }
 
             // Merge exercise updates
-            exercises[params.exerciseIndex] = {
-              ...exercises[params.exerciseIndex],
+            day.exercises[params.exerciseIndex] = {
+              ...day.exercises[params.exerciseIndex],
               ...params.exercise,
             };
 
-            day.exercises = exercises;
             week[params.dayIndex] = day;
             newContent[params.weekKey] = week;
+
+            console.info(`[fallback] Upserting Week ${params.weekKey} / Day ${params.dayIndex} / Ex ${params.exerciseIndex}`);
+
+            if (hadToAutofill) {
+              logEvent('exercise_update_fallback_autofill', {
+                planId: params.planId,
+                weekKey: params.weekKey,
+                dayIndex: params.dayIndex,
+                exerciseIndex: params.exerciseIndex,
+              });
+            }
 
             // Update database
             const { data: updatedPlan, error: updateError } = await supabase
