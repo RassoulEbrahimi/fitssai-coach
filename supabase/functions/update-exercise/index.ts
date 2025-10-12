@@ -77,8 +77,12 @@ serve(async (req) => {
     const validation = UpdateExerciseRequestSchema.safeParse(body);
     
     if (!validation.success) {
-      console.error('Validation error:', validation.error.flatten());
-      return fail(`Validation error: ${validation.error.errors.map(e => e.message).join(', ')}`, 400);
+      const flattened = validation.error.flatten();
+      console.error('Validation error:', flattened);
+      return fail(JSON.stringify({
+        error: 'Validation error',
+        details: flattened.fieldErrors
+      }), 400);
     }
 
     const { planId, weekKey, dayIndex, exerciseIndex, exercise } = validation.data;
@@ -95,7 +99,10 @@ serve(async (req) => {
 
     if (fetchError || !plan) {
       console.error('Failed to fetch plan:', fetchError);
-      return fail('Workout plan not found', 404);
+      return fail(
+        fetchError?.message || 'Workout plan not found', 
+        fetchError ? 500 : 404
+      );
     }
 
     // Validate plan structure
@@ -148,7 +155,10 @@ serve(async (req) => {
 
     if (updateError) {
       console.error('Failed to update plan:', updateError);
-      return fail('Failed to save changes', 500);
+      return fail(
+        updateError.message || 'Failed to save changes', 
+        500
+      );
     }
 
     console.log(`[update-exercise] Successfully updated plan ${planId}`);
@@ -161,6 +171,13 @@ serve(async (req) => {
 
   } catch (error: any) {
     console.error('[update-exercise] Error:', error);
-    return fail(error?.message || 'Internal server error', 500);
+    console.error('[update-exercise] Stack:', error?.stack);
+    return fail(
+      JSON.stringify({
+        error: error?.message || 'Internal server error',
+        stack: error?.stack
+      }), 
+      500
+    );
   }
 });

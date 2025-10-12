@@ -113,9 +113,26 @@ export function useExerciseEditor() {
 
       logError(error, 'exercise_update_failed');
 
+      // Parse detailed error from backend
+      let description = error.message || 'Could not save exercise changes';
+      try {
+        const parsed = JSON.parse(error.message);
+        if (parsed.error && parsed.details) {
+          // Validation error with field details
+          const fieldErrors = Object.entries(parsed.details)
+            .map(([field, msgs]: [string, any]) => `${field}: ${msgs.join(', ')}`)
+            .join('; ');
+          description = `${parsed.error}: ${fieldErrors}`;
+        } else if (parsed.error) {
+          description = parsed.error;
+        }
+      } catch {
+        // Not JSON, use as-is
+      }
+
       toast({
         title: t('workout.updateFailed') || 'Update failed',
-        description: error.message || 'Could not save exercise changes',
+        description,
         variant: 'destructive',
       });
     },
