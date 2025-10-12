@@ -73,7 +73,7 @@ export const useWorkoutHelpers = (workoutPlan: any) => {
     const percent = total > 0 ? Math.round((completed / total) * 100) : 0;
     const missed = total - completed;
     return { completed, total, percent, missed };
-  }, [workoutPlan?.content, getWeekContentWithFallback]);
+  }, [getWeekContentWithFallback]);
 
   /**
    * Get progress ring color based on completion percentage
