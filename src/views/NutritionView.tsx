@@ -31,7 +31,7 @@ const NutritionView: React.FC<NutritionViewProps> = React.memo(({ nutritionPlan 
           <Card className="gradient-card border-primary/20 hover-scale">
             <CardHeader>
               <CardTitle className="flex items-center gap-2" role="heading" aria-level={2}>
-                <Apple className="h-5 w-5 text-primary" />
+                <Apple className="h-5 w-5 text-primary" aria-hidden="true" />
                 {t('dashboard.nutritionPlan.title')}
               </CardTitle>
             </CardHeader>
@@ -76,13 +76,23 @@ const NutritionView: React.FC<NutritionViewProps> = React.memo(({ nutritionPlan 
                 </div>
               ) : (
                 <motion.div 
-                  className="text-center py-8"
+                  className="text-center py-12 space-y-4"
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
                   transition={{ duration: 0.3 }}
+                  role="status"
+                  aria-live="polite"
                 >
-                  <p className="text-muted-foreground">
-                    No nutrition plan generated yet. Click "Generate Plans" to create your personalized plan.
+                  <div className="space-y-2">
+                    <h3 className="text-lg font-semibold text-foreground">
+                      {t('dashboard.nutritionPlan.emptyTitle')}
+                    </h3>
+                    <p className="text-muted-foreground">
+                      {t('dashboard.nutritionPlan.emptyDescription')}
+                    </p>
+                  </div>
+                  <p className="text-sm text-muted-foreground/70">
+                    {t('dashboard.nutritionPlan.emptyAction')}
                   </p>
                 </motion.div>
               )}

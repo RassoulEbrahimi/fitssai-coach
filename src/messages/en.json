@@ -131,7 +131,10 @@
     },
     "nutritionPlan": {
       "title": "Your Nutrition Guide",
-      "comingSoon": "Your personalized nutrition plan will be generated here based on your dietary preferences and goals."
+      "comingSoon": "Your personalized nutrition plan will be generated here based on your dietary preferences and goals.",
+      "emptyTitle": "No Nutrition Plan Yet",
+      "emptyDescription": "Your personalized nutrition plan will be created when you generate your plans.",
+      "emptyAction": "Click \"Generate Plans\" in the dashboard to get started."
     },
     "profile": {
       "title": "Your Profile",
