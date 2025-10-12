@@ -57,7 +57,7 @@ interface WorkoutViewProps {
   toggleDayComplete: (weekKey: string, dayIndex: number) => void;
   handleDateChange: (date: Date) => void;
 }
-const WorkoutView: React.FC<WorkoutViewProps> = React.memo(({
+const WorkoutView: React.FC<WorkoutViewProps> = ({
   workoutPlan,
   workoutLogs,
   completingWorkout,
@@ -72,7 +72,7 @@ const WorkoutView: React.FC<WorkoutViewProps> = React.memo(({
   getWeekTitle,
   getWeekProgress,
   getWeeklyProgress,
-  getWeekContentWithFallback,
+  getWeekContentWithFallback: _getWeekContentWithFallbackProp, // Unused - we create our own
   getWeekKeyForDate,
   toggleDayComplete,
   handleDateChange
@@ -94,6 +94,23 @@ const WorkoutView: React.FC<WorkoutViewProps> = React.memo(({
     initialData: workoutPlan,
     staleTime: 0,
   });
+
+  // Local helper that always reads from livePlan.content (reactive to React Query updates)
+  const getWeekContentWithFallback = useCallback((weekKey: string) => {
+    if (!livePlan?.content) return [];
+    const existing =
+      livePlan.content[weekKey] ||
+      livePlan.content[weekKey.toLowerCase().replace(' ', '')];
+    if (existing) return existing;
+
+    const weekNumber = parseInt(weekKey.replace(/\D/g, ''), 10);
+    const week2 = livePlan.content['Week 2'] || livePlan.content['week2'];
+    const week1 = livePlan.content['Week 1'] || livePlan.content['week1'];
+
+    if ((weekNumber === 3 || weekNumber === 4) && week2) return [...week2];
+    if (weekNumber > 1 && week1) return [...week1];
+    return [];
+  }, [livePlan?.content]);
 
   // Exercise editing state (Phase 1)
   const [editingExercise, setEditingExercise] = useState<{
@@ -126,7 +143,7 @@ const WorkoutView: React.FC<WorkoutViewProps> = React.memo(({
     const percent = total > 0 ? Math.round((completed / total) * 100) : 0;
     const missed = total - completed;
     return { completed, total, percent, missed };
-  }, [getWeekContentWithFallback]);
+  }, [livePlan?.content, getWeekContentWithFallback]);
 
   // Helper to get progress ring color based on completion
   const getProgressColor = useCallback((percent: number, isFuture: boolean) => {
@@ -534,7 +551,7 @@ const WorkoutView: React.FC<WorkoutViewProps> = React.memo(({
   }
 
   // Memoize week data to prevent recalculation
-  const weekData = useMemo(() => getWeekContentWithFallback(wk), [wk, getWeekContentWithFallback]);
+  const weekData = useMemo(() => getWeekContentWithFallback(wk), [wk, livePlan?.content, getWeekContentWithFallback]);
 
   // Get mirror info for the current week
   const mirrorInfo = useMemo(() => getWeekMirrorInfo(wk), [wk]);
@@ -920,6 +937,6 @@ const WorkoutView: React.FC<WorkoutViewProps> = React.memo(({
     </motion.div>
     </WorkoutErrorBoundary>
   );
-});
-WorkoutView.displayName = 'WorkoutView';
+};
+
 export default WorkoutView;
