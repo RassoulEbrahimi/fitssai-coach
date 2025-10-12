@@ -848,15 +848,11 @@ const Dashboard = () => {
               workoutLogs={workoutLogs}
               completingWorkout={completingWorkout}
               selectedDate={selectedDate}
-              getTodayWorkout={getTodayWorkout}
-              findNextWorkoutInCurrentWeek={findNextWorkoutInCurrentWeek}
-              findNextWorkoutAcrossWeeks={findNextWorkoutAcrossWeeks}
               isDayCompleted={isDayCompleted}
               isDayInFuture={isDayInFuture}
               isTodayInWeekDay={isTodayInWeekDay}
               getDateFor={getDateFor}
               getWeekTitle={getWeekTitle}
-              getWeekProgress={getWeekProgress}
               getWeeklyProgress={getWeeklyProgress}
               getWeekKeyForDate={getWeekKeyForDate}
               toggleDayComplete={toggleDayComplete}

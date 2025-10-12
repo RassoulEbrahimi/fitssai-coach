@@ -26,6 +26,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useExerciseEditor, type Exercise } from "@/hooks/useExerciseEditor";
 import { useWorkoutHelpers } from "@/hooks/useWorkoutHelpers";
+import { normalizeWeekKey } from "@/lib/workoutPlanUtils";
 
 const ExerciseList = React.lazy(() => import("@/views/ExerciseList"));
 interface WorkoutViewProps {
@@ -35,18 +36,11 @@ interface WorkoutViewProps {
   selectedDate: Date;
 
   // Helper functions
-  getTodayWorkout: () => any;
-  findNextWorkoutInCurrentWeek: () => any;
-  findNextWorkoutAcrossWeeks: () => any;
   isDayCompleted: (weekKey: string, dayIndex: number) => boolean;
   isDayInFuture: (weekKey: string, dayIndex: number) => boolean;
   isTodayInWeekDay: (weekKey: string, dayIndex: number) => boolean;
   getDateFor: (weekKey: string, dayIndex: number) => Date | null;
   getWeekTitle: (weekKey: string) => string;
-  getWeekProgress: (weekKey: string) => {
-    completed: number;
-    total: number;
-  };
   getWeeklyProgress: () => {
     completed: number;
     total: number;
@@ -62,15 +56,11 @@ const WorkoutView: React.FC<WorkoutViewProps> = ({
   workoutLogs,
   completingWorkout,
   selectedDate,
-  getTodayWorkout,
-  findNextWorkoutInCurrentWeek,
-  findNextWorkoutAcrossWeeks,
   isDayCompleted,
   isDayInFuture,
   isTodayInWeekDay,
   getDateFor,
   getWeekTitle,
-  getWeekProgress,
   getWeeklyProgress,
   getWeekKeyForDate,
   toggleDayComplete,
@@ -123,12 +113,6 @@ const WorkoutView: React.FC<WorkoutViewProps> = ({
 
   // Expanded day is always the currently selected day
   const expandedDay = activeDayIndex;
-
-  // Hoisted function declaration to avoid temporal dead zone
-  function normalizeWeekKey(key?: string | null) {
-    const num = String(key ?? 'Week 1').match(/\d+/)?.[0];
-    return `Week ${num ?? 1}`;
-  }
 
   // Single source of truth helper for week progress from DB logs
   const getWeekProgressFromLogs = (weekKey: string, workoutPlan: any, workoutLogs: any[]) => {

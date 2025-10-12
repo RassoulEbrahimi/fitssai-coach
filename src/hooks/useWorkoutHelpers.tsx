@@ -1,5 +1,6 @@
 import { useCallback } from 'react';
 import { isExerciseCompleted, CompletionState } from '@/lib/completionUtils';
+import { getProgressColor as getProgressColorUtil } from '@/lib/workoutPlanUtils';
 
 /**
  * Consolidated workout plan helper functions
@@ -76,12 +77,10 @@ export const useWorkoutHelpers = (workoutPlan: any) => {
 
   /**
    * Get progress ring color based on completion percentage
+   * (Wrapper around pure util function for consistency)
    */
   const getProgressColor = useCallback((percent: number, isFuture: boolean) => {
-    if (isFuture) return 'text-muted-foreground/30';
-    if (percent === 100) return 'text-emerald-400';
-    if (percent > 0) return 'text-amber-400';
-    return 'text-red-400';
+    return getProgressColorUtil(percent, isFuture);
   }, []);
 
   /**
