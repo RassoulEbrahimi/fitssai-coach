@@ -24,6 +24,7 @@ import { isExerciseCompleted } from "@/lib/completionUtils";
 import ProgressRing from "@/components/ProgressRing";
 import { useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
+import { useExerciseEditor, type Exercise } from "@/hooks/useExerciseEditor";
 
 const ExerciseList = React.lazy(() => import("@/views/ExerciseList"));
 interface WorkoutViewProps {
@@ -84,6 +85,16 @@ const WorkoutView: React.FC<WorkoutViewProps> = React.memo(({
   } = useToast();
   const { user } = useAuth();
   const queryClient = useQueryClient();
+
+  // Exercise editing state (Phase 1)
+  const [editingExercise, setEditingExercise] = useState<{
+    weekKey: string;
+    dayIndex: number;
+    exerciseIndex: number;
+    draft: Exercise;
+  } | null>(null);
+
+  const { updateExercise, isUpdating } = useExerciseEditor();
 
   // Utility to calculate week stats from completion data
   const calcWeekStats = useCallback((
@@ -456,6 +467,42 @@ const WorkoutView: React.FC<WorkoutViewProps> = React.memo(({
       description: ""
     });
   };
+
+  // Exercise editing handlers (Phase 1)
+  const handleEditExercise = (weekKey: string, dayIndex: number, exerciseIndex: number) => {
+    const week = getWeekContentWithFallback(weekKey);
+    const exercise = week?.[dayIndex]?.exercises?.[exerciseIndex];
+    
+    if (!exercise) return;
+
+    setEditingExercise({
+      weekKey,
+      dayIndex,
+      exerciseIndex,
+      draft: exercise,
+    });
+
+    logEvent('exercise_edit_started', { weekKey, dayIndex, exerciseIndex });
+  };
+
+  const handleSaveExercise = (exerciseIndex: number, updatedExercise: Exercise) => {
+    if (!editingExercise || !workoutPlan?.id) return;
+
+    updateExercise({
+      planId: workoutPlan.id,
+      weekKey: editingExercise.weekKey,
+      dayIndex: editingExercise.dayIndex,
+      exerciseIndex,
+      exercise: updatedExercise,
+    });
+
+    setEditingExercise(null);
+  };
+
+  const handleCancelEdit = () => {
+    setEditingExercise(null);
+    logEvent('exercise_edit_cancelled');
+  };
   if (!workoutPlan) {
     return <motion.div initial={{
       opacity: 0,
@@ -812,69 +859,31 @@ const WorkoutView: React.FC<WorkoutViewProps> = React.memo(({
                                </div>
                              </div>}
                          
-                         {/* Exercise content */}
-                         <div className="p-3 pt-2 px-[8px] py-[7px]">
-                           {isRestDay ? <div className="text-sm text-muted-foreground p-3 bg-muted/30 rounded-lg">
-                               {t('workout.rest.note')}
-                              </div> : <div className="space-y-1">
-                                    {exercises.map((exercise: any, exerciseIndex: number) => {
-                                     // Use helper to check completion in flat state
-                                     const isExerciseCompletedStatus = isExerciseCompleted(completionMap, wk, dayIndex, exerciseIndex);
-                                    
-                                      return <motion.div 
-                                       key={exerciseIndex} 
-                                       className="grid grid-cols-[1fr_48px_64px] gap-2 p-3 bg-background rounded-md border shadow-sm min-h-[48px] items-center"
-                                       initial={{ opacity: 0, y: -5 }}
-                                       animate={{ opacity: 1, y: 0 }}
-                                       transition={{ duration: 0.2, delay: exerciseIndex * 0.02 }}
-                                       role="status"
-                                       aria-label={`${exercise.name} ${isExerciseCompletedStatus ? 'abgeschlossen' : 'offen'}`}
-                                     >
-                                       <div className="flex items-center gap-2 min-w-0">
-                                         <motion.div 
-                                           className={`w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 ${
-                                             isExerciseCompletedStatus 
-                                               ? 'bg-green-600' 
-                                               : 'border-2 border-muted-foreground/30 bg-transparent'
-                                           }`}
-                                           initial={false}
-                                           animate={{
-                                             scale: isExerciseCompletedStatus ? [1, 1.15, 1] : 1,
-                                           }}
-                                           transition={{
-                                             duration: 0.3,
-                                             ease: "easeOut"
-                                           }}
-                                           aria-hidden="true"
-                                         >
-                                           {isExerciseCompletedStatus && (
-                                             <motion.div
-                                               initial={{ scale: 0, opacity: 0 }}
-                                               animate={{ scale: 1, opacity: 1 }}
-                                               exit={{ scale: 0, opacity: 0 }}
-                                               transition={{ duration: 0.2 }}
-                                             >
-                                               <CheckCircle2 className="h-3.5 w-3.5 text-white" />
-                                             </motion.div>
-                                           )}
-                                         </motion.div>
-                                        <div className="font-bold text-sm min-w-0 truncate">
-                                          {exercise.name}
-                                        </div>
-                                      </div>
-                                      <div className="text-center text-xs tabular-nums font-medium">
-                                        {exercise.sets}
-                                      </div>
-                                      <div className="text-right text-xs tabular-nums font-medium leading-tight max-w-full overflow-hidden">
-                                        <div className="break-words hyphens-auto text-right" style={{
-                                lineHeight: '1.2'
-                              }}>
-                                          {exercise.reps}
-                                        </div>
-                                      </div>
-                                    </motion.div>;
-                                  })}
-                               </div>}
+                          {/* Exercise content */}
+                          <div className="p-3 pt-2 px-[8px] py-[7px]">
+                            {isRestDay ? <div className="text-sm text-muted-foreground p-3 bg-muted/30 rounded-lg">
+                                {t('workout.rest.note')}
+                               </div> : (
+                                 <Suspense fallback={<ExerciseListSkeleton />}>
+                                   <ExerciseList
+                                     exercises={exercises}
+                                     editingExercise={
+                                       editingExercise?.weekKey === wk &&
+                                       editingExercise?.dayIndex === dayIndex
+                                         ? {
+                                             exerciseIndex: editingExercise.exerciseIndex,
+                                             draft: editingExercise.draft,
+                                           }
+                                         : null
+                                     }
+                                     onEditExercise={(exerciseIndex) =>
+                                       handleEditExercise(wk, dayIndex, exerciseIndex)
+                                     }
+                                     onSaveExercise={handleSaveExercise}
+                                     onCancelEdit={handleCancelEdit}
+                                   />
+                                 </Suspense>
+                               )}
                            
                              {!isRestDay && !isFutureDay && <div className="mt-2 pt-1.5 border-t border-border/50">
                                  <div className="flex items-center gap-2 min-h-[28px]">

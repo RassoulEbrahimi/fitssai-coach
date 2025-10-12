@@ -241,6 +241,14 @@
     "exercisesCount": "{{count}} exercises",
     "noExercises": "No exercises for this day",
     "infoSoon": "Coming soon",
+    "exerciseName": "Exercise Name",
+    "sets": "Sets",
+    "reps": "Reps",
+    "weight": "Weight",
+    "rest": "Rest",
+    "optional": "optional",
+    "updateSuccess": "Exercise updated",
+    "updateFailed": "Update failed",
     "calendar": { "prev": "Previous week", "next": "Next week" },
     "stepper": { "week": "Week {{num}}", "past": "Completed", "current": "Current", "future": "Upcoming" },
     "weekShort": "W{{num}}",
@@ -279,6 +287,10 @@
     "setsReps": "{{sets}} sets × {{reps}} reps",
     "planWeeks": "Plan Weeks",
     "weekSelection": "Week Selection"
+  },
+  "common": {
+    "save": "Save",
+    "cancel": "Cancel"
   },
   "todayWorkout": {
     "title": "Today's Workout",

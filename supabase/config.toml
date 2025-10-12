@@ -14,3 +14,6 @@ verify_jwt = true
 
 [functions.toggle-exercise]
 verify_jwt = true
+
+[functions.update-exercise]
+verify_jwt = true

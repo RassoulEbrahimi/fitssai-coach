@@ -241,6 +241,14 @@
     "exercisesCount": "{{count}} Übungen",
     "noExercises": "Keine Übungen für diesen Tag",
     "infoSoon": "Bald verfügbar",
+    "exerciseName": "Übungsname",
+    "sets": "Sätze",
+    "reps": "Wiederholungen",
+    "weight": "Gewicht",
+    "rest": "Pause",
+    "optional": "optional",
+    "updateSuccess": "Übung aktualisiert",
+    "updateFailed": "Aktualisierung fehlgeschlagen",
     "calendar": { "prev": "Vorherige Woche", "next": "Nächste Woche" },
     "stepper": { "week": "Woche {{num}}", "past": "Abgeschlossen", "current": "Aktuell", "future": "Bevorstehend" },
     "weekShort": "W{{num}}",
@@ -279,6 +287,10 @@
     "setsReps": "{{sets}} Sätze × {{reps}} Wiederholungen",
     "planWeeks": "Plan-Wochen",
     "weekSelection": "Wochen Auswahl"
+  },
+  "common": {
+    "save": "Speichern",
+    "cancel": "Abbrechen"
   },
   "todayWorkout": {
     "title": "Heutiges Training",
