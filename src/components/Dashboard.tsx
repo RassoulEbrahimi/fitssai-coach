@@ -718,6 +718,7 @@ const Dashboard = () => {
     <div className="relative min-h-screen z-20">
       <VideoBackground />
       <motion.div 
+        id="main-content"
         className="relative z-10 max-w-7xl mx-auto px-0 md:px-6 pt-[var(--nav-h)] pb-[calc(64px+env(safe-area-inset-bottom))] md:pb-6"
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}

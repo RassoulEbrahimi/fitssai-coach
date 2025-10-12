@@ -89,6 +89,10 @@ const App = () => {
       <ThemeProvider>
         <AuthProvider>
           <TooltipProvider>
+            <div className="sr-only focus:not-sr-only focus:absolute focus:top-0 focus:left-0 focus:p-2 focus:bg-background focus:z-50">
+              <a href="#main-content" className="mr-4">Zum Hauptinhalt springen</a>
+              <a href="#navigation">Zur Navigation springen</a>
+            </div>
             <Toaster />
             <Sonner />
             <BrowserRouter>

@@ -16,6 +16,8 @@ import { logEvent } from "@/lib/telemetryClient";
 import { toastSuccess } from "@/lib/toastWithIcon";
 import { CompletionState, isExerciseCompleted } from "@/lib/completionUtils";
 import { useWorkoutHelpers } from "@/hooks/useWorkoutHelpers";
+import { useThrottledToast } from "@/hooks/useThrottledToast";
+import { TodayWorkoutSkeleton } from "@/components/skeletons/TodayWorkoutSkeleton";
 
 interface TodayWorkoutCardProps {
   selectedDate: Date;
@@ -56,7 +58,7 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
 }) => {
   const { t } = useTranslation();
   const { user } = useAuth();
-  const [lastToastTime, setLastToastTime] = useState<number>(0);
+  const { showToast } = useThrottledToast();
   
   // Reactive Berlin "today" - updates automatically at midnight
   const berlinToday = useBerlinToday();
@@ -217,41 +219,17 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
       completed: isNowCompleted
     });
 
-    // Show toast notification with throttle (max 1 per 2 seconds)
-    const now = Date.now();
-    if (now - lastToastTime >= 2000) {
-      setLastToastTime(now);
-      logEvent('aria_announcement_triggered', { context: 'exercise_toggle', completed: isNowCompleted });
-      toastSuccess(
-        isNowCompleted ? t('todayWorkout.completed') : t('todayWorkout.uncompleted'),
-        undefined,
-        2500
-      );
-    }
+    // Show toast notification with throttle
+    logEvent('aria_announcement_triggered', { context: 'exercise_toggle', completed: isNowCompleted });
+    showToast(
+      isNowCompleted ? t('todayWorkout.completed') : t('todayWorkout.uncompleted')
+    );
   };
 
   // Render skeleton loading state
   if (isLoading) {
     const cardTitle = getCardTitle();
-    return <Card className="border-border">
-        <CardHeader className="pb-4">
-          <CardTitle className={cardTitle.className}>
-            {cardTitle.text}
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-3">
-            <div className="h-4 bg-muted animate-pulse rounded" />
-            <div className="h-4 bg-muted animate-pulse rounded w-3/4" />
-            <div className="space-y-2">
-              {[1, 2, 3].map(i => <div key={i} className="flex items-center gap-2">
-                  <div className="w-6 h-6 bg-muted animate-pulse rounded" />
-                  <div className="flex-1 h-4 bg-muted animate-pulse rounded" />
-                </div>)}
-            </div>
-          </div>
-        </CardContent>
-      </Card>;
+    return <TodayWorkoutSkeleton title={cardTitle.text} titleClassName={cardTitle.className} />;
   }
   if (isRestDay) {
     const cardTitle = getCardTitle();
