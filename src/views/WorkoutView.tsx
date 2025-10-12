@@ -20,6 +20,9 @@ import { useWeekCompletion } from "@/hooks/useWeekCompletion";
 import WorkoutErrorBoundary from "@/components/WorkoutErrorBoundary";
 import { logEvent } from "@/lib/telemetryClient";
 import { isExerciseCompleted } from "@/lib/completionUtils";
+import ProgressRing from "@/components/ProgressRing";
+import { useQueryClient } from "@tanstack/react-query";
+import { supabase } from "@/integrations/supabase/client";
 
 const ExerciseList = React.lazy(() => import("@/views/ExerciseList"));
 interface WorkoutViewProps {
@@ -79,6 +82,29 @@ const WorkoutView: React.FC<WorkoutViewProps> = React.memo(({
     toast
   } = useToast();
   const { user } = useAuth();
+  const queryClient = useQueryClient();
+
+  // Utility to calculate week stats from completion data
+  const calcWeekStats = useCallback((
+    weekKey: string,
+    completion: Record<string, boolean> | undefined,
+  ) => {
+    const week = getWeekContentWithFallback(weekKey) || [];
+    let total = 0, completed = 0;
+
+    week.forEach((day: any, dayIndex: number) => {
+      const exercises = day?.exercises || [];
+      exercises.forEach((_ex: any, exerciseIndex: number) => {
+        total += 1;
+        if (completion && completion[`${weekKey}_${dayIndex}_${exerciseIndex}`]) {
+          completed += 1;
+        }
+      });
+    });
+
+    const percent = total > 0 ? Math.round((completed / total) * 100) : 0;
+    return { completed, total, percent };
+  }, [getWeekContentWithFallback]);
 
   // Helper function to detect mirrored weeks and get source week
   const getWeekMirrorInfo = (weekKey: string) => {
@@ -204,28 +230,28 @@ const WorkoutView: React.FC<WorkoutViewProps> = React.memo(({
     enabled: !!user && !!workoutPlan
   });
 
-  // Prefetch adjacent weeks when current week loads
+  // Prefetch all 4 weeks for progress ring display
   useEffect(() => {
-    if (!workoutPlan?.id || !wk || !prefetchWeekCompletion) return;
-
-    const weekNum = Number(wk.match(/\d+/)?.[0] ?? 1);
+    if (!workoutPlan?.id || !user) return;
     
-    // Prefetch next week (N+1)
-    if (weekNum < 4) {
-      const nextWeekKey = `Week ${weekNum + 1}`;
-      prefetchWeekCompletion(workoutPlan.id, nextWeekKey).catch(() => {
-        // Silent fail - prefetch is optional
-      });
-    }
-
-    // Prefetch previous week (N-1) for back navigation
-    if (weekNum > 1) {
-      const prevWeekKey = `Week ${weekNum - 1}`;
-      prefetchWeekCompletion(workoutPlan.id, prevWeekKey).catch(() => {
-        // Silent fail - prefetch is optional
-      });
-    }
-  }, [wk, workoutPlan?.id, prefetchWeekCompletion]);
+    ['Week 1', 'Week 2', 'Week 3', 'Week 4'].forEach(weekKey => {
+      const key = ['week-completion', workoutPlan.id, weekKey];
+      if (!queryClient.getQueryData(key)) {
+        queryClient.prefetchQuery({ 
+          queryKey: key, 
+          queryFn: async () => {
+            const { data, error } = await supabase.functions.invoke('get-week-completion', { 
+              body: { planId: workoutPlan.id, weekKey } 
+            });
+            if (error) throw error;
+            return data?.completionMap || {};
+          }
+        }).catch(() => {
+          // Silent fail - prefetch is optional
+        });
+      }
+    });
+  }, [user, workoutPlan?.id, queryClient]);
 
   // Memoized week progress calculation
   const weekProgress = useMemo(() => {
@@ -592,51 +618,73 @@ const WorkoutView: React.FC<WorkoutViewProps> = React.memo(({
         <CardContent>
           <div className="flex items-center justify-between">
             {[1, 2, 3, 4].map((weekNum, index, arr) => {
-            const weekKey = `week${weekNum}`;
+            const weekKey = `Week ${weekNum}`;
             const isActive = currentWeekNum === weekNum;
             const isPast = currentWeekNum > weekNum;
             const isFuture = currentWeekNum < weekNum;
             const isFocused = focusedWeek === weekNum;
 
-            // Get aria-label based on state
+            // Get completion data from cache
+            const weekCompletionFromCache = queryClient.getQueryData<Record<string, boolean>>(['week-completion', workoutPlan?.id, weekKey]);
+            const stats = calcWeekStats(weekKey, weekCompletionFromCache);
+
+            // Get aria-label with completion stats
             const getAriaLabel = () => {
-              if (isActive) return t('workout.weekAria.current', {
-                num: weekNum
-              });
-              if (isPast) return t('workout.weekAria.past', {
-                num: weekNum
-              });
-              return t('workout.weekAria.future', {
-                num: weekNum
-              });
+              const baseLabel = `Week ${weekNum}: ${stats.completed} of ${stats.total} exercises completed (${stats.percent}%).`;
+              if (isActive) return `${baseLabel} Current week.`;
+              if (isPast) return `${baseLabel} Past week.`;
+              return `${baseLabel} Future week.`;
             };
+            
             return <React.Fragment key={weekKey}>
                   <div className="flex flex-col items-center gap-2">
-                    <motion.button type="button" aria-label={getAriaLabel()} aria-current={isActive ? "page" : undefined} tabIndex={isFocused ? 0 : -1} onClick={() => handleWeekActivation(weekNum)} onKeyDown={e => handleStepperKeyDown(e, weekNum)} onFocus={() => setFocusedWeek(weekNum)} whileTap={!window.matchMedia('(prefers-reduced-motion: reduce)').matches ? {
-                  scale: 0.95
-                } : {}} transition={{
-                  duration: 0.15,
-                  ease: 'easeOut'
-                }} className={['relative flex items-center justify-center min-w-[44px] min-h-[44px] w-11 h-11 rounded-full text-sm font-medium transition-all duration-200', 'outline-none ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2', isActive ? 'bg-primary text-primary-foreground shadow-lg ring-2 ring-accent ring-offset-2' : isPast ? 'bg-primary text-primary-foreground shadow-md' : 'bg-muted text-muted-foreground hover:bg-muted/80'].join(' ')}>
-                      <span className="flex-shrink-0 tabular-nums">{weekNum}</span>
+                    <motion.button 
+                      type="button" 
+                      aria-label={getAriaLabel()} 
+                      aria-current={isActive ? "page" : undefined} 
+                      tabIndex={isFocused ? 0 : -1} 
+                      onClick={() => handleWeekActivation(weekNum)} 
+                      onKeyDown={e => handleStepperKeyDown(e, weekNum)} 
+                      onFocus={() => setFocusedWeek(weekNum)} 
+                      whileTap={!window.matchMedia('(prefers-reduced-motion: reduce)').matches ? { scale: 0.95 } : {}} 
+                      transition={{ duration: 0.15, ease: 'easeOut' }} 
+                      className="relative outline-none ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
+                    >
+                      <ProgressRing
+                        size={44}
+                        strokeWidth={4}
+                        progress={stats.percent}
+                        trackClassName={isFuture ? 'text-muted-foreground/15' : 'text-muted-foreground/20'}
+                        progressClassName={
+                          stats.percent === 100 
+                            ? 'text-emerald-500' 
+                            : stats.percent > 0 
+                            ? 'text-emerald-400' 
+                            : 'text-muted-foreground/30'
+                        }
+                        className={isActive ? 'ring-2 ring-primary ring-offset-2' : ''}
+                      >
+                        <span className="text-xs font-bold tabular-nums">
+                          {stats.total > 0 ? `${stats.percent}%` : '0%'}
+                        </span>
+                      </ProgressRing>
                     </motion.button>
                     
                     <span className={['text-xs transition-colors duration-200', isActive ? 'font-semibold text-foreground' : 'text-muted-foreground'].join(' ')}>
-                      {t('workout.weekLabel', {
-                    num: weekNum
-                  })}
+                      {t('workout.weekLabel', { num: weekNum })}
                     </span>
                   </div>
 
-                  {/* Connector line except after the last item - centered to button center */}
-                  {index < arr.length - 1 && <div className="flex-1 flex items-center px-2" style={{
-                alignItems: 'center',
-                height: '44px'
-              }}>
-                      <div aria-hidden="true" className={['h-0.5 w-full rounded-full transition-colors duration-300', isPast || isActive && index < arr.length - 1 ? 'bg-primary' : 'bg-border'].join(' ')} style={{
-                  marginTop: '-22px'
-                }} />
-                    </div>}
+                  {/* Connector line except after the last item */}
+                  {index < arr.length - 1 && (
+                    <div className="flex-1 flex items-center px-2" style={{ alignItems: 'center', height: '44px' }}>
+                      <div 
+                        aria-hidden="true" 
+                        className={['h-0.5 w-full rounded-full transition-colors duration-300', isPast || (isActive && index < arr.length - 1) ? 'bg-primary' : 'bg-border'].join(' ')} 
+                        style={{ marginTop: '-22px' }} 
+                      />
+                    </div>
+                  )}
                 </React.Fragment>;
           })}
           </div>
