@@ -461,7 +461,7 @@ const Dashboard = () => {
   const getWeekContentWithFallback = (weekKey: string) => {
     if (!workoutPlan?.content) return [];
     
-    // If week exists in plan, return it
+    // If week exists in plan (even with empty/partial days), return it directly - no mirroring
     const existing = workoutPlan.content[weekKey] || workoutPlan.content[weekKey.toLowerCase().replace(' ', '')];
     if (existing) return existing;
     

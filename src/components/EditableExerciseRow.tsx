@@ -65,6 +65,9 @@ const EditableExerciseRow: React.FC<EditableExerciseRowProps> = ({
 
   // Display mode
   if (!isEditing) {
+    // Coerce legacy string sets to numbers for display
+    const displaySets = typeof exercise.sets === 'string' ? parseInt(exercise.sets) || exercise.sets : exercise.sets;
+    
     return (
       <div className="flex items-center justify-between p-3 bg-background/50 rounded-lg border border-border/50 group hover:border-primary/30 transition-colors">
         <div className="flex-1">
@@ -91,10 +94,10 @@ const EditableExerciseRow: React.FC<EditableExerciseRowProps> = ({
         <div className="flex items-center gap-2">
           <div className="text-right">
             <div className="text-sm font-medium text-foreground">
-              {exercise.sets} × {exercise.reps}
+              {displaySets} × {exercise.reps}
             </div>
             <div className="text-xs text-muted-foreground">
-              {t('workout.setsReps', { sets: exercise.sets, reps: exercise.reps })}
+              {t('workout.setsReps', { sets: displaySets, reps: exercise.reps })}
             </div>
             {exercise.weight && (
               <div className="text-xs text-muted-foreground">

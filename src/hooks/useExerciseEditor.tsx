@@ -43,153 +43,20 @@ export function useExerciseEditor() {
         exerciseIndex: params.exerciseIndex,
       });
 
-      // Try edge function first
-      try {
-        const { data, error } = await supabase.functions.invoke('update-exercise', {
-          body: params,
-        });
+      // Call edge function (DB fallback disabled - edge function now autofills structures)
+      const { data, error } = await supabase.functions.invoke('update-exercise', {
+        body: params,
+      });
 
-        if (error) {
-          throw new Error(error.message || 'Failed to update exercise');
-        }
-
-        if (!data.success) {
-          throw new Error(data.error || 'Update failed');
-        }
-
-        return data;
-      } catch (edgeFunctionError: any) {
-        // Check if it's a 404 or non-2xx error from missing edge function
-        const is404 = edgeFunctionError.message?.includes('404') || 
-                      edgeFunctionError.message?.includes('non-2xx') ||
-                      edgeFunctionError.message?.includes('FunctionsRelayError') ||
-                      edgeFunctionError.message?.includes('not found');
-
-        if (is404) {
-          console.warn('[update-exercise] Edge Function not found (404). Using direct DB fallback. Deploy the function to enable server-side validation & locking.');
-          
-          logEvent('exercise_update_fallback_used', {
-            planId: params.planId,
-            reason: 'edge_function_404',
-          });
-
-          // Fallback: Direct PostgREST update
-          try {
-            // Get current plan from cache or DB
-            let currentPlan = queryClient.getQueryData<any>(['workout-plan', params.planId]);
-            
-            if (!currentPlan) {
-              const { data: fetchedPlan, error: fetchError } = await supabase
-                .from('workout_plans')
-                .select('*')
-                .eq('id', params.planId)
-                .single();
-              
-              if (fetchError) throw fetchError;
-              currentPlan = fetchedPlan;
-            }
-
-            if (!currentPlan?.content) {
-              throw new Error('Plan content not found');
-            }
-
-            // Clone and ensure structure exists
-            const newContent = structuredClone(currentPlan.content);
-            let hadToAutofill = false;
-
-            // Ensure week array exists and has 7 days
-            if (!Array.isArray(newContent[params.weekKey])) {
-              newContent[params.weekKey] = [];
-              hadToAutofill = true;
-            }
-            const week = newContent[params.weekKey];
-            
-            for (let i = 0; i < 7; i++) {
-              if (!week[i]) {
-                week[i] = { day: null, exercises: [] };
-                hadToAutofill = true;
-              }
-              if (!Array.isArray(week[i].exercises)) {
-                week[i].exercises = [];
-                hadToAutofill = true;
-              }
-            }
-
-            // Ensure day exists
-            const day = week[params.dayIndex];
-            if (!day.exercises) {
-              day.exercises = [];
-              hadToAutofill = true;
-            }
-
-            // Ensure exercises array is long enough
-            while (day.exercises.length <= params.exerciseIndex) {
-              day.exercises.push({ 
-                name: 'Custom', 
-                sets: 1, 
-                reps: '10', 
-                weight: undefined, 
-                rest: undefined, 
-                description: undefined 
-              });
-              hadToAutofill = true;
-            }
-
-            // Merge exercise updates
-            day.exercises[params.exerciseIndex] = {
-              ...day.exercises[params.exerciseIndex],
-              ...params.exercise,
-            };
-
-            week[params.dayIndex] = day;
-            newContent[params.weekKey] = week;
-
-            console.info(`[fallback] Upserting Week ${params.weekKey} / Day ${params.dayIndex} / Ex ${params.exerciseIndex}`);
-
-            if (hadToAutofill) {
-              logEvent('exercise_update_fallback_autofill', {
-                planId: params.planId,
-                weekKey: params.weekKey,
-                dayIndex: params.dayIndex,
-                exerciseIndex: params.exerciseIndex,
-              });
-            }
-
-            // Update database
-            const { data: updatedPlan, error: updateError } = await supabase
-              .from('workout_plans')
-              .update({ content: newContent })
-              .eq('id', params.planId)
-              .select('content')
-              .single();
-
-            if (updateError) throw updateError;
-
-            // Update cache with fresh data
-            queryClient.setQueryData(['workout-plan', params.planId], {
-              ...currentPlan,
-              content: updatedPlan.content,
-            });
-
-            logEvent('exercise_update_fallback_success', {
-              planId: params.planId,
-              exerciseName: params.exercise.name,
-            });
-
-            return {
-              success: true,
-              content: updatedPlan.content,
-              exercise: params.exercise,
-            };
-          } catch (fallbackError: any) {
-            logError(fallbackError, 'exercise_update_fallback_failed');
-            throw new Error(`Fallback update failed: ${fallbackError.message}`);
-          }
-        }
-
-        // Not a 404, re-throw original error
-        throw edgeFunctionError;
+      if (error) {
+        throw new Error(error.message || 'Failed to update exercise');
       }
+
+      if (!data.success) {
+        throw new Error(data.error || 'Update failed');
+      }
+
+      return data;
     },
 
     onMutate: async (params) => {
@@ -285,6 +152,14 @@ export function useExerciseEditor() {
     },
 
     onSuccess: (data, params) => {
+      // Set query data with fresh content from edge function
+      if (data.content) {
+        queryClient.setQueryData(['workout-plan', params.planId], (old: any) => {
+          if (!old) return { content: data.content };
+          return { ...old, content: data.content };
+        });
+      }
+
       // Invalidate queries to ensure fresh data
       queryClient.invalidateQueries({ 
         queryKey: ['workout-plan', params.planId] 

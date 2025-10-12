@@ -274,6 +274,9 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
             {exercises.map((exercise: any, index: number) => {
             // Use helper to check completion in flat state
             const isCompleted = isExerciseCompleted(completionMap, weekKey, dayIndex, index);
+            // Coerce legacy string sets to numbers for display
+            const displaySets = typeof exercise.sets === 'string' ? parseInt(exercise.sets) || exercise.sets : exercise.sets;
+            
             return <AnimatePresence mode="wait" key={index}>
               <motion.div 
                 layout
@@ -292,7 +295,7 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
                 className="flex items-center gap-3 p-4 bg-background rounded-lg border hover:bg-muted/50 active:bg-muted/70 transition-all duration-150 cursor-pointer min-h-[56px] touch-manipulation px-[12px] py-[12px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
                 role="checkbox"
                 aria-checked={isCompleted}
-                aria-label={`${exercise.name}, ${exercise.sets} Sätze, ${exercise.reps} Wiederholungen${isCompleted ? ' - abgeschlossen' : ' - offen'}`}
+                aria-label={`${exercise.name}, ${displaySets} Sätze, ${exercise.reps} Wiederholungen${isCompleted ? ' - abgeschlossen' : ' - offen'}`}
                 tabIndex={0}
               >
                   <motion.div 
@@ -327,7 +330,7 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
                   <div className="flex-1">
                     <div className="font-medium text-sm">{exercise.name}</div>
                     <div className="text-xs text-muted-foreground">
-                      {exercise.sets} Sätze × {exercise.reps} Reps
+                      {displaySets} Sätze × {exercise.reps} Reps
                       {exercise.weight && ` • ${exercise.weight}`}
                       {exercise.rest && ` • ${exercise.rest} Pause`}
                     </div>
