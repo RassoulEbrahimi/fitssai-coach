@@ -7,6 +7,8 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+const isDev = Deno.env.get('DENO_DEPLOYMENT_ID') === undefined;
+
 // Response helpers
 const json = (data: any, status = 200) =>
   new Response(JSON.stringify(data), {
@@ -123,28 +125,33 @@ serve(async (req) => {
 
     const content = plan.content as Record<string, any>;
 
-    // Validate week exists
-    if (!content[weekKey] || !Array.isArray(content[weekKey])) {
-      return fail(`Week ${weekKey} not found in plan`, 404);
+    // Ensure week exists and has 7 days with exercises arrays
+    if (!Array.isArray(content[weekKey])) {
+      content[weekKey] = [];
     }
-
     const week = content[weekKey];
 
-    // Validate day exists
-    if (dayIndex < 0 || dayIndex >= week.length) {
-      return fail(`Day index ${dayIndex} out of range`, 400);
+    for (let i = 0; i < 7; i++) {
+      if (!week[i]) {
+        week[i] = { day: null, exercises: [] };
+      }
+      if (!Array.isArray(week[i].exercises)) {
+        week[i].exercises = [];
+      }
     }
 
+    // Ensure target day & exercise slot exist
     const day = week[dayIndex];
-
-    // Validate exercises array exists
-    if (!day.exercises || !Array.isArray(day.exercises)) {
-      return fail('Day has no exercises array', 400);
-    }
-
-    // Validate exercise index
-    if (exerciseIndex < 0 || exerciseIndex >= day.exercises.length) {
-      return fail(`Exercise index ${exerciseIndex} out of range`, 400);
+    if (!day.exercises) day.exercises = [];
+    while (day.exercises.length <= exerciseIndex) {
+      day.exercises.push({
+        name: 'Custom',
+        sets: 1,
+        reps: '10',
+        weight: undefined,
+        rest: undefined,
+        description: undefined,
+      });
     }
 
     // Update the specific exercise (preserve any extra fields)
@@ -153,7 +160,7 @@ serve(async (req) => {
       ...exercise,
     };
 
-    console.log(`[update-exercise] Updated exercise: ${exercise.name}`);
+    console.log(`[update-exercise] Upserted ${weekKey} / day ${dayIndex} / ex ${exerciseIndex}: ${exercise.name}`);
 
     // Update the plan in database
     const { data: updatedPlan, error: updateError } = await supabaseClient
@@ -185,11 +192,13 @@ serve(async (req) => {
 
   } catch (error: any) {
     console.error('[update-exercise] Error:', error);
-    console.error('[update-exercise] Stack:', error?.stack);
+    if (isDev) {
+      console.error('[update-exercise] Stack:', error?.stack);
+    }
     return fail(
       JSON.stringify({
         error: error?.message || 'Internal server error',
-        stack: error?.stack
+        ...(isDev && { stack: error?.stack }),
       }), 
       500
     );
