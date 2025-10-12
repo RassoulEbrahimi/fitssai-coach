@@ -43,19 +43,116 @@ export function useExerciseEditor() {
         exerciseIndex: params.exerciseIndex,
       });
 
-      const { data, error } = await supabase.functions.invoke('update-exercise', {
-        body: params,
-      });
+      // Try edge function first
+      try {
+        const { data, error } = await supabase.functions.invoke('update-exercise', {
+          body: params,
+        });
 
-      if (error) {
-        throw new Error(error.message || 'Failed to update exercise');
+        if (error) {
+          throw new Error(error.message || 'Failed to update exercise');
+        }
+
+        if (!data.success) {
+          throw new Error(data.error || 'Update failed');
+        }
+
+        return data;
+      } catch (edgeFunctionError: any) {
+        // Check if it's a 404 or non-2xx error from missing edge function
+        const is404 = edgeFunctionError.message?.includes('404') || 
+                      edgeFunctionError.message?.includes('non-2xx') ||
+                      edgeFunctionError.message?.includes('FunctionsRelayError') ||
+                      edgeFunctionError.message?.includes('not found');
+
+        if (is404) {
+          console.warn('[update-exercise] Edge Function not found (404). Using direct DB fallback. Deploy the function to enable server-side validation & locking.');
+          
+          logEvent('exercise_update_fallback_used', {
+            planId: params.planId,
+            reason: 'edge_function_404',
+          });
+
+          // Fallback: Direct PostgREST update
+          try {
+            // Get current plan from cache or DB
+            let currentPlan = queryClient.getQueryData<any>(['workout-plan', params.planId]);
+            
+            if (!currentPlan) {
+              const { data: fetchedPlan, error: fetchError } = await supabase
+                .from('workout_plans')
+                .select('*')
+                .eq('id', params.planId)
+                .single();
+              
+              if (fetchError) throw fetchError;
+              currentPlan = fetchedPlan;
+            }
+
+            if (!currentPlan?.content) {
+              throw new Error('Plan content not found');
+            }
+
+            // Clone and update content
+            const newContent = { ...currentPlan.content };
+            const week = [...(newContent[params.weekKey] || [])];
+            
+            if (!week[params.dayIndex]) {
+              throw new Error(`Day ${params.dayIndex} not found in ${params.weekKey}`);
+            }
+            
+            const day = { ...week[params.dayIndex] };
+            const exercises = [...(day.exercises || [])];
+            
+            if (!exercises[params.exerciseIndex]) {
+              throw new Error(`Exercise ${params.exerciseIndex} not found`);
+            }
+
+            // Merge exercise updates
+            exercises[params.exerciseIndex] = {
+              ...exercises[params.exerciseIndex],
+              ...params.exercise,
+            };
+
+            day.exercises = exercises;
+            week[params.dayIndex] = day;
+            newContent[params.weekKey] = week;
+
+            // Update database
+            const { data: updatedPlan, error: updateError } = await supabase
+              .from('workout_plans')
+              .update({ content: newContent })
+              .eq('id', params.planId)
+              .select('content')
+              .single();
+
+            if (updateError) throw updateError;
+
+            // Update cache with fresh data
+            queryClient.setQueryData(['workout-plan', params.planId], {
+              ...currentPlan,
+              content: updatedPlan.content,
+            });
+
+            logEvent('exercise_update_fallback_success', {
+              planId: params.planId,
+              exerciseName: params.exercise.name,
+            });
+
+            return {
+              success: true,
+              content: updatedPlan.content,
+              exercise: params.exercise,
+            };
+          } catch (fallbackError: any) {
+            logError(fallbackError, 'exercise_update_fallback_failed');
+            throw new Error(`Fallback update failed: ${fallbackError.message}`);
+          }
+        }
+
+        // Not a 404, re-throw original error
+        throw edgeFunctionError;
       }
-
-      if (!data.success) {
-        throw new Error(data.error || 'Update failed');
-      }
-
-      return data;
     },
 
     onMutate: async (params) => {
