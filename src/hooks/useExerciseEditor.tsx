@@ -117,20 +117,30 @@ export function useExerciseEditor() {
       let description = error.message || 'Could not save exercise changes';
       try {
         const parsed = JSON.parse(error.message);
+        console.error('[useExerciseEditor] Parsed error:', parsed);
+        
         if (parsed.error === 'Database error' && parsed.details) {
           // Database error with details
           description = `${parsed.error}: ${parsed.details}`;
-        } else if (parsed.error === 'Validation error' && parsed.details) {
-          // Validation error with field details
-          const fieldErrors = Object.entries(parsed.details)
-            .map(([field, msgs]: [string, any]) => `${field}: ${msgs.join(', ')}`)
-            .join('; ');
-          description = `${parsed.error}: ${fieldErrors}`;
+        } else if (parsed.error === 'Validation error') {
+          // Validation error with detailed issues
+          if (parsed.issues && Array.isArray(parsed.issues)) {
+            const issueDetails = parsed.issues
+              .map((issue: any) => `${issue.path}: ${issue.message}${issue.received ? ` (received: ${issue.received})` : ''}`)
+              .join('; ');
+            description = issueDetails || 'Validation failed';
+          } else if (parsed.details) {
+            const fieldErrors = Object.entries(parsed.details)
+              .map(([field, msgs]: [string, any]) => `${field}: ${msgs.join(', ')}`)
+              .join('; ');
+            description = fieldErrors;
+          }
         } else if (parsed.error) {
           description = parsed.error;
         }
-      } catch {
+      } catch (e) {
         // Not JSON, use as-is
+        console.error('[useExerciseEditor] Error parsing error message:', e);
       }
 
       toast({

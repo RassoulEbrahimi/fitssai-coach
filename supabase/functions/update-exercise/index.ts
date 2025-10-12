@@ -74,14 +74,22 @@ serve(async (req) => {
 
     // Parse and validate request body
     const body = await req.json();
+    console.log('[update-exercise] Received body:', JSON.stringify(body, null, 2));
+    
     const validation = UpdateExerciseRequestSchema.safeParse(body);
     
     if (!validation.success) {
       const flattened = validation.error.flatten();
-      console.error('Validation error:', flattened);
+      console.error('[update-exercise] Validation error:', JSON.stringify(flattened, null, 2));
+      console.error('[update-exercise] Validation issues:', validation.error.issues);
       return fail(JSON.stringify({
         error: 'Validation error',
-        details: flattened.fieldErrors
+        details: flattened.fieldErrors,
+        issues: validation.error.issues.map(issue => ({
+          path: issue.path.join('.'),
+          message: issue.message,
+          received: issue.code === 'invalid_type' ? (issue as any).received : undefined
+        }))
       }), 400);
     }
 

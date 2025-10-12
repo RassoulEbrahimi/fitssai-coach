@@ -48,7 +48,19 @@ const EditableExerciseRow: React.FC<EditableExerciseRowProps> = ({
       return;
     }
 
-    onSave(draft);
+    // Ensure sets is a valid number (not NaN or string)
+    const sanitizedDraft: Exercise = {
+      ...draft,
+      sets: typeof draft.sets === 'number' && !isNaN(draft.sets) ? draft.sets : 1,
+      name: draft.name.trim(),
+      reps: draft.reps.trim(),
+      weight: draft.weight?.trim() || undefined,
+      rest: draft.rest?.trim() || undefined,
+      description: draft.description?.trim() || undefined,
+    };
+
+    console.log('[EditableExerciseRow] Saving exercise:', sanitizedDraft);
+    onSave(sanitizedDraft);
   };
 
   // Display mode
