@@ -20,7 +20,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useWeekCompletion } from "@/hooks/useWeekCompletion";
 import WorkoutErrorBoundary from "@/components/WorkoutErrorBoundary";
 import { logEvent } from "@/lib/telemetryClient";
-import { isExerciseCompleted } from "@/lib/completionUtils";
+import { isExerciseCompleted, normalizeCompletionMap } from "@/lib/completionUtils";
 import ProgressRing from "@/components/ProgressRing";
 import { useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
@@ -254,7 +254,11 @@ const WorkoutView: React.FC<WorkoutViewProps> = React.memo(({
               body: { planId: workoutPlan.id, weekKey } 
             });
             if (error) throw error;
-            return data?.completionMap || {};
+            
+            // CRITICAL: Normalize nested structure to flat format
+            // This ensures consistency with the main useWeekCompletion hook
+            const flatState = normalizeCompletionMap(data?.completionMap || {}, weekKey);
+            return flatState;
           }
         }).catch(() => {
           // Silent fail - prefetch is optional
