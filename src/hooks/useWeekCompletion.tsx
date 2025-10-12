@@ -5,14 +5,12 @@ import { useOfflineQueue } from './useOfflineQueue';
 import { logEvent, logError, logRetry } from '@/lib/telemetryClient';
 import { toastError } from '@/lib/toastWithIcon';
 import { useEffect } from 'react';
-import { CompletionState, normalizeCompletionMap, setExerciseCompletion } from '@/lib/completionUtils';
+import { CompletionState, setExerciseCompletion } from '@/lib/completionUtils';
 
-// Legacy server response format (nested)
-type ServerCompletionMap = Record<string, Record<string, boolean>>;
-
+// Server response format (flat completion map)
 interface WeekCompletionResponse {
   success: boolean;
-  completionMap: ServerCompletionMap;
+  completionMap: CompletionState;
   weekKey: string;
   planId: string;
 }
@@ -79,7 +77,8 @@ export const useWeekCompletion = ({ planId, weekKey, enabled = true }: UseWeekCo
           throw new Error(error?.message || 'Prefetch failed');
         }
 
-        return data;
+        // Edge function already returns flat structure
+        return data.completionMap;
       },
       staleTime: 30000, // 30 seconds
     });
@@ -117,9 +116,8 @@ export const useWeekCompletion = ({ planId, weekKey, enabled = true }: UseWeekCo
 
         logEvent('fetch_week_completion_success', { planId, weekKey });
         
-        // Normalize nested server response to flat structure
-        const flatState = normalizeCompletionMap(data.completionMap, weekKey);
-        return flatState;
+        // Edge function already returns flat structure, no normalization needed
+        return data.completionMap;
       } catch (error: any) {
         console.error('Failed to fetch week completion after retries:', error);
         logError(error, `fetch_week_completion_failed: ${planId} ${weekKey}`);
