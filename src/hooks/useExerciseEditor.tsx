@@ -117,7 +117,10 @@ export function useExerciseEditor() {
       let description = error.message || 'Could not save exercise changes';
       try {
         const parsed = JSON.parse(error.message);
-        if (parsed.error && parsed.details) {
+        if (parsed.error === 'Database error' && parsed.details) {
+          // Database error with details
+          description = `${parsed.error}: ${parsed.details}`;
+        } else if (parsed.error === 'Validation error' && parsed.details) {
           // Validation error with field details
           const fieldErrors = Object.entries(parsed.details)
             .map(([field, msgs]: [string, any]) => `${field}: ${msgs.join(', ')}`)

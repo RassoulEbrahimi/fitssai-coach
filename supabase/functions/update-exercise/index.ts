@@ -100,7 +100,10 @@ serve(async (req) => {
     if (fetchError || !plan) {
       console.error('Failed to fetch plan:', fetchError);
       return fail(
-        fetchError?.message || 'Workout plan not found', 
+        JSON.stringify({
+          error: 'Database error',
+          details: fetchError?.message || fetchError?.details || fetchError?.hint || 'Workout plan not found'
+        }),
         fetchError ? 500 : 404
       );
     }
@@ -156,7 +159,10 @@ serve(async (req) => {
     if (updateError) {
       console.error('Failed to update plan:', updateError);
       return fail(
-        updateError.message || 'Failed to save changes', 
+        JSON.stringify({
+          error: 'Database error',
+          details: updateError.message || updateError.details || updateError.hint || 'Failed to save changes'
+        }),
         500
       );
     }
