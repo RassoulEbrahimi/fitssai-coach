@@ -133,7 +133,7 @@ const HomeView: React.FC<HomeViewProps> = ({
                 </motion.div>
                 
                 <div className="space-y-3">
-                  <h2 className="text-2xl font-bold text-foreground" role="heading" aria-level={2}>
+                  <h2 className="text-2xl font-bold text-foreground">
                     {t('home.emptyState.title')}
                   </h2>
                   <p className="text-muted-foreground text-lg">
@@ -258,20 +258,21 @@ const HomeView: React.FC<HomeViewProps> = ({
       )}
 
       {/* Progress Rows */}
-      <motion.div
-        className="space-y-3"
+      <motion.ul
+        className="space-y-3 list-none"
+        role="list"
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.4, delay: 0.2 }}
       >
         {/* Today's Training Progress */}
-        <div className="flex items-center justify-between p-4 bg-card/70 backdrop-blur rounded-2xl ring-1 ring-border/50">
+        <li className="flex items-center justify-between p-4 bg-card/70 backdrop-blur rounded-2xl ring-1 ring-border/50">
           <div className="flex items-center gap-3">
             <div className="p-2 rounded-lg bg-primary/20">
               <Dumbbell className="h-4 w-4 text-primary" aria-hidden="true" />
             </div>
             <div>
-              <h3 className="font-medium text-foreground">Heutiges Training</h3>
+              <h2 className="font-medium text-foreground text-base">Heutiges Training</h2>
               <p className="text-xs text-muted-foreground">
                 {todayTrainingProgress.label}
               </p>
@@ -281,16 +282,16 @@ const HomeView: React.FC<HomeViewProps> = ({
             value={todayTrainingProgress.value} 
             aria-label={`Training Fortschritt: ${todayTrainingProgress.value} Prozent`}
           />
-        </div>
+        </li>
 
         {/* Nutrition Progress */}
-        <div className="flex items-center justify-between p-4 bg-card/70 backdrop-blur rounded-2xl ring-1 ring-border/50">
+        <li className="flex items-center justify-between p-4 bg-card/70 backdrop-blur rounded-2xl ring-1 ring-border/50">
           <div className="flex items-center gap-3">
             <div className="p-2 rounded-lg bg-success/20">
               <Utensils className="h-4 w-4 text-success" aria-hidden="true" />
             </div>
             <div>
-              <h3 className="font-medium text-foreground">Ernährung</h3>
+              <h2 className="font-medium text-foreground text-base">Ernährung</h2>
               <p className="text-xs text-muted-foreground">
                 {nutritionProgress > 0 ? "Plan verfügbar" : "Kein Plan"}
               </p>
@@ -300,11 +301,13 @@ const HomeView: React.FC<HomeViewProps> = ({
             value={nutritionProgress} 
             aria-label={`Ernährungs-Fortschritt: ${nutritionProgress} Prozent`}
           />
-        </div>
-      </motion.div>
+        </li>
+      </motion.ul>
 
       {/* Weekly Activity Chart */}
-      <WeeklyActivity data={weeklyActivityData} />
+      <div role="region" aria-label="Wöchentliche Aktivitätsübersicht">
+        <WeeklyActivity data={weeklyActivityData} />
+      </div>
       </div>
     </WorkoutErrorBoundary>
   );
