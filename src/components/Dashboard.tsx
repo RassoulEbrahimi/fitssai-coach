@@ -109,7 +109,8 @@ import {
   getPlanStartMonday, 
   getWorkoutDate, 
   getWorkoutWeekDay,
-  getWorkoutDateString 
+  getWorkoutDateString,
+  isBerlinTodayForWeekDay
 } from "@/lib/workoutDateUtils";
 import { useBerlinToday } from "@/hooks/useBerlinToday";
 import { useWorkoutHelpers } from "@/hooks/useWorkoutHelpers";
@@ -453,15 +454,10 @@ const Dashboard = () => {
   };
 
   // Check if today matches a specific week and day (Berlin timezone)
+  // Centralized function from workoutDateUtils
   const isTodayInWeekDay = (weekKey: string, dayIndex: number) => {
     if (!liveWorkoutPlan?.created_at) return false;
-    
-    const workoutDate = startOfDay(
-      parseISO(getWorkoutDateString(liveWorkoutPlan.created_at, weekKey, dayIndex))
-    );
-    const today = startOfDay(toZonedTime(new Date(), TARGET_TIMEZONE));
-
-    return isSameDay(workoutDate, today);
+    return isBerlinTodayForWeekDay(liveWorkoutPlan.created_at, weekKey, dayIndex);
   };
 
   // Check if a day is in the future (Berlin timezone)
@@ -656,10 +652,7 @@ const Dashboard = () => {
     return formatDateForDisplay(date, 'EEEE, d. MMMM');
   };
 
-  const isToday = (startDate: Date, dayIndex: number) => {
-    const date = addDays(startDate, dayIndex);
-    return isSameDay(date, new Date());
-  };
+  // Removed unused isToday function (dead code with timezone bug)
 
   const generatePlans = async () => {
     if (generatingPlans) return;

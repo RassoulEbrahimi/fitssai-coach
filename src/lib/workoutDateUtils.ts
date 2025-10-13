@@ -1,6 +1,6 @@
 import { addDays, startOfWeek, startOfDay, differenceInCalendarDays } from "date-fns";
 import { toZonedTime } from "date-fns-tz";
-import { TARGET_TIMEZONE, WEEK_OPTIONS } from "./dateUtils";
+import { TARGET_TIMEZONE, WEEK_OPTIONS, getBerlinToday } from "./dateUtils";
 
 /**
  * Get Monday start date of the workout plan (Berlin timezone)
@@ -67,4 +67,22 @@ export const getWorkoutDateString = (
 ): string => {
   const date = getWorkoutDate(planCreatedAt, weekKey, dayIndex);
   return date.toISOString().split('T')[0];
+};
+
+/**
+ * Check if a specific week/day combination is today in Berlin timezone
+ * This is the centralized "is today" function used across the app
+ * @param planCreatedAt - ISO timestamp of when the plan was created
+ * @param weekKey - Week identifier (e.g., "Week 1", "Week 2")
+ * @param dayIndex - Day of week (0 = Monday, 6 = Sunday)
+ * @returns true if the workout day is today in Berlin timezone
+ */
+export const isBerlinTodayForWeekDay = (
+  planCreatedAt: string,
+  weekKey: string,
+  dayIndex: number
+): boolean => {
+  const workoutDateStr = getWorkoutDateString(planCreatedAt, weekKey, dayIndex);
+  const todayStr = getBerlinToday();
+  return workoutDateStr === todayStr;
 };
