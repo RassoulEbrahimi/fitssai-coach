@@ -175,28 +175,16 @@ const WorkoutView: React.FC<WorkoutViewProps> = ({
     staleTime: 0,
   });
 
-  // Prefetch all 4 weeks for progress ring display
+  // Prefetch and refetch all 4 weeks for progress ring display on mount
   useEffect(() => {
     if (!livePlan?.id || !user) return;
     
     ['Week 1', 'Week 2', 'Week 3', 'Week 4'].forEach(weekKey => {
       const key = ['week-completion', livePlan.id, weekKey];
-      if (!queryClient.getQueryData(key)) {
-        queryClient.prefetchQuery({ 
-          queryKey: key, 
-          queryFn: async () => {
-            const { data, error } = await supabase.functions.invoke('get-week-completion', { 
-              body: { planId: livePlan.id, weekKey } 
-            });
-            if (error) throw error;
-            
-            // Edge function already returns flat structure
-            return data?.completionMap || {};
-          }
-        }).catch(() => {
-          // Silent fail - prefetch is optional
-        });
-      }
+      // Always refetch on mount to ensure fresh data
+      queryClient.refetchQueries({ queryKey: key }).catch(() => {
+        // Silent fail - prefetch is optional
+      });
     });
   }, [user, livePlan?.id, queryClient]);
 
@@ -410,6 +398,13 @@ const WorkoutView: React.FC<WorkoutViewProps> = ({
       exercise: updatedExercise,
     });
 
+    // Invalidate all week completions to refresh progress rings
+    ['Week 1', 'Week 2', 'Week 3', 'Week 4'].forEach(weekKey => {
+      queryClient.invalidateQueries({ 
+        queryKey: ['week-completion', livePlan.id, weekKey] 
+      });
+    });
+
     setEditingExercise(null);
   };
 
@@ -438,6 +433,13 @@ const WorkoutView: React.FC<WorkoutViewProps> = ({
       weekKey: addExerciseDialog.weekKey,
       dayIndex: addExerciseDialog.dayIndex,
       exercise,
+    });
+
+    // Invalidate all week completions to refresh progress rings
+    ['Week 1', 'Week 2', 'Week 3', 'Week 4'].forEach(weekKey => {
+      queryClient.invalidateQueries({ 
+        queryKey: ['week-completion', livePlan.id, weekKey] 
+      });
     });
 
     setAddExerciseDialog({ open: false, weekKey: null, dayIndex: null });
@@ -807,22 +809,22 @@ const WorkoutView: React.FC<WorkoutViewProps> = ({
                          
                            {/* Exercise content */}
                            <div className="p-3 pt-2 px-[8px] py-[7px]">
-                             {isRestDay ? (
-                               <div className="space-y-3">
-                                 <div className="text-sm text-muted-foreground p-3 bg-muted/30 rounded-lg">
-                                   {t('workout.rest.note')}
-                                 </div>
-                                 <Button
-                                   variant="outline"
-                                   size="sm"
-                                   onClick={() => handleOpenAddExercise(wk, dayIndex)}
-                                   className="w-full"
-                                 >
-                                   <Plus className="h-4 w-4 mr-2" />
-                                   Übung hinzufügen
-                                 </Button>
-                               </div>
-                             ) : (
+                              {isRestDay ? (
+                                <div className="flex items-center justify-between p-3 bg-muted/30 rounded-lg">
+                                  <div className="text-sm text-muted-foreground">
+                                    {t('workout.rest.note')}
+                                  </div>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    onClick={() => handleOpenAddExercise(wk, dayIndex)}
+                                    className="h-8 w-8 shrink-0"
+                                    aria-label="Übung hinzufügen"
+                                  >
+                                    <Plus className="h-4 w-4" />
+                                  </Button>
+                                </div>
+                              ) : (
                                  <Suspense fallback={<ExerciseListSkeleton />}>
                                    <ExerciseList
                                      exercises={exercises}
@@ -846,15 +848,15 @@ const WorkoutView: React.FC<WorkoutViewProps> = ({
                             
                               {/* Add Exercise Button (for days with exercises) */}
                               {!isRestDay && (
-                                <div className="mt-2 pt-2 border-t border-border/50">
+                                <div className="mt-2 pt-2 border-t border-border/50 flex justify-center">
                                   <Button
-                                    variant="outline"
-                                    size="sm"
+                                    variant="ghost"
+                                    size="icon"
                                     onClick={() => handleOpenAddExercise(wk, dayIndex)}
-                                    className="w-full"
+                                    className="h-8 w-8"
+                                    aria-label="Übung hinzufügen"
                                   >
-                                    <Plus className="h-4 w-4 mr-2" />
-                                    Übung hinzufügen
+                                    <Plus className="h-4 w-4" />
                                   </Button>
                                 </div>
                               )}

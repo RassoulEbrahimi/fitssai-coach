@@ -99,17 +99,21 @@ const ExerciseList: React.FC<ExerciseListProps> = ({
                   </p>
                 )}
               </div>
-              <div className="text-right">
-                <div className="text-sm font-medium text-foreground">
+              <div className="flex items-center gap-3 text-sm">
+                <div className="flex items-center gap-1 text-foreground">
+                  <span className="text-base" aria-hidden="true">🏋️</span>
+                  <span className="font-medium tabular-nums">
+                    {exercise.sets}×{exercise.reps}
+                  </span>
                   <span className="sr-only">
                     {t('workout.setsReps', { sets: exercise.sets, reps: exercise.reps })}
                   </span>
-                  <span aria-hidden="true">{exercise.sets} × {exercise.reps}</span>
                 </div>
                 {exercise.weight && (
-                  <div className="text-xs text-muted-foreground">
-                    <span className="sr-only">Gewicht: </span>
-                    {exercise.weight}
+                  <div className="flex items-center gap-1 text-muted-foreground">
+                    <span className="text-base" aria-hidden="true">⚖️</span>
+                    <span className="tabular-nums">{exercise.weight}</span>
+                    <span className="sr-only">Gewicht: {exercise.weight}</span>
                   </div>
                 )}
               </div>

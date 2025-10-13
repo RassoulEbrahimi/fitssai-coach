@@ -92,16 +92,34 @@ const EditableExerciseRow: React.FC<EditableExerciseRowProps> = ({
           )}
         </div>
         <div className="flex items-center gap-2">
-          <div className="text-right">
-            <div className="text-sm font-medium text-foreground">
-              {displaySets} × {exercise.reps}
-            </div>
-            <div className="text-xs text-muted-foreground">
-              {t('workout.setsReps', { sets: displaySets, reps: exercise.reps })}
+          <div className="flex items-center gap-3 text-sm">
+            <div className="flex items-center gap-1 text-foreground">
+              <span className="text-base" aria-hidden="true">🏋️</span>
+              <span className="font-medium tabular-nums">
+                {displaySets}×{exercise.reps}
+              </span>
+              <span className="sr-only">
+                {t('workout.setsReps', { sets: displaySets, reps: exercise.reps })}
+              </span>
             </div>
             {exercise.weight && (
-              <div className="text-xs text-muted-foreground">
-                {exercise.weight}
+              <div className="flex items-center gap-1 text-muted-foreground">
+                <span className="text-base" aria-hidden="true">⚖️</span>
+                <span className="tabular-nums">{exercise.weight}</span>
+                <span className="sr-only">Gewicht: {exercise.weight}</span>
+              </div>
+            )}
+            {exercise.rest && (
+              <div className="flex items-center gap-1 text-muted-foreground">
+                <span className="text-base" aria-hidden="true">⏱</span>
+                <span className="tabular-nums">{exercise.rest}</span>
+                <span className="sr-only">Pause: {exercise.rest}</span>
+              </div>
+            )}
+            {exercise.description && exercise.description.includes('km') && (
+              <div className="flex items-center gap-1 text-muted-foreground">
+                <span className="text-base" aria-hidden="true">📏</span>
+                <span className="tabular-nums">{exercise.description}</span>
               </div>
             )}
           </div>
