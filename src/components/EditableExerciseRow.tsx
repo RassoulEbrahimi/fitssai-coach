@@ -69,26 +69,26 @@ const EditableExerciseRow: React.FC<EditableExerciseRowProps> = ({
     const displaySets = typeof exercise.sets === 'string' ? parseInt(exercise.sets) || exercise.sets : exercise.sets;
     
     return (
-      <div className="flex items-center justify-between p-2 bg-background/50 rounded-lg border border-border/50 group hover:border-primary/30 transition-colors">
-        <div className="flex-1">
-          <div className="flex items-center gap-2">
-            <h4 className="font-medium text-foreground">
+      <div className="flex items-center justify-between p-1.5 sm:p-2 md:p-3 bg-background/50 rounded-lg border border-border/50 group hover:border-primary/30 transition-colors">
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-1.5 sm:gap-2">
+            <h4 className="font-medium text-foreground text-sm sm:text-sm md:text-base truncate">
               {exercise.name}
             </h4>
             <Button
               variant="ghost"
               size="sm"
               onClick={onInfo}
-              className="h-6 w-6 p-0 text-muted-foreground hover:text-foreground"
+              className="h-5 w-5 sm:h-6 sm:w-6 p-0 text-muted-foreground hover:text-foreground flex-shrink-0"
               aria-label={`Info für ${exercise.name}`}
             >
               <Info className="h-3 w-3" />
             </Button>
           </div>
         </div>
-        <div className="flex items-center gap-2 text-xs text-muted-foreground">
-          <div className="flex items-center gap-1.5">
-            <span className="text-sm" aria-hidden="true">🏋️</span>
+        <div className="flex items-center gap-1.5 sm:gap-2 md:gap-3 text-xs sm:text-xs md:text-sm text-muted-foreground flex-shrink-0 ml-2">
+          <div className="flex items-center gap-1">
+            <span className="text-sm md:text-base" aria-hidden="true">🏋️</span>
             <span className="font-medium tabular-nums">
               {displaySets}×{exercise.reps}
             </span>
@@ -97,22 +97,22 @@ const EditableExerciseRow: React.FC<EditableExerciseRowProps> = ({
             </span>
           </div>
           {exercise.weight && (
-            <div className="flex items-center gap-1">
-              <span className="text-sm" aria-hidden="true">⚖️</span>
+            <div className="flex items-center gap-0.5 sm:gap-1">
+              <span className="text-sm md:text-base" aria-hidden="true">⚖️</span>
               <span className="tabular-nums">{exercise.weight}</span>
               <span className="sr-only">Gewicht: {exercise.weight}</span>
             </div>
           )}
           {exercise.rest && (
-            <div className="flex items-center gap-1">
-              <span className="text-sm" aria-hidden="true">⏱</span>
+            <div className="flex items-center gap-0.5 sm:gap-1">
+              <span className="text-sm md:text-base" aria-hidden="true">⏱</span>
               <span className="tabular-nums">{exercise.rest}</span>
               <span className="sr-only">Pause: {exercise.rest}</span>
             </div>
           )}
           {exercise.description && exercise.description.includes('km') && (
-            <div className="flex items-center gap-1">
-              <span className="text-sm" aria-hidden="true">📏</span>
+            <div className="flex items-center gap-0.5 sm:gap-1">
+              <span className="text-sm md:text-base" aria-hidden="true">📏</span>
               <span className="tabular-nums">{exercise.description}</span>
             </div>
           )}
@@ -121,10 +121,10 @@ const EditableExerciseRow: React.FC<EditableExerciseRowProps> = ({
           variant="ghost"
           size="sm"
           onClick={onEdit}
-          className="h-8 w-8 p-0 opacity-0 group-hover:opacity-100 transition-opacity"
+          className="h-7 w-7 sm:h-8 sm:w-8 p-0 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0 ml-1 sm:ml-2"
           aria-label="Edit exercise"
         >
-          <Edit2 className="h-4 w-4" />
+          <Edit2 className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
         </Button>
       </div>
     );
