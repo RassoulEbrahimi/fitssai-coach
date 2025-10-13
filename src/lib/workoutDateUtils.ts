@@ -41,7 +41,9 @@ export const getWorkoutWeekDay = (
   date: Date
 ): { weekKey: string; dayIndex: number } => {
   const planStart = getPlanStartMonday(planCreatedAt);
-  const daysDiff = differenceInCalendarDays(date, planStart);
+  // Convert date to Berlin timezone before calculating difference
+  const dateBerlin = toZonedTime(date, TARGET_TIMEZONE);
+  const daysDiff = differenceInCalendarDays(dateBerlin, planStart);
   const weekIndex = Math.floor(daysDiff / 7);
   const dayIndex = daysDiff % 7;
   

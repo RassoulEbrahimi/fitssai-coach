@@ -151,7 +151,7 @@ const Dashboard = () => {
   const [activeWeek, setActiveWeek] = useState<string | null>(null);
   const [activeDays, setActiveDays] = useState<Set<string>>(new Set());
   const [activeDayIndex, setActiveDayIndex] = useState<number>(0);
-  const [selectedDate, setSelectedDate] = useState<Date>(new Date()); // New date selection state
+  const [selectedDate, setSelectedDate] = useState<Date>(getBerlinNow()); // Initialize with Berlin timezone
 
   // Hash-based navigation helpers
   const hashToTab = (hash: string): 'dashboard' | 'workout' | 'nutrition' | 'profile' | null => {

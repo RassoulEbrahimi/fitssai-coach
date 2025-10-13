@@ -33,11 +33,9 @@ export const useBerlinToday = () => {
       // Get start of next day in Berlin
       const tomorrowBerlin = addDays(startOfDay(nowBerlin), 1);
       
-      // Convert both to UTC timestamps for accurate difference calculation
+      // Calculate difference between now and tomorrow midnight (both in local representation)
       const nowUtc = new Date();
-      const tomorrowUtc = toZonedTime(tomorrowBerlin, TARGET_TIMEZONE);
-      
-      const msUntilMidnight = tomorrowUtc.getTime() - nowUtc.getTime();
+      const msUntilMidnight = tomorrowBerlin.getTime() - nowUtc.getTime();
       
       console.log(`[useBerlinToday] Time until next Berlin midnight: ${Math.round(msUntilMidnight / 1000 / 60)} minutes`);
       
