@@ -153,37 +153,58 @@ const WorkoutView: React.FC<WorkoutViewProps> = ({
     enabled: !!user && !!livePlan
   });
 
+  // Helper function to fetch week completion
+  const fetchWeekCompletion = async (weekKey: string) => {
+    if (!user || !livePlan?.id) {
+      throw new Error('User or planId not available');
+    }
+
+    const { data, error } = await supabase.functions.invoke('get-week-completion', {
+      body: { planId: livePlan.id, weekKey },
+    });
+
+    if (error || !data?.success) {
+      throw new Error(error?.message || 'Failed to fetch week completion');
+    }
+
+    return data.completionMap;
+  };
+
   // Subscribe to all 4 weeks for reactive progress ring updates
   const { data: week1Completion } = useQuery<Record<string, boolean>>({
     queryKey: ['week-completion', livePlan?.id, 'Week 1'],
+    queryFn: () => fetchWeekCompletion('Week 1'),
     enabled: !!livePlan?.id && !!user,
-    staleTime: 0,
+    staleTime: 30000,
   });
   const { data: week2Completion } = useQuery<Record<string, boolean>>({
     queryKey: ['week-completion', livePlan?.id, 'Week 2'],
+    queryFn: () => fetchWeekCompletion('Week 2'),
     enabled: !!livePlan?.id && !!user,
-    staleTime: 0,
+    staleTime: 30000,
   });
   const { data: week3Completion } = useQuery<Record<string, boolean>>({
     queryKey: ['week-completion', livePlan?.id, 'Week 3'],
+    queryFn: () => fetchWeekCompletion('Week 3'),
     enabled: !!livePlan?.id && !!user,
-    staleTime: 0,
+    staleTime: 30000,
   });
   const { data: week4Completion } = useQuery<Record<string, boolean>>({
     queryKey: ['week-completion', livePlan?.id, 'Week 4'],
+    queryFn: () => fetchWeekCompletion('Week 4'),
     enabled: !!livePlan?.id && !!user,
-    staleTime: 0,
+    staleTime: 30000,
   });
 
-  // Prefetch and refetch all 4 weeks for progress ring display on mount
+  // Refetch all 4 weeks on mount to ensure fresh progress data
   useEffect(() => {
     if (!livePlan?.id || !user) return;
     
+    // Invalidate all week completion queries to trigger immediate refetch
     ['Week 1', 'Week 2', 'Week 3', 'Week 4'].forEach(weekKey => {
-      const key = ['week-completion', livePlan.id, weekKey];
-      // Always refetch on mount to ensure fresh data
-      queryClient.refetchQueries({ queryKey: key }).catch(() => {
-        // Silent fail - prefetch is optional
+      queryClient.invalidateQueries({ 
+        queryKey: ['week-completion', livePlan.id, weekKey],
+        refetchType: 'active'
       });
     });
   }, [user, livePlan?.id, queryClient]);
