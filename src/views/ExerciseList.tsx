@@ -54,7 +54,7 @@ const ExerciseList: React.FC<ExerciseListProps> = ({
   const supportsEditing = !!(onEditExercise && onSaveExercise && onCancelEdit);
 
   return (
-    <ul className="space-y-3 list-none" role="list">
+    <ul className="space-y-2 list-none" role="list">
       {exercises.map((exercise: any, exerciseIndex: number) => {
         const isEditing = editingExercise?.exerciseIndex === exerciseIndex;
 
@@ -77,31 +77,24 @@ const ExerciseList: React.FC<ExerciseListProps> = ({
         // Fallback to read-only display
         return (
           <li key={exerciseIndex}>
-            <div className="flex items-center justify-between p-3 bg-background/50 rounded-lg border border-border/50">
-              <div className="flex-1">
-                <div className="flex items-center gap-2">
-                  <h4 className="font-medium text-foreground">
-                    {exercise.name}
-                  </h4>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={handleExerciseInfo}
-                    className="h-6 w-6 p-0 text-muted-foreground hover:text-foreground"
-                    aria-label={`Info für ${exercise.name}`}
-                  >
-                    <Info className="h-3 w-3" />
-                  </Button>
-                </div>
-                {exercise.description && (
-                  <p className="text-sm text-muted-foreground mt-1">
-                    {exercise.description}
-                  </p>
-                )}
+            <div className="flex items-center justify-between p-2 bg-background/50 rounded-lg border border-border/50">
+              <div className="flex items-center gap-2">
+                <h4 className="font-medium text-foreground text-sm">
+                  {exercise.name}
+                </h4>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleExerciseInfo}
+                  className="h-5 w-5 p-0 text-muted-foreground hover:text-foreground"
+                  aria-label={`Info für ${exercise.name}`}
+                >
+                  <Info className="h-3 w-3" />
+                </Button>
               </div>
-              <div className="flex items-center gap-3 text-sm">
-                <div className="flex items-center gap-1 text-foreground">
-                  <span className="text-base" aria-hidden="true">🏋️</span>
+              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                <div className="flex items-center gap-1">
+                  <span className="text-sm" aria-hidden="true">🏋️</span>
                   <span className="font-medium tabular-nums">
                     {exercise.sets}×{exercise.reps}
                   </span>
@@ -110,8 +103,8 @@ const ExerciseList: React.FC<ExerciseListProps> = ({
                   </span>
                 </div>
                 {exercise.weight && (
-                  <div className="flex items-center gap-1 text-muted-foreground">
-                    <span className="text-base" aria-hidden="true">⚖️</span>
+                  <div className="flex items-center gap-1">
+                    <span className="text-sm" aria-hidden="true">⚖️</span>
                     <span className="tabular-nums">{exercise.weight}</span>
                     <span className="sr-only">Gewicht: {exercise.weight}</span>
                   </div>

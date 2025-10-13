@@ -862,18 +862,6 @@ const WorkoutView: React.FC<WorkoutViewProps> = ({
                               )}
 
                               {!isRestDay && !isFutureDay && <div className="mt-2 pt-1.5 border-t border-border/50">
-                                 <div className="flex items-center gap-2 min-h-[28px]">
-                                   <Checkbox checked={isCompleted} onCheckedChange={checked => {
-                             toggleDayComplete(wk, dayIndex);
-                             toast({
-                               title: checked ? t('workout.workoutCompleted') : t('workout.workoutUncompleted'),
-                               description: ""
-                             });
-                           }} className={isCompleted ? 'border-green-600 bg-green-600' : ''} />
-                                   <label className="text-xs font-medium">
-                                     {t('workout.markComplete')}
-                                   </label>
-                                 </div>
                                </div>}
                           </div>
                         </motion.div>

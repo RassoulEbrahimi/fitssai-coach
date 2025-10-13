@@ -69,7 +69,7 @@ const EditableExerciseRow: React.FC<EditableExerciseRowProps> = ({
     const displaySets = typeof exercise.sets === 'string' ? parseInt(exercise.sets) || exercise.sets : exercise.sets;
     
     return (
-      <div className="flex items-center justify-between p-3 bg-background/50 rounded-lg border border-border/50 group hover:border-primary/30 transition-colors">
+      <div className="flex items-center justify-between p-2 bg-background/50 rounded-lg border border-border/50 group hover:border-primary/30 transition-colors">
         <div className="flex-1">
           <div className="flex items-center gap-2">
             <h4 className="font-medium text-foreground">
@@ -85,54 +85,47 @@ const EditableExerciseRow: React.FC<EditableExerciseRowProps> = ({
               <Info className="h-3 w-3" />
             </Button>
           </div>
-          {exercise.description && (
-            <p className="text-sm text-muted-foreground mt-1">
-              {exercise.description}
-            </p>
+        </div>
+        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+          <div className="flex items-center gap-1.5">
+            <span className="text-sm" aria-hidden="true">🏋️</span>
+            <span className="font-medium tabular-nums">
+              {displaySets}×{exercise.reps}
+            </span>
+            <span className="sr-only">
+              {t('workout.setsReps', { sets: displaySets, reps: exercise.reps })}
+            </span>
+          </div>
+          {exercise.weight && (
+            <div className="flex items-center gap-1">
+              <span className="text-sm" aria-hidden="true">⚖️</span>
+              <span className="tabular-nums">{exercise.weight}</span>
+              <span className="sr-only">Gewicht: {exercise.weight}</span>
+            </div>
+          )}
+          {exercise.rest && (
+            <div className="flex items-center gap-1">
+              <span className="text-sm" aria-hidden="true">⏱</span>
+              <span className="tabular-nums">{exercise.rest}</span>
+              <span className="sr-only">Pause: {exercise.rest}</span>
+            </div>
+          )}
+          {exercise.description && exercise.description.includes('km') && (
+            <div className="flex items-center gap-1">
+              <span className="text-sm" aria-hidden="true">📏</span>
+              <span className="tabular-nums">{exercise.description}</span>
+            </div>
           )}
         </div>
-        <div className="flex items-center gap-2">
-          <div className="flex items-center gap-3 text-sm">
-            <div className="flex items-center gap-1 text-foreground">
-              <span className="text-base" aria-hidden="true">🏋️</span>
-              <span className="font-medium tabular-nums">
-                {displaySets}×{exercise.reps}
-              </span>
-              <span className="sr-only">
-                {t('workout.setsReps', { sets: displaySets, reps: exercise.reps })}
-              </span>
-            </div>
-            {exercise.weight && (
-              <div className="flex items-center gap-1 text-muted-foreground">
-                <span className="text-base" aria-hidden="true">⚖️</span>
-                <span className="tabular-nums">{exercise.weight}</span>
-                <span className="sr-only">Gewicht: {exercise.weight}</span>
-              </div>
-            )}
-            {exercise.rest && (
-              <div className="flex items-center gap-1 text-muted-foreground">
-                <span className="text-base" aria-hidden="true">⏱</span>
-                <span className="tabular-nums">{exercise.rest}</span>
-                <span className="sr-only">Pause: {exercise.rest}</span>
-              </div>
-            )}
-            {exercise.description && exercise.description.includes('km') && (
-              <div className="flex items-center gap-1 text-muted-foreground">
-                <span className="text-base" aria-hidden="true">📏</span>
-                <span className="tabular-nums">{exercise.description}</span>
-              </div>
-            )}
-          </div>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={onEdit}
-            className="h-8 w-8 p-0 opacity-0 group-hover:opacity-100 transition-opacity"
-            aria-label="Edit exercise"
-          >
-            <Edit2 className="h-4 w-4" />
-          </Button>
-        </div>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={onEdit}
+          className="h-8 w-8 p-0 opacity-0 group-hover:opacity-100 transition-opacity"
+          aria-label="Edit exercise"
+        >
+          <Edit2 className="h-4 w-4" />
+        </Button>
       </div>
     );
   }
