@@ -1,4 +1,4 @@
-import { addDays, startOfWeek, startOfDay, differenceInCalendarDays } from "date-fns";
+import { addDays, startOfWeek, startOfDay, differenceInCalendarDays, format } from "date-fns";
 import { toZonedTime } from "date-fns-tz";
 import { TARGET_TIMEZONE, WEEK_OPTIONS, getBerlinToday } from "./dateUtils";
 
@@ -66,7 +66,9 @@ export const getWorkoutDateString = (
   dayIndex: number
 ): string => {
   const date = getWorkoutDate(planCreatedAt, weekKey, dayIndex);
-  return date.toISOString().split('T')[0];
+  // Convert to Berlin timezone before formatting to ensure correct date
+  const berlinDate = toZonedTime(date, TARGET_TIMEZONE);
+  return format(berlinDate, 'yyyy-MM-dd');
 };
 
 /**
