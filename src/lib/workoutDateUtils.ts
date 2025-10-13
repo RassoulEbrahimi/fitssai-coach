@@ -1,4 +1,4 @@
-import { addDays, startOfWeek, differenceInCalendarDays } from "date-fns";
+import { addDays, startOfWeek, startOfDay, differenceInCalendarDays } from "date-fns";
 import { toZonedTime } from "date-fns-tz";
 import { TARGET_TIMEZONE, WEEK_OPTIONS } from "./dateUtils";
 
@@ -40,13 +40,13 @@ export const getWorkoutWeekDay = (
   planCreatedAt: string,
   date: Date
 ): { weekKey: string; dayIndex: number } => {
-  const planStart = getPlanStartMonday(planCreatedAt);
-  // Convert date to Berlin timezone before calculating difference
-  const dateBerlin = toZonedTime(date, TARGET_TIMEZONE);
+  const planStart = startOfDay(getPlanStartMonday(planCreatedAt));
+  const dateBerlin = startOfDay(toZonedTime(date, TARGET_TIMEZONE));
+
   const daysDiff = differenceInCalendarDays(dateBerlin, planStart);
   const weekIndex = Math.floor(daysDiff / 7);
   const dayIndex = daysDiff % 7;
-  
+
   return {
     weekKey: `Week ${Math.max(1, Math.min(4, weekIndex + 1))}`,
     dayIndex: Math.max(0, Math.min(6, dayIndex)),

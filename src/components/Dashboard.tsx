@@ -32,7 +32,7 @@ import VideoBackground from '@/components/VideoBackground';
 import { useState, useEffect, Suspense, useRef, useCallback, useLayoutEffect } from "react";
 import React from "react";
 import { toast } from "sonner";
-import { format, addDays, isSameDay, startOfWeek, differenceInCalendarDays } from "date-fns";
+import { format, addDays, isSameDay, startOfWeek, differenceInCalendarDays, startOfDay, parseISO } from "date-fns";
 import { toZonedTime } from 'date-fns-tz';
 import BottomNav from './BottomNav';
 import BottomNavPortal from './BottomNavPortal';
@@ -456,8 +456,12 @@ const Dashboard = () => {
   const isTodayInWeekDay = (weekKey: string, dayIndex: number) => {
     if (!liveWorkoutPlan?.created_at) return false;
     
-    const targetStr = getWorkoutDateString(liveWorkoutPlan.created_at, weekKey, dayIndex);
-    return targetStr === berlinToday;
+    const workoutDate = startOfDay(
+      parseISO(getWorkoutDateString(liveWorkoutPlan.created_at, weekKey, dayIndex))
+    );
+    const today = startOfDay(toZonedTime(new Date(), TARGET_TIMEZONE));
+
+    return isSameDay(workoutDate, today);
   };
 
   // Check if a day is in the future (Berlin timezone)
