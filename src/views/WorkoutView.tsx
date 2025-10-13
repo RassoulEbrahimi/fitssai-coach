@@ -26,6 +26,9 @@ import { supabase } from "@/integrations/supabase/client";
 import { useExerciseEditor, type Exercise } from "@/hooks/useExerciseEditor";
 import { useWorkoutHelpers } from "@/hooks/useWorkoutHelpers";
 import { normalizeWeekKey } from "@/lib/workoutPlanUtils";
+import { AddWorkoutDialog } from "@/components/AddWorkoutDialog";
+import { useAddExercise } from "@/hooks/useAddExercise";
+import { Plus } from "lucide-react";
 
 const ExerciseList = React.lazy(() => import("@/views/ExerciseList"));
 interface WorkoutViewProps {
@@ -94,7 +97,19 @@ const WorkoutView: React.FC<WorkoutViewProps> = ({
     draft: Exercise;
   } | null>(null);
 
+  // Add exercise dialog state
+  const [addExerciseDialog, setAddExerciseDialog] = useState<{
+    open: boolean;
+    weekKey: string | null;
+    dayIndex: number | null;
+  }>({
+    open: false,
+    weekKey: null,
+    dayIndex: null,
+  });
+
   const { updateExercise, isUpdating } = useExerciseEditor();
+  const { addExercise, isAdding } = useAddExercise();
   const dayRefs = useRef<{
     [key: number]: HTMLDivElement | null;
   }>({});
@@ -401,6 +416,31 @@ const WorkoutView: React.FC<WorkoutViewProps> = ({
   const handleCancelEdit = () => {
     setEditingExercise(null);
     logEvent('exercise_edit_cancelled');
+  };
+
+  // Add exercise handlers
+  const handleOpenAddExercise = (weekKey: string, dayIndex: number) => {
+    setAddExerciseDialog({
+      open: true,
+      weekKey,
+      dayIndex,
+    });
+    logEvent('add_exercise_dialog_opened', { weekKey, dayIndex });
+  };
+
+  const handleAddExercise = (exercise: Exercise) => {
+    if (!addExerciseDialog.weekKey || addExerciseDialog.dayIndex === null || !livePlan?.id) {
+      return;
+    }
+
+    addExercise({
+      planId: livePlan.id,
+      weekKey: addExerciseDialog.weekKey,
+      dayIndex: addExerciseDialog.dayIndex,
+      exercise,
+    });
+
+    setAddExerciseDialog({ open: false, weekKey: null, dayIndex: null });
   };
   // Show loading skeleton while plan is being fetched
   if (isLoadingPlan) {
@@ -765,11 +805,24 @@ const WorkoutView: React.FC<WorkoutViewProps> = ({
                                </div>
                              </div>}
                          
-                          {/* Exercise content */}
-                          <div className="p-3 pt-2 px-[8px] py-[7px]">
-                            {isRestDay ? <div className="text-sm text-muted-foreground p-3 bg-muted/30 rounded-lg">
-                                {t('workout.rest.note')}
-                               </div> : (
+                           {/* Exercise content */}
+                           <div className="p-3 pt-2 px-[8px] py-[7px]">
+                             {isRestDay ? (
+                               <div className="space-y-3">
+                                 <div className="text-sm text-muted-foreground p-3 bg-muted/30 rounded-lg">
+                                   {t('workout.rest.note')}
+                                 </div>
+                                 <Button
+                                   variant="outline"
+                                   size="sm"
+                                   onClick={() => handleOpenAddExercise(wk, dayIndex)}
+                                   className="w-full"
+                                 >
+                                   <Plus className="h-4 w-4 mr-2" />
+                                   Übung hinzufügen
+                                 </Button>
+                               </div>
+                             ) : (
                                  <Suspense fallback={<ExerciseListSkeleton />}>
                                    <ExerciseList
                                      exercises={exercises}
@@ -788,10 +841,25 @@ const WorkoutView: React.FC<WorkoutViewProps> = ({
                                      onSaveExercise={handleSaveExercise}
                                      onCancelEdit={handleCancelEdit}
                                    />
-                                 </Suspense>
-                               )}
-                           
-                             {!isRestDay && !isFutureDay && <div className="mt-2 pt-1.5 border-t border-border/50">
+                                  </Suspense>
+                                )}
+                            
+                              {/* Add Exercise Button (for days with exercises) */}
+                              {!isRestDay && (
+                                <div className="mt-2 pt-2 border-t border-border/50">
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => handleOpenAddExercise(wk, dayIndex)}
+                                    className="w-full"
+                                  >
+                                    <Plus className="h-4 w-4 mr-2" />
+                                    Übung hinzufügen
+                                  </Button>
+                                </div>
+                              )}
+
+                              {!isRestDay && !isFutureDay && <div className="mt-2 pt-1.5 border-t border-border/50">
                                  <div className="flex items-center gap-2 min-h-[28px]">
                                    <Checkbox checked={isCompleted} onCheckedChange={checked => {
                              toggleDayComplete(wk, dayIndex);
@@ -814,6 +882,16 @@ const WorkoutView: React.FC<WorkoutViewProps> = ({
         })}
         </CardContent>
       </Card>
+
+      {/* Add Exercise Dialog */}
+      <AddWorkoutDialog
+        open={addExerciseDialog.open}
+        onOpenChange={(open) => 
+          setAddExerciseDialog({ open, weekKey: null, dayIndex: null })
+        }
+        onSave={handleAddExercise}
+        isLoading={isAdding}
+      />
     </motion.div>
     </WorkoutErrorBoundary>
   );
