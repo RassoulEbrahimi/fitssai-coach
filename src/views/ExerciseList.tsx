@@ -3,32 +3,28 @@ import { Button } from "@/components/ui/button";
 import { Info } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useTranslation } from "react-i18next";
-import EditableExerciseRow from "@/components/EditableExerciseRow";
+import InlineEditableExercise from "@/components/InlineEditableExercise";
 import type { Exercise } from "@/hooks/useExerciseEditor";
 
-const MemoizedEditableExerciseRow = React.memo(EditableExerciseRow, (prev, next) => {
+const MemoizedInlineEditableExercise = React.memo(InlineEditableExercise, (prev, next) => {
   return (
     prev.exercise === next.exercise &&
-    prev.isEditing === next.isEditing &&
-    prev.exerciseIndex === next.exerciseIndex
+    prev.exerciseIndex === next.exerciseIndex &&
+    prev.isUpdating === next.isUpdating
   );
 });
 
 interface ExerciseListProps {
   exercises: any[];
-  // Optional editing support
-  editingExercise?: { exerciseIndex: number; draft: Exercise } | null;
-  onEditExercise?: (exerciseIndex: number) => void;
-  onSaveExercise?: (exerciseIndex: number, exercise: Exercise) => void;
-  onCancelEdit?: () => void;
+  // Inline editing support
+  onUpdateExercise?: (exerciseIndex: number, exercise: Exercise) => Promise<void>;
+  isUpdating?: boolean;
 }
 
 const ExerciseList: React.FC<ExerciseListProps> = ({ 
   exercises,
-  editingExercise,
-  onEditExercise,
-  onSaveExercise,
-  onCancelEdit,
+  onUpdateExercise,
+  isUpdating = false,
 }) => {
   const { t } = useTranslation();
   const { toast } = useToast();
@@ -50,25 +46,19 @@ const ExerciseList: React.FC<ExerciseListProps> = ({
     );
   }
 
-  // Use EditableExerciseRow if editing props are provided
-  const supportsEditing = !!(onEditExercise && onSaveExercise && onCancelEdit);
-
   return (
     <ul className="space-y-1.5 sm:space-y-2 list-none" role="list">
       {exercises.map((exercise: any, exerciseIndex: number) => {
-        const isEditing = editingExercise?.exerciseIndex === exerciseIndex;
-
-        if (supportsEditing) {
+        // Use inline editable component if update handler is provided
+        if (onUpdateExercise) {
           return (
             <li key={exerciseIndex}>
-              <MemoizedEditableExerciseRow
+              <MemoizedInlineEditableExercise
                 exercise={exercise}
                 exerciseIndex={exerciseIndex}
-                isEditing={isEditing}
-                onEdit={() => onEditExercise(exerciseIndex)}
-                onSave={(updatedExercise) => onSaveExercise(exerciseIndex, updatedExercise)}
-                onCancel={onCancelEdit}
+                onUpdate={(updatedExercise) => onUpdateExercise(exerciseIndex, updatedExercise)}
                 onInfo={handleExerciseInfo}
+                isUpdating={isUpdating}
               />
             </li>
           );

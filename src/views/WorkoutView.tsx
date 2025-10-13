@@ -89,14 +89,6 @@ const WorkoutView: React.FC<WorkoutViewProps> = ({
   // Use consolidated workout helpers hook
   const { getWeekContentWithFallback, calcWeekStats, getProgressColor, getWeekMirrorInfo } = useWorkoutHelpers(livePlan);
 
-  // Exercise editing state (Phase 1)
-  const [editingExercise, setEditingExercise] = useState<{
-    weekKey: string;
-    dayIndex: number;
-    exerciseIndex: number;
-    draft: Exercise;
-  } | null>(null);
-
   // Add exercise dialog state
   const [addExerciseDialog, setAddExerciseDialog] = useState<{
     open: boolean;
@@ -391,47 +383,40 @@ const WorkoutView: React.FC<WorkoutViewProps> = ({
     });
   };
 
-  // Exercise editing handlers (Phase 1)
-  const handleEditExercise = (weekKey: string, dayIndex: number, exerciseIndex: number) => {
-    const week = getWeekContentWithFallback(weekKey);
-    const exercise = week?.[dayIndex]?.exercises?.[exerciseIndex];
-    
-    if (!exercise) return;
+  // Inline exercise update handler (returns promise for async handling)
+  const handleUpdateExercise = async (
+    weekKey: string,
+    dayIndex: number,
+    exerciseIndex: number,
+    updatedExercise: Exercise
+  ): Promise<void> => {
+    if (!livePlan?.id) return Promise.resolve();
 
-    setEditingExercise({
-      weekKey,
-      dayIndex,
-      exerciseIndex,
-      draft: exercise,
+    return new Promise((resolve) => {
+      updateExercise(
+        {
+          planId: livePlan.id,
+          weekKey,
+          dayIndex,
+          exerciseIndex,
+          exercise: updatedExercise,
+        },
+        {
+          onSuccess: () => {
+            // Invalidate all week completions to refresh progress rings
+            ['Week 1', 'Week 2', 'Week 3', 'Week 4'].forEach(wk => {
+              queryClient.invalidateQueries({ 
+                queryKey: ['week-completion', livePlan.id, wk] 
+              });
+            });
+            resolve();
+          },
+          onError: () => {
+            resolve();
+          },
+        }
+      );
     });
-
-    logEvent('exercise_edit_started', { weekKey, dayIndex, exerciseIndex });
-  };
-
-  const handleSaveExercise = (exerciseIndex: number, updatedExercise: Exercise) => {
-    if (!editingExercise || !livePlan?.id) return;
-
-    updateExercise({
-      planId: livePlan.id,
-      weekKey: editingExercise.weekKey,
-      dayIndex: editingExercise.dayIndex,
-      exerciseIndex,
-      exercise: updatedExercise,
-    });
-
-    // Invalidate all week completions to refresh progress rings
-    ['Week 1', 'Week 2', 'Week 3', 'Week 4'].forEach(weekKey => {
-      queryClient.invalidateQueries({ 
-        queryKey: ['week-completion', livePlan.id, weekKey] 
-      });
-    });
-
-    setEditingExercise(null);
-  };
-
-  const handleCancelEdit = () => {
-    setEditingExercise(null);
-    logEvent('exercise_edit_cancelled');
   };
 
   // Add exercise handlers
@@ -846,23 +831,13 @@ const WorkoutView: React.FC<WorkoutViewProps> = ({
                                   </Button>
                                 </div>
                               ) : (
-                                 <Suspense fallback={<ExerciseListSkeleton />}>
+                                  <Suspense fallback={<ExerciseListSkeleton />}>
                                    <ExerciseList
                                      exercises={exercises}
-                                     editingExercise={
-                                       editingExercise?.weekKey === wk &&
-                                       editingExercise?.dayIndex === dayIndex
-                                         ? {
-                                             exerciseIndex: editingExercise.exerciseIndex,
-                                             draft: editingExercise.draft,
-                                           }
-                                         : null
+                                     onUpdateExercise={(exerciseIndex, updatedExercise) =>
+                                       handleUpdateExercise(wk, dayIndex, exerciseIndex, updatedExercise)
                                      }
-                                     onEditExercise={(exerciseIndex) =>
-                                       handleEditExercise(wk, dayIndex, exerciseIndex)
-                                     }
-                                     onSaveExercise={handleSaveExercise}
-                                     onCancelEdit={handleCancelEdit}
+                                     isUpdating={isUpdating}
                                    />
                                   </Suspense>
                                 )}
