@@ -9,40 +9,42 @@ import { useTranslation } from 'react-i18next';
 import type { Exercise } from '@/hooks/useExerciseEditor';
 import { cn } from '@/lib/utils';
 
-// Predefined exercises (same as AddWorkoutDialog)
+// Predefined exercises with field definitions
+type ExerciseField = 'sets' | 'reps' | 'weight' | 'rest' | 'distance' | 'duration';
+
 const PREDEFINED_EXERCISES = [
   // Cardio
-  { name: 'Laufen', type: 'cardio', icon: '🏃' },
-  { name: 'Radfahren', type: 'cardio', icon: '🚴' },
-  { name: 'Schwimmen', type: 'cardio', icon: '🏊' },
-  { name: 'Rudern', type: 'cardio', icon: '🚣' },
+  { name: 'Laufen', type: 'cardio', icon: '🏃', fields: ['distance', 'duration'] as ExerciseField[] },
+  { name: 'Radfahren', type: 'cardio', icon: '🚴', fields: ['distance', 'duration'] as ExerciseField[] },
+  { name: 'Schwimmen', type: 'cardio', icon: '🏊', fields: ['distance', 'duration'] as ExerciseField[] },
+  { name: 'Rudern', type: 'cardio', icon: '🚣', fields: ['distance', 'duration'] as ExerciseField[] },
   
   // Upper Body - Push
-  { name: 'Bankdrücken', type: 'strength', icon: '💪' },
-  { name: 'Schrägbankdrücken', type: 'strength', icon: '💪' },
-  { name: 'Schulterdrücken', type: 'strength', icon: '💪' },
-  { name: 'Liegestütze', type: 'strength', icon: '💪' },
-  { name: 'Dips', type: 'strength', icon: '💪' },
+  { name: 'Bankdrücken', type: 'strength', icon: '💪', fields: ['sets', 'reps', 'weight', 'rest'] as ExerciseField[] },
+  { name: 'Schrägbankdrücken', type: 'strength', icon: '💪', fields: ['sets', 'reps', 'weight', 'rest'] as ExerciseField[] },
+  { name: 'Schulterdrücken', type: 'strength', icon: '💪', fields: ['sets', 'reps', 'weight', 'rest'] as ExerciseField[] },
+  { name: 'Liegestütze', type: 'strength', icon: '💪', fields: ['sets', 'reps'] as ExerciseField[] },
+  { name: 'Dips', type: 'strength', icon: '💪', fields: ['sets', 'reps', 'weight'] as ExerciseField[] },
   
   // Upper Body - Pull
-  { name: 'Klimmzüge', type: 'strength', icon: '💪' },
-  { name: 'Latziehen', type: 'strength', icon: '💪' },
-  { name: 'Rudern', type: 'strength', icon: '💪' },
-  { name: 'Bizepscurls', type: 'strength', icon: '💪' },
+  { name: 'Klimmzüge', type: 'strength', icon: '💪', fields: ['sets', 'reps'] as ExerciseField[] },
+  { name: 'Latziehen', type: 'strength', icon: '💪', fields: ['sets', 'reps', 'weight'] as ExerciseField[] },
+  { name: 'Rudern', type: 'strength', icon: '💪', fields: ['sets', 'reps', 'weight'] as ExerciseField[] },
+  { name: 'Bizepscurls', type: 'strength', icon: '💪', fields: ['sets', 'reps', 'weight'] as ExerciseField[] },
   
   // Lower Body
-  { name: 'Kniebeugen', type: 'strength', icon: '🦵' },
-  { name: 'Kreuzheben', type: 'strength', icon: '🦵' },
-  { name: 'Beinpresse', type: 'strength', icon: '🦵' },
-  { name: 'Ausfallschritte', type: 'strength', icon: '🦵' },
-  { name: 'Beinbeuger', type: 'strength', icon: '🦵' },
-  { name: 'Beinstrecker', type: 'strength', icon: '🦵' },
-  { name: 'Wadenheben', type: 'strength', icon: '🦵' },
+  { name: 'Kniebeugen', type: 'strength', icon: '🦵', fields: ['sets', 'reps', 'weight', 'rest'] as ExerciseField[] },
+  { name: 'Kreuzheben', type: 'strength', icon: '🦵', fields: ['sets', 'reps', 'weight', 'rest'] as ExerciseField[] },
+  { name: 'Beinpresse', type: 'strength', icon: '🦵', fields: ['sets', 'reps', 'weight'] as ExerciseField[] },
+  { name: 'Ausfallschritte', type: 'strength', icon: '🦵', fields: ['sets', 'reps'] as ExerciseField[] },
+  { name: 'Beinbeuger', type: 'strength', icon: '🦵', fields: ['sets', 'reps', 'weight'] as ExerciseField[] },
+  { name: 'Beinstrecker', type: 'strength', icon: '🦵', fields: ['sets', 'reps', 'weight'] as ExerciseField[] },
+  { name: 'Wadenheben', type: 'strength', icon: '🦵', fields: ['sets', 'reps', 'weight'] as ExerciseField[] },
   
   // Core
-  { name: 'Planks', type: 'strength', icon: '🧘' },
-  { name: 'Crunches', type: 'strength', icon: '🧘' },
-  { name: 'Russian Twists', type: 'strength', icon: '🧘' },
+  { name: 'Planks', type: 'strength', icon: '🧘', fields: ['duration', 'sets'] as ExerciseField[] },
+  { name: 'Crunches', type: 'strength', icon: '🧘', fields: ['sets', 'reps'] as ExerciseField[] },
+  { name: 'Russian Twists', type: 'strength', icon: '🧘', fields: ['sets', 'reps'] as ExerciseField[] },
 ] as const;
 
 interface InlineEditableExerciseProps {
@@ -64,21 +66,43 @@ const InlineEditableExercise: React.FC<InlineEditableExerciseProps> = ({
   const [isSaving, setIsSaving] = useState(false);
   const [openNamePopover, setOpenNamePopover] = useState(false);
   
+  // Parse distance/duration from description for cardio exercises
+  const parseDescription = (desc: string) => {
+    const distanceMatch = desc.match(/(\d+(?:\.\d+)?)\s*km/i);
+    const durationMatch = desc.match(/(\d+)\s*min/i);
+    return {
+      distance: distanceMatch ? distanceMatch[1] : '',
+      duration: durationMatch ? durationMatch[1] : '',
+    };
+  };
+
+  const formatDescription = (distance: string, duration: string) => {
+    const parts = [];
+    if (distance) parts.push(`${distance}km`);
+    if (duration) parts.push(`${duration}min`);
+    return parts.join(' / ');
+  };
+
   // Local state for inputs (for immediate UI updates)
   const [localWeight, setLocalWeight] = useState(exercise.weight || '');
   const [localRest, setLocalRest] = useState(exercise.rest || '');
-  const [localDescription, setLocalDescription] = useState(exercise.description || '');
+  const [localDistance, setLocalDistance] = useState('');
+  const [localDuration, setLocalDuration] = useState('');
 
   // Sync local state when exercise prop changes
   React.useEffect(() => {
     setLocalWeight(exercise.weight || '');
     setLocalRest(exercise.rest || '');
-    setLocalDescription(exercise.description || '');
+    
+    // Parse distance/duration from description
+    const parsed = parseDescription(exercise.description || '');
+    setLocalDistance(parsed.distance);
+    setLocalDuration(parsed.duration);
   }, [exercise.weight, exercise.rest, exercise.description]);
 
-  // Detect if cardio exercise (has distance in description or no sets/reps)
-  const isCardio = exercise.description?.toLowerCase().includes('km') || 
-                    exercise.description?.toLowerCase().includes('min');
+  // Get current exercise definition to know which fields to show
+  const currentExerciseDetails = PREDEFINED_EXERCISES.find(ex => ex.name === exercise.name);
+  const requiredFields = currentExerciseDetails?.fields || [];
 
   const handleFieldUpdate = async (field: keyof Exercise, value: any) => {
     setIsSaving(true);
@@ -122,14 +146,25 @@ const InlineEditableExercise: React.FC<InlineEditableExerciseProps> = ({
     }
   };
 
-  const handleDescriptionChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setLocalDescription(e.target.value);
+  const handleDistanceChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setLocalDistance(e.target.value);
   };
 
-  const handleDescriptionBlur = (e: React.FocusEvent<HTMLInputElement>) => {
-    const value = e.target.value;
-    if (value !== exercise.description) {
-      handleFieldUpdate('description', value);
+  const handleDistanceBlur = (e: React.FocusEvent<HTMLInputElement>) => {
+    const newDescription = formatDescription(e.target.value, localDuration);
+    if (newDescription !== exercise.description) {
+      handleFieldUpdate('description', newDescription);
+    }
+  };
+
+  const handleDurationChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setLocalDuration(e.target.value);
+  };
+
+  const handleDurationBlur = (e: React.FocusEvent<HTMLInputElement>) => {
+    const newDescription = formatDescription(localDistance, e.target.value);
+    if (newDescription !== exercise.description) {
+      handleFieldUpdate('description', newDescription);
     }
   };
 
@@ -141,29 +176,43 @@ const InlineEditableExercise: React.FC<InlineEditableExerciseProps> = ({
     setOpenNamePopover(false);
     
     try {
-      // Build updated exercise based on type
-      let updatedExercise: Exercise;
+      // Build updated exercise with defaults based on required fields
+      const updatedExercise: Exercise = {
+        ...exercise,
+        name: selectedExercise.name,
+      };
+
+      // Set defaults based on required fields
+      const fields = selectedExercise.fields;
       
-      if (selectedExercise.type === 'cardio') {
-        // Reset to cardio defaults
-        updatedExercise = {
-          ...exercise,
-          name: selectedExercise.name,
-          sets: 1,
-          reps: '1',
-          description: exercise.description || '',
-          weight: undefined,
-          rest: undefined,
-        };
+      if (fields.includes('sets')) {
+        updatedExercise.sets = exercise.sets || 3;
       } else {
-        // Reset to strength defaults
-        updatedExercise = {
-          ...exercise,
-          name: selectedExercise.name,
-          sets: exercise.sets || 3,
-          reps: exercise.reps || '10',
-          description: undefined,
-        };
+        updatedExercise.sets = 1;
+      }
+
+      if (fields.includes('reps')) {
+        updatedExercise.reps = exercise.reps || '10';
+      } else {
+        updatedExercise.reps = '1';
+      }
+
+      if (fields.includes('weight')) {
+        updatedExercise.weight = exercise.weight;
+      } else {
+        updatedExercise.weight = undefined;
+      }
+
+      if (fields.includes('rest')) {
+        updatedExercise.rest = exercise.rest;
+      } else {
+        updatedExercise.rest = undefined;
+      }
+
+      if (fields.includes('distance') || fields.includes('duration')) {
+        updatedExercise.description = exercise.description || '';
+      } else {
+        updatedExercise.description = undefined;
       }
       
       await onUpdate(updatedExercise);
@@ -171,9 +220,6 @@ const InlineEditableExercise: React.FC<InlineEditableExerciseProps> = ({
       setIsSaving(false);
     }
   };
-
-  // Find current exercise details for icon display
-  const currentExerciseDetails = PREDEFINED_EXERCISES.find(ex => ex.name === exercise.name);
 
   return (
     <div className={cn(
@@ -265,11 +311,9 @@ const InlineEditableExercise: React.FC<InlineEditableExerciseProps> = ({
         </Button>
       </div>
 
-      {/* Editable fields */}
-      {!isCardio ? (
-        // Strength exercise fields
-        <div className="flex items-center gap-1.5 sm:gap-2 md:gap-3 flex-wrap">
-          {/* Sets dropdown */}
+      {/* Dynamic fields based on exercise requirements */}
+      <div className="flex items-center gap-1.5 sm:gap-2 md:gap-3 flex-wrap">
+        {requiredFields.includes('sets') && (
           <div className="flex items-center gap-1">
             <span className="text-sm md:text-base" aria-hidden="true">🏋️</span>
             <Select
@@ -293,8 +337,9 @@ const InlineEditableExercise: React.FC<InlineEditableExerciseProps> = ({
               </SelectContent>
             </Select>
           </div>
+        )}
 
-          {/* Reps dropdown */}
+        {requiredFields.includes('reps') && (
           <div className="flex items-center gap-1">
             <span className="text-xs text-muted-foreground">×</span>
             <Select
@@ -318,8 +363,9 @@ const InlineEditableExercise: React.FC<InlineEditableExerciseProps> = ({
               </SelectContent>
             </Select>
           </div>
+        )}
 
-          {/* Weight input */}
+        {requiredFields.includes('weight') && (
           <div className="flex items-center gap-1">
             <span className="text-sm md:text-base" aria-hidden="true">⚖️</span>
             <Input
@@ -332,8 +378,9 @@ const InlineEditableExercise: React.FC<InlineEditableExerciseProps> = ({
               className="h-7 w-16 sm:h-8 sm:w-20 text-xs sm:text-sm px-2"
             />
           </div>
+        )}
 
-          {/* Rest input */}
+        {requiredFields.includes('rest') && (
           <div className="flex items-center gap-1">
             <span className="text-sm md:text-base" aria-hidden="true">⏱</span>
             <Input
@@ -346,25 +393,38 @@ const InlineEditableExercise: React.FC<InlineEditableExerciseProps> = ({
               className="h-7 w-16 sm:h-8 sm:w-20 text-xs sm:text-sm px-2"
             />
           </div>
-        </div>
-      ) : (
-        // Cardio exercise fields
-        <div className="flex items-center gap-1.5 sm:gap-2 md:gap-3 flex-wrap">
-          {/* Distance/Duration input */}
+        )}
+
+        {requiredFields.includes('distance') && (
           <div className="flex items-center gap-1">
             <span className="text-sm md:text-base" aria-hidden="true">📏</span>
             <Input
               type="text"
-              value={localDescription}
-              onChange={handleDescriptionChange}
-              onBlur={handleDescriptionBlur}
-              placeholder="5km / 30min"
+              value={localDistance}
+              onChange={handleDistanceChange}
+              onBlur={handleDistanceBlur}
+              placeholder="5km"
               disabled={isSaving || isUpdating}
-              className="h-7 w-24 sm:h-8 sm:w-28 text-xs sm:text-sm px-2"
+              className="h-7 w-16 sm:h-8 sm:w-20 text-xs sm:text-sm px-2"
             />
           </div>
-        </div>
-      )}
+        )}
+
+        {requiredFields.includes('duration') && (
+          <div className="flex items-center gap-1">
+            <span className="text-sm md:text-base" aria-hidden="true">⏱️</span>
+            <Input
+              type="text"
+              value={localDuration}
+              onChange={handleDurationChange}
+              onBlur={handleDurationBlur}
+              placeholder="30min"
+              disabled={isSaving || isUpdating}
+              className="h-7 w-16 sm:h-8 sm:w-20 text-xs sm:text-sm px-2"
+            />
+          </div>
+        )}
+      </div>
     </div>
   );
 };
