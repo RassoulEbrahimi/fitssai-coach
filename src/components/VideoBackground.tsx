@@ -1,6 +1,33 @@
-import React from "react";
+import React, { useEffect, useRef } from "react";
 
 const VideoBackground: React.FC = () => {
+  const videoRef = useRef<HTMLVideoElement>(null);
+
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+
+    // Programmatically ensure playback starts (fallback for browsers that might block autoplay)
+    const playVideo = async () => {
+      try {
+        await video.play();
+      } catch (error) {
+        console.debug("Video autoplay was prevented:", error);
+        // Silently fail - poster will remain visible
+      }
+    };
+
+    // Attempt to play when component mounts
+    playVideo();
+
+    // Also attempt to play when video metadata is loaded
+    video.addEventListener("loadedmetadata", playVideo);
+
+    return () => {
+      video.removeEventListener("loadedmetadata", playVideo);
+    };
+  }, []);
+
   return (
     <div
       className="pointer-events-none fixed inset-0 z-0 overflow-hidden"
@@ -17,6 +44,7 @@ const VideoBackground: React.FC = () => {
 
       {/* Animated background video (hidden in reduce-motion by CSS) */}
       <video
+        ref={videoRef}
         className="bg-video absolute inset-0 w-full h-full object-cover"
         autoPlay
         loop
