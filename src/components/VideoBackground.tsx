@@ -7,14 +7,8 @@ const VideoBackground: React.FC = () => {
       aria-hidden="true"
       data-test-id="video-bg-root"
     >
-      {/* Reduced-motion fallback image (hidden by default, shown in CSS when reduce) */}
-      <img
-        src="/video/dashboard-bg-poster.jpg"
-        alt=""
-        className="bg-video-poster absolute inset-0 w-full h-full object-cover"
-        decoding="async"
-        loading="eager"
-      />
+      {/* Reduced-motion fallback: Use first frame of video or solid color */}
+      <div className="bg-video-poster absolute inset-0 w-full h-full bg-gradient-to-b from-background/60 to-background/90" />
 
       {/* Animated background video (hidden in reduce-motion by CSS) */}
       <video
@@ -24,10 +18,8 @@ const VideoBackground: React.FC = () => {
         muted
         playsInline
         preload="metadata"
-        poster="/video/dashboard-bg-poster.jpg"
         data-test-id="video-bg-video"
       >
-        <source src="/video/dashboard-bg.webm" type="video/webm" />
         <source src="/video/dashboard-bg.mp4" type="video/mp4" />
         Dein Browser unterstützt kein Video-Tag.
       </video>
