@@ -1,8 +1,7 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef } from "react";
 
 const VideoBackground: React.FC = () => {
   const videoRef = useRef<HTMLVideoElement>(null);
-  const [videoError, setVideoError] = useState(false);
 
   useEffect(() => {
     const video = videoRef.current;
@@ -35,16 +34,6 @@ const VideoBackground: React.FC = () => {
       aria-hidden="true"
       data-test-id="video-bg-root"
     >
-      {/* Fallback poster image shown only if video fails to load */}
-      {videoError && (
-        <img 
-          src="/video/dashboard-bg.png" 
-          alt=""
-          className="absolute inset-0 w-full h-full object-cover"
-          aria-hidden="true"
-        />
-      )}
-
       {/* Animated background video (hidden in reduce-motion by CSS) */}
       <video
         ref={videoRef}
@@ -54,8 +43,6 @@ const VideoBackground: React.FC = () => {
         muted
         playsInline
         preload="auto"
-        poster="/video/dashboard-bg.png"
-        onError={() => setVideoError(true)}
         data-test-id="video-bg-video"
       >
         <source src="/video/dashboard-bg.webm" type="video/webm" />
