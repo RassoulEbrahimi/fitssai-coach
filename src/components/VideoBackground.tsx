@@ -29,6 +29,7 @@ const VideoBackground: React.FC = () => {
       >
         <source src="/video/dashboard-bg.webm" type="video/webm" />
         <source src="/video/dashboard-bg.mp4" type="video/mp4" />
+        Dein Browser unterstützt kein Video-Tag.
       </video>
 
       {/* Contrast overlay to keep text readable */}
