@@ -7,24 +7,36 @@ const VideoBackground: React.FC = () => {
     const video = videoRef.current;
     if (!video) return;
 
-    // Programmatically ensure playback starts (fallback for browsers that might block autoplay)
-    const playVideo = async () => {
-      try {
-        await video.play();
-      } catch (error) {
-        console.debug("Video autoplay was prevented:", error);
-        // Silently fail - poster will remain visible
+    // Detect reduced motion preference
+    const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+    const handleVideoReady = async () => {
+      if (prefersReducedMotion) {
+        // For reduced motion: pause and seek to middle frame
+        video.pause();
+        if (video.duration && isFinite(video.duration)) {
+          video.currentTime = video.duration / 2;
+        }
+      } else {
+        // Normal autoplay behavior
+        try {
+          await video.play();
+        } catch (error) {
+          console.debug("Video autoplay was prevented:", error);
+        }
       }
     };
 
-    // Attempt to play when component mounts
-    playVideo();
+    // Attempt to play/handle when metadata is loaded (duration is available)
+    video.addEventListener("loadedmetadata", handleVideoReady);
 
-    // Also attempt to play when video metadata is loaded
-    video.addEventListener("loadedmetadata", playVideo);
+    // Also attempt immediately if metadata already loaded
+    if (video.readyState >= 1) {
+      handleVideoReady();
+    }
 
     return () => {
-      video.removeEventListener("loadedmetadata", playVideo);
+      video.removeEventListener("loadedmetadata", handleVideoReady);
     };
   }, []);
 

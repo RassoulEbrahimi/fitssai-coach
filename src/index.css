@@ -281,11 +281,7 @@
   display: none;
 }
 
-/* Reduced motion: hide video, show poster (static image) */
-@media (prefers-reduced-motion: reduce) {
-  .bg-video { display: none !important; }
-  .bg-video-poster { display: block !important; }
-}
+/* Reduced motion: video is paused programmatically in VideoBackground.tsx */
 
 /* PWA install button styling */
 .pwa-install-btn { 
