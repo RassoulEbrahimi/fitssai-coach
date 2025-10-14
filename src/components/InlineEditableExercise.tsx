@@ -17,7 +17,7 @@ const PREDEFINED_EXERCISES = [
   { name: 'Laufen', type: 'cardio', icon: '🏃', fields: ['distance', 'duration'] as ExerciseField[] },
   { name: 'Radfahren', type: 'cardio', icon: '🚴', fields: ['distance', 'duration'] as ExerciseField[] },
   { name: 'Schwimmen', type: 'cardio', icon: '🏊', fields: ['distance', 'duration'] as ExerciseField[] },
-  { name: 'Rudern', type: 'cardio', icon: '🚣', fields: ['distance', 'duration'] as ExerciseField[] },
+  { name: 'Rudern (Cardio)', type: 'cardio', icon: '🚣', fields: ['distance', 'duration'] as ExerciseField[] },
   
   // Upper Body - Push
   { name: 'Bankdrücken', type: 'strength', icon: '💪', fields: ['sets', 'reps', 'weight', 'rest'] as ExerciseField[] },
@@ -42,9 +42,11 @@ const PREDEFINED_EXERCISES = [
   { name: 'Wadenheben', type: 'strength', icon: '🦵', fields: ['sets', 'reps', 'weight'] as ExerciseField[] },
   
   // Core
-  { name: 'Planks', type: 'strength', icon: '🧘', fields: ['duration', 'sets'] as ExerciseField[] },
-  { name: 'Crunches', type: 'strength', icon: '🧘', fields: ['sets', 'reps'] as ExerciseField[] },
-  { name: 'Russian Twists', type: 'strength', icon: '🧘', fields: ['sets', 'reps'] as ExerciseField[] },
+  { name: 'Planks', type: 'core', icon: '🧘', fields: ['duration', 'sets'] as ExerciseField[] },
+  { name: 'Crunches', type: 'core', icon: '🧘', fields: ['sets', 'reps'] as ExerciseField[] },
+  { name: 'Russian Twists', type: 'core', icon: '🧘', fields: ['sets', 'reps'] as ExerciseField[] },
+  { name: 'Mountain Climbers', type: 'core', icon: '🧘', fields: ['sets', 'reps'] as ExerciseField[] },
+  { name: 'Beinheben', type: 'core', icon: '🧘', fields: ['sets', 'reps'] as ExerciseField[] },
 ] as const;
 
 interface InlineEditableExerciseProps {
@@ -245,12 +247,18 @@ const InlineEditableExercise: React.FC<InlineEditableExerciseProps> = ({
               <ChevronsUpDown className="ml-auto h-3 w-3 shrink-0 opacity-50" />
             </Button>
           </PopoverTrigger>
-          <PopoverContent className="w-[300px] p-0" align="start">
-            <Command>
-              <CommandInput placeholder="Übung suchen..." />
-              <CommandList>
-                <CommandEmpty>Keine Übung gefunden.</CommandEmpty>
-                <CommandGroup heading="Cardio">
+          <PopoverContent className="w-[90vw] sm:w-[400px] p-0 z-[100]" align="start">
+            <Command className="rounded-lg border shadow-md">
+              <CommandInput 
+                placeholder="Übung suchen..." 
+                className="h-10 border-b"
+              />
+              <CommandList className="max-h-[300px] overflow-y-auto">
+                <CommandEmpty className="py-6 text-center text-sm text-muted-foreground">
+                  Keine Übung gefunden.
+                </CommandEmpty>
+                
+                <CommandGroup heading="🏃 Cardio" className="px-2 py-2">
                   {PREDEFINED_EXERCISES
                     .filter(ex => ex.type === 'cardio')
                     .map((predefinedExercise) => (
@@ -258,20 +266,21 @@ const InlineEditableExercise: React.FC<InlineEditableExerciseProps> = ({
                         key={predefinedExercise.name}
                         value={predefinedExercise.name}
                         onSelect={handleNameChange}
-                        className="cursor-pointer"
+                        className="cursor-pointer px-2 py-2 rounded-md hover:bg-accent transition-colors"
                       >
                         <Check
                           className={cn(
-                            "mr-2 h-4 w-4",
+                            "mr-2 h-4 w-4 shrink-0 text-primary",
                             exercise.name === predefinedExercise.name ? "opacity-100" : "opacity-0"
                           )}
                         />
-                        <span className="mr-2 text-lg">{predefinedExercise.icon}</span>
-                        <span>{predefinedExercise.name}</span>
+                        <span className="mr-2 text-lg shrink-0">{predefinedExercise.icon}</span>
+                        <span className="truncate">{predefinedExercise.name}</span>
                       </CommandItem>
                     ))}
                 </CommandGroup>
-                <CommandGroup heading="Krafttraining">
+
+                <CommandGroup heading="💪 Krafttraining" className="px-2 py-2">
                   {PREDEFINED_EXERCISES
                     .filter(ex => ex.type === 'strength')
                     .map((predefinedExercise) => (
@@ -279,16 +288,38 @@ const InlineEditableExercise: React.FC<InlineEditableExerciseProps> = ({
                         key={predefinedExercise.name}
                         value={predefinedExercise.name}
                         onSelect={handleNameChange}
-                        className="cursor-pointer"
+                        className="cursor-pointer px-2 py-2 rounded-md hover:bg-accent transition-colors"
                       >
                         <Check
                           className={cn(
-                            "mr-2 h-4 w-4",
+                            "mr-2 h-4 w-4 shrink-0 text-primary",
                             exercise.name === predefinedExercise.name ? "opacity-100" : "opacity-0"
                           )}
                         />
-                        <span className="mr-2 text-lg">{predefinedExercise.icon}</span>
-                        <span>{predefinedExercise.name}</span>
+                        <span className="mr-2 text-lg shrink-0">{predefinedExercise.icon}</span>
+                        <span className="truncate">{predefinedExercise.name}</span>
+                      </CommandItem>
+                    ))}
+                </CommandGroup>
+
+                <CommandGroup heading="🧘 Core" className="px-2 py-2">
+                  {PREDEFINED_EXERCISES
+                    .filter(ex => ex.type === 'core')
+                    .map((predefinedExercise) => (
+                      <CommandItem
+                        key={predefinedExercise.name}
+                        value={predefinedExercise.name}
+                        onSelect={handleNameChange}
+                        className="cursor-pointer px-2 py-2 rounded-md hover:bg-accent transition-colors"
+                      >
+                        <Check
+                          className={cn(
+                            "mr-2 h-4 w-4 shrink-0 text-primary",
+                            exercise.name === predefinedExercise.name ? "opacity-100" : "opacity-0"
+                          )}
+                        />
+                        <span className="mr-2 text-lg shrink-0">{predefinedExercise.icon}</span>
+                        <span className="truncate">{predefinedExercise.name}</span>
                       </CommandItem>
                     ))}
                 </CommandGroup>
