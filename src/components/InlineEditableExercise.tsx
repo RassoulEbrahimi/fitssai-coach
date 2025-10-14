@@ -9,6 +9,28 @@ import { useTranslation } from 'react-i18next';
 import type { Exercise } from '@/hooks/useExerciseEditor';
 import { cn } from '@/lib/utils';
 
+// Helper function to highlight matching text
+const highlightMatch = (text: string, search: string) => {
+  if (!search.trim()) return <span>{text}</span>;
+  
+  const regex = new RegExp(`(${search})`, 'gi');
+  const parts = text.split(regex);
+  
+  return (
+    <span>
+      {parts.map((part, index) => 
+        regex.test(part) ? (
+          <mark key={index} className="bg-primary/20 text-primary font-semibold px-0.5 rounded">
+            {part}
+          </mark>
+        ) : (
+          part
+        )
+      )}
+    </span>
+  );
+};
+
 // Predefined exercises with field definitions
 type ExerciseField = 'sets' | 'reps' | 'weight' | 'rest' | 'distance' | 'duration';
 
@@ -67,6 +89,7 @@ const InlineEditableExercise: React.FC<InlineEditableExerciseProps> = ({
   const { t } = useTranslation();
   const [isSaving, setIsSaving] = useState(false);
   const [openNamePopover, setOpenNamePopover] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
   
   // Parse distance/duration from description for cardio exercises
   const parseDescription = (desc: string) => {
@@ -247,18 +270,22 @@ const InlineEditableExercise: React.FC<InlineEditableExerciseProps> = ({
               <ChevronsUpDown className="ml-auto h-3 w-3 shrink-0 opacity-50" />
             </Button>
           </PopoverTrigger>
-          <PopoverContent className="w-[90vw] sm:w-[400px] p-0 z-[100]" align="start">
-            <Command className="rounded-lg border shadow-md">
+          <PopoverContent className="w-[90vw] sm:w-[420px] p-0 z-[100] animate-in fade-in-0 zoom-in-95 data-[side=bottom]:slide-in-from-top-2 data-[side=top]:slide-in-from-bottom-2 duration-200" align="start">
+            <Command className="rounded-lg border-border shadow-xl bg-popover">
               <CommandInput 
                 placeholder="Übung suchen..." 
-                className="h-10 border-b"
+                className="h-11 border-b border-border/50 text-sm focus:ring-0"
+                onValueChange={setSearchTerm}
               />
-              <CommandList className="max-h-[300px] overflow-y-auto">
-                <CommandEmpty className="py-6 text-center text-sm text-muted-foreground">
+              <CommandList className="max-h-[320px] overflow-y-auto scroll-smooth">
+                <CommandEmpty className="py-8 text-center text-sm text-muted-foreground">
                   Keine Übung gefunden.
                 </CommandEmpty>
                 
-                <CommandGroup heading="🏃 Cardio" className="px-2 py-2">
+                <CommandGroup 
+                  heading="🏃 CARDIO" 
+                  className="px-2 py-3 [&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:py-2 [&_[cmdk-group-heading]]:text-xs [&_[cmdk-group-heading]]:font-bold [&_[cmdk-group-heading]]:uppercase [&_[cmdk-group-heading]]:tracking-wider [&_[cmdk-group-heading]]:text-muted-foreground [&_[cmdk-group-heading]]:border-b [&_[cmdk-group-heading]]:border-border/40 [&_[cmdk-group-heading]]:mb-2"
+                >
                   {PREDEFINED_EXERCISES
                     .filter(ex => ex.type === 'cardio')
                     .map((predefinedExercise) => (
@@ -266,21 +293,33 @@ const InlineEditableExercise: React.FC<InlineEditableExerciseProps> = ({
                         key={predefinedExercise.name}
                         value={predefinedExercise.name}
                         onSelect={handleNameChange}
-                        className="cursor-pointer px-2 py-2 rounded-md hover:bg-accent transition-colors"
+                        className={cn(
+                          "cursor-pointer px-3 py-2.5 my-0.5 rounded-md",
+                          "transition-all duration-150 ease-in-out",
+                          "hover:bg-accent/80 hover:text-accent-foreground",
+                          "data-[selected=true]:bg-accent data-[selected=true]:text-accent-foreground",
+                          "active:scale-[0.98]",
+                          exercise.name === predefinedExercise.name && "bg-primary/10 hover:bg-primary/15"
+                        )}
                       >
                         <Check
                           className={cn(
-                            "mr-2 h-4 w-4 shrink-0 text-primary",
+                            "mr-2 h-4 w-4 shrink-0 text-primary transition-opacity duration-150",
                             exercise.name === predefinedExercise.name ? "opacity-100" : "opacity-0"
                           )}
                         />
-                        <span className="mr-2 text-lg shrink-0">{predefinedExercise.icon}</span>
-                        <span className="truncate">{predefinedExercise.name}</span>
+                        <span className="mr-2 text-lg shrink-0">{predefinedExercise.icon || '💪'}</span>
+                        <span className="truncate text-sm font-medium">
+                          {highlightMatch(predefinedExercise.name, searchTerm)}
+                        </span>
                       </CommandItem>
                     ))}
                 </CommandGroup>
 
-                <CommandGroup heading="💪 Krafttraining" className="px-2 py-2">
+                <CommandGroup 
+                  heading="💪 KRAFTTRAINING" 
+                  className="px-2 py-3 [&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:py-2 [&_[cmdk-group-heading]]:text-xs [&_[cmdk-group-heading]]:font-bold [&_[cmdk-group-heading]]:uppercase [&_[cmdk-group-heading]]:tracking-wider [&_[cmdk-group-heading]]:text-muted-foreground [&_[cmdk-group-heading]]:border-b [&_[cmdk-group-heading]]:border-border/40 [&_[cmdk-group-heading]]:mb-2"
+                >
                   {PREDEFINED_EXERCISES
                     .filter(ex => ex.type === 'strength')
                     .map((predefinedExercise) => (
@@ -288,21 +327,33 @@ const InlineEditableExercise: React.FC<InlineEditableExerciseProps> = ({
                         key={predefinedExercise.name}
                         value={predefinedExercise.name}
                         onSelect={handleNameChange}
-                        className="cursor-pointer px-2 py-2 rounded-md hover:bg-accent transition-colors"
+                        className={cn(
+                          "cursor-pointer px-3 py-2.5 my-0.5 rounded-md",
+                          "transition-all duration-150 ease-in-out",
+                          "hover:bg-accent/80 hover:text-accent-foreground",
+                          "data-[selected=true]:bg-accent data-[selected=true]:text-accent-foreground",
+                          "active:scale-[0.98]",
+                          exercise.name === predefinedExercise.name && "bg-primary/10 hover:bg-primary/15"
+                        )}
                       >
                         <Check
                           className={cn(
-                            "mr-2 h-4 w-4 shrink-0 text-primary",
+                            "mr-2 h-4 w-4 shrink-0 text-primary transition-opacity duration-150",
                             exercise.name === predefinedExercise.name ? "opacity-100" : "opacity-0"
                           )}
                         />
-                        <span className="mr-2 text-lg shrink-0">{predefinedExercise.icon}</span>
-                        <span className="truncate">{predefinedExercise.name}</span>
+                        <span className="mr-2 text-lg shrink-0">{predefinedExercise.icon || '💪'}</span>
+                        <span className="truncate text-sm font-medium">
+                          {highlightMatch(predefinedExercise.name, searchTerm)}
+                        </span>
                       </CommandItem>
                     ))}
                 </CommandGroup>
 
-                <CommandGroup heading="🧘 Core" className="px-2 py-2">
+                <CommandGroup 
+                  heading="🧘 CORE" 
+                  className="px-2 py-3 [&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:py-2 [&_[cmdk-group-heading]]:text-xs [&_[cmdk-group-heading]]:font-bold [&_[cmdk-group-heading]]:uppercase [&_[cmdk-group-heading]]:tracking-wider [&_[cmdk-group-heading]]:text-muted-foreground [&_[cmdk-group-heading]]:border-b [&_[cmdk-group-heading]]:border-border/40 [&_[cmdk-group-heading]]:mb-2"
+                >
                   {PREDEFINED_EXERCISES
                     .filter(ex => ex.type === 'core')
                     .map((predefinedExercise) => (
@@ -310,16 +361,25 @@ const InlineEditableExercise: React.FC<InlineEditableExerciseProps> = ({
                         key={predefinedExercise.name}
                         value={predefinedExercise.name}
                         onSelect={handleNameChange}
-                        className="cursor-pointer px-2 py-2 rounded-md hover:bg-accent transition-colors"
+                        className={cn(
+                          "cursor-pointer px-3 py-2.5 my-0.5 rounded-md",
+                          "transition-all duration-150 ease-in-out",
+                          "hover:bg-accent/80 hover:text-accent-foreground",
+                          "data-[selected=true]:bg-accent data-[selected=true]:text-accent-foreground",
+                          "active:scale-[0.98]",
+                          exercise.name === predefinedExercise.name && "bg-primary/10 hover:bg-primary/15"
+                        )}
                       >
                         <Check
                           className={cn(
-                            "mr-2 h-4 w-4 shrink-0 text-primary",
+                            "mr-2 h-4 w-4 shrink-0 text-primary transition-opacity duration-150",
                             exercise.name === predefinedExercise.name ? "opacity-100" : "opacity-0"
                           )}
                         />
-                        <span className="mr-2 text-lg shrink-0">{predefinedExercise.icon}</span>
-                        <span className="truncate">{predefinedExercise.name}</span>
+                        <span className="mr-2 text-lg shrink-0">{predefinedExercise.icon || '💪'}</span>
+                        <span className="truncate text-sm font-medium">
+                          {highlightMatch(predefinedExercise.name, searchTerm)}
+                        </span>
                       </CommandItem>
                     ))}
                 </CommandGroup>
