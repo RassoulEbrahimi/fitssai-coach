@@ -2,10 +2,48 @@ import React, { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Info, Loader2 } from 'lucide-react';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
+import { Info, Loader2, ChevronsUpDown, Check } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import type { Exercise } from '@/hooks/useExerciseEditor';
 import { cn } from '@/lib/utils';
+
+// Predefined exercises (same as AddWorkoutDialog)
+const PREDEFINED_EXERCISES = [
+  // Cardio
+  { name: 'Laufen', type: 'cardio', icon: '🏃' },
+  { name: 'Radfahren', type: 'cardio', icon: '🚴' },
+  { name: 'Schwimmen', type: 'cardio', icon: '🏊' },
+  { name: 'Rudern', type: 'cardio', icon: '🚣' },
+  
+  // Upper Body - Push
+  { name: 'Bankdrücken', type: 'strength', icon: '💪' },
+  { name: 'Schrägbankdrücken', type: 'strength', icon: '💪' },
+  { name: 'Schulterdrücken', type: 'strength', icon: '💪' },
+  { name: 'Liegestütze', type: 'strength', icon: '💪' },
+  { name: 'Dips', type: 'strength', icon: '💪' },
+  
+  // Upper Body - Pull
+  { name: 'Klimmzüge', type: 'strength', icon: '💪' },
+  { name: 'Latziehen', type: 'strength', icon: '💪' },
+  { name: 'Rudern', type: 'strength', icon: '💪' },
+  { name: 'Bizepscurls', type: 'strength', icon: '💪' },
+  
+  // Lower Body
+  { name: 'Kniebeugen', type: 'strength', icon: '🦵' },
+  { name: 'Kreuzheben', type: 'strength', icon: '🦵' },
+  { name: 'Beinpresse', type: 'strength', icon: '🦵' },
+  { name: 'Ausfallschritte', type: 'strength', icon: '🦵' },
+  { name: 'Beinbeuger', type: 'strength', icon: '🦵' },
+  { name: 'Beinstrecker', type: 'strength', icon: '🦵' },
+  { name: 'Wadenheben', type: 'strength', icon: '🦵' },
+  
+  // Core
+  { name: 'Planks', type: 'strength', icon: '🧘' },
+  { name: 'Crunches', type: 'strength', icon: '🧘' },
+  { name: 'Russian Twists', type: 'strength', icon: '🧘' },
+] as const;
 
 interface InlineEditableExerciseProps {
   exercise: Exercise;
@@ -24,6 +62,7 @@ const InlineEditableExercise: React.FC<InlineEditableExerciseProps> = ({
 }) => {
   const { t } = useTranslation();
   const [isSaving, setIsSaving] = useState(false);
+  const [openNamePopover, setOpenNamePopover] = useState(false);
   
   // Local state for inputs (for immediate UI updates)
   const [localWeight, setLocalWeight] = useState(exercise.weight || '');
@@ -94,17 +133,124 @@ const InlineEditableExercise: React.FC<InlineEditableExerciseProps> = ({
     }
   };
 
+  const handleNameChange = async (selectedExerciseName: string) => {
+    const selectedExercise = PREDEFINED_EXERCISES.find(ex => ex.name === selectedExerciseName);
+    if (!selectedExercise) return;
+
+    setIsSaving(true);
+    setOpenNamePopover(false);
+    
+    try {
+      // Build updated exercise based on type
+      let updatedExercise: Exercise;
+      
+      if (selectedExercise.type === 'cardio') {
+        // Reset to cardio defaults
+        updatedExercise = {
+          ...exercise,
+          name: selectedExercise.name,
+          sets: 1,
+          reps: '1',
+          description: exercise.description || '',
+          weight: undefined,
+          rest: undefined,
+        };
+      } else {
+        // Reset to strength defaults
+        updatedExercise = {
+          ...exercise,
+          name: selectedExercise.name,
+          sets: exercise.sets || 3,
+          reps: exercise.reps || '10',
+          description: undefined,
+        };
+      }
+      
+      await onUpdate(updatedExercise);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  // Find current exercise details for icon display
+  const currentExerciseDetails = PREDEFINED_EXERCISES.find(ex => ex.name === exercise.name);
+
   return (
     <div className={cn(
       "flex flex-col gap-2 p-1.5 sm:p-2 md:p-3 bg-background/50 rounded-lg border border-border/50",
       "hover:border-primary/30 transition-colors",
       (isSaving || isUpdating) && "opacity-60 pointer-events-none"
     )}>
-      {/* Header: Exercise name + info button + loading indicator */}
+      {/* Header: Editable exercise name + info button + loading indicator */}
       <div className="flex items-center gap-1.5 sm:gap-2">
-        <h4 className="font-medium text-foreground text-sm sm:text-sm md:text-base flex-1 min-w-0 truncate">
-          {exercise.name}
-        </h4>
+        <Popover open={openNamePopover} onOpenChange={setOpenNamePopover}>
+          <PopoverTrigger asChild>
+            <Button
+              variant="ghost"
+              role="combobox"
+              aria-expanded={openNamePopover}
+              className="flex-1 justify-start h-auto p-1 font-medium text-foreground text-sm sm:text-sm md:text-base min-w-0 hover:bg-accent/50"
+              disabled={isSaving || isUpdating}
+            >
+              <span className="mr-1.5 text-base sm:text-lg flex-shrink-0">
+                {currentExerciseDetails?.icon || '💪'}
+              </span>
+              <span className="truncate">{exercise.name}</span>
+              <ChevronsUpDown className="ml-auto h-3 w-3 shrink-0 opacity-50" />
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent className="w-[300px] p-0" align="start">
+            <Command>
+              <CommandInput placeholder="Übung suchen..." />
+              <CommandList>
+                <CommandEmpty>Keine Übung gefunden.</CommandEmpty>
+                <CommandGroup heading="Cardio">
+                  {PREDEFINED_EXERCISES
+                    .filter(ex => ex.type === 'cardio')
+                    .map((predefinedExercise) => (
+                      <CommandItem
+                        key={predefinedExercise.name}
+                        value={predefinedExercise.name}
+                        onSelect={handleNameChange}
+                        className="cursor-pointer"
+                      >
+                        <Check
+                          className={cn(
+                            "mr-2 h-4 w-4",
+                            exercise.name === predefinedExercise.name ? "opacity-100" : "opacity-0"
+                          )}
+                        />
+                        <span className="mr-2 text-lg">{predefinedExercise.icon}</span>
+                        <span>{predefinedExercise.name}</span>
+                      </CommandItem>
+                    ))}
+                </CommandGroup>
+                <CommandGroup heading="Krafttraining">
+                  {PREDEFINED_EXERCISES
+                    .filter(ex => ex.type === 'strength')
+                    .map((predefinedExercise) => (
+                      <CommandItem
+                        key={predefinedExercise.name}
+                        value={predefinedExercise.name}
+                        onSelect={handleNameChange}
+                        className="cursor-pointer"
+                      >
+                        <Check
+                          className={cn(
+                            "mr-2 h-4 w-4",
+                            exercise.name === predefinedExercise.name ? "opacity-100" : "opacity-0"
+                          )}
+                        />
+                        <span className="mr-2 text-lg">{predefinedExercise.icon}</span>
+                        <span>{predefinedExercise.name}</span>
+                      </CommandItem>
+                    ))}
+                </CommandGroup>
+              </CommandList>
+            </Command>
+          </PopoverContent>
+        </Popover>
+        
         {(isSaving || isUpdating) && (
           <Loader2 className="h-3.5 w-3.5 sm:h-4 sm:w-4 animate-spin text-primary flex-shrink-0" />
         )}
