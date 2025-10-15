@@ -18,6 +18,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Check, Plus } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import type { Exercise } from '@/hooks/useExerciseEditor';
@@ -77,6 +78,7 @@ export const AddWorkoutDialog: React.FC<AddWorkoutDialogProps> = ({
   // Exercise selection state
   const [selectedExercise, setSelectedExercise] = useState<typeof PREDEFINED_EXERCISES[number] | null>(null);
   const [searchValue, setSearchValue] = useState('');
+  const [selectedTab, setSelectedTab] = useState<'strength' | 'cardio' | 'core'>('strength');
   
   // Form state for strength exercises
   const [sets, setSets] = useState('3');
@@ -93,6 +95,7 @@ export const AddWorkoutDialog: React.FC<AddWorkoutDialogProps> = ({
     if (!open) {
       setSelectedExercise(null);
       setSearchValue('');
+      setSelectedTab('strength');
       setSets('3');
       setReps('10');
       setWeight('');
@@ -179,46 +182,83 @@ export const AddWorkoutDialog: React.FC<AddWorkoutDialogProps> = ({
                 </Button>
               </div>
             ) : (
-              <Command className="rounded-lg border">
-                <CommandInput 
-                  placeholder="Übung suchen..." 
-                  value={searchValue}
-                  onValueChange={setSearchValue}
-                />
-                <CommandList>
-                  <CommandEmpty>Keine Übung gefunden.</CommandEmpty>
-                  <CommandGroup heading="Cardio">
-                    {PREDEFINED_EXERCISES
-                      .filter(ex => ex.type === 'cardio')
-                      .map((exercise) => (
-                        <CommandItem
-                          key={exercise.name}
-                          value={exercise.name}
-                          onSelect={() => handleSelectExercise(exercise)}
-                          className="cursor-pointer"
-                        >
-                          <span className="mr-2 text-lg">{exercise.icon}</span>
-                          <span>{exercise.name}</span>
-                        </CommandItem>
-                      ))}
-                  </CommandGroup>
-                  <CommandGroup heading="Krafttraining">
-                    {PREDEFINED_EXERCISES
-                      .filter(ex => ex.type === 'strength')
-                      .map((exercise) => (
-                        <CommandItem
-                          key={exercise.name}
-                          value={exercise.name}
-                          onSelect={() => handleSelectExercise(exercise)}
-                          className="cursor-pointer"
-                        >
-                          <span className="mr-2 text-lg">{exercise.icon}</span>
-                          <span>{exercise.name}</span>
-                        </CommandItem>
-                      ))}
-                  </CommandGroup>
-                </CommandList>
-              </Command>
+              <div className="space-y-3">
+                <Command className="rounded-lg border">
+                  <CommandInput 
+                    placeholder="Übung suchen..." 
+                    value={searchValue}
+                    onValueChange={setSearchValue}
+                  />
+                </Command>
+                
+                <Tabs value={selectedTab} onValueChange={(v) => setSelectedTab(v as 'strength' | 'cardio' | 'core')}>
+                  <TabsList className="grid w-full grid-cols-3">
+                    <TabsTrigger value="strength">💪 Strength</TabsTrigger>
+                    <TabsTrigger value="cardio">🏃 Cardio</TabsTrigger>
+                    <TabsTrigger value="core">🧘 Core</TabsTrigger>
+                  </TabsList>
+                </Tabs>
+                
+                <Command className="rounded-lg border">
+                  <CommandList>
+                    <CommandEmpty>Keine Übung gefunden.</CommandEmpty>
+                    {(() => {
+                      const hasSearch = searchValue.trim().length > 0;
+                      let exercises = [...PREDEFINED_EXERCISES];
+                      
+                      // If no search, filter by selected tab
+                      if (!hasSearch) {
+                        if (selectedTab === 'cardio') {
+                          exercises = exercises.filter(ex => ex.type === 'cardio');
+                        } else if (selectedTab === 'core') {
+                          exercises = exercises.filter(ex => ex.icon === '🧘');
+                        } else {
+                          exercises = exercises.filter(ex => ex.type === 'strength' && ex.icon !== '🧘');
+                        }
+                      }
+                      
+                      // Group by category
+                      const cardio = exercises.filter(ex => ex.type === 'cardio');
+                      const strength = exercises.filter(ex => ex.type === 'strength');
+                      
+                      return (
+                        <>
+                          {cardio.length > 0 && (
+                            <CommandGroup heading="Cardio">
+                              {cardio.map((exercise) => (
+                                <CommandItem
+                                  key={exercise.name}
+                                  value={exercise.name}
+                                  onSelect={() => handleSelectExercise(exercise)}
+                                  className="cursor-pointer"
+                                >
+                                  <span className="mr-2 text-lg">{exercise.icon}</span>
+                                  <span>{exercise.name}</span>
+                                </CommandItem>
+                              ))}
+                            </CommandGroup>
+                          )}
+                          {strength.length > 0 && (
+                            <CommandGroup heading="Krafttraining">
+                              {strength.map((exercise) => (
+                                <CommandItem
+                                  key={exercise.name}
+                                  value={exercise.name}
+                                  onSelect={() => handleSelectExercise(exercise)}
+                                  className="cursor-pointer"
+                                >
+                                  <span className="mr-2 text-lg">{exercise.icon}</span>
+                                  <span>{exercise.name}</span>
+                                </CommandItem>
+                              ))}
+                            </CommandGroup>
+                          )}
+                        </>
+                      );
+                    })()}
+                  </CommandList>
+                </Command>
+              </div>
             )}
           </div>
 
