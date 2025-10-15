@@ -248,26 +248,25 @@ const InlineEditableExercise: React.FC<InlineEditableExerciseProps> = ({
 
   return (
     <div className={cn(
-      "flex flex-col gap-1.5 p-1 sm:p-1.5 md:p-2.5 bg-background/50 rounded-lg border border-border/50",
-      "hover:border-primary/30 transition-colors",
+      "flex flex-wrap items-center gap-2 p-1 sm:p-1.5",
       (isSaving || isUpdating) && "opacity-60 pointer-events-none"
     )}>
-      {/* Header: Editable exercise name + info button + loading indicator */}
-      <div className="flex items-center gap-1.5 sm:gap-2">
+      {/* Exercise name container - shrink-wrapped with rounded background */}
+      <div className="inline-flex items-center gap-1.5 px-2 py-1 bg-accent/30 rounded-md border border-border/30">
         <Popover open={openNamePopover} onOpenChange={setOpenNamePopover}>
           <PopoverTrigger asChild>
             <Button
               variant="ghost"
               role="combobox"
               aria-expanded={openNamePopover}
-              className="flex-1 justify-start h-auto p-1 font-medium text-foreground text-sm sm:text-sm md:text-base min-w-0 hover:bg-accent/50"
+              className="h-auto p-0 font-medium text-foreground text-sm hover:bg-transparent"
               disabled={isSaving || isUpdating}
             >
-              <span className="mr-1.5 text-base sm:text-lg flex-shrink-0">
+              <span className="mr-1 text-base flex-shrink-0">
                 {currentExerciseDetails?.icon || '💪'}
               </span>
-              <span className="truncate">{exercise.name}</span>
-              <ChevronsUpDown className="ml-auto h-3 w-3 shrink-0 opacity-50" />
+              <span className="whitespace-nowrap">{exercise.name}</span>
+              <ChevronsUpDown className="ml-1 h-3 w-3 shrink-0 opacity-50" />
             </Button>
           </PopoverTrigger>
           <PopoverContent className="w-[90vw] sm:w-[420px] p-0 z-[100] animate-in fade-in-0 zoom-in-95 data-[side=bottom]:slide-in-from-top-2 data-[side=top]:slide-in-from-bottom-2 duration-200" align="start">
@@ -387,130 +386,129 @@ const InlineEditableExercise: React.FC<InlineEditableExerciseProps> = ({
             </Command>
           </PopoverContent>
         </Popover>
-        
+
+        {/* Action icons immediately to the right */}
         {(isSaving || isUpdating) && (
-          <Loader2 className="h-3.5 w-3.5 sm:h-4 sm:w-4 animate-spin text-primary flex-shrink-0" />
+          <Loader2 className="h-3.5 w-3.5 animate-spin text-primary flex-shrink-0" />
         )}
         <Button
           variant="ghost"
           size="sm"
           onClick={onInfo}
-          className="h-5 w-5 sm:h-6 sm:w-6 p-0 text-muted-foreground hover:text-foreground flex-shrink-0"
+          className="h-auto w-auto p-0 text-muted-foreground hover:text-foreground hover:bg-transparent flex-shrink-0"
           aria-label={`Info für ${exercise.name}`}
         >
-          <Info className="h-3 w-3" />
+          <Info className="h-3.5 w-3.5" />
         </Button>
       </div>
 
-      {/* Dynamic fields based on exercise requirements - inline on mobile with compact spacing */}
-      <div className="flex flex-wrap items-center gap-x-2 lg:gap-x-4 gap-y-1.5">
-        {requiredFields.includes('sets') && (
-          <div className="flex items-center gap-1">
-            <span className="text-sm md:text-base" aria-hidden="true">🏋️</span>
-              <Select
-              value={String(exercise.sets)}
-              onValueChange={handleSetsChange}
-              disabled={isSaving || isUpdating}
-            >
-              <SelectTrigger className="h-7 w-14 sm:h-8 sm:w-16 text-xs sm:text-sm">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent className="bg-background border-border z-50 shadow-lg">
-                {Array.from({ length: 10 }, (_, i) => i + 1).map((num) => (
-                  <SelectItem 
-                    key={num} 
-                    value={String(num)}
-                    className="hover:bg-accent focus:bg-accent"
-                  >
-                    {num}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <span className="text-xs text-muted-foreground ml-1">×</span>
-            <Select
-              value={String(exercise.reps)}
-              onValueChange={handleRepsChange}
-              disabled={isSaving || isUpdating}
-            >
-              <SelectTrigger className="h-7 w-14 sm:h-8 sm:w-16 text-xs sm:text-sm">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent className="bg-background border-border z-50 shadow-lg">
-                {Array.from({ length: 20 }, (_, i) => i + 1).map((num) => (
-                  <SelectItem 
-                    key={num} 
-                    value={String(num)}
-                    className="hover:bg-accent focus:bg-accent"
-                  >
-                    {num}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-        )}
+      {/* Parameter fields - inline with auto width */}
+      {requiredFields.includes('sets') && (
+        <div className="inline-flex items-center gap-1 px-2 py-1 bg-background/50 rounded-md border border-border/30">
+          <span className="text-sm" aria-hidden="true">🏋️</span>
+          <Select
+            value={String(exercise.sets)}
+            onValueChange={handleSetsChange}
+            disabled={isSaving || isUpdating}
+          >
+            <SelectTrigger className="h-auto w-auto min-w-[2rem] border-0 bg-transparent p-0 text-xs font-medium focus:ring-0 [&>svg]:hidden">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent className="bg-background border-border z-50 shadow-lg">
+              {Array.from({ length: 10 }, (_, i) => i + 1).map((num) => (
+                <SelectItem 
+                  key={num} 
+                  value={String(num)}
+                  className="hover:bg-accent focus:bg-accent"
+                >
+                  {num}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <span className="text-xs text-muted-foreground">×</span>
+          <Select
+            value={String(exercise.reps)}
+            onValueChange={handleRepsChange}
+            disabled={isSaving || isUpdating}
+          >
+            <SelectTrigger className="h-auto w-auto min-w-[2rem] border-0 bg-transparent p-0 text-xs font-medium focus:ring-0 [&>svg]:hidden">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent className="bg-background border-border z-50 shadow-lg">
+              {Array.from({ length: 20 }, (_, i) => i + 1).map((num) => (
+                <SelectItem 
+                  key={num} 
+                  value={String(num)}
+                  className="hover:bg-accent focus:bg-accent"
+                >
+                  {num}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      )}
 
-        {requiredFields.includes('weight') && (
-          <div className="flex items-center gap-1">
-            <span className="text-sm md:text-base" aria-hidden="true">⚖️</span>
-            <Input
-              type="text"
-              value={localWeight}
-              onChange={handleWeightChange}
-              onBlur={handleWeightBlur}
-              placeholder="kg"
-              disabled={isSaving || isUpdating}
-              className="h-7 w-16 sm:h-8 sm:w-20 text-xs sm:text-sm px-2"
-            />
-          </div>
-        )}
+      {requiredFields.includes('weight') && (
+        <div className="inline-flex items-center gap-1 px-2 py-1 bg-background/50 rounded-md border border-border/30">
+          <span className="text-sm" aria-hidden="true">⚖️</span>
+          <Input
+            type="text"
+            value={localWeight}
+            onChange={handleWeightChange}
+            onBlur={handleWeightBlur}
+            placeholder="kg"
+            disabled={isSaving || isUpdating}
+            className="h-auto w-12 border-0 bg-transparent p-0 text-xs font-medium focus-visible:ring-0 focus-visible:ring-offset-0"
+          />
+        </div>
+      )}
 
-        {requiredFields.includes('rest') && (
-          <div className="flex items-center gap-1">
-            <span className="text-sm md:text-base" aria-hidden="true">⏱</span>
-            <Input
-              type="text"
-              value={localRest}
-              onChange={handleRestChange}
-              onBlur={handleRestBlur}
-              placeholder="90s"
-              disabled={isSaving || isUpdating}
-              className="h-7 w-16 sm:h-8 sm:w-20 text-xs sm:text-sm px-2"
-            />
-          </div>
-        )}
+      {requiredFields.includes('rest') && (
+        <div className="inline-flex items-center gap-1 px-2 py-1 bg-background/50 rounded-md border border-border/30">
+          <span className="text-sm" aria-hidden="true">⏱</span>
+          <Input
+            type="text"
+            value={localRest}
+            onChange={handleRestChange}
+            onBlur={handleRestBlur}
+            placeholder="90s"
+            disabled={isSaving || isUpdating}
+            className="h-auto w-12 border-0 bg-transparent p-0 text-xs font-medium focus-visible:ring-0 focus-visible:ring-offset-0"
+          />
+        </div>
+      )}
 
-        {requiredFields.includes('distance') && (
-          <div className="flex items-center gap-1">
-            <span className="text-sm md:text-base" aria-hidden="true">📏</span>
-            <Input
-              type="text"
-              value={localDistance}
-              onChange={handleDistanceChange}
-              onBlur={handleDistanceBlur}
-              placeholder="5km"
-              disabled={isSaving || isUpdating}
-              className="h-7 w-16 sm:h-8 sm:w-20 text-xs sm:text-sm px-2"
-            />
-          </div>
-        )}
+      {requiredFields.includes('distance') && (
+        <div className="inline-flex items-center gap-1 px-2 py-1 bg-background/50 rounded-md border border-border/30">
+          <span className="text-sm" aria-hidden="true">📏</span>
+          <Input
+            type="text"
+            value={localDistance}
+            onChange={handleDistanceChange}
+            onBlur={handleDistanceBlur}
+            placeholder="5km"
+            disabled={isSaving || isUpdating}
+            className="h-auto w-12 border-0 bg-transparent p-0 text-xs font-medium focus-visible:ring-0 focus-visible:ring-offset-0"
+          />
+        </div>
+      )}
 
-        {requiredFields.includes('duration') && (
-          <div className="flex items-center gap-1">
-            <span className="text-sm md:text-base" aria-hidden="true">⏱️</span>
-            <Input
-              type="text"
-              value={localDuration}
-              onChange={handleDurationChange}
-              onBlur={handleDurationBlur}
-              placeholder="30min"
-              disabled={isSaving || isUpdating}
-              className="h-7 w-16 sm:h-8 sm:w-20 text-xs sm:text-sm px-2"
-            />
-          </div>
-        )}
-      </div>
+      {requiredFields.includes('duration') && (
+        <div className="inline-flex items-center gap-1 px-2 py-1 bg-background/50 rounded-md border border-border/30">
+          <span className="text-sm" aria-hidden="true">⏱️</span>
+          <Input
+            type="text"
+            value={localDuration}
+            onChange={handleDurationChange}
+            onBlur={handleDurationBlur}
+            placeholder="30min"
+            disabled={isSaving || isUpdating}
+            className="h-auto w-14 border-0 bg-transparent p-0 text-xs font-medium focus-visible:ring-0 focus-visible:ring-offset-0"
+          />
+        </div>
+      )}
     </div>
   );
 };
