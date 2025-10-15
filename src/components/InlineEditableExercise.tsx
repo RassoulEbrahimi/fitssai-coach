@@ -3,43 +3,21 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command';
-import { Info, Loader2, ChevronsUpDown, Check } from 'lucide-react';
+import { Info, Loader2, ChevronsUpDown } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import type { Exercise } from '@/hooks/useExerciseEditor';
 import { cn } from '@/lib/utils';
-
-// Helper function to highlight matching text
-const highlightMatch = (text: string, search: string) => {
-  if (!search.trim()) return <span>{text}</span>;
-  
-  const regex = new RegExp(`(${search})`, 'gi');
-  const parts = text.split(regex);
-  
-  return (
-    <span>
-      {parts.map((part, index) => 
-        regex.test(part) ? (
-          <mark key={index} className="bg-primary/20 text-primary font-semibold px-0.5 rounded">
-            {part}
-          </mark>
-        ) : (
-          part
-        )
-      )}
-    </span>
-  );
-};
+import { ExerciseSelector, PREDEFINED_EXERCISES } from '@/components/ExerciseSelector';
 
 // Predefined exercises with field definitions
 type ExerciseField = 'sets' | 'reps' | 'weight' | 'rest' | 'distance' | 'duration';
 
-const PREDEFINED_EXERCISES = [
+const PREDEFINED_EXERCISES_WITH_FIELDS = [
   // Cardio
   { name: 'Laufen', type: 'cardio', icon: '🏃', fields: ['distance', 'duration'] as ExerciseField[] },
   { name: 'Radfahren', type: 'cardio', icon: '🚴', fields: ['distance', 'duration'] as ExerciseField[] },
   { name: 'Schwimmen', type: 'cardio', icon: '🏊', fields: ['distance', 'duration'] as ExerciseField[] },
-  { name: 'Rudern (Cardio)', type: 'cardio', icon: '🚣', fields: ['distance', 'duration'] as ExerciseField[] },
+  { name: 'Rudern', type: 'cardio', icon: '🚣', fields: ['distance', 'duration'] as ExerciseField[] },
   
   // Upper Body - Push
   { name: 'Bankdrücken', type: 'strength', icon: '💪', fields: ['sets', 'reps', 'weight', 'rest'] as ExerciseField[] },
@@ -64,11 +42,9 @@ const PREDEFINED_EXERCISES = [
   { name: 'Wadenheben', type: 'strength', icon: '🦵', fields: ['sets', 'reps', 'weight'] as ExerciseField[] },
   
   // Core
-  { name: 'Planks', type: 'core', icon: '🧘', fields: ['duration', 'sets'] as ExerciseField[] },
-  { name: 'Crunches', type: 'core', icon: '🧘', fields: ['sets', 'reps'] as ExerciseField[] },
-  { name: 'Russian Twists', type: 'core', icon: '🧘', fields: ['sets', 'reps'] as ExerciseField[] },
-  { name: 'Mountain Climbers', type: 'core', icon: '🧘', fields: ['sets', 'reps'] as ExerciseField[] },
-  { name: 'Beinheben', type: 'core', icon: '🧘', fields: ['sets', 'reps'] as ExerciseField[] },
+  { name: 'Planks', type: 'strength', icon: '🧘', fields: ['duration', 'sets'] as ExerciseField[] },
+  { name: 'Crunches', type: 'strength', icon: '🧘', fields: ['sets', 'reps'] as ExerciseField[] },
+  { name: 'Russian Twists', type: 'strength', icon: '🧘', fields: ['sets', 'reps'] as ExerciseField[] },
 ] as const;
 
 interface InlineEditableExerciseProps {
@@ -89,7 +65,6 @@ const InlineEditableExercise: React.FC<InlineEditableExerciseProps> = ({
   const { t } = useTranslation();
   const [isSaving, setIsSaving] = useState(false);
   const [openNamePopover, setOpenNamePopover] = useState(false);
-  const [searchTerm, setSearchTerm] = useState('');
   
   // Parse distance/duration from description for cardio exercises
   const parseDescription = (desc: string) => {
@@ -126,7 +101,7 @@ const InlineEditableExercise: React.FC<InlineEditableExerciseProps> = ({
   }, [exercise.weight, exercise.rest, exercise.description]);
 
   // Get current exercise definition to know which fields to show
-  const currentExerciseDetails = PREDEFINED_EXERCISES.find(ex => ex.name === exercise.name);
+  const currentExerciseDetails = PREDEFINED_EXERCISES_WITH_FIELDS.find(ex => ex.name === exercise.name);
   const requiredFields = currentExerciseDetails?.fields || [];
 
   const handleFieldUpdate = async (field: keyof Exercise, value: any) => {
@@ -193,9 +168,9 @@ const InlineEditableExercise: React.FC<InlineEditableExerciseProps> = ({
     }
   };
 
-  const handleNameChange = async (selectedExerciseName: string) => {
-    const selectedExercise = PREDEFINED_EXERCISES.find(ex => ex.name === selectedExerciseName);
-    if (!selectedExercise) return;
+  const handleNameChange = async (selectedExercise: typeof PREDEFINED_EXERCISES[number]) => {
+    const selectedExerciseWithFields = PREDEFINED_EXERCISES_WITH_FIELDS.find(ex => ex.name === selectedExercise.name);
+    if (!selectedExerciseWithFields) return;
 
     setIsSaving(true);
     setOpenNamePopover(false);
@@ -208,7 +183,7 @@ const InlineEditableExercise: React.FC<InlineEditableExerciseProps> = ({
       };
 
       // Set defaults based on required fields
-      const fields = selectedExercise.fields;
+      const fields = selectedExerciseWithFields.fields;
       
       if (fields.includes('sets')) {
         updatedExercise.sets = exercise.sets || 3;
@@ -269,121 +244,11 @@ const InlineEditableExercise: React.FC<InlineEditableExerciseProps> = ({
               <ChevronsUpDown className="ml-1 h-3 w-3 shrink-0 opacity-50" />
             </Button>
           </PopoverTrigger>
-          <PopoverContent className="w-[90vw] sm:w-[420px] p-0 z-[100] animate-in fade-in-0 zoom-in-95 data-[side=bottom]:slide-in-from-top-2 data-[side=top]:slide-in-from-bottom-2 duration-200" align="start">
-            <Command className="rounded-lg border-border shadow-xl bg-popover">
-              <CommandInput 
-                placeholder="Übung suchen..." 
-                className="h-11 border-b border-border/50 text-sm focus:ring-0"
-                onValueChange={setSearchTerm}
-              />
-              <CommandList className="max-h-[320px] overflow-y-auto scroll-smooth">
-                <CommandEmpty className="py-8 text-center text-sm text-muted-foreground">
-                  Keine Übung gefunden.
-                </CommandEmpty>
-                
-                <CommandGroup 
-                  heading="🏃 CARDIO" 
-                  className="px-2 py-3 [&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:py-2 [&_[cmdk-group-heading]]:text-xs [&_[cmdk-group-heading]]:font-bold [&_[cmdk-group-heading]]:uppercase [&_[cmdk-group-heading]]:tracking-wider [&_[cmdk-group-heading]]:text-muted-foreground [&_[cmdk-group-heading]]:border-b [&_[cmdk-group-heading]]:border-border/40 [&_[cmdk-group-heading]]:mb-2"
-                >
-                  {PREDEFINED_EXERCISES
-                    .filter(ex => ex.type === 'cardio')
-                    .map((predefinedExercise) => (
-                      <CommandItem
-                        key={predefinedExercise.name}
-                        value={predefinedExercise.name}
-                        onSelect={handleNameChange}
-                        className={cn(
-                          "cursor-pointer px-3 py-2.5 my-0.5 rounded-md",
-                          "transition-all duration-150 ease-in-out",
-                          "hover:bg-accent/80 hover:text-accent-foreground",
-                          "data-[selected=true]:bg-accent data-[selected=true]:text-accent-foreground",
-                          "active:scale-[0.98]",
-                          exercise.name === predefinedExercise.name && "bg-primary/10 hover:bg-primary/15"
-                        )}
-                      >
-                        <Check
-                          className={cn(
-                            "mr-2 h-4 w-4 shrink-0 text-primary transition-opacity duration-150",
-                            exercise.name === predefinedExercise.name ? "opacity-100" : "opacity-0"
-                          )}
-                        />
-                        <span className="mr-2 text-lg shrink-0">{predefinedExercise.icon || '💪'}</span>
-                        <span className="truncate text-sm font-medium">
-                          {highlightMatch(predefinedExercise.name, searchTerm)}
-                        </span>
-                      </CommandItem>
-                    ))}
-                </CommandGroup>
-
-                <CommandGroup 
-                  heading="💪 KRAFTTRAINING" 
-                  className="px-2 py-3 [&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:py-2 [&_[cmdk-group-heading]]:text-xs [&_[cmdk-group-heading]]:font-bold [&_[cmdk-group-heading]]:uppercase [&_[cmdk-group-heading]]:tracking-wider [&_[cmdk-group-heading]]:text-muted-foreground [&_[cmdk-group-heading]]:border-b [&_[cmdk-group-heading]]:border-border/40 [&_[cmdk-group-heading]]:mb-2"
-                >
-                  {PREDEFINED_EXERCISES
-                    .filter(ex => ex.type === 'strength')
-                    .map((predefinedExercise) => (
-                      <CommandItem
-                        key={predefinedExercise.name}
-                        value={predefinedExercise.name}
-                        onSelect={handleNameChange}
-                        className={cn(
-                          "cursor-pointer px-3 py-2.5 my-0.5 rounded-md",
-                          "transition-all duration-150 ease-in-out",
-                          "hover:bg-accent/80 hover:text-accent-foreground",
-                          "data-[selected=true]:bg-accent data-[selected=true]:text-accent-foreground",
-                          "active:scale-[0.98]",
-                          exercise.name === predefinedExercise.name && "bg-primary/10 hover:bg-primary/15"
-                        )}
-                      >
-                        <Check
-                          className={cn(
-                            "mr-2 h-4 w-4 shrink-0 text-primary transition-opacity duration-150",
-                            exercise.name === predefinedExercise.name ? "opacity-100" : "opacity-0"
-                          )}
-                        />
-                        <span className="mr-2 text-lg shrink-0">{predefinedExercise.icon || '💪'}</span>
-                        <span className="truncate text-sm font-medium">
-                          {highlightMatch(predefinedExercise.name, searchTerm)}
-                        </span>
-                      </CommandItem>
-                    ))}
-                </CommandGroup>
-
-                <CommandGroup 
-                  heading="🧘 CORE" 
-                  className="px-2 py-3 [&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:py-2 [&_[cmdk-group-heading]]:text-xs [&_[cmdk-group-heading]]:font-bold [&_[cmdk-group-heading]]:uppercase [&_[cmdk-group-heading]]:tracking-wider [&_[cmdk-group-heading]]:text-muted-foreground [&_[cmdk-group-heading]]:border-b [&_[cmdk-group-heading]]:border-border/40 [&_[cmdk-group-heading]]:mb-2"
-                >
-                  {PREDEFINED_EXERCISES
-                    .filter(ex => ex.type === 'core')
-                    .map((predefinedExercise) => (
-                      <CommandItem
-                        key={predefinedExercise.name}
-                        value={predefinedExercise.name}
-                        onSelect={handleNameChange}
-                        className={cn(
-                          "cursor-pointer px-3 py-2.5 my-0.5 rounded-md",
-                          "transition-all duration-150 ease-in-out",
-                          "hover:bg-accent/80 hover:text-accent-foreground",
-                          "data-[selected=true]:bg-accent data-[selected=true]:text-accent-foreground",
-                          "active:scale-[0.98]",
-                          exercise.name === predefinedExercise.name && "bg-primary/10 hover:bg-primary/15"
-                        )}
-                      >
-                        <Check
-                          className={cn(
-                            "mr-2 h-4 w-4 shrink-0 text-primary transition-opacity duration-150",
-                            exercise.name === predefinedExercise.name ? "opacity-100" : "opacity-0"
-                          )}
-                        />
-                        <span className="mr-2 text-lg shrink-0">{predefinedExercise.icon || '💪'}</span>
-                        <span className="truncate text-sm font-medium">
-                          {highlightMatch(predefinedExercise.name, searchTerm)}
-                        </span>
-                      </CommandItem>
-                    ))}
-                </CommandGroup>
-              </CommandList>
-            </Command>
+          <PopoverContent className="w-[90vw] sm:w-[420px] p-3 z-[100] animate-in fade-in-0 zoom-in-95 data-[side=bottom]:slide-in-from-top-2 data-[side=top]:slide-in-from-bottom-2 duration-200" align="start">
+            <ExerciseSelector 
+              onSelect={handleNameChange} 
+              currentExerciseName={exercise.name}
+            />
           </PopoverContent>
         </Popover>
 
