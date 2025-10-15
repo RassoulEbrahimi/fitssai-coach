@@ -103,21 +103,6 @@ const HomeView: React.FC<HomeViewProps> = ({
   // Calculate nutrition progress (100% if plan exists, 0% otherwise)
   const nutritionProgress = nutritionPlan ? 100 : 0;
 
-  // Calculate weekly activity data using actual workout completion
-  const weeklyActivityData = (() => {
-    const weeklyProg = getWeeklyProgress ? getWeeklyProgress() : { completed: 0, total: 0 };
-    // Generate 7 values for Mon-Sun based on completion pattern
-    // For now, use simplified logic - in production, track daily completion
-    return [
-      weeklyProg.completed > 0 ? 100 : 30, // Mo
-      weeklyProg.completed > 1 ? 100 : 30, // Di  
-      weeklyProg.completed > 2 ? 100 : 30, // Mi
-      weeklyProg.completed > 3 ? 100 : 30, // Do
-      weeklyProg.completed > 4 ? 100 : 30, // Fr
-      0, // Sa (rest day)
-      weeklyProg.completed > 5 ? 100 : 30  // So
-    ];
-  })();
 
   // Load random Goggins quote on mount
   useEffect(() => {
@@ -360,7 +345,7 @@ const HomeView: React.FC<HomeViewProps> = ({
 
       {/* Weekly Activity Chart */}
       <div role="region" aria-label="Wöchentliche Aktivitätsübersicht">
-        <WeeklyActivity data={weeklyActivityData} />
+        <WeeklyActivity />
       </div>
       </div>
     </WorkoutErrorBoundary>
