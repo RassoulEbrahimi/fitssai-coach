@@ -36,10 +36,10 @@ export const SpeedDial = ({ onAddExercise, onAutoFill }: SpeedDialProps) => {
               exit={{ opacity: 0, scale: 0.95 }}
               transition={{ duration: 0.14 }}
               onClick={() => handleAction(onAutoFill)}
-              className="flex items-center justify-center rounded-full bg-card/80 backdrop-blur shadow ring-1 ring-border/50 hover:bg-card hover:shadow-md transition-all hover:scale-105 active:scale-95 w-9 h-9 lg:w-10 lg:h-10"
+              className="flex items-center justify-center rounded-full bg-card/80 backdrop-blur shadow ring-1 ring-border/50 hover:bg-card hover:shadow-md transition-all hover:scale-105 active:scale-95 w-7 h-7 lg:w-8 lg:h-8"
               aria-label="Auto-Fill"
             >
-              <Sparkles className="h-4 w-4 lg:h-[1.125rem] lg:w-[1.125rem] text-primary flex-shrink-0" />
+              <Sparkles className="h-3.5 w-3.5 lg:h-4 lg:w-4 text-primary flex-shrink-0" />
             </motion.button>
 
             {/* Add Exercise Button */}
@@ -49,10 +49,10 @@ export const SpeedDial = ({ onAddExercise, onAutoFill }: SpeedDialProps) => {
               exit={{ opacity: 0, scale: 0.95 }}
               transition={{ duration: 0.14 }}
               onClick={() => handleAction(onAddExercise)}
-              className="flex items-center justify-center rounded-full bg-card/80 backdrop-blur shadow ring-1 ring-border/50 hover:bg-card hover:shadow-md transition-all hover:scale-105 active:scale-95 w-9 h-9 lg:w-10 lg:h-10"
+              className="flex items-center justify-center rounded-full bg-card/80 backdrop-blur shadow ring-1 ring-border/50 hover:bg-card hover:shadow-md transition-all hover:scale-105 active:scale-95 w-7 h-7 lg:w-8 lg:h-8"
               aria-label="Add Exercise"
             >
-              <Plus className="h-4 w-4 lg:h-[1.125rem] lg:w-[1.125rem] text-primary flex-shrink-0" />
+              <Plus className="h-3.5 w-3.5 lg:h-4 lg:w-4 text-primary flex-shrink-0" />
             </motion.button>
           </motion.div>
         )}
@@ -63,13 +63,13 @@ export const SpeedDial = ({ onAddExercise, onAutoFill }: SpeedDialProps) => {
         onClick={toggleOpen}
         whileTap={{ scale: 0.95 }}
         whileHover={{ scale: 1.05 }}
-        className="w-11 h-11 lg:w-12 lg:h-12 rounded-full bg-primary text-primary-foreground shadow-md hover:shadow-lg flex items-center justify-center transition-all active:scale-95"
+        className="w-9 h-9 lg:w-10 lg:h-10 rounded-full bg-primary text-primary-foreground shadow-md hover:shadow-lg flex items-center justify-center transition-all active:scale-95"
         aria-label={isOpen ? "Close" : "Open actions"}
       >
         {isOpen ? (
-          <X className="h-[1.125rem] w-[1.125rem] lg:h-5 lg:w-5" />
+          <X className="h-4 w-4 lg:h-[1.125rem] lg:w-[1.125rem]" />
         ) : (
-          <Plus className="h-[1.125rem] w-[1.125rem] lg:h-5 lg:w-5" />
+          <Plus className="h-4 w-4 lg:h-[1.125rem] lg:w-[1.125rem]" />
         )}
       </motion.button>
     </div>
