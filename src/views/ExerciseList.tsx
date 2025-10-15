@@ -47,7 +47,7 @@ const ExerciseList: React.FC<ExerciseListProps> = ({
   }
 
   return (
-    <ul className="space-y-1.5 sm:space-y-2 list-none" role="list">
+    <ul className="space-y-2 lg:space-y-4 list-none" role="list">
       {exercises.map((exercise: any, exerciseIndex: number) => {
         // Use inline editable component if update handler is provided
         if (onUpdateExercise) {
