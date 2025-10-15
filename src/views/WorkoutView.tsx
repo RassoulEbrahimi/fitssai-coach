@@ -746,7 +746,7 @@ const WorkoutView: React.FC<WorkoutViewProps> = ({
           const isToday = isTodayInWeekDay(wk, dayIndex);
           const exercises = day?.exercises || [];
           const isRestDay = !exercises.length;
-          return <motion.div key={dayIndex} ref={el => dayRefs.current[dayIndex] = el} className="relative border rounded-lg shadow-sm mb-4 last:mb-0" initial={false}>
+          return <motion.div key={dayIndex} ref={el => dayRefs.current[dayIndex] = el} className="relative border rounded-lg shadow-sm mb-3 last:mb-0" initial={false}>
                 <Collapsible open={isExpanded} onOpenChange={open => {
               if (open) {
                 // Update selected date - this will automatically sync expandedDay
@@ -819,8 +819,8 @@ const WorkoutView: React.FC<WorkoutViewProps> = ({
                                </div>
                              </div>}
                          
-                            {/* Exercise content */}
-                            <div className="relative p-3 pt-2 px-[8px] py-[7px]">
+                             {/* Exercise content */}
+                            <div className="relative p-2.5 pt-1.5 px-[8px] py-[7px]">
                               {isRestDay ? (
                                 <div className="flex items-center justify-between p-3 bg-muted/30 rounded-lg">
                                   <div className="text-sm text-muted-foreground">

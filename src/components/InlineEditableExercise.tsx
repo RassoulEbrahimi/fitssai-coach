@@ -248,7 +248,7 @@ const InlineEditableExercise: React.FC<InlineEditableExerciseProps> = ({
 
   return (
     <div className={cn(
-      "flex flex-col gap-2 p-1.5 sm:p-2 md:p-3 bg-background/50 rounded-lg border border-border/50",
+      "flex flex-col gap-1.5 p-1 sm:p-1.5 md:p-2.5 bg-background/50 rounded-lg border border-border/50",
       "hover:border-primary/30 transition-colors",
       (isSaving || isUpdating) && "opacity-60 pointer-events-none"
     )}>
@@ -402,12 +402,11 @@ const InlineEditableExercise: React.FC<InlineEditableExerciseProps> = ({
         </Button>
       </div>
 
-      {/* Dynamic fields based on exercise requirements */}
-      <div className="grid grid-cols-[20px_1fr] sm:grid-cols-[24px_1fr] gap-x-2 gap-y-1.5 items-center">
+      {/* Dynamic fields based on exercise requirements - inline on mobile with compact spacing */}
+      <div className="flex flex-wrap items-center gap-x-2 lg:gap-x-4 gap-y-1.5">
         {requiredFields.includes('sets') && (
-          <>
-            <span className="text-sm md:text-base justify-self-center" aria-hidden="true">🏋️</span>
-            <div className="flex items-center gap-1">
+          <div className="flex items-center gap-1">
+            <span className="text-sm md:text-base" aria-hidden="true">🏋️</span>
               <Select
               value={String(exercise.sets)}
               onValueChange={handleSetsChange}
@@ -449,13 +448,12 @@ const InlineEditableExercise: React.FC<InlineEditableExerciseProps> = ({
                 ))}
               </SelectContent>
             </Select>
-            </div>
-          </>
+          </div>
         )}
 
         {requiredFields.includes('weight') && (
-          <>
-            <span className="text-sm md:text-base justify-self-center" aria-hidden="true">⚖️</span>
+          <div className="flex items-center gap-1">
+            <span className="text-sm md:text-base" aria-hidden="true">⚖️</span>
             <Input
               type="text"
               value={localWeight}
@@ -465,12 +463,12 @@ const InlineEditableExercise: React.FC<InlineEditableExerciseProps> = ({
               disabled={isSaving || isUpdating}
               className="h-7 w-16 sm:h-8 sm:w-20 text-xs sm:text-sm px-2"
             />
-          </>
+          </div>
         )}
 
         {requiredFields.includes('rest') && (
-          <>
-            <span className="text-sm md:text-base justify-self-center" aria-hidden="true">⏱</span>
+          <div className="flex items-center gap-1">
+            <span className="text-sm md:text-base" aria-hidden="true">⏱</span>
             <Input
               type="text"
               value={localRest}
@@ -480,12 +478,12 @@ const InlineEditableExercise: React.FC<InlineEditableExerciseProps> = ({
               disabled={isSaving || isUpdating}
               className="h-7 w-16 sm:h-8 sm:w-20 text-xs sm:text-sm px-2"
             />
-          </>
+          </div>
         )}
 
         {requiredFields.includes('distance') && (
-          <>
-            <span className="text-sm md:text-base justify-self-center" aria-hidden="true">📏</span>
+          <div className="flex items-center gap-1">
+            <span className="text-sm md:text-base" aria-hidden="true">📏</span>
             <Input
               type="text"
               value={localDistance}
@@ -495,12 +493,12 @@ const InlineEditableExercise: React.FC<InlineEditableExerciseProps> = ({
               disabled={isSaving || isUpdating}
               className="h-7 w-16 sm:h-8 sm:w-20 text-xs sm:text-sm px-2"
             />
-          </>
+          </div>
         )}
 
         {requiredFields.includes('duration') && (
-          <>
-            <span className="text-sm md:text-base justify-self-center" aria-hidden="true">⏱️</span>
+          <div className="flex items-center gap-1">
+            <span className="text-sm md:text-base" aria-hidden="true">⏱️</span>
             <Input
               type="text"
               value={localDuration}
@@ -510,7 +508,7 @@ const InlineEditableExercise: React.FC<InlineEditableExerciseProps> = ({
               disabled={isSaving || isUpdating}
               className="h-7 w-16 sm:h-8 sm:w-20 text-xs sm:text-sm px-2"
             />
-          </>
+          </div>
         )}
       </div>
     </div>
