@@ -85,6 +85,7 @@ export const ExerciseSelector: React.FC<ExerciseSelectorProps> = ({
           placeholder="Übung suchen..." 
           value={searchValue}
           onValueChange={setSearchValue}
+          autoFocus={false}
         />
       </Command>
       
