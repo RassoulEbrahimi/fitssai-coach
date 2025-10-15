@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Plus, Sparkles } from "lucide-react";
+import { Plus, Sparkles, X } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 
 interface SpeedDialProps {
@@ -18,14 +18,14 @@ export const SpeedDial = ({ onAddExercise, onAutoFill }: SpeedDialProps) => {
   };
 
   return (
-    <div className="relative flex flex-col items-end">
+    <div className="absolute bottom-3 right-3 flex flex-col items-end">
       {/* Speed Dial Actions */}
       <AnimatePresence>
         {isOpen && (
           <motion.div
-            initial={{ opacity: 0, scale: 0.8, y: 20 }}
+            initial={{ opacity: 0, scale: 0.8, y: 10 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.8, y: 20 }}
+            exit={{ opacity: 0, scale: 0.8, y: 10 }}
             transition={{ duration: 0.2, ease: "easeOut" }}
             className="flex flex-col gap-2 mb-2"
           >
@@ -62,15 +62,14 @@ export const SpeedDial = ({ onAddExercise, onAutoFill }: SpeedDialProps) => {
       <motion.button
         onClick={toggleOpen}
         whileTap={{ scale: 0.95 }}
-        className="w-12 h-12 rounded-full bg-primary text-primary-foreground shadow-lg hover:shadow-xl flex items-center justify-center transition-shadow"
+        className="w-10 h-10 rounded-full bg-primary text-primary-foreground shadow-lg hover:shadow-xl flex items-center justify-center transition-shadow"
         aria-label={isOpen ? "Close actions" : "Open actions"}
       >
-        <motion.div
-          animate={{ rotate: isOpen ? 45 : 0 }}
-          transition={{ duration: 0.2 }}
-        >
+        {isOpen ? (
+          <X className="h-5 w-5" />
+        ) : (
           <Plus className="h-5 w-5" />
-        </motion.div>
+        )}
       </motion.button>
     </div>
   );

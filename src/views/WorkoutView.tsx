@@ -819,8 +819,8 @@ const WorkoutView: React.FC<WorkoutViewProps> = ({
                                </div>
                              </div>}
                          
-                           {/* Exercise content */}
-                           <div className="p-3 pt-2 px-[8px] py-[7px]">
+                            {/* Exercise content */}
+                            <div className="relative p-3 pt-2 px-[8px] py-[7px]">
                               {isRestDay ? (
                                 <div className="flex items-center justify-between p-3 bg-muted/30 rounded-lg">
                                   <div className="text-sm text-muted-foreground">
@@ -850,12 +850,10 @@ const WorkoutView: React.FC<WorkoutViewProps> = ({
                             
                               {/* Speed Dial FAB (for days with exercises) */}
                               {!isRestDay && (
-                                <div className="mt-2 pt-2 border-t border-border/50 flex justify-end pr-2">
-                                  <SpeedDial
-                                    onAddExercise={() => handleOpenAddExercise(wk, dayIndex)}
-                                    onAutoFill={() => handleAutoFill(dayIndex)}
-                                  />
-                                </div>
+                                <SpeedDial
+                                  onAddExercise={() => handleOpenAddExercise(wk, dayIndex)}
+                                  onAutoFill={() => handleAutoFill(dayIndex)}
+                                />
                               )}
 
                               {!isRestDay && !isFutureDay && <div className="mt-2 pt-1.5 border-t border-border/50">
