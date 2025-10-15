@@ -29,6 +29,7 @@ import { normalizeWeekKey } from "@/lib/workoutPlanUtils";
 import { AddWorkoutDialog } from "@/components/AddWorkoutDialog";
 import { useAddExercise } from "@/hooks/useAddExercise";
 import { Plus } from "lucide-react";
+import { SpeedDial } from "@/components/SpeedDial";
 
 const ExerciseList = React.lazy(() => import("@/views/ExerciseList"));
 interface WorkoutViewProps {
@@ -847,25 +848,13 @@ const WorkoutView: React.FC<WorkoutViewProps> = ({
                                   </Suspense>
                                 )}
                             
-                              {/* Add Exercise Button (for days with exercises) */}
+                              {/* Speed Dial FAB (for days with exercises) */}
                               {!isRestDay && (
-                                <div className="mt-2 pt-2 border-t border-border/50 flex justify-center items-center">
-                                  <Button
-                                    variant="ghost"
-                                    size="icon"
-                                    onClick={() => handleOpenAddExercise(wk, dayIndex)}
-                                    className="h-8 w-8"
-                                    aria-label="Übung hinzufügen"
-                                  >
-                                    <Plus className="h-4 w-4" />
-                                  </Button>
-                                  <button
-                                    onClick={() => handleAutoFill(dayIndex)}
-                                    className="ml-2 rounded-full p-2 hover:bg-muted dark:hover:bg-muted/80 transition-colors"
-                                    aria-label="AI Autofill"
-                                  >
-                                    <span className="text-base">✨</span>
-                                  </button>
+                                <div className="mt-2 pt-2 border-t border-border/50 flex justify-end pr-2">
+                                  <SpeedDial
+                                    onAddExercise={() => handleOpenAddExercise(wk, dayIndex)}
+                                    onAutoFill={() => handleAutoFill(dayIndex)}
+                                  />
                                 </div>
                               )}
 
