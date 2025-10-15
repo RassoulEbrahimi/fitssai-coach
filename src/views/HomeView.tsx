@@ -45,17 +45,51 @@ const HomeView: React.FC<HomeViewProps> = ({
 }) => {
   const { t } = useTranslation();
   const [quote, setQuote] = useState<string>("");
-  const [quoteAuthor, setQuoteAuthor] = useState<string>("");
   const [isLoadingQuote, setIsLoadingQuote] = useState(true);
+  const [quoteKey, setQuoteKey] = useState(0);
 
-  // German fallback quotes
-  const fallbackQuotes = [
-    { text: "Der Körper erreicht, was der Geist glaubt.", author: "Napoleon Hill" },
-    { text: "Stärke wächst nicht aus körperlicher Kraft - sondern aus unbeugsamen Willen.", author: "Mahatma Gandhi" },
-    { text: "Erfolg ist die Summe kleiner Anstrengungen, die täglich wiederholt werden.", author: "Robert Collier" },
-    { text: "Du bist stärker als du denkst und mutiger als du fühlst.", author: "Unbekannt" },
-    { text: "Jeder Tag ist eine neue Chance, besser zu werden.", author: "Unbekannt" }
+  // David Goggins quotes
+  const gogginsQuotes = [
+    "Stay hard!",
+    "Nobody cares, work harder.",
+    "You are in danger of living a life so comfortable and soft, that you will die without ever realizing your true potential.",
+    "Don't stop when you're tired. Stop when you're done.",
+    "Suffering is the true test of life.",
+    "You are in charge of your mind. Stop being a victim.",
+    "It's so easy to be great nowadays, because everyone else is weak.",
+    "The most important conversations you'll ever have are the ones you'll have with yourself.",
+    "We live in an external world. Everything, you have to see it, touch it. If you can for the rest of your life live inside of yourself — to find greatness — you have to go inside.",
+    "You have to build calluses on your brain just like how you build calluses on your hands. Callus your mind through pain and suffering.",
+    "The only person who was going to turn my life around was me.",
+    "You are stopping you. You are giving up instead of getting hard.",
+    "Life is one big tug-of-war between mediocrity and trying to find your best self.",
+    "Don't count on motivation. Count on discipline.",
+    "Pain unlocks a secret doorway in the mind, one that leads to both peak performance and beautiful silence.",
+    "Be uncommon amongst uncommon people.",
+    "You are in control. You decide what you want your life to be.",
+    "Greatness pulls mediocrity into the mud. Get out there and get after it.",
+    "The most important thing is to stay in the fight.",
+    "There is no shortcut. There is no hack. There's only one way: So, get after it.",
+    "Don't stop when you feel pain. Stop when you're finished.",
+    "Every day is an opportunity to learn, adapt, and grow.",
+    "Most of us live in our own little cocoons. Break free.",
+    "You may lose the battle of the morning, but don't lose the war of the day.",
+    "When you think you're done, you're only at 40% of your potential.",
+    "The most powerful weapon is your mind.",
+    "You can't hurt me.",
+    "Be the hardest worker in the room.",
+    "Don't stop when you fail. Stop when you succeed.",
+    "It's not about winning. It's about not quitting."
   ];
+
+  const getRandomQuote = () => {
+    return gogginsQuotes[Math.floor(Math.random() * gogginsQuotes.length)];
+  };
+
+  const refreshQuote = () => {
+    setQuoteKey(prev => prev + 1);
+    setQuote(getRandomQuote());
+  };
 
   // Calculate today's training progress
   const todayWorkout = getTodayWorkout ? getTodayWorkout() : null;
@@ -85,13 +119,10 @@ const HomeView: React.FC<HomeViewProps> = ({
     ];
   })();
 
-  // Load motivation quote from fallback (DB table will be created later)
+  // Load random Goggins quote on mount
   useEffect(() => {
     const loadQuote = () => {
-      // Use fallback quotes for now (motivationszitate table will be created later)
-      const randomQuote = fallbackQuotes[Math.floor(Math.random() * fallbackQuotes.length)];
-      setQuote(randomQuote.text);
-      setQuoteAuthor(randomQuote.author);
+      setQuote(getRandomQuote());
       setIsLoadingQuote(false);
     };
 
@@ -245,16 +276,39 @@ const HomeView: React.FC<HomeViewProps> = ({
       {isLoadingQuote ? (
         <MotivationSkeleton />
       ) : (
-        <GradientCard>
-          <blockquote className="text-lg font-medium text-foreground leading-relaxed mb-3">
-            "{quote}"
-          </blockquote>
-          {quoteAuthor && (
-            <cite className="text-sm text-muted-foreground not-italic">
-              — {quoteAuthor}
+        <div className="relative">
+          <GradientCard>
+            <motion.blockquote 
+              key={quoteKey}
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              transition={{ duration: 0.3 }}
+              className="text-lg font-medium text-foreground leading-relaxed"
+            >
+              "{quote}"
+            </motion.blockquote>
+            <cite className="text-xs text-muted-foreground not-italic mt-2 block">
+              — David Goggins
             </cite>
-          )}
-        </GradientCard>
+          </GradientCard>
+          
+          {/* Refresh Button */}
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={refreshQuote}
+            className="absolute top-3 right-3 h-8 w-8 rounded-full hover:bg-background/80 transition-colors"
+            aria-label="Neues Zitat laden"
+          >
+            <motion.div
+              whileTap={{ rotate: 180 }}
+              transition={{ duration: 0.3 }}
+            >
+              ↻
+            </motion.div>
+          </Button>
+        </div>
       )}
 
       {/* Progress Rows */}
