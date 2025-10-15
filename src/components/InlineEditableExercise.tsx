@@ -404,7 +404,7 @@ const InlineEditableExercise: React.FC<InlineEditableExerciseProps> = ({
 
       {/* Parameter fields - inline with auto width */}
       {requiredFields.includes('sets') && (
-        <div className="inline-flex items-center gap-1 shrink px-1.5 py-0.5 bg-background/50 rounded-md border border-border/30">
+        <div className="inline-flex items-center justify-center shrink gap-0.5 px-1.5 py-1 bg-background/50 rounded-md border border-border/30">
           <span className="text-sm leading-none" aria-hidden="true">🏋️</span>
           <Select
             value={String(exercise.sets)}
@@ -451,57 +451,61 @@ const InlineEditableExercise: React.FC<InlineEditableExerciseProps> = ({
       )}
 
       {requiredFields.includes('weight') && (
-        <div className="inline-flex items-center gap-1 shrink px-1.5 py-0.5 bg-background/50 rounded-md border border-border/30">
+        <div className="inline-flex items-center justify-center shrink gap-0.5 px-1.5 py-1 bg-background/50 rounded-md border border-border/30">
           <span className="text-sm leading-none" aria-hidden="true">⚖️</span>
           <Input
             type="text"
             value={localWeight}
             onChange={handleWeightChange}
             onBlur={handleWeightBlur}
+            placeholder="kg"
             disabled={isSaving || isUpdating}
-            className="h-auto w-auto border-0 bg-transparent p-0 text-xs sm:text-sm font-medium focus-visible:ring-0 focus-visible:ring-offset-0"
+            className="h-auto w-auto min-w-[2rem] max-w-[3rem] border-0 bg-transparent p-0 text-xs sm:text-sm font-medium focus-visible:ring-0 focus-visible:ring-offset-0"
           />
         </div>
       )}
 
       {requiredFields.includes('rest') && (
-        <div className="inline-flex items-center gap-1 shrink px-1.5 py-0.5 bg-background/50 rounded-md border border-border/30">
+        <div className="inline-flex items-center justify-center shrink gap-0.5 px-1.5 py-1 bg-background/50 rounded-md border border-border/30">
           <span className="text-sm leading-none" aria-hidden="true">⏱</span>
           <Input
             type="text"
             value={localRest}
             onChange={handleRestChange}
             onBlur={handleRestBlur}
+            placeholder="90s"
             disabled={isSaving || isUpdating}
-            className="h-auto w-auto border-0 bg-transparent p-0 text-xs sm:text-sm font-medium focus-visible:ring-0 focus-visible:ring-offset-0"
+            className="h-auto w-auto min-w-[2rem] max-w-[3rem] border-0 bg-transparent p-0 text-xs sm:text-sm font-medium focus-visible:ring-0 focus-visible:ring-offset-0"
           />
         </div>
       )}
 
       {requiredFields.includes('distance') && (
-        <div className="inline-flex items-center gap-1 shrink px-1.5 py-0.5 bg-background/50 rounded-md border border-border/30">
+        <div className="inline-flex items-center justify-center shrink gap-0.5 px-1.5 py-1 bg-background/50 rounded-md border border-border/30">
           <span className="text-sm leading-none" aria-hidden="true">📏</span>
           <Input
             type="text"
             value={localDistance}
             onChange={handleDistanceChange}
             onBlur={handleDistanceBlur}
+            placeholder="5km"
             disabled={isSaving || isUpdating}
-            className="h-auto w-auto border-0 bg-transparent p-0 text-xs sm:text-sm font-medium focus-visible:ring-0 focus-visible:ring-offset-0"
+            className="h-auto w-auto min-w-[2rem] max-w-[3rem] border-0 bg-transparent p-0 text-xs sm:text-sm font-medium focus-visible:ring-0 focus-visible:ring-offset-0"
           />
         </div>
       )}
 
       {requiredFields.includes('duration') && (
-        <div className="inline-flex items-center gap-1 shrink px-1.5 py-0.5 bg-background/50 rounded-md border border-border/30">
+        <div className="inline-flex items-center justify-center shrink gap-0.5 px-1.5 py-1 bg-background/50 rounded-md border border-border/30">
           <span className="text-sm leading-none" aria-hidden="true">⏱️</span>
           <Input
             type="text"
             value={localDuration}
             onChange={handleDurationChange}
             onBlur={handleDurationBlur}
+            placeholder="30min"
             disabled={isSaving || isUpdating}
-            className="h-auto w-auto border-0 bg-transparent p-0 text-xs sm:text-sm font-medium focus-visible:ring-0 focus-visible:ring-offset-0"
+            className="h-auto w-auto min-w-[2.5rem] max-w-[4rem] border-0 bg-transparent p-0 text-xs sm:text-sm font-medium focus-visible:ring-0 focus-visible:ring-offset-0"
           />
         </div>
       )}
