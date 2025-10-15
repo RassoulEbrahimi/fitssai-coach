@@ -818,47 +818,47 @@ const WorkoutView: React.FC<WorkoutViewProps> = ({
                                  <span className="text-right tabular-nums">Reps</span>
                                </div>
                              </div>}
-                         
-                            {/* Exercise content */}
-                            <div className="relative p-3 pt-2 px-[8px] py-[7px]">
-                              {isRestDay ? (
-                                <div className="flex items-center justify-between p-3 bg-muted/30 rounded-lg">
-                                  <div className="text-sm text-muted-foreground">
-                                    {t('workout.rest.note')}
-                                  </div>
-                                  <Button
-                                    variant="ghost"
-                                    size="icon"
-                                    onClick={() => handleOpenAddExercise(wk, dayIndex)}
-                                    className="h-8 w-8 shrink-0"
-                                    aria-label="Übung hinzufügen"
-                                  >
-                                    <Plus className="h-4 w-4" />
-                                  </Button>
-                                </div>
-                              ) : (
-                                  <Suspense fallback={<ExerciseListSkeleton />}>
-                                   <ExerciseList
-                                     exercises={exercises}
-                                     onUpdateExercise={(exerciseIndex, updatedExercise) =>
-                                       handleUpdateExercise(wk, dayIndex, exerciseIndex, updatedExercise)
-                                     }
-                                     isUpdating={isUpdating}
-                                   />
-                                  </Suspense>
-                                )}
-                            
-                              {/* Speed Dial FAB (for days with exercises) */}
-                              {!isRestDay && (
-                                <SpeedDial
-                                  onAddExercise={() => handleOpenAddExercise(wk, dayIndex)}
-                                  onAutoFill={() => handleAutoFill(dayIndex)}
-                                />
-                              )}
+                          
+                             {/* Exercise content */}
+                             <div className={`relative p-3 pt-2 px-[8px] py-[7px] ${!isRestDay ? 'pb-16 lg:pb-20 mb-[env(safe-area-inset-bottom,0)]' : ''}`}>
+                               {isRestDay ? (
+                                 <div className="flex items-center justify-between p-3 bg-muted/30 rounded-lg">
+                                   <div className="text-sm text-muted-foreground">
+                                     {t('workout.rest.note')}
+                                   </div>
+                                   <Button
+                                     variant="ghost"
+                                     size="icon"
+                                     onClick={() => handleOpenAddExercise(wk, dayIndex)}
+                                     className="h-8 w-8 shrink-0"
+                                     aria-label="Übung hinzufügen"
+                                   >
+                                     <Plus className="h-4 w-4" />
+                                   </Button>
+                                 </div>
+                               ) : (
+                                   <Suspense fallback={<ExerciseListSkeleton />}>
+                                    <ExerciseList
+                                      exercises={exercises}
+                                      onUpdateExercise={(exerciseIndex, updatedExercise) =>
+                                        handleUpdateExercise(wk, dayIndex, exerciseIndex, updatedExercise)
+                                      }
+                                      isUpdating={isUpdating}
+                                    />
+                                   </Suspense>
+                                 )}
+                             
+                               {/* Speed Dial FAB (for days with exercises) */}
+                               {!isRestDay && (
+                                 <SpeedDial
+                                   onAddExercise={() => handleOpenAddExercise(wk, dayIndex)}
+                                   onAutoFill={() => handleAutoFill(dayIndex)}
+                                 />
+                               )}
 
-                              {!isRestDay && !isFutureDay && <div className="mt-2 pt-1.5 border-t border-border/50">
-                               </div>}
-                          </div>
+                               {!isRestDay && !isFutureDay && <div className="mt-2 pt-1.5 border-t border-border/50">
+                                </div>}
+                           </div>
                         </motion.div>
                        )}
                      </CollapsibleContent>
