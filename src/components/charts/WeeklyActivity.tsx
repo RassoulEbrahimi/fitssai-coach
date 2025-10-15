@@ -40,82 +40,84 @@ export const WeeklyActivity: React.FC<WeeklyActivityProps> = ({ className }) => 
       )}
     >
       {/* Header */}
-      <div className="flex items-center justify-between mb-4">
-        <h2 className="text-lg font-semibold text-foreground">
+      <div className="flex items-center justify-between mb-4 gap-2">
+        <h2 className="text-base font-semibold text-foreground truncate">
           Aktivitätsfortschritt
         </h2>
-        <div className="flex items-center gap-2">
-          {/* View Toggle */}
-          <div className="flex items-center bg-muted/50 rounded-full p-1">
-            <button
-              onClick={() => setViewMode("weekly")}
-              className={cn(
-                "text-xs px-3 py-1 rounded-full transition-all",
-                viewMode === "weekly" 
-                  ? "bg-primary text-primary-foreground font-medium" 
-                  : "text-muted-foreground hover:text-foreground"
-              )}
-            >
-              Wöchentlich
-            </button>
-            <button
-              onClick={() => setViewMode("monthly")}
-              className={cn(
-                "text-xs px-3 py-1 rounded-full transition-all",
-                viewMode === "monthly" 
-                  ? "bg-primary text-primary-foreground font-medium" 
-                  : "text-muted-foreground hover:text-foreground"
-              )}
-            >
-              Monatlich
-            </button>
-          </div>
-          
+        <div className="flex items-center gap-2 flex-shrink-0">
           {/* Refresh Button */}
           <Button
             variant="ghost"
             size="icon"
             onClick={refresh}
-            className="h-8 w-8 rounded-full"
+            className="h-8 w-8 rounded-full flex-shrink-0"
             aria-label="Aktualisieren"
           >
             <RefreshCw className="h-4 w-4" />
           </Button>
         </div>
       </div>
+
+      {/* View Toggle - Full Width Responsive */}
+      <div className="flex w-full bg-muted/50 rounded-full p-1 mb-4">
+        <button
+          onClick={() => setViewMode("weekly")}
+          className={cn(
+            "flex-1 text-xs px-2 py-1.5 rounded-full transition-all whitespace-nowrap",
+            viewMode === "weekly" 
+              ? "bg-primary text-primary-foreground font-medium" 
+              : "text-muted-foreground hover:text-foreground"
+          )}
+        >
+          Wöchentlich
+        </button>
+        <button
+          onClick={() => setViewMode("monthly")}
+          className={cn(
+            "flex-1 text-xs px-2 py-1.5 rounded-full transition-all whitespace-nowrap",
+            viewMode === "monthly" 
+              ? "bg-primary text-primary-foreground font-medium" 
+              : "text-muted-foreground hover:text-foreground"
+          )}
+        >
+          Monatlich
+        </button>
+      </div>
       
-      {/* Chart */}
-      <div className="flex items-end justify-between gap-1.5 h-32 mb-4">
+      {/* Chart - Vertical Daily Bars */}
+      <div className="flex items-end justify-between gap-1 h-32 mb-4">
         {dailyData.map((value, index) => {
-          const heightPercentage = Math.max((value / maxValue) * 100, 8);
+          const heightPercentage = Math.max((value / maxValue) * 100, 5);
           const isActive = value >= 30;
           
           return (
-            <div key={dayLabels[index]} className="flex flex-col items-center flex-1 group">
+            <div key={dayLabels[index]} className="flex flex-col items-center flex-1 relative group">
+              {/* Vertical Bar */}
               <div
                 className={cn(
-                  "w-full rounded-full relative overflow-hidden transition-all duration-500",
-                  "bg-gradient-to-t",
+                  "w-full rounded-t-lg relative overflow-hidden transition-all duration-500",
                   isActive 
-                    ? "from-success/60 to-success shadow-sm shadow-success/20" 
-                    : "from-muted/40 to-muted/20"
+                    ? "bg-success" 
+                    : "bg-muted"
                 )}
                 style={{
                   height: `${heightPercentage}%`,
+                  minHeight: value > 0 ? '8px' : '4px',
                   transition: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'none' : 'height 0.6s ease-out'
                 }}
               >
-                {/* Glass effect overlay */}
-                <div className="absolute inset-0 rounded-full bg-gradient-to-t from-transparent via-white/10 to-white/20 dark:via-white/5 dark:to-white/10" />
+                {/* Subtle gradient overlay */}
+                <div className="absolute inset-0 bg-gradient-to-t from-transparent to-white/10" />
               </div>
               
-              <span className="text-xs text-muted-foreground mt-2 font-medium">
+              {/* Day Label */}
+              <span className="text-[10px] text-muted-foreground mt-1.5 font-medium">
                 {dayLabels[index]}
               </span>
               
               {/* Tooltip on hover */}
               {value > 0 && (
-                <div className="absolute -top-8 bg-popover text-popover-foreground text-xs px-2 py-1 rounded shadow-md opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap">
+                <div className="absolute -top-8 bg-popover text-popover-foreground text-xs px-2 py-1 rounded shadow-md opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-10">
                   {value} min
                 </div>
               )}
