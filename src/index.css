@@ -300,9 +300,3 @@
     --nav-h: 64px;
   }
 }
-
-@media (prefers-reduced-motion: reduce) {
-  .fab-anim {
-    transition: none !important;
-  }
-}
