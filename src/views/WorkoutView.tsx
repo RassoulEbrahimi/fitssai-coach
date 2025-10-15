@@ -450,6 +450,11 @@ const WorkoutView: React.FC<WorkoutViewProps> = ({
 
     setAddExerciseDialog({ open: false, weekKey: null, dayIndex: null });
   };
+
+  // Handle AI autofill
+  const handleAutoFill = (dayIndex: number) => {
+    console.log("AI autofill triggered for day", dayIndex);
+  };
   // Show loading skeleton while plan is being fetched
   if (isLoadingPlan) {
     return <ExerciseListSkeleton />;
@@ -844,7 +849,7 @@ const WorkoutView: React.FC<WorkoutViewProps> = ({
                             
                               {/* Add Exercise Button (for days with exercises) */}
                               {!isRestDay && (
-                                <div className="mt-2 pt-2 border-t border-border/50 flex justify-center">
+                                <div className="mt-2 pt-2 border-t border-border/50 flex justify-center items-center">
                                   <Button
                                     variant="ghost"
                                     size="icon"
@@ -854,6 +859,13 @@ const WorkoutView: React.FC<WorkoutViewProps> = ({
                                   >
                                     <Plus className="h-4 w-4" />
                                   </Button>
+                                  <button
+                                    onClick={() => handleAutoFill(dayIndex)}
+                                    className="ml-2 rounded-full p-2 hover:bg-muted dark:hover:bg-muted/80 transition-colors"
+                                    aria-label="AI Autofill"
+                                  >
+                                    <span className="text-base">✨</span>
+                                  </button>
                                 </div>
                               )}
 
