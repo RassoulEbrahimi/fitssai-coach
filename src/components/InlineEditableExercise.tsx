@@ -404,14 +404,14 @@ const InlineEditableExercise: React.FC<InlineEditableExerciseProps> = ({
 
       {/* Parameter fields - inline with auto width */}
       {requiredFields.includes('sets') && (
-        <div className="inline-flex items-center gap-1 px-2 py-1 bg-background/50 rounded-md border border-border/30">
-          <span className="text-sm" aria-hidden="true">🏋️</span>
+        <div className="inline-flex items-center justify-center shrink gap-0.5 px-1.5 py-1 bg-background/50 rounded-md border border-border/30">
+          <span className="text-sm leading-none" aria-hidden="true">🏋️</span>
           <Select
             value={String(exercise.sets)}
             onValueChange={handleSetsChange}
             disabled={isSaving || isUpdating}
           >
-            <SelectTrigger className="h-auto w-auto min-w-[2rem] border-0 bg-transparent p-0 text-xs font-medium focus:ring-0 [&>svg]:hidden">
+            <SelectTrigger className="h-auto w-auto border-0 bg-transparent p-0 text-xs sm:text-sm font-medium focus:ring-0 [&>svg]:hidden">
               <SelectValue />
             </SelectTrigger>
             <SelectContent className="bg-background border-border z-50 shadow-lg">
@@ -426,13 +426,13 @@ const InlineEditableExercise: React.FC<InlineEditableExerciseProps> = ({
               ))}
             </SelectContent>
           </Select>
-          <span className="text-xs text-muted-foreground">×</span>
+          <span className="text-xs sm:text-sm text-muted-foreground leading-none">×</span>
           <Select
             value={String(exercise.reps)}
             onValueChange={handleRepsChange}
             disabled={isSaving || isUpdating}
           >
-            <SelectTrigger className="h-auto w-auto min-w-[2rem] border-0 bg-transparent p-0 text-xs font-medium focus:ring-0 [&>svg]:hidden">
+            <SelectTrigger className="h-auto w-auto border-0 bg-transparent p-0 text-xs sm:text-sm font-medium focus:ring-0 [&>svg]:hidden">
               <SelectValue />
             </SelectTrigger>
             <SelectContent className="bg-background border-border z-50 shadow-lg">
@@ -451,8 +451,8 @@ const InlineEditableExercise: React.FC<InlineEditableExerciseProps> = ({
       )}
 
       {requiredFields.includes('weight') && (
-        <div className="inline-flex items-center gap-1 px-2 py-1 bg-background/50 rounded-md border border-border/30">
-          <span className="text-sm" aria-hidden="true">⚖️</span>
+        <div className="inline-flex items-center justify-center shrink gap-0.5 px-1.5 py-1 bg-background/50 rounded-md border border-border/30">
+          <span className="text-sm leading-none" aria-hidden="true">⚖️</span>
           <Input
             type="text"
             value={localWeight}
@@ -460,14 +460,14 @@ const InlineEditableExercise: React.FC<InlineEditableExerciseProps> = ({
             onBlur={handleWeightBlur}
             placeholder="kg"
             disabled={isSaving || isUpdating}
-            className="h-auto w-12 border-0 bg-transparent p-0 text-xs font-medium focus-visible:ring-0 focus-visible:ring-offset-0"
+            className="h-auto w-auto min-w-[2rem] max-w-[3rem] border-0 bg-transparent p-0 text-xs sm:text-sm font-medium focus-visible:ring-0 focus-visible:ring-offset-0"
           />
         </div>
       )}
 
       {requiredFields.includes('rest') && (
-        <div className="inline-flex items-center gap-1 px-2 py-1 bg-background/50 rounded-md border border-border/30">
-          <span className="text-sm" aria-hidden="true">⏱</span>
+        <div className="inline-flex items-center justify-center shrink gap-0.5 px-1.5 py-1 bg-background/50 rounded-md border border-border/30">
+          <span className="text-sm leading-none" aria-hidden="true">⏱</span>
           <Input
             type="text"
             value={localRest}
@@ -475,14 +475,14 @@ const InlineEditableExercise: React.FC<InlineEditableExerciseProps> = ({
             onBlur={handleRestBlur}
             placeholder="90s"
             disabled={isSaving || isUpdating}
-            className="h-auto w-12 border-0 bg-transparent p-0 text-xs font-medium focus-visible:ring-0 focus-visible:ring-offset-0"
+            className="h-auto w-auto min-w-[2rem] max-w-[3rem] border-0 bg-transparent p-0 text-xs sm:text-sm font-medium focus-visible:ring-0 focus-visible:ring-offset-0"
           />
         </div>
       )}
 
       {requiredFields.includes('distance') && (
-        <div className="inline-flex items-center gap-1 px-2 py-1 bg-background/50 rounded-md border border-border/30">
-          <span className="text-sm" aria-hidden="true">📏</span>
+        <div className="inline-flex items-center justify-center shrink gap-0.5 px-1.5 py-1 bg-background/50 rounded-md border border-border/30">
+          <span className="text-sm leading-none" aria-hidden="true">📏</span>
           <Input
             type="text"
             value={localDistance}
@@ -490,14 +490,14 @@ const InlineEditableExercise: React.FC<InlineEditableExerciseProps> = ({
             onBlur={handleDistanceBlur}
             placeholder="5km"
             disabled={isSaving || isUpdating}
-            className="h-auto w-12 border-0 bg-transparent p-0 text-xs font-medium focus-visible:ring-0 focus-visible:ring-offset-0"
+            className="h-auto w-auto min-w-[2rem] max-w-[3rem] border-0 bg-transparent p-0 text-xs sm:text-sm font-medium focus-visible:ring-0 focus-visible:ring-offset-0"
           />
         </div>
       )}
 
       {requiredFields.includes('duration') && (
-        <div className="inline-flex items-center gap-1 px-2 py-1 bg-background/50 rounded-md border border-border/30">
-          <span className="text-sm" aria-hidden="true">⏱️</span>
+        <div className="inline-flex items-center justify-center shrink gap-0.5 px-1.5 py-1 bg-background/50 rounded-md border border-border/30">
+          <span className="text-sm leading-none" aria-hidden="true">⏱️</span>
           <Input
             type="text"
             value={localDuration}
@@ -505,7 +505,7 @@ const InlineEditableExercise: React.FC<InlineEditableExerciseProps> = ({
             onBlur={handleDurationBlur}
             placeholder="30min"
             disabled={isSaving || isUpdating}
-            className="h-auto w-14 border-0 bg-transparent p-0 text-xs font-medium focus-visible:ring-0 focus-visible:ring-offset-0"
+            className="h-auto w-auto min-w-[2.5rem] max-w-[4rem] border-0 bg-transparent p-0 text-xs sm:text-sm font-medium focus-visible:ring-0 focus-visible:ring-offset-0"
           />
         </div>
       )}
