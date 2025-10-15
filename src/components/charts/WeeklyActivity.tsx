@@ -63,7 +63,7 @@ export const WeeklyActivity: React.FC<WeeklyActivityProps> = ({ className }) => 
         <button
           onClick={() => setViewMode("weekly")}
           className={cn(
-            "flex-1 text-xs px-2 py-1.5 rounded-full transition-all whitespace-nowrap",
+            "flex-1 text-xs px-3 py-1.5 rounded-full transition-all whitespace-nowrap",
             viewMode === "weekly" 
               ? "bg-primary text-primary-foreground font-medium" 
               : "text-muted-foreground hover:text-foreground"
@@ -74,7 +74,7 @@ export const WeeklyActivity: React.FC<WeeklyActivityProps> = ({ className }) => 
         <button
           onClick={() => setViewMode("monthly")}
           className={cn(
-            "flex-1 text-xs px-2 py-1.5 rounded-full transition-all whitespace-nowrap",
+            "flex-1 text-xs px-3 py-1.5 rounded-full transition-all whitespace-nowrap",
             viewMode === "monthly" 
               ? "bg-primary text-primary-foreground font-medium" 
               : "text-muted-foreground hover:text-foreground"
@@ -87,8 +87,16 @@ export const WeeklyActivity: React.FC<WeeklyActivityProps> = ({ className }) => 
       {/* Chart - Vertical Daily Bars */}
       <div className="flex items-end justify-between gap-1 h-32 mb-4">
         {dailyData.map((value, index) => {
-          const heightPercentage = Math.max((value / maxValue) * 100, 5);
-          const isActive = value >= 30;
+          // Calculate height proportional to actual minutes (0-60min range typically)
+          const heightPercentage = maxValue > 0 ? (value / maxValue) * 100 : 0;
+          
+          // Determine bar color based on activity level
+          let barColor = "bg-muted"; // Gray for 0min
+          if (value >= 30) {
+            barColor = "bg-success"; // Green for ≥30min
+          } else if (value > 0) {
+            barColor = "bg-warning"; // Yellow for >0 but <30min
+          }
           
           return (
             <div key={dayLabels[index]} className="flex flex-col items-center flex-1 relative group">
@@ -96,18 +104,17 @@ export const WeeklyActivity: React.FC<WeeklyActivityProps> = ({ className }) => 
               <div
                 className={cn(
                   "w-full rounded-t-lg relative overflow-hidden transition-all duration-500",
-                  isActive 
-                    ? "bg-success" 
-                    : "bg-muted"
+                  barColor
                 )}
                 style={{
-                  height: `${heightPercentage}%`,
-                  minHeight: value > 0 ? '8px' : '4px',
+                  height: value > 0 ? `${Math.max(heightPercentage, 8)}%` : '4px',
                   transition: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'none' : 'height 0.6s ease-out'
                 }}
               >
                 {/* Subtle gradient overlay */}
-                <div className="absolute inset-0 bg-gradient-to-t from-transparent to-white/10" />
+                {value > 0 && (
+                  <div className="absolute inset-0 bg-gradient-to-t from-transparent to-white/10" />
+                )}
               </div>
               
               {/* Day Label */}
