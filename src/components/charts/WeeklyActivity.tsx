@@ -96,7 +96,7 @@ export const WeeklyActivity: React.FC<WeeklyActivityProps> = ({ className }) => 
       </div>
       
       {/* Chart - Vertical Daily Bars */}
-      <div className="flex items-end justify-between gap-1 h-32 mb-4">
+      <div className="flex items-end justify-between gap-1.5 mb-4">
         {dailyData.map((value, index) => {
           // Calculate height proportional to actual minutes (0-60min range typically)
           const heightPercentage = maxValue > 0 ? (value / maxValue) * 100 : 0;
@@ -110,35 +110,39 @@ export const WeeklyActivity: React.FC<WeeklyActivityProps> = ({ className }) => 
           }
           
           return (
-            <div key={dayLabels[index]} className="flex flex-col items-center flex-1 relative group">
-              {/* Vertical Bar */}
-              <div
-                className={cn(
-                  "w-full rounded-t-lg relative overflow-hidden transition-all duration-500",
-                  barColor
-                )}
-                style={{
-                  height: value > 0 ? `${Math.max(heightPercentage, 8)}%` : '4px',
-                  transition: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'none' : 'height 0.6s ease-out'
-                }}
-              >
-                {/* Subtle gradient overlay */}
+            <div key={dayLabels[index]} className="flex flex-col items-center flex-1 gap-1.5 group">
+              {/* Gray Track Container with Fixed Height */}
+              <div className="w-full h-32 bg-muted/30 rounded-lg flex flex-col justify-end overflow-hidden relative">
+                {/* Colored Fill Bar */}
+                <div
+                  className={cn(
+                    "w-full rounded-lg relative transition-all duration-500",
+                    barColor
+                  )}
+                  style={{
+                    height: value > 0 ? `${Math.max(heightPercentage, 8)}%` : '4px',
+                    minHeight: '4px',
+                    transition: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'none' : 'height 0.6s ease-out'
+                  }}
+                >
+                  {/* Subtle gradient overlay */}
+                  {value > 0 && (
+                    <div className="absolute inset-0 bg-gradient-to-t from-transparent to-white/10" />
+                  )}
+                </div>
+                
+                {/* Tooltip on hover */}
                 {value > 0 && (
-                  <div className="absolute inset-0 bg-gradient-to-t from-transparent to-white/10" />
+                  <div className="absolute -top-8 left-1/2 -translate-x-1/2 bg-popover text-popover-foreground text-xs px-2 py-1 rounded shadow-md opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-10">
+                    {value} min
+                  </div>
                 )}
               </div>
               
               {/* Day Label */}
-              <span className="text-[10px] text-muted-foreground mt-1.5 font-medium">
+              <span className="text-[10px] text-muted-foreground font-medium">
                 {dayLabels[index]}
               </span>
-              
-              {/* Tooltip on hover */}
-              {value > 0 && (
-                <div className="absolute -top-8 bg-popover text-popover-foreground text-xs px-2 py-1 rounded shadow-md opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-10">
-                  {value} min
-                </div>
-              )}
             </div>
           );
         })}
