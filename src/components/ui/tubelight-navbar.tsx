@@ -28,53 +28,112 @@ export function NavBar({ items, activeTab, onTabChange, className }: NavBarProps
   }, [])
 
   return (
-    <div
+    <motion.div
+      initial={{ opacity: 0, y: 12 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.4, ease: "easeOut" }}
       className={cn(
         "fixed bottom-0 left-1/2 -translate-x-1/2 z-50 mb-6 sm:pt-6",
         className,
       )}
+      style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
     >
-      <div className="flex items-center gap-3 bg-background/5 border border-border backdrop-blur-lg py-1 px-1 rounded-full shadow-lg">
-        {items.map((item) => {
-          const Icon = item.icon
-          const isActive = activeTab === item.id
+      <div className="relative">
+        {/* Soft neon glow shadow below navbar */}
+        <div className="absolute inset-0 bg-gradient-to-r from-emerald-500/20 via-green-500/20 to-emerald-500/20 rounded-full blur-lg opacity-20" />
+        
+        {/* Main navbar container */}
+        <div className="relative flex items-center gap-3 bg-gradient-to-r from-emerald-900/70 via-emerald-800/60 to-green-600/60 border border-emerald-900/60 backdrop-blur-xl py-1 px-1 rounded-full shadow-[0_0_20px_rgba(0,255,153,0.15)]">
+          {items.map((item) => {
+            const Icon = item.icon
+            const isActive = activeTab === item.id
 
-          return (
-            <button
-              key={item.id}
-              onClick={() => onTabChange(item.id)}
-              className={cn(
-                "relative cursor-pointer text-sm font-semibold px-6 py-2 rounded-full transition-colors",
-                "text-foreground/80 hover:text-primary",
-                isActive && "bg-muted text-primary",
-              )}
-            >
-              <span className="hidden md:inline">{item.name}</span>
-              <span className="md:hidden">
-                <Icon size={18} strokeWidth={2.5} />
-              </span>
-              {isActive && (
-                <motion.div
-                  layoutId="lamp"
-                  className="absolute inset-0 w-full bg-primary/5 rounded-full -z-10"
-                  initial={false}
-                  transition={{
-                    type: "spring",
-                    stiffness: 300,
-                    damping: 30,
+            return (
+              <button
+                key={item.id}
+                onClick={() => onTabChange(item.id)}
+                className={cn(
+                  "relative cursor-pointer text-sm font-semibold px-6 py-2 rounded-full transition-colors",
+                  "text-foreground/70 hover:text-emerald-300",
+                  isActive && "text-emerald-400",
+                )}
+              >
+                <motion.span 
+                  className="hidden md:inline"
+                  animate={isActive ? { y: -2 } : { y: 0 }}
+                  transition={{ duration: 0.2 }}
+                >
+                  {item.name}
+                </motion.span>
+                <motion.span 
+                  className="md:hidden flex items-center justify-center"
+                  animate={isActive ? { 
+                    y: -2,
+                    scale: [1, 1.08, 1]
+                  } : { 
+                    y: 0,
+                    scale: 1 
+                  }}
+                  transition={{ 
+                    duration: 0.2,
+                    scale: {
+                      duration: 1,
+                      repeat: isActive ? Infinity : 0,
+                      repeatType: "reverse",
+                      ease: "easeInOut"
+                    }
                   }}
                 >
-                  <div className="absolute -top-2 left-1/2 -translate-x-1/2 w-8 h-1 bg-primary rounded-t-full">
-                    <div className="absolute w-12 h-6 bg-primary/20 rounded-full blur-md -top-2 -left-2" />
-                    <div className="absolute w-8 h-6 bg-primary/20 rounded-full blur-md -top-1" />
-                    <div className="absolute w-4 h-4 bg-primary/20 rounded-full blur-sm top-0 left-2" />
-                  </div>
-                </motion.div>
-              )}
-            </button>
-          )
-        })}
+                  <Icon size={isMobile ? 22 : 20} strokeWidth={2.5} />
+                </motion.span>
+                
+                {isActive && (
+                  <motion.div
+                    layoutId="lamp"
+                    className="absolute inset-0 w-full bg-emerald-400/60 rounded-full -z-10"
+                    initial={false}
+                    animate={{
+                      opacity: [0.6, 1, 0.6],
+                    }}
+                    transition={{
+                      duration: 2,
+                      repeat: Infinity,
+                      ease: "easeInOut",
+                      layout: {
+                        type: "spring",
+                        stiffness: 300,
+                        damping: 30,
+                      }
+                    }}
+                  >
+                    {/* Tubelight lamp effect with enhanced glow */}
+                    <div className="absolute -top-2 left-1/2 -translate-x-1/2 w-8 h-1 bg-emerald-400 rounded-t-full">
+                      {/* Outer glow */}
+                      <motion.div 
+                        className="absolute w-12 h-6 bg-emerald-400/40 rounded-full blur-lg -top-2 -left-2"
+                        animate={{ opacity: [0.4, 0.7, 0.4] }}
+                        transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
+                      />
+                      {/* Middle glow */}
+                      <motion.div 
+                        className="absolute w-8 h-6 bg-emerald-400/50 rounded-full blur-md -top-1"
+                        animate={{ opacity: [0.5, 0.8, 0.5] }}
+                        transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
+                      />
+                      {/* Inner bright core */}
+                      <motion.div 
+                        className="absolute w-4 h-4 bg-emerald-300/60 rounded-full blur-sm top-0 left-2"
+                        animate={{ opacity: [0.6, 1, 0.6] }}
+                        transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
+                      />
+                    </div>
+                  </motion.div>
+                )}
+              </button>
+            )
+          })}
+        </div>
       </div>
-    </div>
+    </motion.div>
   )
 }
