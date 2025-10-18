@@ -34,7 +34,7 @@ import React from "react";
 import { toast } from "sonner";
 import { format, addDays, isSameDay, startOfWeek, differenceInCalendarDays, startOfDay, parseISO } from "date-fns";
 import { toZonedTime } from 'date-fns-tz';
-import BottomNav from './BottomNav';
+import { FitssNavBar } from './FitssNavBar';
 import BottomNavPortal from './BottomNavPortal';
 import { default as SectionSkeleton, WorkoutSkeleton, NutritionSkeleton, ProfileSkeleton } from "@/components/skeletons/SectionSkeleton";
 import HomeSkeleton from "@/components/skeletons/HomeSkeleton";
@@ -190,7 +190,7 @@ const Dashboard = () => {
   // Performance optimization hooks
   const { prefetchOnIntersection } = useIntersectionPrefetch();
   const { setViewRef } = useFocusManagement(activeTab);
-  const bottomNavRef = useRef<HTMLElement>(null);
+  const bottomNavRef = useRef<HTMLDivElement>(null);
   
   // Animation state for mobile tab switching
   const prefersReducedMotion = useReducedMotion();
@@ -844,7 +844,7 @@ const Dashboard = () => {
       </motion.div>
       
       <BottomNavPortal>
-        <BottomNav 
+        <FitssNavBar 
           ref={bottomNavRef}
           activeTab={activeTab} 
           onChange={(tab) => {
