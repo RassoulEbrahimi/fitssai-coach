@@ -23,6 +23,9 @@ export const NavBar = React.forwardRef<HTMLDivElement, NavBarProps>(
   const [isMobile, setIsMobile] = useState(false)
   const { actualTheme } = useTheme()
   const isDark = actualTheme === "dark"
+  const [isHidden, setIsHidden] = useState(false)
+  const [lastScrollY, setLastScrollY] = useState(0)
+  const [pressedButton, setPressedButton] = useState<string | null>(null)
 
   useEffect(() => {
     const handleResize = () => setIsMobile(window.innerWidth < 768)
@@ -31,9 +34,41 @@ export const NavBar = React.forwardRef<HTMLDivElement, NavBarProps>(
     return () => window.removeEventListener("resize", handleResize)
   }, [])
 
+  // Auto-hide on scroll
+  useEffect(() => {
+    const handleScroll = () => {
+      const currentScrollY = window.scrollY
+      
+      // Only hide if scrolled down more than 50px
+      if (currentScrollY > 50) {
+        if (currentScrollY > lastScrollY) {
+          // Scrolling down - hide navbar
+          setIsHidden(true)
+        } else {
+          // Scrolling up - show navbar
+          setIsHidden(false)
+        }
+      } else {
+        // At top of page - always show
+        setIsHidden(false)
+      }
+      
+      setLastScrollY(currentScrollY)
+    }
+
+    window.addEventListener("scroll", handleScroll, { passive: true })
+    return () => window.removeEventListener("scroll", handleScroll)
+  }, [lastScrollY])
+
   return (
-    <div
+    <motion.div
       ref={ref}
+      initial={{ y: 100, opacity: 0 }}
+      animate={{ 
+        y: isHidden ? 80 : 0, 
+        opacity: isHidden ? 0 : 1 
+      }}
+      transition={{ type: "spring", stiffness: 150, damping: 20 }}
       className={cn(
         "fixed bottom-4 left-1/2 -translate-x-1/2 z-50 flex justify-center items-center w-fit",
         className,
@@ -67,9 +102,19 @@ export const NavBar = React.forwardRef<HTMLDivElement, NavBarProps>(
             const isActive = activeTab === item.id
 
             return (
-              <button
+              <motion.button
                 key={item.id}
                 onClick={() => onTabChange(item.id)}
+                onTapStart={() => setPressedButton(item.id)}
+                onTap={() => setTimeout(() => setPressedButton(null), 200)}
+                onTapCancel={() => setPressedButton(null)}
+                whileTap={{ scale: 0.95 }}
+                animate={pressedButton === item.id ? {
+                  scale: [1, 1.05, 1],
+                } : {}}
+                transition={{
+                  scale: { duration: 0.2 }
+                }}
                 className={cn(
                   "relative cursor-pointer text-sm font-semibold px-6 py-2 rounded-full transition-colors",
                   "text-foreground/70 hover:text-emerald-300",
@@ -147,12 +192,22 @@ export const NavBar = React.forwardRef<HTMLDivElement, NavBarProps>(
                     </div>
                   </motion.div>
                 )}
-              </button>
+                
+                {/* Press feedback ripple */}
+                {pressedButton === item.id && (
+                  <motion.div
+                    className="absolute inset-0 bg-emerald-400/30 rounded-full -z-10"
+                    initial={{ scale: 0.8, opacity: 0.6 }}
+                    animate={{ scale: 1.2, opacity: 0 }}
+                    transition={{ duration: 0.4, ease: "easeOut" }}
+                  />
+                )}
+              </motion.button>
             )
           })}
         </div>
       </motion.div>
-    </div>
+    </motion.div>
   )
 })
 
