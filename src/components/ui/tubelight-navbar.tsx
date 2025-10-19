@@ -40,12 +40,12 @@ export const NavBar = React.forwardRef<HTMLDivElement, NavBarProps>(
       )}
       style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
     >
-      <div className="relative w-fit">
-        {/* Soft neon glow shadow below navbar */}
-        <div className="absolute inset-0 mx-auto w-full bg-gradient-to-r from-emerald-500/20 via-green-500/20 to-emerald-500/20 rounded-full blur-lg opacity-20" />
+      <div className="relative w-fit mx-auto">
+        {/* Soft neon glow shadow below navbar - centered radial glow */}
+        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-emerald-500/25 via-emerald-500/15 to-transparent rounded-full blur-xl" />
         
-        {/* Main navbar container */}
-        <div className="relative flex items-center justify-center gap-3 bg-gradient-to-r from-emerald-900/70 via-emerald-800/60 to-green-600/60 border border-emerald-900/60 backdrop-blur-xl py-1 px-1 rounded-full shadow-[0_0_20px_rgba(0,255,153,0.15)]">
+        {/* Main navbar container - symmetric background */}
+        <div className="relative flex items-center justify-center gap-3 bg-emerald-900/60 border border-emerald-700/40 backdrop-blur-xl py-1 px-1 rounded-full shadow-[0_0_20px_rgba(16,185,129,0.15)]">
           {items.map((item) => {
             const Icon = item.icon
             const isActive = activeTab === item.id
@@ -112,19 +112,19 @@ export const NavBar = React.forwardRef<HTMLDivElement, NavBarProps>(
                     <div className="absolute -top-2 left-1/2 -translate-x-1/2 w-8 h-1 bg-emerald-400 rounded-t-full">
                       {/* Outer glow */}
                       <motion.div 
-                        className="absolute w-12 h-6 bg-emerald-400/40 rounded-full blur-lg -top-2 -left-2"
+                        className="absolute w-12 h-6 bg-emerald-400/40 rounded-full blur-lg -top-2 left-1/2 -translate-x-1/2"
                         animate={{ opacity: [0.4, 0.7, 0.4] }}
                         transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
                       />
                       {/* Middle glow */}
                       <motion.div 
-                        className="absolute w-8 h-6 bg-emerald-400/50 rounded-full blur-md -top-1"
+                        className="absolute w-8 h-6 bg-emerald-400/50 rounded-full blur-md -top-1 left-1/2 -translate-x-1/2"
                         animate={{ opacity: [0.5, 0.8, 0.5] }}
                         transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
                       />
                       {/* Inner bright core */}
                       <motion.div 
-                        className="absolute w-4 h-4 bg-emerald-300/60 rounded-full blur-sm top-0 left-2"
+                        className="absolute w-4 h-4 bg-emerald-300/60 rounded-full blur-sm top-0 left-1/2 -translate-x-1/2"
                         animate={{ opacity: [0.6, 1, 0.6] }}
                         transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
                       />
