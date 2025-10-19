@@ -9,11 +9,11 @@ export const FarewellPage: React.FC = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
   
-  // Optional: Auto-redirect after 5 seconds if user doesn't click
+  // Optional: Auto-redirect after 20 seconds if user doesn't click
   useEffect(() => {
     const autoRedirect = setTimeout(() => {
       handleRestart();
-    }, 5000);
+    }, 20000);
 
     return () => clearTimeout(autoRedirect);
   }, []);
