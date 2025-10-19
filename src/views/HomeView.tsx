@@ -13,6 +13,7 @@ import { WeeklyActivity } from "@/components/charts/WeeklyActivity";
 import { MotivationSkeleton } from "@/components/skeletons/MotivationSkeleton";
 import HomeSkeleton from "@/components/skeletons/HomeSkeleton";
 import WorkoutErrorBoundary from "@/components/WorkoutErrorBoundary";
+import { NotificationPopover } from "@/components/NotificationPopover";
 
 interface HomeViewProps {
   generatingPlans: boolean;
@@ -210,10 +211,7 @@ const HomeView: React.FC<HomeViewProps> = ({
           <h1 className="text-2xl font-bold text-foreground">
             Hallo, {firstName}!
           </h1>
-          <Button variant="ghost" size="sm" className="p-2">
-            <Bell className="h-5 w-5 text-muted-foreground" aria-hidden="true" />
-            <span className="sr-only">Benachrichtigungen</span>
-          </Button>
+          <NotificationPopover />
         </div>
         
         {/* Profile Avatar with Progress Ring */}
