@@ -43,6 +43,7 @@ export type Database = {
           dietary_preference: string
           experience_level: string | null
           fitness_goal: string
+          full_name: string | null
           height: number
           id: string
           is_admin: boolean
@@ -56,6 +57,7 @@ export type Database = {
           dietary_preference: string
           experience_level?: string | null
           fitness_goal: string
+          full_name?: string | null
           height: number
           id: string
           is_admin?: boolean
@@ -69,6 +71,7 @@ export type Database = {
           dietary_preference?: string
           experience_level?: string | null
           fitness_goal?: string
+          full_name?: string | null
           height?: number
           id?: string
           is_admin?: boolean
