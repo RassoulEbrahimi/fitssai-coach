@@ -66,9 +66,9 @@ export const DeleteAccountButton: React.FC = () => {
         // Audio is optional, continue without it
       }
       
-      // Redirect after animation completes
+      // Redirect to farewell screen after animation completes
       setTimeout(() => {
-        navigate("/auth");
+        navigate("/farewell");
       }, 1500);
       
     } catch (error) {

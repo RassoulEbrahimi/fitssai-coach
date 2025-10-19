@@ -14,6 +14,7 @@ import DashboardPage from './pages/DashboardPage';
 import OnboardingPage from './pages/OnboardingPage';
 import AdminPanel from './pages/AdminPanel';
 import NotFound from './pages/NotFound';
+import { FarewellPage } from './pages/FarewellPage';
 import "./lib/i18n";
 
 // Create persistent query client with 24h cache expiration
@@ -102,6 +103,7 @@ const App = () => {
             <Route path="/dashboard" element={<DashboardPage />} />
             <Route path="/onboarding" element={<OnboardingPage />} />
             <Route path="/admin" element={<AdminPanel />} />
+            <Route path="/farewell" element={<FarewellPage />} />
                 {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
                 <Route path="*" element={<NotFound />} />
               </Routes>
