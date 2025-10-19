@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { AnimatedAvatar } from "@/components/ui/animated-avatar";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
@@ -357,18 +357,14 @@ export const ProfileCard = ({ profile, onProfileUpdate, workoutProgress }: Profi
                 
                 {/* Avatar */}
                 <div className="absolute inset-3">
-                  <Avatar className="w-full h-full border-4 border-background shadow-lg">
-                    <AvatarImage 
-                      src={avatarUrl || ""} 
-                      alt={user?.email || 'User'} 
-                      className="object-cover"
-                      decoding="async"
-                      loading="lazy"
-                    />
-                    <AvatarFallback className="text-xl font-bold bg-gradient-primary text-primary-foreground">
-                      {getInitials()}
-                    </AvatarFallback>
-                  </Avatar>
+                  <AnimatedAvatar
+                    src={avatarUrl}
+                    alt={user?.email || 'User'}
+                    fallback={getInitials()}
+                    className="w-full h-full"
+                    imageClassName="object-cover"
+                    fallbackClassName="text-xl font-bold"
+                  />
                   
                   {/* Upload Button */}
                   <Button
