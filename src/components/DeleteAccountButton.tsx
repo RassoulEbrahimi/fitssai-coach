@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import { Trash2 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
@@ -18,6 +18,7 @@ import { useToast } from "@/hooks/use-toast";
 export const DeleteAccountButton: React.FC = () => {
   const [showConfirm, setShowConfirm] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [showExitAnimation, setShowExitAnimation] = useState(false);
   const navigate = useNavigate();
   const { toast } = useToast();
 
@@ -51,10 +52,24 @@ export const DeleteAccountButton: React.FC = () => {
       localStorage.clear();
       sessionStorage.clear();
       
-      // Fade out and redirect
+      // Play exit animation sequence
+      setShowExitAnimation(true);
+      
+      // Optional: Play heartbeat sound
+      try {
+        const audio = new Audio("/audio/heartbeat.mp3");
+        audio.volume = 0.3;
+        audio.play().catch(() => {
+          // Ignore if audio fails to load
+        });
+      } catch (e) {
+        // Audio is optional, continue without it
+      }
+      
+      // Redirect after animation completes
       setTimeout(() => {
         navigate("/auth");
-      }, 500);
+      }, 1500);
       
     } catch (error) {
       console.error("Account deletion failed:", error);
@@ -70,6 +85,62 @@ export const DeleteAccountButton: React.FC = () => {
 
   return (
     <>
+      {/* Exit Animation Overlay */}
+      <AnimatePresence>
+        {showExitAnimation && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[9999] flex items-center justify-center bg-background/95 backdrop-blur-md"
+          >
+            {/* Glow Collapse Effect */}
+            <motion.div
+              initial={{ scale: 1, opacity: 0.8 }}
+              animate={{ 
+                scale: [1, 1.5, 2.5],
+                opacity: [0.8, 0.4, 0]
+              }}
+              transition={{ 
+                duration: 1.2,
+                ease: "easeOut"
+              }}
+              className="absolute w-64 h-64 rounded-full bg-gradient-to-r from-rose-500/40 via-red-500/30 to-rose-600/40 blur-3xl"
+            />
+            
+            {/* Fade Text */}
+            <motion.div
+              initial={{ opacity: 1, y: 0 }}
+              animate={{ 
+                opacity: [1, 1, 0],
+                y: [0, 0, -20]
+              }}
+              transition={{ 
+                duration: 1.5,
+                times: [0, 0.5, 1]
+              }}
+              className="relative z-10 text-center"
+            >
+              <motion.div
+                animate={{
+                  scale: [1, 1.05, 1],
+                }}
+                transition={{
+                  duration: 1,
+                  repeat: 1,
+                  ease: "easeInOut"
+                }}
+              >
+                <Trash2 className="w-16 h-16 mx-auto mb-4 text-rose-400" />
+              </motion.div>
+              <p className="text-xl font-medium text-rose-300">
+                Konto wird gelöscht...
+              </p>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       <motion.button
         onClick={() => setShowConfirm(true)}
         className="w-full mt-4 px-6 py-4 rounded-full bg-gradient-to-r from-rose-600/30 via-red-500/25 to-rose-700/30 backdrop-blur-xl border border-rose-500/40 text-rose-300 font-medium flex items-center justify-center gap-3 relative overflow-hidden"
