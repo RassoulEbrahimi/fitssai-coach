@@ -29,18 +29,21 @@ export const NavBar = React.forwardRef<HTMLDivElement, NavBarProps>(
   }, [])
 
   return (
-    <motion.div
+    <div
       ref={ref}
-      initial={{ opacity: 0, y: 12 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.4, ease: "easeOut" }}
       className={cn(
         "fixed bottom-4 left-1/2 -translate-x-1/2 z-50 flex justify-center items-center w-fit",
         className,
       )}
       style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
     >
-      <div className="relative w-fit mx-auto">
+      <motion.div
+        className="relative w-fit mx-auto"
+        initial={false}
+        animate={{ opacity: 1 }}
+        transition={{ type: 'spring', stiffness: 300, damping: 30 }}
+        style={{ willChange: 'transform' }}
+      >
         {/* Soft neon glow shadow below navbar - centered radial glow */}
         <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-emerald-500/25 via-emerald-500/15 to-transparent rounded-full blur-xl" />
         
@@ -135,8 +138,8 @@ export const NavBar = React.forwardRef<HTMLDivElement, NavBarProps>(
             )
           })}
         </div>
-      </div>
-    </motion.div>
+      </motion.div>
+    </div>
   )
 })
 
