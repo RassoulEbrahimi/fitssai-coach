@@ -9,22 +9,19 @@ export const FarewellPage: React.FC = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
   
-  // Get first name from user profile or use default
-  const firstName = user?.user_metadata?.first_name || "Freund";
-
-  // Optional: Auto-redirect after 8 seconds if user doesn't click
+  // Optional: Auto-redirect after 5 seconds if user doesn't click
   useEffect(() => {
     const autoRedirect = setTimeout(() => {
       handleRestart();
-    }, 8000);
+    }, 5000);
 
     return () => clearTimeout(autoRedirect);
   }, []);
 
-  // Play optional restart chime
+  // Play optional farewell chime
   useEffect(() => {
     try {
-      const audio = new Audio("/audio/restart_chime.mp3");
+      const audio = new Audio("/audio/farewell-chime.mp3");
       audio.volume = 0.2;
       audio.play().catch(() => {
         // Audio is optional
@@ -37,7 +34,7 @@ export const FarewellPage: React.FC = () => {
   const handleRestart = () => {
     setShowContent(false);
     setTimeout(() => {
-      navigate("/onboarding");
+      navigate("/auth/sign-up");
     }, 600);
   };
 
@@ -93,20 +90,21 @@ export const FarewellPage: React.FC = () => {
               initial={{ opacity: 0, scale: 0.9 }}
               animate={{ opacity: 1, scale: 1 }}
               transition={{ delay: 0.5, duration: 0.6 }}
-              className="text-4xl md:text-5xl font-bold mb-6 bg-gradient-to-r from-emerald-400 via-rose-400 to-emerald-500 bg-clip-text text-transparent"
+              className="text-4xl md:text-5xl font-bold mb-6 bg-gradient-to-r from-emerald-400 via-teal-400 to-emerald-500 bg-clip-text text-transparent"
             >
-              Mach's gut, {firstName}! 💚
+              🌿 Konto gelöscht
             </motion.h1>
 
             {/* Subtext */}
-            <motion.p
+            <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               transition={{ delay: 0.8, duration: 0.8 }}
-              className="text-xl md:text-2xl text-muted-foreground/80 mb-12 leading-relaxed"
+              className="text-xl md:text-2xl text-muted-foreground/80 mb-12 leading-relaxed space-y-2"
             >
-              Deine Reise beginnt von Neuem. Wir freuen uns, dich bald wieder zu sehen!
-            </motion.p>
+              <p>Danke, dass du Teil unserer Community warst.</p>
+              <p>Manchmal ist ein Neuanfang alles, was wir brauchen. 🌅</p>
+            </motion.div>
 
             {/* Restart Button */}
             <motion.button
@@ -139,7 +137,7 @@ export const FarewellPage: React.FC = () => {
               />
               
               {/* Button content */}
-              <span className="relative z-10">Neu starten</span>
+              <span className="relative z-10">Neu anfangen</span>
               <ArrowRight className="relative z-10 w-5 h-5 group-hover:translate-x-1 transition-transform" />
 
               {/* Pulsating glow background */}
