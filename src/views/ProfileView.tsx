@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { RefreshCw } from "lucide-react";
 import { ProfileCard } from "@/components/ProfileCard";
+import { LogoutButton } from "@/components/LogoutButton";
 
 interface ProfileViewProps {
   profile: any;
@@ -57,6 +58,15 @@ const ProfileView: React.FC<ProfileViewProps> = React.memo(({
             </Button>
           </motion.div>
         )}
+        
+        {/* Logout Button */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.4, delay: 0.3 }}
+        >
+          <LogoutButton />
+        </motion.div>
       </motion.div>
     </AnimatePresence>
   );
