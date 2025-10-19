@@ -3,6 +3,7 @@ import React, { useEffect, useState } from "react"
 import { motion } from "framer-motion"
 import { LucideIcon } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { useTheme } from "@/hooks/useTheme"
 
 interface NavItem {
   name: string
@@ -20,6 +21,8 @@ interface NavBarProps {
 export const NavBar = React.forwardRef<HTMLDivElement, NavBarProps>(
   ({ items, activeTab, onTabChange, className }, ref) => {
   const [isMobile, setIsMobile] = useState(false)
+  const { actualTheme } = useTheme()
+  const isDark = actualTheme === "dark"
 
   useEffect(() => {
     const handleResize = () => setIsMobile(window.innerWidth < 768)
@@ -45,10 +48,20 @@ export const NavBar = React.forwardRef<HTMLDivElement, NavBarProps>(
         style={{ willChange: 'transform' }}
       >
         {/* Soft neon glow shadow below navbar - centered radial glow */}
-        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] from-emerald-500/25 via-emerald-500/15 to-transparent rounded-full blur-xl" />
+        <div className={cn(
+          "absolute inset-0 bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] rounded-full blur-xl transition-all duration-500",
+          isDark 
+            ? "from-emerald-500/25 via-emerald-500/15 to-transparent"
+            : "from-emerald-400/20 via-emerald-300/10 to-transparent"
+        )} />
         
         {/* Main navbar container - symmetric background */}
-        <div className="relative flex items-center justify-center gap-3 bg-emerald-900/60 border border-emerald-700/40 backdrop-blur-xl py-1 px-1 rounded-full shadow-[0_0_20px_rgba(16,185,129,0.15)]">
+        <div className={cn(
+          "relative flex items-center justify-center gap-3 rounded-full border backdrop-blur-xl py-1 px-1 transition-all duration-500 shadow-lg",
+          isDark
+            ? "bg-emerald-950/60 border-emerald-700/40 shadow-[0_0_20px_rgba(16,185,129,0.15)]"
+            : "bg-emerald-100/60 border-emerald-300/40 shadow-[0_0_20px_rgba(16,185,129,0.1)]"
+        )}>
           {items.map((item) => {
             const Icon = item.icon
             const isActive = activeTab === item.id
