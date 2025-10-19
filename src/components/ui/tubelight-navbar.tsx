@@ -61,14 +61,8 @@ export const NavBar = React.forwardRef<HTMLDivElement, NavBarProps>(
   }, [lastScrollY])
 
   return (
-    <motion.div
+    <div 
       ref={ref}
-      initial={{ y: 100, opacity: 0 }}
-      animate={{ 
-        y: isHidden ? 80 : 0, 
-        opacity: isHidden ? 0 : 1 
-      }}
-      transition={{ type: "spring", stiffness: 150, damping: 20 }}
       className={cn(
         "fixed bottom-4 left-1/2 -translate-x-1/2 z-50 flex justify-center items-center w-fit",
         className,
@@ -76,10 +70,13 @@ export const NavBar = React.forwardRef<HTMLDivElement, NavBarProps>(
       style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
     >
       <motion.div
-        className="relative w-fit mx-auto"
-        initial={false}
-        animate={{ opacity: 1 }}
-        transition={{ type: 'spring', stiffness: 300, damping: 30 }}
+        initial={{ y: 100, opacity: 0 }}
+        animate={{ 
+          y: isHidden ? 80 : 0, 
+          opacity: isHidden ? 0 : 1 
+        }}
+        transition={{ type: "spring", stiffness: 150, damping: 20 }}
+        className="relative flex items-center justify-center"
         style={{ willChange: 'transform' }}
       >
         {/* Soft neon glow shadow below navbar - centered radial glow */}
@@ -207,7 +204,7 @@ export const NavBar = React.forwardRef<HTMLDivElement, NavBarProps>(
           })}
         </div>
       </motion.div>
-    </motion.div>
+    </div>
   )
 })
 
