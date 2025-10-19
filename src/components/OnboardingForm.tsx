@@ -18,6 +18,7 @@ const OnboardingForm = ({ onComplete }: { onComplete: () => void }) => {
   const [step, setStep] = useState(1);
   const [loading, setLoading] = useState(false);
   const [formData, setFormData] = useState({
+    firstName: "",
     age: "",
     weight: "",
     height: "",
@@ -46,6 +47,7 @@ const OnboardingForm = ({ onComplete }: { onComplete: () => void }) => {
         .from('profiles')
         .upsert({
           id: user.id,
+          full_name: formData.firstName,
           age: parseInt(formData.age),
           weight: parseInt(formData.weight),
           height: parseInt(formData.height),
@@ -90,6 +92,20 @@ const OnboardingForm = ({ onComplete }: { onComplete: () => void }) => {
               <h3 className="text-xl font-semibold text-center mb-6">{t('onboarding.steps.personalInfo')}</h3>
               
               <div className="space-y-4">
+                <div>
+                  <Label htmlFor="firstName">Vorname</Label>
+                  <Input
+                    id="firstName"
+                    type="text"
+                    placeholder="Gib deinen Namen ein"
+                    value={formData.firstName}
+                    onChange={(e) => setFormData({...formData, firstName: e.target.value})}
+                    className="mt-1"
+                    required
+                    minLength={2}
+                  />
+                </div>
+                
                 <div>
                   <Label htmlFor="age">{t('onboarding.fields.age')}</Label>
                   <Input

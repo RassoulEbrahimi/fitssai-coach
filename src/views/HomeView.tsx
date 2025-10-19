@@ -189,8 +189,22 @@ const HomeView: React.FC<HomeViewProps> = ({
     if (profile?.email) {
       return profile.email.split('@')[0];
     }
-    return "Nutzer";
+    return "";
   })();
+  
+  // Dynamic time-based greeting
+  const getGreeting = () => {
+    const hour = new Date().getHours();
+    
+    if (!firstName) {
+      return "Willkommen zurück! 💪";
+    }
+    
+    if (hour >= 5 && hour < 12) return `Guten Morgen, ${firstName}! ☀️`;
+    if (hour >= 12 && hour < 18) return `Hallo, ${firstName}! 🌤`;
+    if (hour >= 18 && hour < 22) return `Guten Abend, ${firstName}! 🌙`;
+    return `Gute Nacht, ${firstName}! 🌌`;
+  };
   
   const avatarUrl = getAvatarUrl(profile?.avatar_path);
   const progressPercentage = workoutProgress.total > 0 
@@ -208,9 +222,14 @@ const HomeView: React.FC<HomeViewProps> = ({
         transition={{ duration: 0.4, delay: 0.1 }}
       >
         <div className="flex items-center gap-3">
-          <h1 className="text-2xl font-bold text-foreground">
-            Hallo, {firstName}!
-          </h1>
+          <motion.h1 
+            className="text-2xl font-bold bg-gradient-to-r from-emerald-400 via-green-500 to-emerald-600 text-transparent bg-clip-text"
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5, delay: 0.2 }}
+          >
+            {getGreeting()}
+          </motion.h1>
           <NotificationPopover />
         </div>
         
