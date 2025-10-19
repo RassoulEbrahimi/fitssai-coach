@@ -38,7 +38,7 @@ export function NavBar({ items, activeTab, onTabChange, className }: NavBarProps
       )}
       style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
     >
-      <div className="relative w-full">
+      <div className="relative">
         {/* Soft neon glow shadow below navbar */}
         <div className="absolute inset-0 bg-gradient-to-r from-emerald-500/20 via-green-500/20 to-emerald-500/20 rounded-full blur-lg opacity-20" />
         
