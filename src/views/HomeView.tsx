@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { motion } from "framer-motion";
-import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
+import { AnimatedAvatar } from "@/components/ui/animated-avatar";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Bell, Dumbbell, Utensils, Sparkles, TrendingUp } from "lucide-react";
@@ -247,12 +247,15 @@ const HomeView: React.FC<HomeViewProps> = ({
             </svg>
             
             {/* Avatar */}
-            <Avatar className="absolute inset-1 w-10 h-10">
-              <AvatarImage src={avatarUrl || undefined} alt="Profilbild" />
-              <AvatarFallback className="bg-primary/20 text-primary text-sm font-medium">
-                {firstName.charAt(0).toUpperCase()}
-              </AvatarFallback>
-            </Avatar>
+            <div className="absolute inset-1">
+              <AnimatedAvatar 
+                src={avatarUrl || undefined} 
+                alt="Profilbild"
+                fallback={firstName.charAt(0).toUpperCase()}
+                className="w-10 h-10"
+                fallbackClassName="bg-primary/20 text-primary text-sm font-medium"
+              />
+            </div>
           </div>
         </div>
       </motion.div>
