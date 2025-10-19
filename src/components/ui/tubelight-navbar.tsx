@@ -17,7 +17,8 @@ interface NavBarProps {
   className?: string
 }
 
-export function NavBar({ items, activeTab, onTabChange, className }: NavBarProps) {
+export const NavBar = React.forwardRef<HTMLDivElement, NavBarProps>(
+  ({ items, activeTab, onTabChange, className }, ref) => {
   const [isMobile, setIsMobile] = useState(false)
 
   useEffect(() => {
@@ -29,6 +30,7 @@ export function NavBar({ items, activeTab, onTabChange, className }: NavBarProps
 
   return (
     <motion.div
+      ref={ref}
       initial={{ opacity: 0, y: 12 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.4, ease: "easeOut" }}
@@ -136,4 +138,6 @@ export function NavBar({ items, activeTab, onTabChange, className }: NavBarProps
       </div>
     </motion.div>
   )
-}
+})
+
+NavBar.displayName = "NavBar"

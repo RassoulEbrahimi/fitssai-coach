@@ -19,13 +19,12 @@ export const FitssNavBar = forwardRef<HTMLDivElement, FitssNavBarProps>(
     ]
 
     return (
-      <div ref={ref}>
-        <NavBar 
-          items={navItems} 
-          activeTab={activeTab}
-          onTabChange={(id) => onChange(id as Tab)}
-        />
-      </div>
+      <NavBar 
+        ref={ref}
+        items={navItems} 
+        activeTab={activeTab}
+        onTabChange={(id) => onChange(id as Tab)}
+      />
     )
   }
 )
