@@ -35,14 +35,14 @@ export const NavBar = React.forwardRef<HTMLDivElement, NavBarProps>(
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.4, ease: "easeOut" }}
       className={cn(
-        "fixed bottom-4 left-1/2 -translate-x-1/2 z-50 w-fit max-w-[90vw]",
+        "fixed bottom-4 left-1/2 -translate-x-1/2 z-50 flex justify-center items-center w-fit",
         className,
       )}
       style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
     >
-      <div className="relative">
+      <div className="relative w-fit">
         {/* Soft neon glow shadow below navbar */}
-        <div className="absolute inset-0 bg-gradient-to-r from-emerald-500/20 via-green-500/20 to-emerald-500/20 rounded-full blur-lg opacity-20" />
+        <div className="absolute inset-0 mx-auto w-full bg-gradient-to-r from-emerald-500/20 via-green-500/20 to-emerald-500/20 rounded-full blur-lg opacity-20" />
         
         {/* Main navbar container */}
         <div className="relative flex items-center justify-center gap-3 bg-gradient-to-r from-emerald-900/70 via-emerald-800/60 to-green-600/60 border border-emerald-900/60 backdrop-blur-xl py-1 px-1 rounded-full shadow-[0_0_20px_rgba(0,255,153,0.15)]">
