@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { RefreshCw } from "lucide-react";
 import { ProfileCard } from "@/components/ProfileCard";
 import { LogoutButton } from "@/components/LogoutButton";
+import { DeleteAccountButton } from "@/components/DeleteAccountButton";
 
 interface ProfileViewProps {
   profile: any;
@@ -66,6 +67,15 @@ const ProfileView: React.FC<ProfileViewProps> = React.memo(({
           transition={{ duration: 0.4, delay: 0.3 }}
         >
           <LogoutButton />
+        </motion.div>
+        
+        {/* Delete Account Button */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.4, delay: 0.4 }}
+        >
+          <DeleteAccountButton />
         </motion.div>
       </motion.div>
     </AnimatePresence>
