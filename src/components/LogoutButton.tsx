@@ -42,7 +42,7 @@ export const LogoutButton: React.FC = () => {
       
       // Fade out and redirect
       setTimeout(() => {
-        navigate("/auth");
+        navigate("/auth/sign-in");
       }, 300);
       
     } catch (error) {
