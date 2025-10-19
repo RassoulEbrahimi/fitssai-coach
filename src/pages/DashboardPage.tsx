@@ -1,7 +1,6 @@
 import { useAuth } from "@/hooks/useAuth";
 import { Navigate } from "react-router-dom";
 import Dashboard from "@/components/Dashboard";
-import Navbar from "@/components/Navbar";
 import WorkoutErrorBoundary from "@/components/WorkoutErrorBoundary";
 import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
@@ -47,8 +46,7 @@ const DashboardPage = () => {
     return <Navigate to="/onboarding" replace />;
   }
   return <div className="min-h-screen bg-background">
-      <Navbar />
-      <div className="pt-16 px-0 mx-0 my-0 rounded-none py-[30px]">
+      <div className="pt-4 px-0 mx-0 my-0 rounded-none py-[30px]">
         <WorkoutErrorBoundary>
           <Dashboard />
         </WorkoutErrorBoundary>

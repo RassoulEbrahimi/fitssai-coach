@@ -6,7 +6,6 @@ import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { parseISO } from 'date-fns';
 import { formatDateForDisplay } from '@/lib/dateUtils';
-import Navbar from "@/components/Navbar";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -295,8 +294,7 @@ const AdminPanel = () => {
   if (loading || checkingAdmin) {
     return (
       <div className="min-h-screen bg-background">
-        <Navbar />
-        <div className="pt-16 flex items-center justify-center min-h-screen">
+        <div className="pt-4 flex items-center justify-center min-h-screen">
           <div className="text-xl">Loading...</div>
         </div>
       </div>
@@ -313,8 +311,7 @@ const AdminPanel = () => {
 
   return (
     <div className="min-h-screen bg-background">
-      <Navbar />
-      <div className="pt-16">
+      <div className="pt-4">
         <div className="max-w-7xl mx-auto p-6">
           {/* Header */}
           <div className="mb-8">
