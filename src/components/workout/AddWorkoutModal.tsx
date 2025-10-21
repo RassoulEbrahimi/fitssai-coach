@@ -9,6 +9,8 @@ import { useAuth } from '@/hooks/useAuth';
 import { toastSuccess, toastError } from '@/lib/toastWithIcon';
 import { format } from 'date-fns';
 import { de } from 'date-fns/locale';
+import { ManualWorkoutForm } from './ManualWorkoutForm';
+import type { Exercise } from '@/hooks/useExerciseEditor';
 
 interface WorkoutSuggestion {
   name: string;
@@ -102,7 +104,7 @@ export function AddWorkoutModal({
     }
   };
 
-  const handleAddWorkout = async (suggestion: WorkoutSuggestion) => {
+  const handleAddWorkout = async (exercise: Exercise | WorkoutSuggestion) => {
     if (!dayContext || !user) return;
 
     try {
@@ -131,14 +133,17 @@ export function AddWorkoutModal({
         dayData.exercises = [];
       }
 
-      // Add new exercise
+      // Check if it's a WorkoutSuggestion (has duration property) or Exercise
+      const isWorkoutSuggestion = 'duration' in exercise;
+
+      // Add new exercise - handle both Exercise and WorkoutSuggestion types
       dayData.exercises.push({
-        name: suggestion.name,
-        sets: suggestion.sets.toString(),
-        reps: suggestion.reps.toString(),
-        rest: '90s',
-        weight: '',
-        description: suggestion.description || ''
+        name: exercise.name,
+        sets: typeof exercise.sets === 'number' ? exercise.sets.toString() : String(exercise.sets),
+        reps: typeof exercise.reps === 'number' ? exercise.reps.toString() : String(exercise.reps),
+        rest: isWorkoutSuggestion ? '90s' : (exercise as Exercise).rest || '90s',
+        weight: isWorkoutSuggestion ? '' : (exercise as Exercise).weight || '',
+        description: exercise.description || ''
       });
 
       // Save updated plan
@@ -149,7 +154,7 @@ export function AddWorkoutModal({
 
       if (updateError) throw updateError;
 
-      toastSuccess('Hinzugefügt', `${suggestion.name} wurde zu deinem Training hinzugefügt`);
+      toastSuccess('Hinzugefügt', `${exercise.name} wurde zu deinem Training hinzugefügt`);
       
       if (onWorkoutAdded) {
         onWorkoutAdded();
@@ -327,35 +332,26 @@ export function AddWorkoutModal({
                       </TabsContent>
 
                       <TabsContent value="manual" className="mt-0">
-                        <div className="flex flex-col items-center justify-center h-full py-16 text-center">
-                          <div className="text-6xl mb-4">🏋️‍♂️</div>
-                          <p className="text-lg text-muted-foreground">
-                            Add exercise manually
-                          </p>
-                          <p className="text-sm text-muted-foreground/70 mt-2">
-                            Create your custom workout plan
-                          </p>
-                        </div>
+                        <ManualWorkoutForm
+                          onSave={handleAddWorkout}
+                          onCancel={onClose}
+                        />
                       </TabsContent>
                     </ScrollArea>
                   </Tabs>
 
-                  {/* Footer buttons */}
-                  <div className="flex items-center justify-end gap-3 mt-6 pt-6 border-t border-border/50">
-                    <Button
-                      variant="ghost"
-                      onClick={onClose}
-                      className="hover:bg-muted/80"
-                    >
-                      Abbrechen
-                    </Button>
-                    <Button
-                      disabled
-                      className="bg-primary/20 text-primary cursor-not-allowed opacity-50"
-                    >
-                      Speichern
-                    </Button>
-                  </div>
+                  {/* Footer buttons - Only for AI tab */}
+                  {activeTab === 'ai' && (
+                    <div className="flex items-center justify-end gap-3 mt-6 pt-6 border-t border-border/50">
+                      <Button
+                        variant="ghost"
+                        onClick={onClose}
+                        className="hover:bg-muted/80"
+                      >
+                        Abbrechen
+                      </Button>
+                    </div>
+                  )}
                 </div>
               </div>
             </motion.div>

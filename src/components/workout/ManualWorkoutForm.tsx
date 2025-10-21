@@ -1,0 +1,217 @@
+import React, { useState, useEffect } from 'react';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { ExerciseSelector, PREDEFINED_EXERCISES } from '@/components/ExerciseSelector';
+import type { Exercise } from '@/hooks/useExerciseEditor';
+
+interface ManualWorkoutFormProps {
+  onSave: (exercise: Exercise) => void;
+  isLoading?: boolean;
+  onCancel?: () => void;
+}
+
+export const ManualWorkoutForm: React.FC<ManualWorkoutFormProps> = ({
+  onSave,
+  isLoading = false,
+  onCancel,
+}) => {
+  // Exercise selection state
+  const [selectedExercise, setSelectedExercise] = useState<typeof PREDEFINED_EXERCISES[number] | null>(null);
+  
+  // Form state for strength exercises
+  const [sets, setSets] = useState('3');
+  const [reps, setReps] = useState('10');
+  const [weight, setWeight] = useState('');
+  const [rest, setRest] = useState('90s');
+  
+  // Form state for cardio exercises
+  const [distance, setDistance] = useState('');
+  const [duration, setDuration] = useState('');
+
+  const handleSelectExercise = (exercise: typeof PREDEFINED_EXERCISES[number]) => {
+    setSelectedExercise(exercise);
+  };
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedExercise) return;
+
+    let exercise: Exercise;
+
+    if (selectedExercise.type === 'cardio') {
+      // For cardio, use distance/duration in description
+      const description = [
+        distance && `${distance} km`,
+        duration && `${duration} min`,
+      ].filter(Boolean).join(', ');
+
+      exercise = {
+        name: selectedExercise.name,
+        sets: 1,
+        reps: '1',
+        description: description || undefined,
+      };
+    } else {
+      // For strength exercises
+      exercise = {
+        name: selectedExercise.name,
+        sets: parseInt(sets) || 3,
+        reps: reps.trim() || '10',
+        weight: weight.trim() || undefined,
+        rest: rest.trim() || undefined,
+      };
+    }
+
+    onSave(exercise);
+  };
+
+  const isFormValid = () => {
+    if (!selectedExercise) return false;
+
+    if (selectedExercise.type === 'cardio') {
+      return distance.trim() !== '' || duration.trim() !== '';
+    } else {
+      return sets !== '' && reps.trim() !== '';
+    }
+  };
+
+  return (
+    <form onSubmit={handleSubmit} className="space-y-4">
+      {/* Exercise Selection */}
+      <div className="space-y-2">
+        <Label className="text-emerald-200">Übung auswählen</Label>
+        {selectedExercise ? (
+          <div className="flex items-center justify-between p-3 bg-emerald-500/10 rounded-lg border border-emerald-400/30 backdrop-blur-xl">
+            <div className="flex items-center gap-2">
+              <span className="text-2xl">{selectedExercise.icon}</span>
+              <span className="font-medium text-emerald-100">{selectedExercise.name}</span>
+            </div>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={() => setSelectedExercise(null)}
+              className="h-8 text-emerald-300 hover:text-emerald-100"
+            >
+              Ändern
+            </Button>
+          </div>
+        ) : (
+          <ExerciseSelector onSelect={handleSelectExercise} />
+        )}
+      </div>
+
+      {/* Dynamic Fields Based on Exercise Type */}
+      {selectedExercise && (
+        <div className="space-y-4 pt-4 border-t border-emerald-400/20">
+          {selectedExercise.type === 'cardio' ? (
+            // Cardio fields
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="distance" className="text-emerald-200">Distanz (km)</Label>
+                <Input
+                  id="distance"
+                  type="text"
+                  placeholder="z.B. 5"
+                  value={distance}
+                  onChange={(e) => setDistance(e.target.value)}
+                  className="bg-emerald-500/5 border-emerald-400/30 text-emerald-100"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="duration" className="text-emerald-200">Zeit (min)</Label>
+                <Input
+                  id="duration"
+                  type="text"
+                  placeholder="z.B. 30"
+                  value={duration}
+                  onChange={(e) => setDuration(e.target.value)}
+                  className="bg-emerald-500/5 border-emerald-400/30 text-emerald-100"
+                />
+              </div>
+            </div>
+          ) : (
+            // Strength training fields
+            <>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="sets" className="text-emerald-200">Sätze *</Label>
+                  <Input
+                    id="sets"
+                    type="number"
+                    min="1"
+                    max="20"
+                    value={sets}
+                    onChange={(e) => setSets(e.target.value)}
+                    required
+                    className="bg-emerald-500/5 border-emerald-400/30 text-emerald-100"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="reps" className="text-emerald-200">Wiederholungen *</Label>
+                  <Input
+                    id="reps"
+                    type="text"
+                    placeholder="z.B. 8-12"
+                    value={reps}
+                    onChange={(e) => setReps(e.target.value)}
+                    required
+                    className="bg-emerald-500/5 border-emerald-400/30 text-emerald-100"
+                  />
+                </div>
+              </div>
+              
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="weight" className="text-emerald-200">Gewicht (optional)</Label>
+                  <Input
+                    id="weight"
+                    type="text"
+                    placeholder="z.B. 60kg"
+                    value={weight}
+                    onChange={(e) => setWeight(e.target.value)}
+                    className="bg-emerald-500/5 border-emerald-400/30 text-emerald-100"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="rest" className="text-emerald-200">Pause (optional)</Label>
+                  <Input
+                    id="rest"
+                    type="text"
+                    placeholder="z.B. 90s"
+                    value={rest}
+                    onChange={(e) => setRest(e.target.value)}
+                    className="bg-emerald-500/5 border-emerald-400/30 text-emerald-100"
+                  />
+                </div>
+              </div>
+            </>
+          )}
+        </div>
+      )}
+
+      {/* Form Actions */}
+      <div className="flex justify-end gap-2 pt-4">
+        {onCancel && (
+          <Button
+            type="button"
+            variant="outline"
+            onClick={onCancel}
+            disabled={isLoading}
+            className="border-emerald-400/30 text-emerald-300 hover:bg-emerald-500/10"
+          >
+            Abbrechen
+          </Button>
+        )}
+        <Button
+          type="submit"
+          disabled={!isFormValid() || isLoading}
+          className="bg-emerald-500 hover:bg-emerald-600 text-white"
+        >
+          {isLoading ? 'Wird hinzugefügt...' : 'Hinzufügen'}
+        </Button>
+      </div>
+    </form>
+  );
+};
