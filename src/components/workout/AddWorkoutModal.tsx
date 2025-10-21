@@ -1,30 +1,60 @@
 import { motion, AnimatePresence } from 'framer-motion';
-import { X } from 'lucide-react';
+import { X, Loader2 } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { supabase } from '@/integrations/supabase/client';
+import { useAuth } from '@/hooks/useAuth';
+import { toastSuccess, toastError } from '@/lib/toastWithIcon';
+import { format } from 'date-fns';
+import { de } from 'date-fns/locale';
+
+interface WorkoutSuggestion {
+  name: string;
+  sets: number;
+  reps: number | string;
+  duration: number;
+  description?: string;
+}
 
 interface AddWorkoutModalProps {
   isOpen: boolean;
   onClose: () => void;
   mode?: 'ai' | 'manual';
   dayContext?: { weekKey: string; dayIndex: number };
+  onWorkoutAdded?: () => void;
 }
 
 export function AddWorkoutModal({ 
   isOpen, 
   onClose, 
   mode = 'manual',
-  dayContext 
+  dayContext,
+  onWorkoutAdded
 }: AddWorkoutModalProps) {
   const [activeTab, setActiveTab] = useState(mode);
+  const [suggestions, setSuggestions] = useState<WorkoutSuggestion[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const { user } = useAuth();
   const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  const dayNames = ['Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag', 'Sonntag'];
+
+  // Fetch AI suggestions when AI tab is opened
+  useEffect(() => {
+    if (isOpen && activeTab === 'ai' && dayContext && user) {
+      fetchSuggestions();
+    }
+  }, [isOpen, activeTab, dayContext, user]);
 
   // Sync activeTab with mode prop when modal opens
   useEffect(() => {
     if (isOpen) {
       setActiveTab(mode);
+      setSuggestions([]);
+      setError(null);
     }
   }, [isOpen, mode]);
 
@@ -39,6 +69,98 @@ export function AddWorkoutModal({
       document.body.style.overflow = '';
     };
   }, [isOpen]);
+
+  const fetchSuggestions = async () => {
+    if (!dayContext) return;
+    
+    setIsLoading(true);
+    setError(null);
+
+    try {
+      const dayOfWeek = dayNames[dayContext.dayIndex] || 'Wochentag';
+      
+      const { data, error } = await supabase.functions.invoke('generate-day-suggestions', {
+        body: {
+          day_of_week: dayOfWeek,
+          available_time: 45
+        }
+      });
+
+      if (error) throw error;
+
+      if (data?.suggestions) {
+        setSuggestions(data.suggestions);
+      } else {
+        throw new Error('Keine Vorschläge erhalten');
+      }
+    } catch (err: any) {
+      console.error('Error fetching suggestions:', err);
+      setError(err.message || 'Fehler beim Laden der Vorschläge');
+      toastError('Fehler', 'Vorschläge konnten nicht geladen werden');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleAddWorkout = async (suggestion: WorkoutSuggestion) => {
+    if (!dayContext || !user) return;
+
+    try {
+      // Get current workout plan
+      const { data: planData } = await supabase
+        .from('workout_plans')
+        .select('*')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .single();
+
+      if (!planData) {
+        toastError('Fehler', 'Kein Trainingsplan gefunden');
+        return;
+      }
+
+      // Update workout plan content
+      const content = planData.content || {};
+      if (!content[dayContext.weekKey]) {
+        content[dayContext.weekKey] = Array(7).fill(null).map(() => ({ day: null, exercises: [] }));
+      }
+
+      const dayData = content[dayContext.weekKey][dayContext.dayIndex];
+      if (!dayData.exercises) {
+        dayData.exercises = [];
+      }
+
+      // Add new exercise
+      dayData.exercises.push({
+        name: suggestion.name,
+        sets: suggestion.sets.toString(),
+        reps: suggestion.reps.toString(),
+        rest: '90s',
+        weight: '',
+        description: suggestion.description || ''
+      });
+
+      // Save updated plan
+      const { error: updateError } = await supabase
+        .from('workout_plans')
+        .update({ content })
+        .eq('id', planData.id);
+
+      if (updateError) throw updateError;
+
+      toastSuccess('Hinzugefügt', `${suggestion.name} wurde zu deinem Training hinzugefügt`);
+      
+      if (onWorkoutAdded) {
+        onWorkoutAdded();
+      }
+      
+      onClose();
+    } catch (err: any) {
+      console.error('Error adding workout:', err);
+      toastError('Fehler', 'Training konnte nicht hinzugefügt werden');
+    }
+  };
 
   const modalVariants = prefersReducedMotion
     ? {
@@ -137,15 +259,71 @@ export function AddWorkoutModal({
 
                     <ScrollArea className="h-[400px] pr-4">
                       <TabsContent value="ai" className="mt-0">
-                        <div className="flex flex-col items-center justify-center h-full py-16 text-center">
-                          <div className="text-6xl mb-4">🤖</div>
-                          <p className="text-lg text-muted-foreground">
-                            AI Suggestions coming soon
-                          </p>
-                          <p className="text-sm text-muted-foreground/70 mt-2">
-                            Let AI help you plan the perfect workout
-                          </p>
-                        </div>
+                        {isLoading ? (
+                          <div className="flex flex-col items-center justify-center h-full py-16">
+                            <motion.div
+                              animate={{ rotate: 360 }}
+                              transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}
+                              className="mb-4"
+                            >
+                              <Loader2 className="h-12 w-12 text-primary" />
+                            </motion.div>
+                            <p className="text-muted-foreground">Personalisierte Vorschläge werden generiert...</p>
+                          </div>
+                        ) : error ? (
+                          <div className="flex flex-col items-center justify-center h-full py-16 text-center">
+                            <div className="text-6xl mb-4">⚠️</div>
+                            <p className="text-lg text-destructive mb-2">Fehler beim Laden</p>
+                            <p className="text-sm text-muted-foreground mb-4">{error}</p>
+                            <Button onClick={fetchSuggestions} variant="outline">
+                              Erneut versuchen
+                            </Button>
+                          </div>
+                        ) : suggestions.length > 0 ? (
+                          <div className="space-y-3">
+                            {suggestions.map((suggestion, idx) => (
+                              <motion.div
+                                key={idx}
+                                initial={{ opacity: 0, y: 10 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                transition={{ delay: idx * 0.1 }}
+                                whileHover={prefersReducedMotion ? {} : { scale: 1.02 }}
+                                className="p-4 rounded-2xl bg-primary/10 border border-primary/30 backdrop-blur-xl"
+                              >
+                                <div className="flex justify-between items-start mb-2">
+                                  <span className="font-semibold text-primary">{suggestion.name}</span>
+                                  <span className="text-xs text-primary/70">{suggestion.duration} min</span>
+                                </div>
+                                <p className="text-xs text-muted-foreground mb-2">
+                                  {suggestion.sets} Sätze × {suggestion.reps} Wdh.
+                                </p>
+                                {suggestion.description && (
+                                  <p className="text-xs text-muted-foreground/80 mb-3 italic">
+                                    {suggestion.description}
+                                  </p>
+                                )}
+                                <Button
+                                  onClick={() => handleAddWorkout(suggestion)}
+                                  variant="outline"
+                                  size="sm"
+                                  className="w-full text-xs"
+                                >
+                                  Zu Tag hinzufügen
+                                </Button>
+                              </motion.div>
+                            ))}
+                          </div>
+                        ) : (
+                          <div className="flex flex-col items-center justify-center h-full py-16 text-center">
+                            <div className="text-6xl mb-4">✨</div>
+                            <p className="text-lg text-muted-foreground">
+                              Bereit für personalisierte Vorschläge
+                            </p>
+                            <p className="text-sm text-muted-foreground/70 mt-2">
+                              Lass die KI dein perfektes Training planen
+                            </p>
+                          </div>
+                        )}
                       </TabsContent>
 
                       <TabsContent value="manual" className="mt-0">

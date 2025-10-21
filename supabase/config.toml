@@ -17,3 +17,6 @@ verify_jwt = true
 
 [functions.update-exercise]
 verify_jwt = true
+
+[functions.generate-day-suggestions]
+verify_jwt = true

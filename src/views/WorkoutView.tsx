@@ -26,7 +26,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useExerciseEditor, type Exercise } from "@/hooks/useExerciseEditor";
 import { useWorkoutHelpers } from "@/hooks/useWorkoutHelpers";
 import { normalizeWeekKey } from "@/lib/workoutPlanUtils";
-import { AddWorkoutDialog } from "@/components/AddWorkoutDialog";
+import { AddWorkoutModal } from "@/components/workout/AddWorkoutModal";
 import { useAddExercise } from "@/hooks/useAddExercise";
 import { Plus } from "lucide-react";
 import { SpeedDial } from "@/components/SpeedDial";
@@ -95,10 +95,12 @@ const WorkoutView: React.FC<WorkoutViewProps> = ({
     open: boolean;
     weekKey: string | null;
     dayIndex: number | null;
+    mode: 'ai' | 'manual';
   }>({
     open: false,
     weekKey: null,
     dayIndex: null,
+    mode: 'manual'
   });
 
   const { updateExercise, isUpdating } = useExerciseEditor();
@@ -421,13 +423,14 @@ const WorkoutView: React.FC<WorkoutViewProps> = ({
   };
 
   // Add exercise handlers
-  const handleOpenAddExercise = (weekKey: string, dayIndex: number) => {
+  const handleOpenAddExercise = (weekKey: string, dayIndex: number, mode: 'ai' | 'manual' = 'manual') => {
     setAddExerciseDialog({
       open: true,
       weekKey,
       dayIndex,
+      mode
     });
-    logEvent('add_exercise_dialog_opened', { weekKey, dayIndex });
+    logEvent('add_exercise_dialog_opened', { weekKey, dayIndex, mode });
   };
 
   const handleAddExercise = (exercise: Exercise) => {
@@ -449,12 +452,13 @@ const WorkoutView: React.FC<WorkoutViewProps> = ({
       });
     });
 
-    setAddExerciseDialog({ open: false, weekKey: null, dayIndex: null });
+    setAddExerciseDialog({ open: false, weekKey: null, dayIndex: null, mode: 'manual' });
   };
 
   // Handle AI autofill
-  const handleAutoFill = (dayIndex: number) => {
-    console.log("AI autofill triggered for day", dayIndex);
+  const handleAutoFill = (weekKey: string, dayIndex: number) => {
+    handleOpenAddExercise(weekKey, dayIndex, 'ai');
+    logEvent('ai_autofill_opened', { weekKey, dayIndex });
   };
   // Show loading skeleton while plan is being fetched
   if (isLoadingPlan) {
@@ -851,13 +855,13 @@ const WorkoutView: React.FC<WorkoutViewProps> = ({
                                   </Suspense>
                                 )}
                             
-                              {/* Speed Dial FAB (for days with exercises) */}
-                              {!isRestDay && (
-                                <SpeedDial
-                                  onAddExercise={() => handleOpenAddExercise(wk, dayIndex)}
-                                  onAutoFill={() => handleAutoFill(dayIndex)}
-                                />
-                              )}
+              {/* Speed Dial FAB (for days with exercises) */}
+              {!isRestDay && (
+                <SpeedDial
+                  onAddExercise={() => handleOpenAddExercise(wk, dayIndex)}
+                  onAutoFill={() => handleAutoFill(wk, dayIndex)}
+                />
+              )}
 
                               {!isRestDay && !isFutureDay && <div className="mt-2 pt-1.5 border-t border-border/50">
                                </div>}
@@ -871,14 +875,27 @@ const WorkoutView: React.FC<WorkoutViewProps> = ({
         </CardContent>
       </Card>
 
-      {/* Add Exercise Dialog */}
-      <AddWorkoutDialog
-        open={addExerciseDialog.open}
-        onOpenChange={(open) => 
-          setAddExerciseDialog({ open, weekKey: null, dayIndex: null })
+      {/* Add Workout Modal */}
+      <AddWorkoutModal
+        isOpen={addExerciseDialog.open}
+        onClose={() => 
+          setAddExerciseDialog({ open: false, weekKey: null, dayIndex: null, mode: 'manual' })
         }
-        onSave={handleAddExercise}
-        isLoading={isAdding}
+        mode={addExerciseDialog.mode}
+        dayContext={
+          addExerciseDialog.weekKey && addExerciseDialog.dayIndex !== null
+            ? { weekKey: addExerciseDialog.weekKey, dayIndex: addExerciseDialog.dayIndex }
+            : undefined
+        }
+        onWorkoutAdded={() => {
+          // Invalidate queries to refresh the view
+          queryClient.invalidateQueries({ queryKey: ['workout-plan', planId] });
+          ['Week 1', 'Week 2', 'Week 3', 'Week 4'].forEach(weekKey => {
+            queryClient.invalidateQueries({ 
+              queryKey: ['week-completion', livePlan.id, weekKey] 
+            });
+          });
+        }}
       />
     </motion.div>
     </WorkoutErrorBoundary>
