@@ -18,7 +18,7 @@ serve(async (req) => {
     if (!openAIApiKey) {
       console.error('OpenAI API key not found');
       return new Response(
-        JSON.stringify({ error: 'AI-Dienst nicht konfiguriert' }),
+        JSON.stringify({ error: 'AI-Dienst nicht konfiguriert', code: 'OPENAI_KEY_MISSING' }),
         { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
@@ -41,7 +41,7 @@ serve(async (req) => {
     if (userError || !user) {
       console.error('Auth error:', userError);
       return new Response(
-        JSON.stringify({ error: 'Nicht autorisiert' }),
+        JSON.stringify({ error: 'Nicht autorisiert', code: 'UNAUTHORIZED' }),
         { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
@@ -58,7 +58,7 @@ serve(async (req) => {
     if (profileError || !profile) {
       console.error('Profile error:', profileError);
       return new Response(
-        JSON.stringify({ error: 'Profil nicht gefunden' }),
+        JSON.stringify({ error: 'Profil nicht gefunden', code: 'PROFILE_NOT_FOUND' }),
         { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
@@ -117,7 +117,7 @@ Make exercises specific, realistic, and suitable for their level. Include rest p
       const errorText = await response.text();
       console.error('OpenAI error:', response.status, errorText);
       return new Response(
-        JSON.stringify({ error: 'Fehler beim Generieren der Vorschläge' }),
+        JSON.stringify({ error: 'Fehler beim Generieren der Vorschläge', code: 'GENERATION_FAILED', details: errorText }),
         { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }

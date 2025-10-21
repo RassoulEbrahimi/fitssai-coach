@@ -88,7 +88,37 @@ export function AddWorkoutModal({
         }
       });
 
-      if (error) throw error;
+      if (error) {
+        console.error('Detailed error:', error);
+        throw error;
+      }
+
+      // Check for backend error response
+      if (data?.error) {
+        console.error('Backend error:', data);
+        const errorCode = data.code;
+        let userMessage = data.error;
+        
+        // Map error codes to user-friendly messages
+        switch (errorCode) {
+          case 'OPENAI_KEY_MISSING':
+            userMessage = 'Der KI-Dienst ist nicht eingerichtet. Bitte kontaktiere den Support.';
+            break;
+          case 'UNAUTHORIZED':
+            userMessage = 'Sitzung abgelaufen. Bitte neu anmelden.';
+            break;
+          case 'PROFILE_NOT_FOUND':
+            userMessage = 'Dein Profil ist unvollständig. Bitte vervollständige deine Daten.';
+            break;
+          case 'GENERATION_FAILED':
+            userMessage = `Fehler beim Generieren: ${data.details || data.error}`;
+            break;
+        }
+        
+        setError(userMessage);
+        toastError('Fehler', userMessage);
+        return;
+      }
 
       if (data?.suggestions) {
         setSuggestions(data.suggestions);
@@ -96,9 +126,10 @@ export function AddWorkoutModal({
         throw new Error('Keine Vorschläge erhalten');
       }
     } catch (err: any) {
-      console.error('Error fetching suggestions:', err);
-      setError(err.message || 'Fehler beim Laden der Vorschläge');
-      toastError('Fehler', 'Vorschläge konnten nicht geladen werden');
+      console.error('Detailed error:', err);
+      const errorMessage = err.message || 'Fehler beim Laden der Vorschläge';
+      setError(errorMessage);
+      toastError('Fehler', errorMessage);
     } finally {
       setIsLoading(false);
     }
