@@ -126,7 +126,7 @@ const HomeView: React.FC<HomeViewProps> = ({
   if (!generatingPlans && !workoutPlan && !nutritionPlan) {
     return (
       <WorkoutErrorBoundary>
-        <div className="px-4 md:px-6 space-y-6">
+        <div className="space-y-6">
           <motion.div
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
@@ -213,7 +213,7 @@ const HomeView: React.FC<HomeViewProps> = ({
 
   return (
     <WorkoutErrorBoundary>
-      <div id="main-content" className="px-4 md:px-6 space-y-6">
+      <div id="main-content" className="space-y-6">
       {/* Welcome Header */}
       <motion.div 
         className="flex items-center justify-between"

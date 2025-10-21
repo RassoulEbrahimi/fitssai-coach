@@ -27,7 +27,6 @@ const NutritionView: React.FC<NutritionViewProps> = React.memo(({
         animate={{ opacity: 1, x: 0 }}
         exit={{ opacity: 0, x: -20 }}
         transition={{ duration: 0.3 }}
-        className="px-4 md:px-6"
       >
         <motion.div
           initial={{ opacity: 0, y: 20 }}

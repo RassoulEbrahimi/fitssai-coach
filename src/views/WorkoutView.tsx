@@ -502,7 +502,7 @@ const WorkoutView: React.FC<WorkoutViewProps> = ({
         animate={{ opacity: 1, x: 0 }} 
         exit={{ opacity: 0, x: 10 }}
         transition={{ duration: 0.3, ease: "easeOut" }} 
-        className="p-4 space-y-3 px-[12px] py-[12px]"
+        className="space-y-3"
       >
         {/* Screen reader announcement for week changes */}
         <div 
