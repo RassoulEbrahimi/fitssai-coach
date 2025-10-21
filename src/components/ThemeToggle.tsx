@@ -1,21 +1,23 @@
 import { Sun, Moon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useTheme } from "@/hooks/useTheme";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 
 const ThemeToggle = () => {
   const { actualTheme, setTheme } = useTheme();
+  const prefersReducedMotion = useReducedMotion();
 
   const toggleTheme = () => {
     // Add smooth transition effect for theme changes
-    document.documentElement.style.transition = 'background-color 0.3s ease-in-out, color 0.3s ease-in-out';
+    if (!prefersReducedMotion) {
+      document.documentElement.style.transition = 'background-color 0.3s ease-in-out, color 0.3s ease-in-out';
+      
+      setTimeout(() => {
+        document.documentElement.style.transition = '';
+      }, 300);
+    }
     
     setTheme(actualTheme === "light" ? "dark" : "light");
-    
-    // Remove transition after animation completes
-    setTimeout(() => {
-      document.documentElement.style.transition = '';
-    }, 300);
   };
 
   return (
@@ -30,20 +32,20 @@ const ThemeToggle = () => {
         {actualTheme === "light" ? (
           <motion.div
             key="moon"
-            initial={{ rotate: 90, opacity: 0 }}
+            initial={prefersReducedMotion ? { opacity: 0 } : { rotate: 90, opacity: 0 }}
             animate={{ rotate: 0, opacity: 1 }}
-            exit={{ rotate: -90, opacity: 0 }}
-            transition={{ duration: 0.2 }}
+            exit={prefersReducedMotion ? { opacity: 0 } : { rotate: -90, opacity: 0 }}
+            transition={{ duration: prefersReducedMotion ? 0.1 : 0.2 }}
           >
             <Moon className="h-4 w-4" />
           </motion.div>
         ) : (
           <motion.div
             key="sun"
-            initial={{ rotate: -90, opacity: 0 }}
+            initial={prefersReducedMotion ? { opacity: 0 } : { rotate: -90, opacity: 0 }}
             animate={{ rotate: 0, opacity: 1 }}
-            exit={{ rotate: 90, opacity: 0 }}
-            transition={{ duration: 0.2 }}
+            exit={prefersReducedMotion ? { opacity: 0 } : { rotate: 90, opacity: 0 }}
+            transition={{ duration: prefersReducedMotion ? 0.1 : 0.2 }}
           >
             <Sun className="h-4 w-4" />
           </motion.div>

@@ -1,5 +1,5 @@
 import React from "react";
-import { motion } from "framer-motion";
+import { motion, useReducedMotion } from "framer-motion";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { cn } from "@/lib/utils";
 import { useTheme } from "@/hooks/useTheme";
@@ -19,39 +19,40 @@ export const AnimatedAvatar = React.forwardRef<
 >(({ src, alt = "User Avatar", fallback, className, imageClassName, fallbackClassName }, ref) => {
   const { actualTheme } = useTheme();
   const isDark = actualTheme === "dark";
+  const prefersReducedMotion = useReducedMotion();
 
   return (
     <motion.div
       ref={ref}
-      whileHover={{ scale: 1.08 }}
-      whileTap={{ scale: 0.97 }}
-      animate={{
-        scale: [1, 1.05, 1],
-        boxShadow: isDark
-          ? [
-              "0 0 10px rgba(16,185,129,0.4)",
-              "0 0 20px rgba(16,185,129,0.6)",
-              "0 0 10px rgba(16,185,129,0.4)",
-            ]
-          : [
-              "0 0 6px rgba(255,255,255,0.4)",
-              "0 0 14px rgba(255,255,255,0.6)",
-              "0 0 6px rgba(255,255,255,0.4)",
-            ],
-      }}
+      whileHover={prefersReducedMotion ? undefined : { scale: 1.06 }}
+      whileTap={prefersReducedMotion ? undefined : { scale: 0.98 }}
+      animate={!prefersReducedMotion ? {
+        scale: [1, 1.03, 1],
+      } : {}}
       transition={{ 
         duration: 4, 
-        repeat: Infinity, 
+        repeat: prefersReducedMotion ? 0 : Infinity, 
         ease: "easeInOut" 
       }}
       className={cn(
-        "p-[2px] rounded-full shadow-[0_0_20px_rgba(16,185,129,0.25)] cursor-pointer",
+        "p-[2px] rounded-full cursor-pointer touch-manipulation relative",
         isDark
           ? "bg-gradient-to-br from-emerald-400 via-green-500 to-emerald-700"
-          : "bg-white/30 backdrop-blur-lg border border-emerald-200/60",
+          : "bg-white/30 backdrop-blur-md border border-emerald-200/60",
         className
       )}
+      style={{ willChange: 'transform' }}
     >
+      {/* Optimized glow effect using CSS only */}
+      <div 
+        className={cn(
+          "absolute inset-0 rounded-full blur-md -z-10",
+          isDark ? "bg-emerald-400/30" : "bg-white/40",
+          !prefersReducedMotion && "animate-pulse"
+        )}
+        style={{ animationDuration: '4s' }}
+      />
+      
       <Avatar className="w-full h-full border-2 border-emerald-400/60">
         <AvatarImage 
           src={src || ""} 

@@ -1,5 +1,5 @@
 import React from "react";
-import { motion } from "framer-motion";
+import { motion, useReducedMotion } from "framer-motion";
 import { cn } from "@/lib/utils";
 
 interface GradientCardProps {
@@ -10,11 +10,13 @@ interface GradientCardProps {
 }
 
 export const GradientCard: React.FC<GradientCardProps> = ({ title, subtitle, children, className }) => {
+  const prefersReducedMotion = useReducedMotion();
+
   return (
     <motion.div
-      initial={{ opacity: 0, y: 20 }}
+      initial={prefersReducedMotion ? {} : { opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.4, delay: 0.1 }}
+      transition={{ duration: prefersReducedMotion ? 0 : 0.3, delay: prefersReducedMotion ? 0 : 0.1 }}
       className={cn(
         "relative overflow-hidden rounded-3xl p-4",
         "bg-gradient-to-br from-indigo-500/20 via-purple-500/10 to-violet-500/5",
@@ -25,8 +27,13 @@ export const GradientCard: React.FC<GradientCardProps> = ({ title, subtitle, chi
         className
       )}
     >
-      {/* Decorative circles */}
-      <div className="absolute -top-4 -right-4 w-16 h-16 rounded-full bg-indigo-500/10 dark:bg-emerald-500/20 animate-pulse" />
+      {/* Decorative circles - static for performance */}
+      <div className={cn(
+        "absolute -top-4 -right-4 w-16 h-16 rounded-full bg-indigo-500/10 dark:bg-emerald-500/20",
+        !prefersReducedMotion && "animate-pulse"
+      )} 
+      style={{ animationDuration: '3s' }}
+      />
       <div className="absolute top-1/2 -left-8 w-12 h-12 rounded-full bg-purple-500/5 dark:bg-teal-500/15" />
       <div className="absolute bottom-4 right-1/3 w-8 h-8 rounded-full bg-violet-500/15 dark:bg-cyan-500/25" />
       
