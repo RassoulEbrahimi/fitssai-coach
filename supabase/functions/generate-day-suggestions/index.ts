@@ -14,19 +14,31 @@ serve(async (req) => {
   }
 
   try {
+    // Log environment variable presence
     const openAIApiKey = Deno.env.get('OPENAI_API_KEY');
+    const SUPABASE_URL = Deno.env.get('SUPABASE_URL');
+    const SUPABASE_ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY');
+    
+    console.log('[Diagnostics] Environment check:', {
+      hasOpenAIKey: !!openAIApiKey,
+      hasSupabaseURL: !!SUPABASE_URL,
+      hasSupabaseAnonKey: !!SUPABASE_ANON_KEY
+    });
+
     if (!openAIApiKey) {
-      console.error('OpenAI API key not found');
+      console.error('[Error] OpenAI API key not found in environment');
       return new Response(
         JSON.stringify({ error: 'AI-Dienst nicht konfiguriert', code: 'OPENAI_KEY_MISSING' }),
         { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    const SUPABASE_URL = Deno.env.get('SUPABASE_URL');
-    const SUPABASE_ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY');
     if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
-      throw new Error('Missing Supabase configuration');
+      console.error('[Error] Missing Supabase configuration');
+      return new Response(
+        JSON.stringify({ error: 'Server-Konfigurationsfehler', code: 'SUPABASE_CONFIG_MISSING' }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
     }
 
     // Create authenticated client
@@ -38,15 +50,29 @@ serve(async (req) => {
 
     // Get current user
     const { data: { user }, error: userError } = await supabaseClient.auth.getUser();
+    
+    console.log('[Diagnostics] Auth check:', {
+      hasUser: !!user,
+      userId: user?.id,
+      userEmail: user?.email,
+      authError: userError?.message
+    });
+
     if (userError || !user) {
-      console.error('Auth error:', userError);
+      console.error('[Error] Auth failed:', userError);
       return new Response(
-        JSON.stringify({ error: 'Nicht autorisiert', code: 'UNAUTHORIZED' }),
+        JSON.stringify({ error: 'Nicht autorisiert', code: 'UNAUTHORIZED', details: userError?.message }),
         { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
     const { day_of_week, available_time } = await req.json();
+    
+    console.log('[Diagnostics] Request body:', {
+      day_of_week,
+      available_time,
+      userId: user.id
+    });
 
     // Fetch user profile
     const { data: profile, error: profileError } = await supabaseClient
@@ -55,15 +81,31 @@ serve(async (req) => {
       .eq('id', user.id)
       .single();
 
+    console.log('[Diagnostics] Profile fetch result:', {
+      hasProfile: !!profile,
+      profileError: profileError?.message,
+      profileData: profile ? {
+        fitness_goal: profile.fitness_goal,
+        experience_level: profile.experience_level,
+        age: profile.age,
+        weight: profile.weight,
+        height: profile.height
+      } : null
+    });
+
     if (profileError || !profile) {
-      console.error('Profile error:', profileError);
+      console.error('[Error] Profile not found:', profileError);
       return new Response(
-        JSON.stringify({ error: 'Profil nicht gefunden', code: 'PROFILE_NOT_FOUND' }),
+        JSON.stringify({ 
+          error: 'Profil nicht gefunden', 
+          code: 'PROFILE_NOT_FOUND',
+          details: profileError?.message 
+        }),
         { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    console.log('Generating suggestions for:', { 
+    console.log('[Info] Generating suggestions for:', { 
       userId: user.id, 
       day: day_of_week, 
       goal: profile.fitness_goal,
@@ -93,6 +135,8 @@ Return ONLY valid JSON in this exact format:
 
 Make exercises specific, realistic, and suitable for their level. Include rest periods in duration.`;
 
+    console.log('[Info] Calling OpenAI API with model: gpt-4o-mini');
+
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: {
@@ -113,30 +157,78 @@ Make exercises specific, realistic, and suitable for their level. Include rest p
       }),
     });
 
+    console.log('[Diagnostics] OpenAI response:', {
+      status: response.status,
+      statusText: response.statusText,
+      ok: response.ok
+    });
+
     if (!response.ok) {
       const errorText = await response.text();
-      console.error('OpenAI error:', response.status, errorText);
+      console.error('[Error] OpenAI API error:', {
+        status: response.status,
+        statusText: response.statusText,
+        errorBody: errorText
+      });
       return new Response(
-        JSON.stringify({ error: 'Fehler beim Generieren der Vorschläge', code: 'GENERATION_FAILED', details: errorText }),
+        JSON.stringify({ 
+          error: 'Fehler beim Generieren der Vorschläge', 
+          code: 'GENERATION_FAILED', 
+          details: `OpenAI API returned ${response.status}: ${errorText}` 
+        }),
         { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
     const data = await response.json();
-    const generatedContent = data.choices[0].message.content;
-    const parsedContent = JSON.parse(generatedContent);
+    console.log('[Diagnostics] OpenAI raw response data:', {
+      hasChoices: !!data.choices,
+      choicesLength: data.choices?.length,
+      hasContent: !!data.choices?.[0]?.message?.content
+    });
 
-    console.log('Generated suggestions:', parsedContent);
+    const generatedContent = data.choices[0].message.content;
+    console.log('[Diagnostics] Generated content (first 200 chars):', generatedContent?.substring(0, 200));
+
+    let parsedContent;
+    try {
+      parsedContent = JSON.parse(generatedContent);
+      console.log('[Info] Successfully parsed AI response:', {
+        hasSuggestions: !!parsedContent.suggestions,
+        suggestionsCount: parsedContent.suggestions?.length
+      });
+    } catch (parseError: any) {
+      console.error('[Error] Failed to parse OpenAI JSON response:', {
+        error: parseError.message,
+        content: generatedContent
+      });
+      return new Response(
+        JSON.stringify({ 
+          error: 'KI-Antwort konnte nicht verarbeitet werden', 
+          code: 'GENERATION_FAILED',
+          details: `JSON parse error: ${parseError.message}` 
+        }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
 
     return new Response(
       JSON.stringify(parsedContent),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
 
-  } catch (error) {
-    console.error('Error in generate-day-suggestions:', error);
+  } catch (error: any) {
+    console.error('[Error] Unhandled exception in generate-day-suggestions:', {
+      message: error.message,
+      stack: error.stack,
+      name: error.name
+    });
     return new Response(
-      JSON.stringify({ error: error.message || 'Unerwarteter Fehler' }),
+      JSON.stringify({ 
+        error: error.message || 'Unerwarteter Fehler',
+        code: 'INTERNAL_ERROR',
+        details: error.stack || error.toString()
+      }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }
