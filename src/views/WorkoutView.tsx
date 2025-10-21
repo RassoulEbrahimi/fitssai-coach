@@ -735,9 +735,9 @@ const WorkoutView: React.FC<WorkoutViewProps> = ({
           </div>
         </CardHeader>
         <CardContent className="p-4 space-y-4">
-          {weekData.length === 0 ? <div className="text-center py-8 text-muted-foreground">
-              <p className="text-sm">{t('workout.weekEmpty')}</p>
-            </div> : weekData.map((day: any, dayIndex: number) => {
+          {Array.from({ length: 7 }, (_, dayIndex) => {
+          // Get day data from weekData array, or null if not present
+          const day = weekData[dayIndex] || null;
           const date = getDateFor(wk, dayIndex);
           const dayName = date ? formatDateForDisplay(date, 'EEEE') : `Tag ${dayIndex + 1}`;
           const isCompleted = isDayCompleted(wk, dayIndex);
@@ -772,7 +772,7 @@ const WorkoutView: React.FC<WorkoutViewProps> = ({
                       aria-expanded={isExpanded}
                       aria-label={`${dayName}${isToday ? ' - Heute' : ''}${isRestDay ? ' - Ruhetag' : ` - ${exercises.length} Übungen`}${isCompleted ? ' - abgeschlossen' : ''}`}
                     >
-                      <div className="flex items-center justify-between w-full">
+                       <div className="flex items-center justify-between w-full">
                        <div className="flex items-center gap-2">
                          <div className="font-medium">{dayName}</div>
                          {isToday && <Badge variant="secondary" className="text-xs px-2 py-0.5 h-5">
@@ -781,11 +781,14 @@ const WorkoutView: React.FC<WorkoutViewProps> = ({
                        </div>
                         <div className="flex items-baseline gap-2">
                           <span className="text-sm text-muted-foreground">
-                            {isRestDay ? 'Ruhetag' : `${exercises.length} Übungen`}
+                            {isRestDay ? 'Ruhetag — kein Training geplant' : `${exercises.length} Übungen`}
                           </span>
-                           {isCompleted && <div className="w-4 h-4 rounded-full bg-green-600 flex-shrink-0" style={{
+                           {!isRestDay && isCompleted && <div className="w-4 h-4 rounded-full bg-green-600 flex-shrink-0" style={{
                         alignSelf: 'center'
                       }} aria-label="Tag abgeschlossen"></div>}
+                           {isRestDay && <div className="w-4 h-4 rounded-full bg-muted-foreground/30 flex-shrink-0" style={{
+                        alignSelf: 'center'
+                      }} aria-label="Ruhetag"></div>}
                            {isExpanded ? <ChevronUp className="h-4 w-4 text-muted-foreground" style={{
                         alignSelf: 'center'
                       }} /> : <ChevronRight className="h-4 w-4 text-muted-foreground" style={{
