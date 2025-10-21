@@ -44,10 +44,25 @@ export function AddWorkoutModal({
 
   const dayNames = ['Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag', 'Sonntag'];
 
-  // Fetch AI suggestions when AI tab is opened
+  // Fetch AI suggestions when AI tab is opened (with debounce and abort controller)
   useEffect(() => {
     if (isOpen && activeTab === 'ai' && dayContext && user) {
-      fetchSuggestions();
+      const abortController = new AbortController();
+      
+      // Debounce to prevent rapid calls
+      const timeoutId = setTimeout(() => {
+        console.log('[AI Suggestions] Fetching with abort signal');
+        fetchSuggestions(abortController.signal);
+      }, 400);
+
+      // Cleanup: cancel timeout and abort request
+      return () => {
+        clearTimeout(timeoutId);
+        if (!abortController.signal.aborted) {
+          console.log('[AI Suggestions] Request aborted due to tab switch or modal close');
+          abortController.abort();
+        }
+      };
     }
   }, [isOpen, activeTab, dayContext, user]);
 
@@ -72,7 +87,7 @@ export function AddWorkoutModal({
     };
   }, [isOpen]);
 
-  const fetchSuggestions = async () => {
+  const fetchSuggestions = async (signal?: AbortSignal) => {
     if (!dayContext) return;
     
     setIsLoading(true);
@@ -81,6 +96,12 @@ export function AddWorkoutModal({
     try {
       const dayOfWeek = dayNames[dayContext.dayIndex] || 'Wochentag';
       
+      // Check if already aborted before making the request
+      if (signal?.aborted) {
+        console.log('[AI Suggestions] Fetch cancelled before request');
+        return;
+      }
+
       const { data, error } = await supabase.functions.invoke('generate-day-suggestions', {
         body: {
           day_of_week: dayOfWeek,
@@ -126,12 +147,21 @@ export function AddWorkoutModal({
         throw new Error('Keine Vorschläge erhalten');
       }
     } catch (err: any) {
+      // Check if error is due to abort
+      if (signal?.aborted || err.name === 'AbortError') {
+        console.log('[AI Suggestions] Fetch cancelled due to tab switch');
+        return;
+      }
+      
       console.error('Detailed error:', err);
       const errorMessage = err.message || 'Fehler beim Laden der Vorschläge';
       setError(errorMessage);
       toastError('Fehler', errorMessage);
     } finally {
-      setIsLoading(false);
+      // Only clear loading if not aborted
+      if (!signal?.aborted) {
+        setIsLoading(false);
+      }
     }
   };
 
@@ -311,7 +341,7 @@ export function AddWorkoutModal({
                             <div className="text-6xl mb-4">⚠️</div>
                             <p className="text-lg text-destructive mb-2">Fehler beim Laden</p>
                             <p className="text-sm text-muted-foreground mb-4">{error}</p>
-                            <Button onClick={fetchSuggestions} variant="outline">
+                            <Button onClick={() => fetchSuggestions()} variant="outline">
                               Erneut versuchen
                             </Button>
                           </div>
