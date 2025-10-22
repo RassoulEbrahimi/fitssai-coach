@@ -165,6 +165,24 @@ Make exercises specific, realistic, and suitable for their level. Include rest p
 
     if (!response.ok) {
       const errorText = await response.text();
+      
+      // Handle rate limit / quota exhaustion specifically
+      if (response.status === 429 || errorText.includes('insufficient_quota')) {
+        console.error('[OpenAI 429 Error] Rate or Quota exceeded:', {
+          status: response.status,
+          statusText: response.statusText,
+          body: errorText
+        });
+        return new Response(
+          JSON.stringify({
+            error: 'AI-Dienst überlastet oder Kontingent erschöpft.',
+            code: 'RATE_LIMIT_OR_QUOTA_EXCEEDED',
+            details: 'OpenAI hat den Zugriff vorübergehend eingeschränkt. Bitte später erneut versuchen.'
+          }),
+          { status: 429, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
       console.error('[Error] OpenAI API error:', {
         status: response.status,
         statusText: response.statusText,

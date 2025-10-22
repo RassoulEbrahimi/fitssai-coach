@@ -131,6 +131,9 @@ export function AddWorkoutModal({
           case 'PROFILE_NOT_FOUND':
             userMessage = 'Dein Profil ist unvollständig. Bitte vervollständige deine Daten.';
             break;
+          case 'RATE_LIMIT_OR_QUOTA_EXCEEDED':
+            userMessage = 'KI-Dienst vorübergehend nicht verfügbar. Bitte später erneut versuchen.';
+            break;
           case 'GENERATION_FAILED':
             userMessage = `Fehler beim Generieren: ${data.details || data.error}`;
             break;
