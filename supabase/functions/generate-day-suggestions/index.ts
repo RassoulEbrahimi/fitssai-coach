@@ -15,7 +15,8 @@ serve(async (req) => {
 
   try {
     // Log environment variable presence
-    const openAIApiKey = Deno.env.get('OPENAI_API_KEY');
+    console.log('[Diagnostics] Using OpenAI key variable: OPENAI_API_KEY_New');
+    const openAIApiKey = Deno.env.get('OPENAI_API_KEY_New');
     const SUPABASE_URL = Deno.env.get('SUPABASE_URL');
     const SUPABASE_ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY');
     
