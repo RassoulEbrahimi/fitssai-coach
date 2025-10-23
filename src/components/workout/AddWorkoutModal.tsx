@@ -102,26 +102,34 @@ export function AddWorkoutModal({
         return;
       }
 
-      const { data, error } = await supabase.functions.invoke('generate-day-suggestions', {
-        body: {
-          day_of_week: dayOfWeek,
-          available_time: 45
-        }
-      });
+    const { data, error } = await supabase.functions.invoke('generate-day-suggestions', {
+      body: {
+        day_of_week: dayOfWeek,
+        available_time: 45
+      }
+    });
 
-      if (error) {
-        console.error('Detailed error:', error);
-        throw error;
+    if (error) {
+      console.error('Detailed error:', error);
+      
+      // Try to extract JSON error details from the error response
+      let errorDetails = null;
+      try {
+        // Check if error has context with response body
+        if (error.context?.body) {
+          errorDetails = typeof error.context.body === 'string' 
+            ? JSON.parse(error.context.body) 
+            : error.context.body;
+        }
+      } catch (parseErr) {
+        console.log('[AI Suggestions] Could not parse error body:', parseErr);
       }
 
-      // Check for backend error response
-      if (data?.error) {
-        console.error('Backend error:', data);
-        const errorCode = data.code;
-        let userMessage = data.error;
+      // If we have structured error details, handle them
+      if (errorDetails?.code) {
+        let userMessage = errorDetails.error;
         
-        // Map error codes to user-friendly messages
-        switch (errorCode) {
+        switch (errorDetails.code) {
           case 'OPENAI_KEY_MISSING':
             userMessage = 'Der KI-Dienst ist nicht eingerichtet. Bitte kontaktiere den Support.';
             break;
@@ -135,7 +143,7 @@ export function AddWorkoutModal({
             userMessage = 'KI-Dienst vorübergehend nicht verfügbar. Bitte später erneut versuchen.';
             break;
           case 'GENERATION_FAILED':
-            userMessage = `Fehler beim Generieren: ${data.details || data.error}`;
+            userMessage = `Fehler beim Generieren: ${errorDetails.details || errorDetails.error}`;
             break;
         }
         
@@ -143,6 +151,39 @@ export function AddWorkoutModal({
         toastError('Fehler', userMessage);
         return;
       }
+      
+      throw error;
+    }
+
+    // Check for backend error response in data
+    if (data?.error) {
+      console.error('Backend error:', data);
+      const errorCode = data.code;
+      let userMessage = data.error;
+      
+      // Map error codes to user-friendly messages
+      switch (errorCode) {
+        case 'OPENAI_KEY_MISSING':
+          userMessage = 'Der KI-Dienst ist nicht eingerichtet. Bitte kontaktiere den Support.';
+          break;
+        case 'UNAUTHORIZED':
+          userMessage = 'Sitzung abgelaufen. Bitte neu anmelden.';
+          break;
+        case 'PROFILE_NOT_FOUND':
+          userMessage = 'Dein Profil ist unvollständig. Bitte vervollständige deine Daten.';
+          break;
+        case 'RATE_LIMIT_OR_QUOTA_EXCEEDED':
+          userMessage = 'KI-Dienst vorübergehend nicht verfügbar. Bitte später erneut versuchen.';
+          break;
+        case 'GENERATION_FAILED':
+          userMessage = `Fehler beim Generieren: ${data.details || data.error}`;
+          break;
+      }
+      
+      setError(userMessage);
+      toastError('Fehler', userMessage);
+      return;
+    }
 
       if (data?.suggestions) {
         setSuggestions(data.suggestions);
