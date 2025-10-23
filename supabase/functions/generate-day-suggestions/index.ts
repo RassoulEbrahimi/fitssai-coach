@@ -138,7 +138,14 @@ Make exercises specific, realistic, and suitable for their level. Include rest p
 
     console.log('[Info] Calling OpenAI API with model: gpt-4o-mini');
 
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+    // Start performance tracking
+    const startTime = performance.now();
+    let aiSuccess = false;
+    let aiStatusCode = 0;
+    let aiErrorMessage: string | null = null;
+
+    try {
+      const response = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${openAIApiKey}`,
@@ -158,48 +165,52 @@ Make exercises specific, realistic, and suitable for their level. Include rest p
       }),
     });
 
-    console.log('[Diagnostics] OpenAI response:', {
-      status: response.status,
-      statusText: response.statusText,
-      ok: response.ok
-    });
+      console.log('[Diagnostics] OpenAI response:', {
+        status: response.status,
+        statusText: response.statusText,
+        ok: response.ok
+      });
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      
-      // Handle rate limit / quota exhaustion specifically
-      if (response.status === 429 || errorText.includes('insufficient_quota')) {
-        console.error('[OpenAI 429 Error] Rate or Quota exceeded:', {
+      aiStatusCode = response.status;
+      aiSuccess = response.ok;
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        aiErrorMessage = errorText;
+        
+        // Handle rate limit / quota exhaustion specifically
+        if (response.status === 429 || errorText.includes('insufficient_quota')) {
+          console.error('[OpenAI 429 Error] Rate or Quota exceeded:', {
+            status: response.status,
+            statusText: response.statusText,
+            body: errorText
+          });
+          return new Response(
+            JSON.stringify({
+              error: 'AI-Dienst überlastet oder Kontingent erschöpft.',
+              code: 'RATE_LIMIT_OR_QUOTA_EXCEEDED',
+              details: 'OpenAI hat den Zugriff vorübergehend eingeschränkt. Bitte später erneut versuchen.'
+            }),
+            { status: 429, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+
+        console.error('[Error] OpenAI API error:', {
           status: response.status,
           statusText: response.statusText,
-          body: errorText
+          errorBody: errorText
         });
         return new Response(
-          JSON.stringify({
-            error: 'AI-Dienst überlastet oder Kontingent erschöpft.',
-            code: 'RATE_LIMIT_OR_QUOTA_EXCEEDED',
-            details: 'OpenAI hat den Zugriff vorübergehend eingeschränkt. Bitte später erneut versuchen.'
+          JSON.stringify({ 
+            error: 'Fehler beim Generieren der Vorschläge', 
+            code: 'GENERATION_FAILED', 
+            details: `OpenAI API returned ${response.status}: ${errorText}` 
           }),
-          { status: 429, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }
 
-      console.error('[Error] OpenAI API error:', {
-        status: response.status,
-        statusText: response.statusText,
-        errorBody: errorText
-      });
-      return new Response(
-        JSON.stringify({ 
-          error: 'Fehler beim Generieren der Vorschläge', 
-          code: 'GENERATION_FAILED', 
-          details: `OpenAI API returned ${response.status}: ${errorText}` 
-        }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    const data = await response.json();
+      const data = await response.json();
     console.log('[Diagnostics] OpenAI raw response data:', {
       hasChoices: !!data.choices,
       choicesLength: data.choices?.length,
@@ -231,10 +242,35 @@ Make exercises specific, realistic, and suitable for their level. Include rest p
       );
     }
 
-    return new Response(
-      JSON.stringify(parsedContent),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
+      return new Response(
+        JSON.stringify(parsedContent),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+
+    } catch (aiError: any) {
+      aiSuccess = false;
+      aiErrorMessage = aiError.message || aiError.toString();
+      throw aiError;
+    } finally {
+      // Calculate latency
+      const latency = Math.round(performance.now() - startTime);
+
+      // Log AI request to database
+      try {
+        await supabaseClient.from('ai_logs').insert({
+          user_id: user.id,
+          model: 'gpt-4o-mini',
+          latency_ms: latency,
+          success: aiSuccess,
+          status_code: aiStatusCode || null,
+          error_message: aiErrorMessage
+        });
+        console.log(`[AI Log] Logged request: success=${aiSuccess}, latency=${latency}ms, status=${aiStatusCode}`);
+      } catch (logError: any) {
+        console.error('[Error] Failed to log AI request:', logError.message);
+        // Don't fail the request if logging fails
+      }
+    }
 
   } catch (error: any) {
     console.error('[Error] Unhandled exception in generate-day-suggestions:', {

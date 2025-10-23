@@ -19,11 +19,13 @@ import {
   Ruler,
   Target,
   Upload,
-  Shield
+  Shield,
+  Sparkles
 } from "lucide-react";
 import { motion } from "framer-motion";
 import { useTranslation } from "react-i18next";
 import { useAuth } from "@/hooks/useAuth";
+import { useAISessions } from "@/hooks/useAISessions";
 import { supabase } from "@/integrations/supabase/client";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -51,6 +53,7 @@ const profileFormSchema = z.object({
 export const ProfileCard = ({ profile, onProfileUpdate, workoutProgress }: ProfileCardProps) => {
   const { t } = useTranslation();
   const { user } = useAuth();
+  const { aiSessionsCount, loading: aiSessionsLoading } = useAISessions();
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [avatarCacheBuster, setAvatarCacheBuster] = useState<string>('');
@@ -177,6 +180,12 @@ export const ProfileCard = ({ profile, onProfileUpdate, workoutProgress }: Profi
       label: t('profile.stats.goal'),
       value: profile?.fitness_goal ? t(`onboarding.goals.${profile.fitness_goal}`) : '-',
       gradient: 'from-orange-500 to-red-500'
+    },
+    {
+      icon: Sparkles,
+      label: 'KI-Sitzungen',
+      value: aiSessionsLoading ? '...' : aiSessionsCount,
+      gradient: 'from-emerald-500 to-teal-500'
     }
   ];
 

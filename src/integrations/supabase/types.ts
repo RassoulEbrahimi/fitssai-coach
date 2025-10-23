@@ -14,6 +14,39 @@ export type Database = {
   }
   public: {
     Tables: {
+      ai_logs: {
+        Row: {
+          created_at: string
+          error_message: string | null
+          id: string
+          latency_ms: number
+          model: string
+          status_code: number | null
+          success: boolean
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          error_message?: string | null
+          id?: string
+          latency_ms: number
+          model: string
+          status_code?: number | null
+          success?: boolean
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          error_message?: string | null
+          id?: string
+          latency_ms?: number
+          model?: string
+          status_code?: number | null
+          success?: boolean
+          user_id?: string
+        }
+        Relationships: []
+      }
       nutrition_plans: {
         Row: {
           content: Json
@@ -153,10 +186,7 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      is_current_user_admin: {
-        Args: Record<PropertyKey, never>
-        Returns: boolean
-      }
+      is_current_user_admin: { Args: never; Returns: boolean }
     }
     Enums: {
       [_ in never]: never
