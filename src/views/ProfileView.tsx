@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { RefreshCw } from "lucide-react";
 import { ProfileCard } from "@/components/ProfileCard";
+import { AIAnalyticsCard } from "@/components/AIAnalyticsCard";
 import { LogoutButton } from "@/components/LogoutButton";
 import { DeleteAccountButton } from "@/components/DeleteAccountButton";
 
@@ -40,6 +41,15 @@ const ProfileView: React.FC<ProfileViewProps> = React.memo(({
           onProfileUpdate={onProfileUpdate}
           workoutProgress={workoutProgress}
         />
+        
+        {/* AI Analytics Section */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.4, delay: 0.15 }}
+        >
+          <AIAnalyticsCard />
+        </motion.div>
         
         {/* Generate Plans Button */}
         {onGeneratePlans && (
