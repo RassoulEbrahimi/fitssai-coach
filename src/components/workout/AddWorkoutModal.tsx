@@ -1,5 +1,5 @@
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, Loader2 } from 'lucide-react';
+import { X, Loader2, Bot } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
@@ -381,14 +381,27 @@ export function AddWorkoutModal({
                             <p className="text-muted-foreground">Personalisierte Vorschläge werden generiert...</p>
                           </div>
                         ) : error ? (
-                          <div className="flex flex-col items-center justify-center h-full py-16 text-center">
-                            <div className="text-6xl mb-4">⚠️</div>
-                            <p className="text-lg text-destructive mb-2">Fehler beim Laden</p>
-                            <p className="text-sm text-muted-foreground mb-4">{error}</p>
-                            <Button onClick={() => fetchSuggestions()} variant="outline">
-                              Erneut versuchen
+                          <motion.div
+                            initial={{ opacity: 0, y: 10 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            transition={{ duration: 0.3 }}
+                            className="flex flex-col items-center justify-center bg-primary/10 border border-primary/20 rounded-2xl p-8 text-center space-y-4"
+                          >
+                            <Bot className="w-12 h-12 text-primary" />
+                            <h3 className="text-lg font-semibold text-foreground">
+                              KI-Dienst momentan nicht verfügbar
+                            </h3>
+                            <p className="text-sm text-muted-foreground max-w-md">
+                              {error}
+                            </p>
+                            <Button
+                              onClick={() => fetchSuggestions()}
+                              variant="outline"
+                              className="mt-2 border-primary/30 hover:bg-primary/20"
+                            >
+                              Später erneut versuchen
                             </Button>
-                          </div>
+                          </motion.div>
                         ) : suggestions.length > 0 ? (
                           <div className="space-y-3">
                             {suggestions.map((suggestion, idx) => (
