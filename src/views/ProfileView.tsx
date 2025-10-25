@@ -47,6 +47,7 @@ const ProfileView: React.FC<ProfileViewProps> = React.memo(({
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.4, delay: 0.15 }}
+          className="mt-8"
         >
           <AIAnalyticsCard />
         </motion.div>
@@ -57,14 +58,14 @@ const ProfileView: React.FC<ProfileViewProps> = React.memo(({
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.4, delay: 0.2 }}
+            className="mt-8"
           >
             <Button 
-              className="w-full bg-gradient-to-r from-primary to-primary/80 text-primary-foreground shadow-lg hover:shadow-xl transition-all duration-200" 
+              className="w-full py-6 text-lg rounded-2xl gradient-primary text-primary-foreground font-semibold shadow-glow hover:shadow-xl transition-all flex items-center justify-center gap-2" 
               onClick={onGeneratePlans}
               disabled={generatingPlans}
-              size="lg"
             >
-              <RefreshCw className={`mr-2 h-4 w-4 ${generatingPlans ? 'animate-spin' : ''}`} />
+              <RefreshCw className={`w-5 h-5 ${generatingPlans ? 'animate-spin' : ''}`} />
               {generatingPlans ? "Pläne werden erstellt..." : (workoutPlan || nutritionPlan ? "Pläne neu generieren" : "Neue Pläne erstellen")}
             </Button>
           </motion.div>
@@ -75,6 +76,7 @@ const ProfileView: React.FC<ProfileViewProps> = React.memo(({
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.4, delay: 0.3 }}
+          className="mt-6"
         >
           <LogoutButton />
         </motion.div>
@@ -84,6 +86,7 @@ const ProfileView: React.FC<ProfileViewProps> = React.memo(({
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.4, delay: 0.4 }}
+          className="mt-3"
         >
           <DeleteAccountButton />
         </motion.div>

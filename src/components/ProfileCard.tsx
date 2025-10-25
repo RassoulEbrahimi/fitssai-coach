@@ -199,11 +199,14 @@ export const ProfileCard = ({ profile, onProfileUpdate, workoutProgress }: Profi
       <Card className="gradient-card border-primary/20 shadow-card overflow-hidden">
         <CardContent className="p-8">
           {/* Header with Edit Button */}
-          <div className="flex justify-between items-start mb-8">
-            <h2 className="text-2xl font-bold text-foreground">{t('profile.title')}</h2>
+          <div className="flex justify-between items-start mb-10">
+            <h2 className="text-2xl font-bold text-foreground tracking-tight">{t('profile.title')}</h2>
             <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
               <DialogTrigger asChild>
-                <Button variant="outline" size="sm" className="hover-scale">
+                <Button 
+                  size="sm" 
+                  className="bg-primary/20 text-primary border border-primary/30 rounded-xl px-4 py-2 hover:bg-primary/30 hover:shadow-glow transition-all"
+                >
                   <Edit className="w-4 h-4 mr-2" />
                   {t('profile.edit')}
                 </Button>
@@ -420,32 +423,25 @@ export const ProfileCard = ({ profile, onProfileUpdate, workoutProgress }: Profi
           </div>
 
           {/* Stats Grid */}
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-2 gap-3 mt-6">
             {statCards.map((stat, index) => (
               <motion.div
                 key={stat.label}
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.5, delay: index * 0.1 }}
-                className="group"
+                initial={{ opacity: 0, scale: 0.9 }}
+                animate={{ opacity: 1, scale: 1 }}
+                transition={{ duration: 0.3, delay: index * 0.05 }}
               >
-                <Card className="border-border/50 hover:border-primary/50 transition-colors hover-scale">
-                  <CardContent className="p-4">
-                    <div className="flex items-center gap-3">
-                      <div className={`p-2 rounded-lg bg-gradient-to-br ${stat.gradient} shadow-sm`}>
-                        <stat.icon className="w-5 h-5 text-white" />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">
-                          {stat.label}
-                        </p>
-                        <p className="font-bold text-foreground truncate">
-                          {stat.value}
-                        </p>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
+                <div className="bg-card/60 backdrop-blur-sm p-4 rounded-2xl border border-border/30 hover:border-primary/30 transition-all text-center">
+                  <div className="bg-gradient-to-br from-background/50 to-background/30 w-10 h-10 rounded-full mx-auto flex items-center justify-center mb-2 shadow-sm">
+                    <stat.icon className="w-5 h-5 text-primary" />
+                  </div>
+                  <p className="text-xs text-muted-foreground mb-1 tracking-wide">
+                    {stat.label}
+                  </p>
+                  <p className="text-lg font-bold text-foreground">
+                    {stat.value}
+                  </p>
+                </div>
               </motion.div>
             ))}
           </div>
