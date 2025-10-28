@@ -261,6 +261,17 @@
       opacity: 0;
     }
   }
+  
+  @keyframes emeraldGlow {
+    0%, 100% { 
+      filter: drop-shadow(0 0 6px rgba(16, 185, 129, 0.4));
+      transform: scale(1);
+    }
+    50% { 
+      filter: drop-shadow(0 0 12px rgba(16, 185, 129, 0.8));
+      transform: scale(1.05);
+    }
+  }
 }
 
 /* Ensure video is visible by default */

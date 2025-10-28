@@ -110,7 +110,10 @@ export const NavBar = React.forwardRef<HTMLDivElement, NavBarProps>(
                   {item.name}
                 </motion.span>
                 <motion.span 
-                  className="md:hidden flex items-center justify-center"
+                  className={cn(
+                    "md:hidden flex items-center justify-center",
+                    isActive && !prefersReducedMotion && "animate-[emeraldGlow_2.5s_ease-in-out_infinite]"
+                  )}
                   animate={!prefersReducedMotion && isActive ? { 
                     y: -2,
                     scale: [1, 1.06, 1]
