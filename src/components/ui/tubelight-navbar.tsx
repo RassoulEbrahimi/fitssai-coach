@@ -1,5 +1,5 @@
 "use client"
-import React, { useEffect, useState, useCallback, useRef } from "react"
+import React, { useEffect, useState } from "react"
 import { motion, useReducedMotion } from "framer-motion"
 import { LucideIcon } from "lucide-react"
 import { cn } from "@/lib/utils"
@@ -23,9 +23,6 @@ export const NavBar = React.forwardRef<HTMLDivElement, NavBarProps>(
   const [isMobile, setIsMobile] = useState(false)
   const { actualTheme } = useTheme()
   const isDark = actualTheme === "dark"
-  const [isHidden, setIsHidden] = useState(false)
-  const lastScrollYRef = useRef(0)
-  const ticking = useRef(false)
   const [pressedButton, setPressedButton] = useState<string | null>(null)
   const prefersReducedMotion = useReducedMotion()
 
@@ -35,37 +32,6 @@ export const NavBar = React.forwardRef<HTMLDivElement, NavBarProps>(
     window.addEventListener("resize", handleResize)
     return () => window.removeEventListener("resize", handleResize)
   }, [])
-
-  // Auto-hide on scroll with throttling
-  const updateScrollState = useCallback(() => {
-    const currentScrollY = window.scrollY
-    
-    // Only hide if scrolled down more than 50px
-    if (currentScrollY > 50) {
-      if (currentScrollY > lastScrollYRef.current) {
-        setIsHidden(true)
-      } else {
-        setIsHidden(false)
-      }
-    } else {
-      setIsHidden(false)
-    }
-    
-    lastScrollYRef.current = currentScrollY
-    ticking.current = false
-  }, [])
-
-  useEffect(() => {
-    const handleScroll = () => {
-      if (!ticking.current) {
-        requestAnimationFrame(updateScrollState)
-        ticking.current = true
-      }
-    }
-
-    window.addEventListener("scroll", handleScroll, { passive: true })
-    return () => window.removeEventListener("scroll", handleScroll)
-  }, [updateScrollState])
 
   return (
     <div 
@@ -79,8 +45,8 @@ export const NavBar = React.forwardRef<HTMLDivElement, NavBarProps>(
       <motion.div
         initial={{ y: 100, opacity: 0 }}
         animate={{ 
-          y: isHidden ? 80 : 0, 
-          opacity: isHidden ? 0 : 1 
+          y: 0, 
+          opacity: 1 
         }}
         transition={{ 
           type: prefersReducedMotion ? "tween" : "spring", 
