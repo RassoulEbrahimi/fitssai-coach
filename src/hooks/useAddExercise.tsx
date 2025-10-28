@@ -47,8 +47,9 @@ export const useAddExercise = () => {
         updatedContent[weekKey] = [];
       }
 
-      // Ensure day exists
-      if (!updatedContent[weekKey][dayIndex]) {
+      // Ensure day exists and is properly initialized (handle rest days)
+      if (!updatedContent[weekKey][dayIndex] || 
+          typeof updatedContent[weekKey][dayIndex] !== 'object') {
         updatedContent[weekKey][dayIndex] = {
           day: ['Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag', 'Sonntag'][dayIndex],
           exercises: []
@@ -56,7 +57,8 @@ export const useAddExercise = () => {
       }
 
       // Ensure exercises array exists
-      if (!updatedContent[weekKey][dayIndex].exercises) {
+      if (!updatedContent[weekKey][dayIndex].exercises || 
+          !Array.isArray(updatedContent[weekKey][dayIndex].exercises)) {
         updatedContent[weekKey][dayIndex].exercises = [];
       }
 
@@ -94,13 +96,15 @@ export const useAddExercise = () => {
 
         // Ensure structures exist
         if (!updatedContent[weekKey]) updatedContent[weekKey] = [];
-        if (!updatedContent[weekKey][dayIndex]) {
+        if (!updatedContent[weekKey][dayIndex] || 
+            typeof updatedContent[weekKey][dayIndex] !== 'object') {
           updatedContent[weekKey][dayIndex] = {
             day: ['Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag', 'Sonntag'][dayIndex],
             exercises: []
           };
         }
-        if (!updatedContent[weekKey][dayIndex].exercises) {
+        if (!updatedContent[weekKey][dayIndex].exercises || 
+            !Array.isArray(updatedContent[weekKey][dayIndex].exercises)) {
           updatedContent[weekKey][dayIndex].exercises = [];
         }
 

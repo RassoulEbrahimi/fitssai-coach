@@ -229,12 +229,28 @@ export function AddWorkoutModal({
 
       // Update workout plan content
       const content = planData.content || {};
+      
+      // Ensure week exists
       if (!content[dayContext.weekKey]) {
         content[dayContext.weekKey] = Array(7).fill(null).map(() => ({ day: null, exercises: [] }));
       }
 
+      // Get day names for proper initialization
+      const dayNames = ['Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag', 'Sonntag'];
+
+      // Ensure day exists and is properly initialized (handle rest days)
+      if (!content[dayContext.weekKey][dayContext.dayIndex] || 
+          typeof content[dayContext.weekKey][dayContext.dayIndex] !== 'object') {
+        content[dayContext.weekKey][dayContext.dayIndex] = {
+          day: dayNames[dayContext.dayIndex],
+          exercises: []
+        };
+      }
+
       const dayData = content[dayContext.weekKey][dayContext.dayIndex];
-      if (!dayData.exercises) {
+      
+      // Ensure exercises array exists
+      if (!dayData.exercises || !Array.isArray(dayData.exercises)) {
         dayData.exercises = [];
       }
 
