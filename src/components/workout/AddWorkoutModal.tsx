@@ -441,14 +441,30 @@ export function AddWorkoutModal({
                                     {suggestion.description}
                                   </p>
                                 )}
-                                <Button
-                                  onClick={() => handleAddWorkout(suggestion)}
-                                  variant="outline"
-                                  size="sm"
-                                  className="w-full text-xs"
+                                <motion.div
+                                  whileTap={
+                                    prefersReducedMotion
+                                      ? {}
+                                      : {
+                                          scale: [1, 1.05, 1],
+                                          filter: [
+                                            "drop-shadow(0 0 0px rgba(0, 255, 156, 0))",
+                                            "drop-shadow(0 0 14px rgba(0, 255, 156, 0.4))",
+                                            "drop-shadow(0 0 0px rgba(0, 255, 156, 0))"
+                                          ]
+                                        }
+                                  }
+                                  transition={{ duration: 0.35, ease: "easeOut" }}
                                 >
-                                  Zu Tag hinzufügen
-                                </Button>
+                                  <Button
+                                    onClick={() => handleAddWorkout(suggestion)}
+                                    variant="outline"
+                                    size="sm"
+                                    className="w-full text-xs"
+                                  >
+                                    Zu Tag hinzufügen
+                                  </Button>
+                                </motion.div>
                               </motion.div>
                             ))}
                           </div>

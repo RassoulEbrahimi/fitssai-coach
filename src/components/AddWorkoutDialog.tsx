@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { motion } from 'framer-motion';
 import {
   Dialog,
   DialogContent,
@@ -229,13 +230,30 @@ export const AddWorkoutDialog: React.FC<AddWorkoutDialogProps> = ({
           >
             Abbrechen
           </Button>
-          <Button
-            onClick={handleSave}
-            disabled={!isFormValid() || isLoading}
+          <motion.div
+            whileTap={
+              window.matchMedia('(prefers-reduced-motion: reduce)').matches
+                ? {}
+                : {
+                    scale: [1, 1.05, 1],
+                    filter: [
+                      "drop-shadow(0 0 0px rgba(0, 255, 156, 0))",
+                      "drop-shadow(0 0 14px rgba(0, 255, 156, 0.4))",
+                      "drop-shadow(0 0 0px rgba(0, 255, 156, 0))"
+                    ]
+                  }
+            }
+            transition={{ duration: 0.35, ease: "easeOut" }}
           >
-            <Plus className="h-4 w-4 mr-2" />
-            Hinzufügen
-          </Button>
+            <Button
+              onClick={handleSave}
+              disabled={!isFormValid() || isLoading}
+              className="w-full"
+            >
+              <Plus className="h-4 w-4 mr-2" />
+              Hinzufügen
+            </Button>
+          </motion.div>
         </DialogFooter>
       </DialogContent>
     </Dialog>

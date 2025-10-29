@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { motion } from 'framer-motion';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -204,13 +205,29 @@ export const ManualWorkoutForm: React.FC<ManualWorkoutFormProps> = ({
             Abbrechen
           </Button>
         )}
-        <Button
-          type="submit"
-          disabled={!isFormValid() || isLoading}
-          className="bg-emerald-500 hover:bg-emerald-600 text-white"
+        <motion.div
+          whileTap={
+            window.matchMedia('(prefers-reduced-motion: reduce)').matches
+              ? {}
+              : {
+                  scale: [1, 1.05, 1],
+                  filter: [
+                    "drop-shadow(0 0 0px rgba(0, 255, 156, 0))",
+                    "drop-shadow(0 0 14px rgba(0, 255, 156, 0.4))",
+                    "drop-shadow(0 0 0px rgba(0, 255, 156, 0))"
+                  ]
+                }
+          }
+          transition={{ duration: 0.35, ease: "easeOut" }}
         >
-          {isLoading ? 'Wird hinzugefügt...' : 'Hinzufügen'}
-        </Button>
+          <Button
+            type="submit"
+            disabled={!isFormValid() || isLoading}
+            className="bg-emerald-500 hover:bg-emerald-600 text-white w-full"
+          >
+            {isLoading ? 'Wird hinzugefügt...' : 'Hinzufügen'}
+          </Button>
+        </motion.div>
       </div>
     </form>
   );
