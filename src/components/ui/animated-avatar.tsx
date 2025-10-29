@@ -28,9 +28,16 @@ export const AnimatedAvatar = React.forwardRef<
       whileTap={prefersReducedMotion ? undefined : { scale: 0.98 }}
       animate={!prefersReducedMotion ? {
         scale: [1, 1.03, 1],
-      } : {}}
+        filter: [
+          "drop-shadow(0 0 0px rgba(0, 255, 156, 0))",
+          "drop-shadow(0 0 18px rgba(0, 255, 156, 0.22))",
+          "drop-shadow(0 0 0px rgba(0, 255, 156, 0))"
+        ]
+      } : {
+        filter: "drop-shadow(0 0 0px rgba(0, 255, 156, 0))"
+      }}
       transition={{ 
-        duration: 4, 
+        duration: 4.5, 
         repeat: prefersReducedMotion ? 0 : Infinity, 
         ease: "easeInOut" 
       }}
@@ -41,7 +48,7 @@ export const AnimatedAvatar = React.forwardRef<
           : "bg-white/30 backdrop-blur-md border border-emerald-200/60",
         className
       )}
-      style={{ willChange: 'transform' }}
+      style={{ willChange: 'transform, filter' }}
     >
       {/* Optimized glow effect using CSS only */}
       <div 
