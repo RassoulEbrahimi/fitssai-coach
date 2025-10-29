@@ -56,12 +56,24 @@ const ExerciseList: React.FC<ExerciseListProps> = ({
             return (
               <motion.li 
                 key={exerciseIndex}
-                initial={{ opacity: 0, y: 8 }}
-                animate={{ opacity: 1, y: 0 }}
+                initial={{ opacity: 0, y: 8, scale: 1 }}
+                animate={{ 
+                  opacity: 1, 
+                  y: 0,
+                  scale: [1, 1, 1.02, 1],
+                  filter: [
+                    "drop-shadow(0 0 0px rgba(0, 255, 156, 0))",
+                    "drop-shadow(0 0 0px rgba(0, 255, 156, 0))",
+                    "drop-shadow(0 0 12px rgba(0, 255, 156, 0.3))",
+                    "drop-shadow(0 0 0px rgba(0, 255, 156, 0))"
+                  ]
+                }}
                 exit={{ opacity: 0, scale: 0.95 }}
                 transition={{ 
-                  duration: 0.3, 
-                  ease: "easeOut"
+                  opacity: { duration: 0.3, ease: "easeOut" },
+                  y: { duration: 0.3, ease: "easeOut" },
+                  scale: { duration: 0.5, delay: 0.3, ease: "easeOut", times: [0, 0, 0.5, 1] },
+                  filter: { duration: 0.5, delay: 0.3, ease: "easeOut", times: [0, 0, 0.5, 1] }
                 }}
                 layout
               >
@@ -80,12 +92,24 @@ const ExerciseList: React.FC<ExerciseListProps> = ({
           return (
             <motion.li 
               key={exerciseIndex}
-              initial={{ opacity: 0, y: 8 }}
-              animate={{ opacity: 1, y: 0 }}
+              initial={{ opacity: 0, y: 8, scale: 1 }}
+              animate={{ 
+                opacity: 1, 
+                y: 0,
+                scale: [1, 1, 1.02, 1],
+                filter: [
+                  "drop-shadow(0 0 0px rgba(0, 255, 156, 0))",
+                  "drop-shadow(0 0 0px rgba(0, 255, 156, 0))",
+                  "drop-shadow(0 0 12px rgba(0, 255, 156, 0.3))",
+                  "drop-shadow(0 0 0px rgba(0, 255, 156, 0))"
+                ]
+              }}
               exit={{ opacity: 0, scale: 0.95 }}
               transition={{ 
-                duration: 0.3, 
-                ease: "easeOut"
+                opacity: { duration: 0.3, ease: "easeOut" },
+                y: { duration: 0.3, ease: "easeOut" },
+                scale: { duration: 0.5, delay: 0.3, ease: "easeOut", times: [0, 0, 0.5, 1] },
+                filter: { duration: 0.5, delay: 0.3, ease: "easeOut", times: [0, 0, 0.5, 1] }
               }}
               layout
             >
