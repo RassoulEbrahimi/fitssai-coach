@@ -116,17 +116,27 @@ export const NavBar = React.forwardRef<HTMLDivElement, NavBarProps>(
                   )}
                   animate={!prefersReducedMotion && isActive ? { 
                     y: -2,
-                    scale: [1, 1.06, 1]
+                    scale: [1, 1.05, 1],
+                    filter: [
+                      "drop-shadow(0 0 0px rgba(0, 255, 156, 0))",
+                      "drop-shadow(0 0 6px rgba(0, 255, 156, 0.5))",
+                      "drop-shadow(0 0 0px rgba(0, 255, 156, 0))"
+                    ]
                   } : { 
                     y: 0,
-                    scale: 1 
+                    scale: 1,
+                    filter: "drop-shadow(0 0 0px rgba(0, 255, 156, 0))"
                   }}
                   transition={{ 
                     duration: 0.2,
                     scale: {
-                      duration: 1.5,
+                      duration: 2.5,
                       repeat: isActive ? Infinity : 0,
-                      repeatType: "reverse",
+                      ease: "easeInOut"
+                    },
+                    filter: {
+                      duration: 2.5,
+                      repeat: isActive ? Infinity : 0,
                       ease: "easeInOut"
                     }
                   }}
