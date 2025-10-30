@@ -10,6 +10,7 @@ import { toastSuccess, toastError } from '@/lib/toastWithIcon';
 import { format } from 'date-fns';
 import { de } from 'date-fns/locale';
 import { ManualWorkoutForm } from './ManualWorkoutForm';
+import { AIPromptAssist } from './AIPromptAssist';
 import type { Exercise } from '@/hooks/useExerciseEditor';
 
 interface WorkoutSuggestion {
@@ -42,36 +43,13 @@ export function AddWorkoutModal({
   const { user } = useAuth();
   const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-  const dayNames = ['Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag', 'Sonntag'];
-
-  // Fetch AI suggestions when AI tab is opened (with debounce and abort controller)
-  useEffect(() => {
-    if (isOpen && activeTab === 'ai' && dayContext && user) {
-      const abortController = new AbortController();
-      
-      // Debounce to prevent rapid calls
-      const timeoutId = setTimeout(() => {
-        console.log('[AI Suggestions] Fetching with abort signal');
-        fetchSuggestions(abortController.signal);
-      }, 400);
-
-      // Cleanup: cancel timeout and abort request
-      return () => {
-        clearTimeout(timeoutId);
-        if (!abortController.signal.aborted) {
-          console.log('[AI Suggestions] Request aborted due to tab switch or modal close');
-          abortController.abort();
-        }
-      };
-    }
-  }, [isOpen, activeTab, dayContext, user]);
-
   // Sync activeTab with mode prop when modal opens
   useEffect(() => {
     if (isOpen) {
       setActiveTab(mode);
       setSuggestions([]);
       setError(null);
+      setIsLoading(false);
     }
   }, [isOpen, mode]);
 
@@ -87,27 +65,24 @@ export function AddWorkoutModal({
     };
   }, [isOpen]);
 
-  const fetchSuggestions = async (signal?: AbortSignal) => {
+  const handleAIGenerate = async (prompt: string, type: 'full-day' | 'single-workout') => {
     if (!dayContext) return;
     
     setIsLoading(true);
     setError(null);
 
     try {
-      const dayOfWeek = dayNames[dayContext.dayIndex] || 'Wochentag';
-      
-      // Check if already aborted before making the request
-      if (signal?.aborted) {
-        console.log('[AI Suggestions] Fetch cancelled before request');
-        return;
-      }
+      // Extract duration from prompt (default to 45)
+      const durationMatch = prompt.match(/(\d+)\s*Minuten/);
+      const duration = durationMatch ? parseInt(durationMatch[1]) : 45;
 
-    const { data, error } = await supabase.functions.invoke('generate-day-suggestions', {
-      body: {
-        day_of_week: dayOfWeek,
-        available_time: 45
-      }
-    });
+      const { data, error } = await supabase.functions.invoke('generate-day-suggestions', {
+        body: {
+          custom_prompt: prompt,
+          generation_type: type,
+          available_time: duration
+        }
+      });
 
     if (error) {
       console.error('Detailed error:', error);
@@ -191,21 +166,12 @@ export function AddWorkoutModal({
         throw new Error('Keine Vorschläge erhalten');
       }
     } catch (err: any) {
-      // Check if error is due to abort
-      if (signal?.aborted || err.name === 'AbortError') {
-        console.log('[AI Suggestions] Fetch cancelled due to tab switch');
-        return;
-      }
-      
       console.error('Detailed error:', err);
       const errorMessage = err.message || 'Fehler beim Laden der Vorschläge';
       setError(errorMessage);
       toastError('Fehler', errorMessage);
     } finally {
-      // Only clear loading if not aborted
-      if (!signal?.aborted) {
-        setIsLoading(false);
-      }
+      setIsLoading(false);
     }
   };
 
@@ -383,102 +349,16 @@ export function AddWorkoutModal({
                       </TabsTrigger>
                     </TabsList>
 
-                    <ScrollArea className="h-[400px] pr-4">
+                     <ScrollArea className="h-[400px] pr-4">
                       <TabsContent value="ai" className="mt-0">
-                        {isLoading ? (
-                          <div className="flex flex-col items-center justify-center h-full py-16">
-                            <motion.div
-                              animate={{ rotate: 360 }}
-                              transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}
-                              className="mb-4"
-                            >
-                              <Loader2 className="h-12 w-12 text-primary" />
-                            </motion.div>
-                            <p className="text-muted-foreground">Personalisierte Vorschläge werden generiert...</p>
-                          </div>
-                        ) : error ? (
-                          <motion.div
-                            initial={{ opacity: 0, y: 10 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            transition={{ duration: 0.3 }}
-                            className="flex flex-col items-center justify-center bg-primary/10 border border-primary/20 rounded-2xl p-8 text-center space-y-4"
-                          >
-                            <Bot className="w-12 h-12 text-primary" />
-                            <h3 className="text-lg font-semibold text-foreground">
-                              KI-Dienst momentan nicht verfügbar
-                            </h3>
-                            <p className="text-sm text-muted-foreground max-w-md">
-                              {error}
-                            </p>
-                            <Button
-                              onClick={() => fetchSuggestions()}
-                              variant="outline"
-                              className="mt-2 border-primary/30 hover:bg-primary/20"
-                            >
-                              Später erneut versuchen
-                            </Button>
-                          </motion.div>
-                        ) : suggestions.length > 0 ? (
-                          <div className="space-y-3">
-                            {suggestions.map((suggestion, idx) => (
-                              <motion.div
-                                key={idx}
-                                initial={{ opacity: 0, y: 10 }}
-                                animate={{ opacity: 1, y: 0 }}
-                                transition={{ delay: idx * 0.1 }}
-                                whileHover={prefersReducedMotion ? {} : { scale: 1.02 }}
-                                className="p-4 rounded-2xl bg-primary/10 border border-primary/30 backdrop-blur-xl"
-                              >
-                                <div className="flex justify-between items-start mb-2">
-                                  <span className="font-semibold text-primary">{suggestion.name}</span>
-                                  <span className="text-xs text-primary/70">{suggestion.duration} min</span>
-                                </div>
-                                <p className="text-xs text-muted-foreground mb-2">
-                                  {suggestion.sets} Sätze × {suggestion.reps} Wdh.
-                                </p>
-                                {suggestion.description && (
-                                  <p className="text-xs text-muted-foreground/80 mb-3 italic">
-                                    {suggestion.description}
-                                  </p>
-                                )}
-                                <motion.div
-                                  whileTap={
-                                    prefersReducedMotion
-                                      ? {}
-                                      : {
-                                          scale: [1, 1.05, 1],
-                                          filter: [
-                                            "drop-shadow(0 0 0px rgba(0, 255, 156, 0))",
-                                            "drop-shadow(0 0 14px rgba(0, 255, 156, 0.4))",
-                                            "drop-shadow(0 0 0px rgba(0, 255, 156, 0))"
-                                          ]
-                                        }
-                                  }
-                                  transition={{ duration: 0.35, ease: "easeOut" }}
-                                >
-                                  <Button
-                                    onClick={() => handleAddWorkout(suggestion)}
-                                    variant="outline"
-                                    size="sm"
-                                    className="w-full text-xs"
-                                  >
-                                    Zu Tag hinzufügen
-                                  </Button>
-                                </motion.div>
-                              </motion.div>
-                            ))}
-                          </div>
-                        ) : (
-                          <div className="flex flex-col items-center justify-center h-full py-16 text-center">
-                            <div className="text-6xl mb-4">✨</div>
-                            <p className="text-lg text-muted-foreground">
-                              Bereit für personalisierte Vorschläge
-                            </p>
-                            <p className="text-sm text-muted-foreground/70 mt-2">
-                              Lass die KI dein perfektes Training planen
-                            </p>
-                          </div>
-                        )}
+                        <AIPromptAssist
+                          dayContext={dayContext}
+                          onGenerate={handleAIGenerate}
+                          isLoading={isLoading}
+                          suggestions={suggestions}
+                          error={error}
+                          onAddWorkout={handleAddWorkout}
+                        />
                       </TabsContent>
 
                       <TabsContent value="manual" className="mt-0">
