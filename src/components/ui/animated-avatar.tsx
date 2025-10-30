@@ -11,12 +11,13 @@ interface AnimatedAvatarProps {
   className?: string;
   imageClassName?: string;
   fallbackClassName?: string;
+  isThinking?: boolean;
 }
 
 export const AnimatedAvatar = React.forwardRef<
   HTMLDivElement,
   AnimatedAvatarProps
->(({ src, alt = "User Avatar", fallback, className, imageClassName, fallbackClassName }, ref) => {
+>(({ src, alt = "User Avatar", fallback, className, imageClassName, fallbackClassName, isThinking = false }, ref) => {
   const { actualTheme } = useTheme();
   const isDark = actualTheme === "dark";
   const prefersReducedMotion = useReducedMotion();
@@ -34,7 +35,7 @@ export const AnimatedAvatar = React.forwardRef<
       onClick={triggerRipple}
       whileHover={prefersReducedMotion ? undefined : { scale: 1.06 }}
       whileTap={prefersReducedMotion ? undefined : { scale: 0.98 }}
-      animate={!prefersReducedMotion ? {
+      animate={!prefersReducedMotion && !isThinking ? {
         scale: [1, 1.03, 1],
         filter: [
           "drop-shadow(0 0 0px rgba(0, 255, 156, 0))",
@@ -46,7 +47,7 @@ export const AnimatedAvatar = React.forwardRef<
       }}
       transition={{ 
         duration: 4.5, 
-        repeat: prefersReducedMotion ? 0 : Infinity, 
+        repeat: prefersReducedMotion || isThinking ? 0 : Infinity, 
         ease: "easeInOut" 
       }}
       className={cn(
@@ -58,6 +59,23 @@ export const AnimatedAvatar = React.forwardRef<
       )}
       style={{ willChange: 'transform, filter' }}
     >
+      {/* Blue thinking ripple effect */}
+      {isThinking && !prefersReducedMotion && (
+        <motion.div
+          className="absolute inset-0 rounded-full bg-sky-400/20 blur-lg pointer-events-none"
+          animate={{
+            scale: [1, 1.1, 1],
+            opacity: [0.15, 0.25, 0.15],
+          }}
+          transition={{
+            duration: 2.8,
+            ease: "easeInOut",
+            repeat: Infinity,
+          }}
+          style={{ zIndex: 0 }}
+        />
+      )}
+      
       {/* Touch ripple effect */}
       {rippleActive && (
         <motion.div
