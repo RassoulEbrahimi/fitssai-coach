@@ -29,6 +29,7 @@ const ExerciseList: React.FC<ExerciseListProps> = ({
 }) => {
   const { t } = useTranslation();
   const { toast } = useToast();
+  const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
   const handleExerciseInfo = () => {
     toast({
@@ -36,6 +37,36 @@ const ExerciseList: React.FC<ExerciseListProps> = ({
       description: "",
     });
   };
+
+  // Framer Motion variants for exercise cards
+  const itemVariants = prefersReducedMotion
+    ? {
+        hidden: { opacity: 0 },
+        visible: { opacity: 1 },
+        exit: { opacity: 0 },
+      }
+    : {
+        hidden: {
+          opacity: 0,
+          scale: 0.95,
+          filter: "blur(2px)",
+        },
+        visible: {
+          opacity: 1,
+          scale: 1,
+          y: 0,
+          filter: [
+            "blur(0px) drop-shadow(0 0 0px rgba(16, 185, 129, 0))",
+            "blur(0px) drop-shadow(0 0 10px rgba(16, 185, 129, 0.3))",
+            "blur(0px) drop-shadow(0 0 0px rgba(16, 185, 129, 0))",
+          ],
+        },
+        exit: {
+          opacity: 0,
+          scale: 0.9,
+          filter: "blur(1px)",
+        },
+      };
 
   if (!exercises || exercises.length === 0) {
     return (
@@ -55,26 +86,12 @@ const ExerciseList: React.FC<ExerciseListProps> = ({
           if (onUpdateExercise) {
             return (
               <motion.li 
-                key={exerciseIndex}
-                initial={{ opacity: 0, y: 8, scale: 1 }}
-                animate={{ 
-                  opacity: 1, 
-                  y: 0,
-                  scale: [1, 1, 1.02, 1],
-                  filter: [
-                    "drop-shadow(0 0 0px rgba(0, 255, 156, 0))",
-                    "drop-shadow(0 0 0px rgba(0, 255, 156, 0))",
-                    "drop-shadow(0 0 12px rgba(0, 255, 156, 0.3))",
-                    "drop-shadow(0 0 0px rgba(0, 255, 156, 0))"
-                  ]
-                }}
-                exit={{ opacity: 0, scale: 0.95 }}
-                transition={{ 
-                  opacity: { duration: 0.3, ease: "easeOut" },
-                  y: { duration: 0.3, ease: "easeOut" },
-                  scale: { duration: 0.5, delay: 0.3, ease: "easeOut", times: [0, 0, 0.5, 1] },
-                  filter: { duration: 0.5, delay: 0.3, ease: "easeOut", times: [0, 0, 0.5, 1] }
-                }}
+                key={exercise.id || `${exercise.name}-${exerciseIndex}`}
+                variants={itemVariants}
+                initial="hidden"
+                animate="visible"
+                exit="exit"
+                transition={{ duration: 0.6 }}
                 layout
               >
                 <MemoizedInlineEditableExercise
@@ -91,26 +108,12 @@ const ExerciseList: React.FC<ExerciseListProps> = ({
           // Fallback to read-only display
           return (
             <motion.li 
-              key={exerciseIndex}
-              initial={{ opacity: 0, y: 8, scale: 1 }}
-              animate={{ 
-                opacity: 1, 
-                y: 0,
-                scale: [1, 1, 1.02, 1],
-                filter: [
-                  "drop-shadow(0 0 0px rgba(0, 255, 156, 0))",
-                  "drop-shadow(0 0 0px rgba(0, 255, 156, 0))",
-                  "drop-shadow(0 0 12px rgba(0, 255, 156, 0.3))",
-                  "drop-shadow(0 0 0px rgba(0, 255, 156, 0))"
-                ]
-              }}
-              exit={{ opacity: 0, scale: 0.95 }}
-              transition={{ 
-                opacity: { duration: 0.3, ease: "easeOut" },
-                y: { duration: 0.3, ease: "easeOut" },
-                scale: { duration: 0.5, delay: 0.3, ease: "easeOut", times: [0, 0, 0.5, 1] },
-                filter: { duration: 0.5, delay: 0.3, ease: "easeOut", times: [0, 0, 0.5, 1] }
-              }}
+              key={exercise.id || `${exercise.name}-${exerciseIndex}`}
+              variants={itemVariants}
+              initial="hidden"
+              animate="visible"
+              exit="exit"
+              transition={{ duration: 0.6 }}
               layout
             >
               <div className="flex items-center justify-between p-1.5 sm:p-2 md:p-3 bg-background/50 rounded-lg border border-border/50">

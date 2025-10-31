@@ -39,6 +39,7 @@ export function AIPromptAssist({
   const [duration, setDuration] = useState('45');
   const [focus, setFocus] = useState('Full-Body');
   const [intensity, setIntensity] = useState('Kraft & Core');
+  const [isSuccess, setIsSuccess] = useState(false);
   const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
   // Reset to select when suggestions come in
@@ -74,6 +75,20 @@ export function AIPromptAssist({
   const handleReset = () => {
     setStep('select');
     setSelectedType(null);
+    setIsSuccess(false);
+  };
+
+  const handleAddAllWorkoutsWithFeedback = async () => {
+    if (onAddAllWorkouts) {
+      await onAddAllWorkouts();
+      setIsSuccess(true);
+      
+      // Reset success state after animation completes
+      setTimeout(() => {
+        setIsSuccess(false);
+        handleReset();
+      }, 2400);
+    }
   };
 
   const cardVariants = prefersReducedMotion
@@ -388,14 +403,44 @@ export function AIPromptAssist({
                 transition={{ delay: suggestions.length * 0.1 + 0.2 }}
                 className="sticky bottom-0 pt-4 pb-2 bg-gradient-to-t from-background via-background to-transparent"
               >
-                <Button
-                  onClick={onAddAllWorkouts}
-                  className="w-full gradient-primary shadow-glow hover:shadow-glow-lg transition-all"
-                  size="lg"
+                <motion.div
+                  animate={
+                    isSuccess && !prefersReducedMotion
+                      ? {
+                          opacity: [1, 0.7, 1],
+                          scale: [1, 1.04, 1],
+                        }
+                      : {}
+                  }
+                  transition={
+                    isSuccess && !prefersReducedMotion
+                      ? {
+                          duration: 1.2,
+                          repeat: 2,
+                          ease: "easeInOut",
+                        }
+                      : {}
+                  }
                 >
-                  <span className="mr-2">🟢</span>
-                  Plan für den ganzen Tag übernehmen
-                </Button>
+                  <Button
+                    onClick={handleAddAllWorkoutsWithFeedback}
+                    disabled={isSuccess}
+                    className="w-full gradient-primary shadow-glow hover:shadow-glow-lg transition-all"
+                    size="lg"
+                  >
+                    {isSuccess ? (
+                      <>
+                        <span className="mr-2">✅</span>
+                        Übernommen
+                      </>
+                    ) : (
+                      <>
+                        <span className="mr-2">🟢</span>
+                        Plan für den ganzen Tag übernehmen
+                      </>
+                    )}
+                  </Button>
+                </motion.div>
               </motion.div>
             )}
           </motion.div>
