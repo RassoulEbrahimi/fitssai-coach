@@ -4,6 +4,16 @@ import { useState, useEffect } from 'react';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { toastSuccess, toastError } from '@/lib/toastWithIcon';
@@ -40,6 +50,8 @@ export function AddWorkoutModal({
   const [suggestions, setSuggestions] = useState<WorkoutSuggestion[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showConfirmDialog, setShowConfirmDialog] = useState(false);
+  const [hasExistingExercises, setHasExistingExercises] = useState(false);
   const { user } = useAuth();
   const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
@@ -254,6 +266,99 @@ export function AddWorkoutModal({
     }
   };
 
+  const handleAddAllWorkouts = async (action?: 'replace' | 'add') => {
+    if (!dayContext || !user) return;
+
+    try {
+      // Get current workout plan
+      const { data: planData } = await supabase
+        .from('workout_plans')
+        .select('*')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .single();
+
+      if (!planData) {
+        toastError('Fehler', 'Kein Trainingsplan gefunden');
+        return;
+      }
+
+      const content = planData.content || {};
+      
+      // Ensure week exists
+      if (!content[dayContext.weekKey]) {
+        content[dayContext.weekKey] = Array(7).fill(null).map(() => ({ day: null, exercises: [] }));
+      }
+
+      const dayNames = ['Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag', 'Sonntag'];
+
+      // Ensure day exists
+      if (!content[dayContext.weekKey][dayContext.dayIndex] || 
+          typeof content[dayContext.weekKey][dayContext.dayIndex] !== 'object') {
+        content[dayContext.weekKey][dayContext.dayIndex] = {
+          day: dayNames[dayContext.dayIndex],
+          exercises: []
+        };
+      }
+
+      const dayData = content[dayContext.weekKey][dayContext.dayIndex];
+      
+      // Ensure exercises array exists
+      if (!dayData.exercises || !Array.isArray(dayData.exercises)) {
+        dayData.exercises = [];
+      }
+
+      // Check if day already has exercises
+      const existingCount = dayData.exercises.length;
+      if (existingCount > 0 && !action) {
+        setHasExistingExercises(true);
+        setShowConfirmDialog(true);
+        return;
+      }
+
+      // Replace or add logic
+      if (action === 'replace') {
+        dayData.exercises = [];
+      }
+
+      // Add all suggestions
+      const newExercises = suggestions.map(suggestion => ({
+        name: suggestion.name,
+        sets: typeof suggestion.sets === 'number' ? suggestion.sets.toString() : String(suggestion.sets),
+        reps: typeof suggestion.reps === 'number' ? suggestion.reps.toString() : String(suggestion.reps),
+        rest: '90s',
+        weight: '',
+        description: suggestion.description || ''
+      }));
+
+      dayData.exercises.push(...newExercises);
+
+      // Save updated plan
+      const { error: updateError } = await supabase
+        .from('workout_plans')
+        .update({ content })
+        .eq('id', planData.id);
+
+      if (updateError) throw updateError;
+
+      toastSuccess(
+        'Tagesplan hinzugefügt!',
+        `${suggestions.length} Übungen wurden ${action === 'replace' ? 'ersetzt' : 'hinzugefügt'}`
+      );
+      
+      if (onWorkoutAdded) {
+        onWorkoutAdded();
+      }
+      
+      setShowConfirmDialog(false);
+      onClose();
+    } catch (err: any) {
+      console.error('Error adding all workouts:', err);
+      toastError('Fehler', 'Tagesplan konnte nicht hinzugefügt werden');
+    }
+  };
+
   const modalVariants = prefersReducedMotion
     ? {
         hidden: { opacity: 0 },
@@ -351,13 +456,14 @@ export function AddWorkoutModal({
 
                      <ScrollArea className="h-[400px] pr-4">
                       <TabsContent value="ai" className="mt-0">
-                        <AIPromptAssist
+                         <AIPromptAssist
                           dayContext={dayContext}
                           onGenerate={handleAIGenerate}
                           isLoading={isLoading}
                           suggestions={suggestions}
                           error={error}
                           onAddWorkout={handleAddWorkout}
+                          onAddAllWorkouts={() => handleAddAllWorkouts()}
                         />
                       </TabsContent>
 
@@ -386,6 +492,37 @@ export function AddWorkoutModal({
               </div>
             </motion.div>
           </div>
+
+          {/* Confirmation Dialog */}
+          <AlertDialog open={showConfirmDialog} onOpenChange={setShowConfirmDialog}>
+            <AlertDialogContent className="bg-background/95 backdrop-blur-xl border-primary/20">
+              <AlertDialogHeader>
+                <AlertDialogTitle className="text-xl font-semibold bg-gradient-to-r from-primary to-emerald-400 bg-clip-text text-transparent">
+                  Vorhandene Übungen gefunden
+                </AlertDialogTitle>
+                <AlertDialogDescription className="text-muted-foreground">
+                  Dieser Tag enthält bereits Übungen. Möchtest du die neuen Vorschläge ersetzen oder hinzufügen?
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel className="hover:bg-muted/80">
+                  Abbrechen
+                </AlertDialogCancel>
+                <AlertDialogAction
+                  onClick={() => handleAddAllWorkouts('add')}
+                  className="bg-primary/20 text-primary hover:bg-primary/30"
+                >
+                  Hinzufügen
+                </AlertDialogAction>
+                <AlertDialogAction
+                  onClick={() => handleAddAllWorkouts('replace')}
+                  className="gradient-primary shadow-glow"
+                >
+                  Ersetzen
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
         </>
       )}
     </AnimatePresence>

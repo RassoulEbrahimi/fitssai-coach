@@ -20,6 +20,7 @@ interface AIPromptAssistProps {
   suggestions: WorkoutSuggestion[];
   error: string | null;
   onAddWorkout: (suggestion: WorkoutSuggestion) => void;
+  onAddAllWorkouts?: () => void;
 }
 
 const dayNames = ['Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag', 'Sonntag'];
@@ -30,7 +31,8 @@ export function AIPromptAssist({
   isLoading,
   suggestions,
   error,
-  onAddWorkout
+  onAddWorkout,
+  onAddAllWorkouts
 }: AIPromptAssistProps) {
   const [step, setStep] = useState<'select' | 'prompt' | 'results'>('select');
   const [selectedType, setSelectedType] = useState<'full-day' | 'single-workout' | null>(null);
@@ -347,33 +349,55 @@ export function AIPromptAssist({
                       {suggestion.description}
                     </p>
                   )}
-                  <motion.div
-                    whileTap={
-                      prefersReducedMotion
-                        ? {}
-                        : {
-                            scale: [1, 1.05, 1],
-                            filter: [
-                              "drop-shadow(0 0 0px rgba(0, 255, 156, 0))",
-                              "drop-shadow(0 0 14px rgba(0, 255, 156, 0.4))",
-                              "drop-shadow(0 0 0px rgba(0, 255, 156, 0))"
-                            ]
-                          }
-                    }
-                    transition={{ duration: 0.35, ease: "easeOut" }}
-                  >
-                    <Button
-                      onClick={() => onAddWorkout(suggestion)}
-                      variant="outline"
-                      size="sm"
-                      className="w-full text-xs"
+                  {/* Only show individual add button for single workout mode */}
+                  {selectedType === 'single-workout' && (
+                    <motion.div
+                      whileTap={
+                        prefersReducedMotion
+                          ? {}
+                          : {
+                              scale: [1, 1.05, 1],
+                              filter: [
+                                "drop-shadow(0 0 0px rgba(0, 255, 156, 0))",
+                                "drop-shadow(0 0 14px rgba(0, 255, 156, 0.4))",
+                                "drop-shadow(0 0 0px rgba(0, 255, 156, 0))"
+                              ]
+                            }
+                      }
+                      transition={{ duration: 0.35, ease: "easeOut" }}
                     >
-                      Zu Tag hinzufügen
-                    </Button>
-                  </motion.div>
+                      <Button
+                        onClick={() => onAddWorkout(suggestion)}
+                        variant="outline"
+                        size="sm"
+                        className="w-full text-xs"
+                      >
+                        Zu Tag hinzufügen
+                      </Button>
+                    </motion.div>
+                  )}
                 </motion.div>
               ))}
             </div>
+
+            {/* Global button for full-day generation */}
+            {selectedType === 'full-day' && onAddAllWorkouts && (
+              <motion.div
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: suggestions.length * 0.1 + 0.2 }}
+                className="sticky bottom-0 pt-4 pb-2 bg-gradient-to-t from-background via-background to-transparent"
+              >
+                <Button
+                  onClick={onAddAllWorkouts}
+                  className="w-full gradient-primary shadow-glow hover:shadow-glow-lg transition-all"
+                  size="lg"
+                >
+                  <span className="mr-2">🟢</span>
+                  Plan für den ganzen Tag übernehmen
+                </Button>
+              </motion.div>
+            )}
           </motion.div>
         )}
 
