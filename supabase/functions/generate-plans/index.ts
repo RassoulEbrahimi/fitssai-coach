@@ -110,7 +110,7 @@ serve(async (req) => {
   }
 
   try {
-    const openAIApiKey = Deno.env.get('OPENAI_API_KEY');
+    const openAIApiKey = Deno.env.get('OPENAI_API_KEY_New');
     
     // Log function entry
     console.info(JSON.stringify({
