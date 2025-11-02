@@ -4,6 +4,10 @@ import { Button } from '@/components/ui/button';
 import { Loader2, RefreshCw, Sparkles, Calendar, Dumbbell } from 'lucide-react';
 import { InlineEditableText } from './InlineEditableText';
 import { cn } from '@/lib/utils';
+import { useWorkoutContext } from '@/hooks/useWorkoutContext';
+import { AnimatedAvatar } from '@/components/ui/animated-avatar';
+
+type AIState = 'idle' | 'thinking' | 'results' | 'applied';
 
 interface WorkoutSuggestion {
   name: string;
@@ -40,7 +44,22 @@ export function AIPromptAssist({
   const [focus, setFocus] = useState('Full-Body');
   const [intensity, setIntensity] = useState('Kraft & Core');
   const [isSuccess, setIsSuccess] = useState(false);
+  const [aiState, setAiState] = useState<AIState>('idle');
   const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const workoutContext = useWorkoutContext();
+
+  // Update aiState based on loading and suggestions
+  useEffect(() => {
+    if (isLoading) {
+      setAiState('thinking');
+    } else if (suggestions.length > 0) {
+      setAiState('results');
+    } else if (isSuccess) {
+      setAiState('applied');
+    } else {
+      setAiState('idle');
+    }
+  }, [isLoading, suggestions.length, isSuccess]);
 
   // Reset to select when suggestions come in
   useEffect(() => {
@@ -65,21 +84,48 @@ export function AIPromptAssist({
     if (!selectedType) return;
     
     const dayOfWeek = dayContext ? dayNames[dayContext.dayIndex] : 'Wochentag';
-    const prompt = selectedType === 'full-day'
+    
+    // Build context-aware prompt
+    let basePrompt = selectedType === 'full-day'
       ? `Erstelle einen kompletten Trainingsplan für ${dayOfWeek} mit ${duration} Minuten Gesamtzeit. Fokus: ${focus}. Intensität: ${intensity}.`
       : `Erstelle ein einzelnes ${duration}-minütiges ${focus}-Workout für ${dayOfWeek}. Fokus: ${intensity}.`;
     
-    onGenerate(prompt, selectedType);
+    // Enhance with workout context
+    const contextAdditions: string[] = [];
+    
+    if (workoutContext.streak >= 3) {
+      contextAdditions.push('Der Nutzer ist seit mehreren Tagen aktiv – füge eine kurze motivierende Nachricht hinzu.');
+    }
+    
+    if (workoutContext.lastWorkoutType === 'HighIntensity' && workoutContext.recoveryDays === 0) {
+      contextAdditions.push('Das letzte Training war hochintensiv – halte das heutige Training moderat oder fokussiere auf aktive Erholung.');
+    }
+    
+    if (workoutContext.recentFocus.length > 0) {
+      contextAdditions.push(`Berücksichtige, dass kürzlich diese Bereiche trainiert wurden: ${workoutContext.recentFocus.join(', ')}.`);
+    }
+    
+    if (workoutContext.recoveryDays >= 2) {
+      contextAdditions.push('Es gab eine längere Pause – wähle ein sanftes Wiedereinstiegstraining.');
+    }
+    
+    const fullPrompt = contextAdditions.length > 0 
+      ? `${basePrompt}\n\nKontext: ${contextAdditions.join(' ')}`
+      : basePrompt;
+    
+    onGenerate(fullPrompt, selectedType);
   };
 
   const handleReset = () => {
     setStep('select');
     setSelectedType(null);
     setIsSuccess(false);
+    setAiState('idle');
   };
 
   const handleAddAllWorkoutsWithFeedback = async () => {
     if (onAddAllWorkouts) {
+      setAiState('applied');
       await onAddAllWorkouts();
       setIsSuccess(true);
       
@@ -101,6 +147,36 @@ export function AIPromptAssist({
 
   return (
     <div className="space-y-6">
+      {/* AI State Indicator Header */}
+      <motion.div 
+        className="flex items-center justify-center gap-3 py-2"
+        animate={{
+          opacity: aiState === 'idle' ? 0 : 1,
+        }}
+        transition={{ duration: 0.3 }}
+      >
+        <AnimatedAvatar
+          isThinking={aiState === 'thinking'}
+          fallback="AI"
+          className="w-10 h-10"
+        />
+        <motion.div
+          className="text-sm font-medium"
+          animate={{
+            color: aiState === 'thinking' 
+              ? 'rgb(14, 165, 233)' 
+              : aiState === 'results' || aiState === 'applied'
+              ? 'rgb(16, 185, 129)'
+              : 'rgb(156, 163, 175)',
+          }}
+          transition={{ duration: 0.8, ease: 'easeInOut' }}
+        >
+          {aiState === 'thinking' && 'Denke nach...'}
+          {aiState === 'results' && 'Vorschläge bereit'}
+          {aiState === 'applied' && 'Erfolgreich übernommen'}
+        </motion.div>
+      </motion.div>
+
       <AnimatePresence mode="wait">
         {/* Step 1: Selection Cards */}
         {step === 'select' && (
@@ -198,9 +274,17 @@ export function AIPromptAssist({
 
             <div className="bg-gradient-to-br from-primary/5 to-primary/10 border-2 border-primary/30 rounded-2xl p-6">
               <div className="flex items-start gap-3 mb-4">
-                <div className="w-10 h-10 rounded-full bg-primary/20 flex items-center justify-center flex-shrink-0">
+                <motion.div 
+                  className="w-10 h-10 rounded-full bg-primary/20 flex items-center justify-center flex-shrink-0"
+                  animate={{
+                    backgroundColor: aiState === 'thinking' 
+                      ? 'rgba(14, 165, 233, 0.2)' 
+                      : 'rgba(var(--primary), 0.2)',
+                  }}
+                  transition={{ duration: 0.8, ease: 'easeInOut' }}
+                >
                   <Sparkles className="w-5 h-5 text-primary" />
-                </div>
+                </motion.div>
                 <div className="flex-1">
                   <p className="text-sm text-foreground leading-relaxed">
                     {selectedType === 'full-day' ? (
@@ -305,13 +389,36 @@ export function AIPromptAssist({
             className="flex flex-col items-center justify-center py-16 space-y-4"
           >
             <motion.div
-              animate={{ rotate: 360 }}
+              className="relative"
+              animate={{
+                rotate: 360,
+              }}
               transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}
             >
-              <Loader2 className="h-12 w-12 text-primary" />
+              <motion.div
+                className="absolute inset-0 rounded-full blur-lg"
+                animate={{
+                  backgroundColor: [
+                    'rgba(14, 165, 233, 0.3)',
+                    'rgba(14, 165, 233, 0.5)',
+                    'rgba(14, 165, 233, 0.3)',
+                  ],
+                  scale: [1, 1.2, 1],
+                }}
+                transition={{ duration: 2, repeat: Infinity, ease: 'easeInOut' }}
+              />
+              <Loader2 className="h-12 w-12 text-sky-500 relative z-10" />
             </motion.div>
             <div className="text-center">
-              <p className="text-lg font-medium text-foreground mb-1">Denke nach...</p>
+              <motion.p 
+                className="text-lg font-medium mb-1"
+                animate={{
+                  color: ['rgb(14, 165, 233)', 'rgb(56, 189, 248)', 'rgb(14, 165, 233)'],
+                }}
+                transition={{ duration: 2, repeat: Infinity, ease: 'easeInOut' }}
+              >
+                Denke nach...
+              </motion.p>
               <p className="text-sm text-muted-foreground">
                 KI generiert personalisierte Vorschläge
               </p>
@@ -346,9 +453,22 @@ export function AIPromptAssist({
               {suggestions.map((suggestion, idx) => (
                 <motion.div
                   key={idx}
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: idx * 0.1 }}
+                  initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                  animate={{ 
+                    opacity: 1, 
+                    y: 0, 
+                    scale: 1,
+                    filter: [
+                      'drop-shadow(0 0 0px rgba(16, 185, 129, 0))',
+                      'drop-shadow(0 0 10px rgba(16, 185, 129, 0.3))',
+                      'drop-shadow(0 0 0px rgba(16, 185, 129, 0))',
+                    ]
+                  }}
+                  transition={{ 
+                    delay: idx * 0.1,
+                    duration: 0.6,
+                    filter: { duration: 1.2, times: [0, 0.5, 1] }
+                  }}
                   whileHover={prefersReducedMotion ? {} : { scale: 1.02 }}
                   className="p-4 rounded-2xl bg-primary/10 border border-primary/30 backdrop-blur-xl"
                 >

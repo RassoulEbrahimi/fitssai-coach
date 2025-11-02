@@ -42,18 +42,27 @@ export const AnimatedAvatar = React.forwardRef<
           "drop-shadow(0 0 18px rgba(0, 255, 156, 0.22))",
           "drop-shadow(0 0 0px rgba(0, 255, 156, 0))"
         ]
+      } : isThinking && !prefersReducedMotion ? {
+        scale: [1, 1.02, 1],
+        filter: [
+          "drop-shadow(0 0 0px rgba(14, 165, 233, 0))",
+          "drop-shadow(0 0 16px rgba(14, 165, 233, 0.3))",
+          "drop-shadow(0 0 0px rgba(14, 165, 233, 0))"
+        ]
       } : {
         filter: "drop-shadow(0 0 0px rgba(0, 255, 156, 0))"
       }}
       transition={{ 
-        duration: 4.5, 
-        repeat: prefersReducedMotion || isThinking ? 0 : Infinity, 
+        duration: isThinking ? 2.8 : 4.5, 
+        repeat: prefersReducedMotion ? 0 : Infinity, 
         ease: "easeInOut" 
       }}
       className={cn(
         "p-[2px] rounded-full cursor-pointer touch-manipulation relative",
         isDark
-          ? "bg-gradient-to-br from-emerald-400 via-green-500 to-emerald-700"
+          ? isThinking 
+            ? "bg-gradient-to-br from-sky-400 via-blue-500 to-sky-600"
+            : "bg-gradient-to-br from-emerald-400 via-green-500 to-emerald-700"
           : "bg-white/30 backdrop-blur-md border border-emerald-200/60",
         className
       )}
@@ -64,8 +73,8 @@ export const AnimatedAvatar = React.forwardRef<
         <motion.div
           className="absolute inset-0 rounded-full bg-sky-400/20 blur-lg pointer-events-none"
           animate={{
-            scale: [1, 1.1, 1],
-            opacity: [0.15, 0.25, 0.15],
+            scale: [1, 1.15, 1],
+            opacity: [0.15, 0.28, 0.15],
           }}
           transition={{
             duration: 2.8,
@@ -90,10 +99,14 @@ export const AnimatedAvatar = React.forwardRef<
       <div 
         className={cn(
           "absolute inset-0 rounded-full blur-md -z-10",
-          isDark ? "bg-emerald-400/30" : "bg-white/40",
+          isDark 
+            ? isThinking 
+              ? "bg-sky-400/35" 
+              : "bg-emerald-400/30" 
+            : "bg-white/40",
           !prefersReducedMotion && "animate-pulse"
         )}
-        style={{ animationDuration: '4s' }}
+        style={{ animationDuration: isThinking ? '2.8s' : '4s' }}
       />
       
       <Avatar className="w-full h-full border-2 border-emerald-400/60">
