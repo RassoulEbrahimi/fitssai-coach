@@ -1,11 +1,12 @@
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Button } from '@/components/ui/button';
-import { Loader2, RefreshCw, Sparkles, Calendar, Dumbbell } from 'lucide-react';
+import { Loader2, RefreshCw, Sparkles, Calendar, Dumbbell, Brain } from 'lucide-react';
 import { InlineEditableText } from './InlineEditableText';
 import { cn } from '@/lib/utils';
 import { useWorkoutContext } from '@/hooks/useWorkoutContext';
 import { AnimatedAvatar } from '@/components/ui/animated-avatar';
+import { buildContextAwarePrompt, getContextAnalysisMessage } from '@/lib/prompt/contextBuilder';
 
 type AIState = 'idle' | 'thinking' | 'results' | 'applied';
 
@@ -38,8 +39,8 @@ export function AIPromptAssist({
   onAddWorkout,
   onAddAllWorkouts
 }: AIPromptAssistProps) {
-  const [step, setStep] = useState<'select' | 'prompt' | 'results'>('select');
-  const [selectedType, setSelectedType] = useState<'full-day' | 'single-workout' | null>(null);
+  const [step, setStep] = useState<'select' | 'prompt' | 'results' | 'smart-analysis'>('select');
+  const [selectedType, setSelectedType] = useState<'full-day' | 'single-workout' | 'context-smart' | null>(null);
   const [duration, setDuration] = useState('45');
   const [focus, setFocus] = useState('Full-Body');
   const [intensity, setIntensity] = useState('Kraft & Core');
@@ -75,9 +76,41 @@ export function AIPromptAssist({
     }
   }, [error]);
 
-  const handleSelectType = (type: 'full-day' | 'single-workout') => {
+  const handleSelectType = (type: 'full-day' | 'single-workout' | 'context-smart') => {
     setSelectedType(type);
-    setStep('prompt');
+    
+    if (type === 'context-smart') {
+      // Smart mode: show analysis then auto-generate
+      setStep('smart-analysis');
+      setTimeout(() => {
+        handleSmartGenerate();
+      }, 1800); // Show analysis for 1.8s before generating
+    } else {
+      setStep('prompt');
+    }
+  };
+
+  const handleSmartGenerate = () => {
+    const dayOfWeek = dayContext ? dayNames[dayContext.dayIndex] : 'Wochentag';
+    
+    // Build fully context-aware prompt using the context builder
+    const smartPrompt = buildContextAwarePrompt(
+      {
+        goal: 'Allgemeine Fitness & Gesundheit', // Could be fetched from user profile
+        lastWorkoutType: workoutContext.lastWorkoutType,
+        daysSinceLastWorkout: undefined,
+        availableEquipment: [], // Could be fetched from user profile
+        averageDuration: 45,
+        energyLevel: 'medium', // Could be dynamically determined
+        streak: workoutContext.streak,
+        recentFocus: workoutContext.recentFocus,
+        recoveryDays: workoutContext.recoveryDays,
+      },
+      dayOfWeek,
+      'full-day'
+    );
+    
+    onGenerate(smartPrompt, 'full-day');
   };
 
   const handleGenerate = () => {
@@ -113,7 +146,11 @@ export function AIPromptAssist({
       ? `${basePrompt}\n\nKontext: ${contextAdditions.join(' ')}`
       : basePrompt;
     
-    onGenerate(fullPrompt, selectedType);
+    // Ensure we only pass valid types to onGenerate
+    const validType: 'full-day' | 'single-workout' = 
+      selectedType === 'context-smart' ? 'full-day' : (selectedType || 'full-day');
+    
+    onGenerate(fullPrompt, validType);
   };
 
   const handleReset = () => {
@@ -251,6 +288,87 @@ export function AIPromptAssist({
                   </div>
                 </div>
               </motion.button>
+
+              {/* Smart Mode Card */}
+              <motion.button
+                onClick={() => handleSelectType('context-smart')}
+                className={cn(
+                  "relative p-6 rounded-2xl border-2 text-left",
+                  "bg-gradient-to-br from-violet-500/5 to-fuchsia-500/10",
+                  "border-violet-500/30 hover:border-violet-500/50",
+                  "hover:shadow-glow transition-all",
+                  "group sm:col-span-2"
+                )}
+                whileHover={prefersReducedMotion ? {} : { scale: 1.02, y: -4 }}
+                whileTap={prefersReducedMotion ? {} : { scale: 0.98 }}
+              >
+                <div className="flex flex-col items-center text-center space-y-3">
+                  <div className="w-12 h-12 rounded-full bg-violet-500/20 flex items-center justify-center group-hover:scale-110 transition-transform">
+                    <Brain className="w-6 h-6 text-violet-500" />
+                  </div>
+                  <div>
+                    <h4 className="font-semibold text-foreground mb-1">
+                      🧠 Smart Mode (Empfohlen)
+                    </h4>
+                    <p className="text-xs text-muted-foreground">
+                      KI analysiert deine Historie und erstellt den perfekten Plan
+                    </p>
+                  </div>
+                </div>
+              </motion.button>
+            </div>
+          </motion.div>
+        )}
+
+        {/* Smart Analysis Step */}
+        {step === 'smart-analysis' && (
+          <motion.div
+            key="smart-analysis"
+            {...cardVariants}
+            transition={{ duration: 0.3 }}
+            className="space-y-6"
+          >
+            <div className="bg-gradient-to-br from-violet-500/5 to-fuchsia-500/10 border-2 border-violet-500/30 rounded-2xl p-6">
+              <div className="flex items-start gap-4 mb-4">
+                <motion.div
+                  className="w-12 h-12 rounded-full bg-violet-500/20 flex items-center justify-center flex-shrink-0"
+                  animate={{
+                    scale: [1, 1.1, 1],
+                    rotate: [0, 5, -5, 0],
+                  }}
+                  transition={{ duration: 2, repeat: Infinity, ease: 'easeInOut' }}
+                >
+                  <Brain className="w-6 h-6 text-violet-500" />
+                </motion.div>
+                <div className="flex-1 space-y-3">
+                  <h3 className="text-lg font-semibold text-foreground">
+                    🔍 Analyse läuft...
+                  </h3>
+                  <motion.div
+                    className="text-sm text-muted-foreground space-y-2"
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    transition={{ delay: 0.3 }}
+                  >
+                    <p className="whitespace-pre-line">
+                      {getContextAnalysisMessage({
+                        streak: workoutContext.streak,
+                        lastWorkoutType: workoutContext.lastWorkoutType,
+                        recentFocus: workoutContext.recentFocus,
+                        recoveryDays: workoutContext.recoveryDays,
+                      })}
+                    </p>
+                    <motion.p
+                      className="text-violet-400 font-medium"
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      transition={{ delay: 0.8 }}
+                    >
+                      💡 Generiere optimalen Trainingsplan basierend auf deinem Kontext...
+                    </motion.p>
+                  </motion.div>
+                </div>
+              </div>
             </div>
           </motion.div>
         )}
