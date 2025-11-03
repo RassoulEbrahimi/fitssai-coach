@@ -8,7 +8,7 @@ import { useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { AuthProvider } from "@/hooks/useAuth";
 import { ThemeProvider } from "@/hooks/useTheme";
-import Landing from "./pages/Landing";
+import RootRedirect from "@/components/RootRedirect";
 import AuthPage from './pages/AuthPage';
 import DashboardPage from './pages/DashboardPage';
 import OnboardingPage from './pages/OnboardingPage';
@@ -98,7 +98,7 @@ const App = () => {
             <Sonner />
             <BrowserRouter>
               <Routes>
-                <Route path="/" element={<Landing />} />
+                <Route path="/" element={<RootRedirect />} />
                 <Route path="/auth/:mode" element={<AuthPage />} />
             <Route path="/dashboard" element={<DashboardPage />} />
             <Route path="/onboarding" element={<OnboardingPage />} />
