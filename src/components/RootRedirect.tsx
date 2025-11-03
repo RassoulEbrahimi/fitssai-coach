@@ -14,11 +14,6 @@ const RootRedirect = () => {
   const [shouldShowLanding, setShouldShowLanding] = useState(false);
   const [showSplash, setShowSplash] = useState(true);
 
-  // Show splash intro first
-  if (showSplash) {
-    return <EmeraldSplash onFinish={() => setShowSplash(false)} />;
-  }
-
   useEffect(() => {
     const handleRedirect = async () => {
       if (authLoading) return;
@@ -61,6 +56,11 @@ const RootRedirect = () => {
 
     handleRedirect();
   }, [user, authLoading, navigate]);
+
+  // Show splash intro first
+  if (showSplash) {
+    return <EmeraldSplash onFinish={() => setShowSplash(false)} />;
+  }
 
   // Show landing page for unauthenticated users
   if (shouldShowLanding) {
