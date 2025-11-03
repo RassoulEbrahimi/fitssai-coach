@@ -5,12 +5,19 @@ import { supabase } from "@/integrations/supabase/client";
 import { motion } from "framer-motion";
 import { Loader2 } from "lucide-react";
 import Landing from "@/pages/Landing";
+import EmeraldSplash from "@/components/EmeraldSplash";
 
 const RootRedirect = () => {
   const { user, loading: authLoading } = useAuth();
   const navigate = useNavigate();
   const [checkingProfile, setCheckingProfile] = useState(false);
   const [shouldShowLanding, setShouldShowLanding] = useState(false);
+  const [showSplash, setShowSplash] = useState(true);
+
+  // Show splash intro first
+  if (showSplash) {
+    return <EmeraldSplash onFinish={() => setShowSplash(false)} />;
+  }
 
   useEffect(() => {
     const handleRedirect = async () => {
