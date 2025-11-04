@@ -67,12 +67,13 @@ serve(async (req) => {
       );
     }
 
-    const { day_of_week, available_time } = await req.json();
+    const { day_of_week, available_time, custom_prompt } = await req.json();
     
     console.log('[Diagnostics] Request body:', {
       day_of_week,
       available_time,
-      userId: user.id
+      userId: user.id,
+      hasCustomPrompt: !!custom_prompt
     });
 
     // Fetch user profile
@@ -113,8 +114,20 @@ serve(async (req) => {
       experience: profile.experience_level 
     });
 
-    // Build AI prompt
-    const prompt = `Generate 3-5 personalized workout exercises in German for:
+    // Fetch user feedback for adaptive prompting
+    const { data: feedbackData } = await supabaseClient
+      .from('ai_feedback')
+      .select('reason, accepted')
+      .eq('user_id', user.id)
+      .order('created_at', { ascending: false })
+      .limit(20);
+
+    console.log('[Info] Feedback data retrieved:', {
+      feedbackCount: feedbackData?.length || 0
+    });
+
+    // Build AI prompt with optional adaptive adjustments
+    let prompt = custom_prompt || `Generate 3-5 personalized workout exercises in German for:
 - Day: ${day_of_week || 'Wochentag'}
 - Fitness Goal: ${profile.fitness_goal}
 - Experience Level: ${profile.experience_level || 'Beginner'}
@@ -135,6 +148,41 @@ Return ONLY valid JSON in this exact format:
 }
 
 Make exercises specific, realistic, and suitable for their level. Include rest periods in duration.`;
+
+    // Apply adaptive adjustments based on feedback if available
+    if (feedbackData && feedbackData.length > 0 && !custom_prompt) {
+      const feedbackCounts = {
+        super: 0,
+        hard: 0,
+        light: 0,
+        notstyle: 0
+      };
+
+      for (const item of feedbackData) {
+        const reason = item.reason?.toLowerCase() || "";
+        if (reason.includes("good") || reason === "good" || item.accepted) feedbackCounts.super++;
+        if (reason.includes("hard") || reason === "hard") feedbackCounts.hard++;
+        if (reason.includes("light") || reason === "light") feedbackCounts.light++;
+        if (reason.includes("notstyle") || reason === "notstyle") feedbackCounts.notstyle++;
+      }
+
+      console.log('[Info] Feedback analysis:', feedbackCounts);
+
+      // Adjust prompt based on patterns
+      if (feedbackCounts.hard > feedbackCounts.light * 1.5) {
+        prompt += "\n\nWICHTIG: Der Nutzer fand vorherige Workouts oft zu anstrengend. Passe die Intensität leicht nach unten an, reduziere Gewichte um 10-15% und füge mehr Pausenzeit ein.";
+      } else if (feedbackCounts.light > feedbackCounts.hard * 1.5) {
+        prompt += "\n\nWICHTIG: Der Nutzer sucht mehr Herausforderung. Erhöhe die Intensität leicht, füge progressive Überlastung hinzu und reduziere Pausenzeiten.";
+      }
+
+      if (feedbackCounts.notstyle > 3 && feedbackCounts.notstyle > feedbackCounts.super) {
+        prompt += "\n\nWICHTIG: Der Nutzer wünscht sich mehr Variation. Wechsle den Trainingsstil, probiere neue Übungsvarianten aus und bringe mehr Abwechslung rein.";
+      }
+
+      if (feedbackCounts.super > feedbackData.length * 0.7) {
+        prompt += "\n\nHINWEIS: Der Nutzer ist sehr zufrieden mit dem aktuellen Stil. Behalte die aktuelle Intensität und Struktur bei.";
+      }
+    }
 
     console.log('[Info] Calling OpenAI API with model: gpt-4o-mini');
 

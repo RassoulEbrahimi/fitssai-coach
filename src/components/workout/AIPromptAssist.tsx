@@ -7,6 +7,9 @@ import { cn } from '@/lib/utils';
 import { useWorkoutContext } from '@/hooks/useWorkoutContext';
 import { AnimatedAvatar } from '@/components/ui/animated-avatar';
 import { buildContextAwarePrompt, getContextAnalysisMessage } from '@/lib/prompt/contextBuilder';
+import { AdaptiveHint } from '@/components/ui/AdaptiveHint';
+import { getUserFeedbackSummary, getFeedbackInsight } from '@/integrations/supabase/ai_adaptation';
+import { useAuth } from '@/hooks/useAuth';
 
 type AIState = 'idle' | 'thinking' | 'results' | 'applied';
 
@@ -46,8 +49,10 @@ export function AIPromptAssist({
   const [intensity, setIntensity] = useState('Kraft & Core');
   const [isSuccess, setIsSuccess] = useState(false);
   const [aiState, setAiState] = useState<AIState>('idle');
+  const [feedbackInsight, setFeedbackInsight] = useState<string>('');
   const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   const workoutContext = useWorkoutContext();
+  const { user } = useAuth();
 
   // Update aiState based on loading and suggestions
   useEffect(() => {
@@ -61,6 +66,23 @@ export function AIPromptAssist({
       setAiState('idle');
     }
   }, [isLoading, suggestions.length, isSuccess]);
+
+  // Fetch feedback insights on mount
+  useEffect(() => {
+    const fetchFeedback = async () => {
+      if (!user?.id) return;
+      
+      try {
+        const feedback = await getUserFeedbackSummary(user.id);
+        const insight = getFeedbackInsight(feedback);
+        setFeedbackInsight(insight);
+      } catch (error) {
+        console.error('Error fetching feedback:', error);
+      }
+    };
+    
+    fetchFeedback();
+  }, [user?.id]);
 
   // Reset to select when suggestions come in
   useEffect(() => {
@@ -478,6 +500,11 @@ export function AIPromptAssist({
                   Neu wählen
                 </Button>
               </div>
+              
+              {/* Adaptive Hint */}
+              {feedbackInsight && feedbackInsight !== 'Noch keine Feedback-Daten verfügbar' && (
+                <AdaptiveHint message={feedbackInsight} />
+              )}
             </div>
 
             <div className="flex items-center justify-end gap-3">
