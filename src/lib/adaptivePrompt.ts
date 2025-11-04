@@ -5,7 +5,13 @@ export async function buildAdaptivePrompt(userId: string, basePrompt: string): P
     const feedback = await getUserFeedbackSummary(userId);
     let prompt = basePrompt;
 
-    // No feedback yet - return base prompt
+    // 🧩 Fallback if prompt is empty
+    if (!prompt || prompt.trim().length < 10) {
+      console.warn("[AdaptivePrompt] Base prompt was empty. Using fallback.");
+      prompt = "Erstelle ein 30-minütiges Ganzkörper-Workout mit Fokus auf Kraft, Core und Ausdauer.";
+    }
+
+    // No feedback yet - return prompt (with fallback applied if needed)
     if (feedback.total === 0) {
       return prompt;
     }
@@ -29,9 +35,9 @@ export async function buildAdaptivePrompt(userId: string, basePrompt: string): P
 
     return prompt;
   } catch (error) {
-    console.error("Error building adaptive prompt:", error);
-    // Fallback to base prompt if there's an error
-    return basePrompt;
+    console.error("[AdaptivePrompt] Error building prompt:", error);
+    // Absolute fallback prompt if all else fails
+    return "Erstelle ein 30-minütiges funktionelles Workout mit Fokus auf Kraft und Stabilität. Inklusive Aufwärmen, Hauptteil, Cooldown.";
   }
 }
 

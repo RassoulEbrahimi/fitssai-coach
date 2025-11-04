@@ -175,7 +175,8 @@ export function AddWorkoutModal({
       if (data?.suggestions) {
         setSuggestions(data.suggestions);
       } else {
-        throw new Error('Keine Vorschläge erhalten');
+        console.error('[AddWorkoutModal] No suggestions in response:', data);
+        throw new Error('AI konnte keine Vorschläge generieren. Bitte erneut versuchen oder Eingaben prüfen.');
       }
     } catch (err: any) {
       console.error('Detailed error:', err);

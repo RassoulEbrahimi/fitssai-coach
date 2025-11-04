@@ -184,7 +184,14 @@ Make exercises specific, realistic, and suitable for their level. Include rest p
       }
     }
 
+    // 🔒 Validate prompt before sending to OpenAI
+    if (!prompt || prompt.trim().length < 10) {
+      console.warn("[generate-day-suggestions] Empty prompt detected. Using fallback prompt.");
+      prompt = "Erstelle ein 30-minütiges Ganzkörper-Workout mit Fokus auf Kraft, Core und Ausdauer.";
+    }
+
     console.log('[Info] Calling OpenAI API with model: gpt-4o-mini');
+    console.log('[Info] Prompt length:', prompt.length);
 
     // Start performance tracking
     const startTime = performance.now();
@@ -289,6 +296,21 @@ Make exercises specific, realistic, and suitable for their level. Include rest p
         { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
+
+      // ✅ Validate that we have actual suggestions
+      if (!parsedContent || !parsedContent.suggestions || parsedContent.suggestions.length === 0) {
+        console.error('[generate-day-suggestions] No suggestions returned from AI.');
+        return new Response(
+          JSON.stringify({
+            error: 'Keine Vorschläge erhalten',
+            code: 'NO_SUGGESTIONS',
+            details: 'AI konnte keine Vorschläge generieren. Bitte erneut versuchen oder Eingaben prüfen.',
+            promptUsed: prompt.substring(0, 200),
+            feedbackSummary: feedbackCounts
+          }),
+          { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
 
       return new Response(
         JSON.stringify(parsedContent),
