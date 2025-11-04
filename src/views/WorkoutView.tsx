@@ -30,6 +30,7 @@ import { AddWorkoutModal } from "@/components/workout/AddWorkoutModal";
 import { useAddExercise } from "@/hooks/useAddExercise";
 import { Plus } from "lucide-react";
 import { SpeedDial } from "@/components/SpeedDial";
+import { WorkoutFeedbackCard } from "@/components/feedback/WorkoutFeedbackCard";
 
 const ExerciseList = React.lazy(() => import("@/views/ExerciseList"));
 interface WorkoutViewProps {
@@ -853,6 +854,18 @@ const WorkoutView: React.FC<WorkoutViewProps> = ({
                                      isUpdating={isUpdating}
                                    />
                                   </Suspense>
+                                )}
+                            
+                                {/* AI Feedback Card - shown after completed AI-generated workouts */}
+                                {!isRestDay && day?.isAIGenerated && isCompleted && (
+                                  <div className="mt-3 px-1">
+                                    <WorkoutFeedbackCard
+                                      suggestionId={`${wk}-day${dayIndex}`}
+                                      onSubmitted={() => {
+                                        logEvent('ai_feedback_submitted', { weekKey: wk, dayIndex });
+                                      }}
+                                    />
+                                  </div>
                                 )}
                             
               {/* Speed Dial FAB (for days with exercises) */}
