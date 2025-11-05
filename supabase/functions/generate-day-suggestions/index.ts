@@ -126,6 +126,14 @@ serve(async (req) => {
       feedbackCount: feedbackData?.length || 0
     });
 
+    // Initialize feedback counts at function scope
+    const feedbackCounts = {
+      super: 0,
+      hard: 0,
+      light: 0,
+      notstyle: 0
+    };
+
     // Build AI prompt with optional adaptive adjustments
     let prompt = custom_prompt || `Generate 3-5 personalized workout exercises in German for:
 - Day: ${day_of_week || 'Wochentag'}
@@ -151,12 +159,6 @@ Make exercises specific, realistic, and suitable for their level. Include rest p
 
     // Apply adaptive adjustments based on feedback if available
     if (feedbackData && feedbackData.length > 0 && !custom_prompt) {
-      const feedbackCounts = {
-        super: 0,
-        hard: 0,
-        light: 0,
-        notstyle: 0
-      };
 
       for (const item of feedbackData) {
         const reason = item.reason?.toLowerCase() || "";
