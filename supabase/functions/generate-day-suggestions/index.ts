@@ -67,13 +67,14 @@ serve(async (req) => {
       );
     }
 
-    const { day_of_week, available_time, custom_prompt } = await req.json();
+    const { day_of_week, available_time, custom_prompt, focus_type = 'auto' } = await req.json();
     
     console.log('[Diagnostics] Request body:', {
       day_of_week,
       available_time,
       userId: user.id,
-      hasCustomPrompt: !!custom_prompt
+      hasCustomPrompt: !!custom_prompt,
+      focus_type
     });
 
     // Fetch user profile
@@ -145,7 +146,7 @@ serve(async (req) => {
 Make exercises specific, realistic, and suitable for their level. Include rest periods in duration.`;
 
     // ALWAYS append JSON format requirement, even for custom prompts
-    const prompt = basePrompt + `\n\nReturn ONLY valid JSON in this EXACT format (no other text):
+    let prompt = basePrompt + `\n\nReturn ONLY valid JSON in this EXACT format (no other text):
 {
   "suggestions": [
     {
@@ -185,6 +186,33 @@ Make exercises specific, realistic, and suitable for their level. Include rest p
       if (feedbackCounts.super > feedbackData.length * 0.7) {
         prompt += "\n\nHINWEIS: Der Nutzer ist sehr zufrieden mit dem aktuellen Stil. Behalte die aktuelle Intensität und Struktur bei.";
       }
+    }
+
+    // Apply focus_type adjustments
+    switch(focus_type) {
+      case 'cardio':
+        prompt += "\n\nFOKUS: Cardio. Bevorzuge Ausdauer-/HIIT-/Intervall-Elemente. Geringe bis mittlere Last, höhere Herzfrequenz.";
+        break;
+      case 'kraft':
+        prompt += "\n\nFOKUS: Kraft. Bevorzuge mehr Sätze/geringere Wdh., längere Pausen, progressive Überlastung.";
+        break;
+      case 'weniger':
+        prompt += "\n\nFOKUS: Geringere Intensität. Leichtere Varianten, 10–15% weniger Last, längere Pausen, sichere Technik.";
+        break;
+      case 'mehr':
+        prompt += "\n\nFOKUS: Höhere Intensität. Anspruchsvollere Varianten, kürzere Pausen, behalte Sicherheitshinweise.";
+        break;
+      case 'mobilitaet':
+        prompt += "\n\nFOKUS: Mobilität/Beweglichkeit. Integriere Mobility- und Stretch-Blöcke (Aufwärmen+Cooldown).";
+        break;
+      case 'gelenk_knie':
+        prompt += "\n\nFOKUS: Knie-schonend. Vermeide tiefe Kniebelastungen; nutze Alternativen (z. B. Step-ups, Hip Hinge, Box Squats).";
+        break;
+      case 'gelenk_hand':
+        prompt += "\n\nFOKUS: Handgelenk-schonend. Vermeide stützlastige Übungen; nutze Fäuste/Griffe/Unterarme oder Maschinen-Alternativen.";
+        break;
+      default:
+        // auto → no extra line
     }
 
     // 🔒 Validate prompt before sending to OpenAI

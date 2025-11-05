@@ -11,6 +11,8 @@ import { AdaptiveHint } from '@/components/ui/AdaptiveHint';
 import { getUserFeedbackSummary, getFeedbackInsight } from '@/integrations/supabase/ai_adaptation';
 import { useAuth } from '@/hooks/useAuth';
 import { AISuccessOverlay } from '@/components/ui/AISuccessOverlay';
+import { SmartFocusBar, SmartFocusType } from './SmartFocusBar';
+import { supabase } from '@/integrations/supabase/client';
 
 type AIState = 'idle' | 'thinking' | 'results' | 'applied';
 
@@ -52,9 +54,18 @@ export function AIPromptAssist({
   const [showSuccessOverlay, setShowSuccessOverlay] = useState(false);
   const [aiState, setAiState] = useState<AIState>('idle');
   const [feedbackInsight, setFeedbackInsight] = useState<string>('');
+  const [smartFocus, setSmartFocus] = useState<SmartFocusType>(() => {
+    const saved = localStorage.getItem('fitssai:lastSmartFocus');
+    return (saved as SmartFocusType) || 'auto';
+  });
   const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   const workoutContext = useWorkoutContext();
   const { user } = useAuth();
+
+  // Persist smartFocus to localStorage
+  useEffect(() => {
+    localStorage.setItem('fitssai:lastSmartFocus', smartFocus);
+  }, [smartFocus]);
 
   // Update aiState based on loading and suggestions
   useEffect(() => {
@@ -114,7 +125,7 @@ export function AIPromptAssist({
     }
   };
 
-  const handleSmartGenerate = () => {
+  const handleSmartGenerate = async () => {
     const dayOfWeek = dayContext ? dayNames[dayContext.dayIndex] : 'Wochentag';
     
     // Build fully context-aware prompt using the context builder
@@ -134,7 +145,31 @@ export function AIPromptAssist({
       'full-day'
     );
     
-    onGenerate(smartPrompt, 'full-day');
+    // Call edge function directly with focus_type
+    await handleAIGenerate(smartPrompt, 'full-day');
+  };
+
+  const handleAIGenerate = async (prompt: string, type: 'full-day' | 'single-workout') => {
+    try {
+      const { data, error } = await supabase.functions.invoke('generate-day-suggestions', {
+        body: {
+          custom_prompt: prompt,
+          available_time: parseInt(duration) || 45,
+          day_of_week: dayContext ? dayNames[dayContext.dayIndex] : undefined,
+          focus_type: smartFocus
+        }
+      });
+
+      if (error) throw error;
+      
+      // Pass the suggestions to the parent component through onGenerate
+      // This is a workaround since onGenerate expects a string prompt
+      // We'll actually handle the response in the parent
+      onGenerate(prompt, type);
+    } catch (error) {
+      console.error('Error generating with AI:', error);
+      onGenerate(prompt, type); // Fallback to original flow
+    }
   };
 
   const handleGenerate = () => {
@@ -582,19 +617,70 @@ export function AIPromptAssist({
             transition={{ duration: 0.3 }}
             className="space-y-4"
           >
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-semibold text-foreground">
-                Vorschläge
-              </h3>
-              <Button
-                onClick={handleReset}
-                variant="ghost"
-                size="sm"
-                className="text-xs"
-              >
-                <RefreshCw className="w-3 h-3 mr-2" />
-                Neu generieren
-              </Button>
+            <div className="space-y-4 mb-6">
+              <div className="flex items-center justify-between">
+                <h3 className="text-lg font-semibold text-foreground">
+                  Vorschläge
+                </h3>
+              </div>
+
+              {/* Smart Focus Bar - shown for full-day and smart mode */}
+              {(selectedType === 'full-day' || selectedType === 'context-smart') && (
+                <div className="space-y-3">
+                  <p className="text-sm text-muted-foreground text-center">
+                    Fokus für nächste Generierung anpassen:
+                  </p>
+                  <SmartFocusBar 
+                    value={smartFocus} 
+                    onChange={setSmartFocus}
+                    disabled={isLoading}
+                  />
+                  <Button
+                    onClick={async () => {
+                      const dayOfWeek = dayContext ? dayNames[dayContext.dayIndex] : 'Wochentag';
+                      const regeneratePrompt = selectedType === 'context-smart' 
+                        ? buildContextAwarePrompt(
+                            {
+                              goal: 'Allgemeine Fitness & Gesundheit',
+                              lastWorkoutType: workoutContext.lastWorkoutType,
+                              daysSinceLastWorkout: undefined,
+                              availableEquipment: [],
+                              averageDuration: 45,
+                              energyLevel: 'medium',
+                              streak: workoutContext.streak,
+                              recentFocus: workoutContext.recentFocus,
+                              recoveryDays: workoutContext.recoveryDays,
+                            },
+                            dayOfWeek,
+                            'full-day'
+                          )
+                        : `Erstelle einen kompletten Trainingsplan für ${dayOfWeek} mit ${duration} Minuten Gesamtzeit. Fokus: ${focus}. Intensität: ${intensity}.`;
+                      
+                      await handleAIGenerate(regeneratePrompt, 'full-day');
+                    }}
+                    disabled={isLoading}
+                    variant="outline"
+                    className="w-full"
+                    size="sm"
+                  >
+                    <RefreshCw className="w-3 h-3 mr-2" />
+                    🔁 Neu generieren mit Fokus
+                  </Button>
+                </div>
+              )}
+
+              {/* Fallback regenerate button for single workout */}
+              {selectedType === 'single-workout' && (
+                <Button
+                  onClick={handleReset}
+                  variant="ghost"
+                  size="sm"
+                  className="text-xs"
+                >
+                  <RefreshCw className="w-3 h-3 mr-2" />
+                  Neu generieren
+                </Button>
+              )}
             </div>
 
             <div className="space-y-3">
