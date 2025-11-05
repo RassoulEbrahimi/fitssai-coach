@@ -135,14 +135,17 @@ serve(async (req) => {
     };
 
     // Build AI prompt with optional adaptive adjustments
-    let prompt = custom_prompt || `Generate 3-5 personalized workout exercises in German for:
+    let basePrompt = custom_prompt || `Generate 3-5 personalized workout exercises in German for:
 - Day: ${day_of_week || 'Wochentag'}
 - Fitness Goal: ${profile.fitness_goal}
 - Experience Level: ${profile.experience_level || 'Beginner'}
 - Available Time: ${available_time || 45} minutes
 - Age: ${profile.age}, Weight: ${profile.weight}kg, Height: ${profile.height}cm
 
-Return ONLY valid JSON in this exact format:
+Make exercises specific, realistic, and suitable for their level. Include rest periods in duration.`;
+
+    // ALWAYS append JSON format requirement, even for custom prompts
+    const prompt = basePrompt + `\n\nReturn ONLY valid JSON in this EXACT format (no other text):
 {
   "suggestions": [
     {
@@ -153,9 +156,7 @@ Return ONLY valid JSON in this exact format:
       "description": "Brief reason why this exercise fits"
     }
   ]
-}
-
-Make exercises specific, realistic, and suitable for their level. Include rest periods in duration.`;
+}`;
 
     // Apply adaptive adjustments based on feedback if available
     if (feedbackData && feedbackData.length > 0 && !custom_prompt) {
@@ -214,7 +215,7 @@ Make exercises specific, realistic, and suitable for their level. Include rest p
         messages: [
           { 
             role: 'system', 
-            content: 'You are a professional fitness trainer. Always respond with valid JSON only. Use German for all exercise names and descriptions.' 
+            content: 'You are a professional fitness trainer. You MUST respond with valid JSON only in the exact format specified. Use German for all exercise names and descriptions. Never add explanatory text outside the JSON structure.' 
           },
           { role: 'user', content: prompt }
         ],
