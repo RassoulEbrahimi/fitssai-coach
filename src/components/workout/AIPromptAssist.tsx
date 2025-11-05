@@ -10,6 +10,7 @@ import { buildContextAwarePrompt, getContextAnalysisMessage } from '@/lib/prompt
 import { AdaptiveHint } from '@/components/ui/AdaptiveHint';
 import { getUserFeedbackSummary, getFeedbackInsight } from '@/integrations/supabase/ai_adaptation';
 import { useAuth } from '@/hooks/useAuth';
+import { AISuccessOverlay } from '@/components/ui/AISuccessOverlay';
 
 type AIState = 'idle' | 'thinking' | 'results' | 'applied';
 
@@ -48,6 +49,7 @@ export function AIPromptAssist({
   const [focus, setFocus] = useState('Full-Body');
   const [intensity, setIntensity] = useState('Kraft & Core');
   const [isSuccess, setIsSuccess] = useState(false);
+  const [showSuccessOverlay, setShowSuccessOverlay] = useState(false);
   const [aiState, setAiState] = useState<AIState>('idle');
   const [feedbackInsight, setFeedbackInsight] = useState<string>('');
   const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -187,13 +189,14 @@ export function AIPromptAssist({
       setAiState('applied');
       await onAddAllWorkouts();
       setIsSuccess(true);
-      
-      // Reset success state after animation completes
-      setTimeout(() => {
-        setIsSuccess(false);
-        handleReset();
-      }, 2400);
+      setShowSuccessOverlay(true);
     }
+  };
+
+  const handleSuccessOverlayFinish = () => {
+    setShowSuccessOverlay(false);
+    setIsSuccess(false);
+    handleReset();
   };
 
   const cardVariants = prefersReducedMotion
@@ -723,6 +726,12 @@ export function AIPromptAssist({
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* Success Overlay */}
+      <AISuccessOverlay 
+        visible={showSuccessOverlay} 
+        onFinish={handleSuccessOverlayFinish} 
+      />
     </div>
   );
 }
