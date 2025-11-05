@@ -660,8 +660,8 @@ export function AIPromptAssist({
               ))}
             </div>
 
-            {/* Global button for full-day generation */}
-            {selectedType === 'full-day' && onAddAllWorkouts && (
+            {/* Global button for full-day and smart mode generation */}
+            {(selectedType === 'full-day' || selectedType === 'context-smart') && onAddAllWorkouts && (
               <motion.div
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
