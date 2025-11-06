@@ -683,7 +683,7 @@ export function AIPromptAssist({
               )}
             </div>
 
-            <div className="space-y-3">
+            <div className="space-y-3 overflow-x-visible">
               {suggestions.map((suggestion, idx) => (
                 <motion.div
                   key={idx}
@@ -704,7 +704,7 @@ export function AIPromptAssist({
                     filter: { duration: 1.2, times: [0, 0.5, 1] }
                   }}
                   whileHover={prefersReducedMotion ? {} : { scale: 1.02 }}
-                  className="p-4 rounded-2xl bg-primary/10 border border-primary/30 backdrop-blur-xl"
+                  className="w-full max-w-full p-4 rounded-2xl bg-primary/10 border border-primary/30 backdrop-blur-xl overflow-visible"
                 >
                   <div className="flex justify-between items-start mb-2">
                     <span className="font-semibold text-primary">{suggestion.name}</span>

@@ -402,7 +402,7 @@ export function AddWorkoutModal({
             >
               {/* Glass container */}
               <div
-                className="relative bg-background/95 backdrop-blur-xl rounded-3xl border border-primary/20 overflow-hidden"
+                className="relative bg-background/95 backdrop-blur-xl rounded-3xl border border-primary/20 overflow-visible"
                 style={{
                   boxShadow: '0 0 40px rgba(16, 185, 129, 0.25), 0 8px 32px rgba(0, 0, 0, 0.12)',
                   willChange: 'transform, opacity'
@@ -432,7 +432,7 @@ export function AddWorkoutModal({
                 </motion.button>
 
                 {/* Content */}
-                <div className="relative p-6 pt-8">
+                <div className="relative p-6 pt-8 pr-[max(1.5rem,env(safe-area-inset-right))]">
                   <h2 className="text-2xl font-semibold mb-6 text-center bg-gradient-to-r from-primary via-emerald-400 to-teal-400 bg-clip-text text-transparent">
                     Training hinzufügen
                   </h2>
@@ -455,7 +455,7 @@ export function AddWorkoutModal({
                       </TabsTrigger>
                     </TabsList>
 
-                     <ScrollArea className="h-[400px] pr-4">
+                     <ScrollArea className="h-[400px] px-6 pr-[max(1.5rem,env(safe-area-inset-right))]">
                       <TabsContent value="ai" className="mt-0">
                          <AIPromptAssist
                           dayContext={dayContext}
