@@ -455,7 +455,7 @@ export function AddWorkoutModal({
                       </TabsTrigger>
                     </TabsList>
 
-                     <ScrollArea className="h-[400px] px-6 pr-[max(1.5rem,env(safe-area-inset-right))]">
+                     <ScrollArea className="h-[min(60vh,520px)] px-6 pr-[max(1.5rem,env(safe-area-inset-right))] overflow-x-visible">
                       <TabsContent value="ai" className="mt-0">
                          <AIPromptAssist
                           dayContext={dayContext}

@@ -683,7 +683,7 @@ export function AIPromptAssist({
               )}
             </div>
 
-            <div className="space-y-3 overflow-x-visible">
+            <div className="space-y-3 overflow-x-visible w-full">
               {suggestions.map((suggestion, idx) => (
                 <motion.div
                   key={idx}
@@ -755,7 +755,7 @@ export function AIPromptAssist({
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: suggestions.length * 0.1 + 0.2 }}
-                className="sticky bottom-0 pt-4 pb-2 bg-gradient-to-t from-background via-background to-transparent"
+                className="sticky bottom-0 pt-4 pb-[max(0.5rem,env(safe-area-inset-bottom))] overflow-visible px-6 bg-gradient-to-t from-background via-background to-transparent"
               >
                 <motion.div
                   animate={
