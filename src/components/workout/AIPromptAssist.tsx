@@ -750,54 +750,7 @@ export function AIPromptAssist({
               ))}
             </div>
 
-            {/* Global button for full-day and smart mode generation */}
-            {(selectedType === 'full-day' || selectedType === 'context-smart') && onAddAllWorkouts && (
-              <motion.div
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: suggestions.length * 0.1 + 0.2 }}
-                className="sticky bottom-0 pt-4 pb-[max(0.5rem,env(safe-area-inset-bottom))] overflow-visible px-4 sm:px-6 bg-gradient-to-t from-background via-background to-transparent -mx-4 sm:-mx-6"
-              >
-                <motion.div
-                  animate={
-                    isSuccess && !prefersReducedMotion
-                      ? {
-                          opacity: [1, 0.7, 1],
-                          scale: [1, 1.04, 1],
-                        }
-                      : {}
-                  }
-                  transition={
-                    isSuccess && !prefersReducedMotion
-                      ? {
-                          duration: 1.2,
-                          repeat: 2,
-                          ease: "easeInOut",
-                        }
-                      : {}
-                  }
-                >
-                  <Button
-                    onClick={handleAddAllWorkoutsWithFeedback}
-                    disabled={isSuccess}
-                    className="w-full gradient-primary shadow-glow hover:shadow-glow-lg transition-all"
-                    size="lg"
-                  >
-                    {isSuccess ? (
-                      <>
-                        <span className="mr-2">✅</span>
-                        Übernommen
-                      </>
-                    ) : (
-                      <>
-                        <span className="mr-2">🟢</span>
-                        Plan für den ganzen Tag übernehmen
-                      </>
-                    )}
-                  </Button>
-                </motion.div>
-              </motion.div>
-            )}
+            {/* Footer buttons will be rendered in parent modal */}
           </motion.div>
         )}
 

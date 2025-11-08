@@ -479,14 +479,35 @@ export function AddWorkoutModal({
 
                   {/* Footer buttons - Only for AI tab */}
                   {activeTab === 'ai' && (
-                    <div className="flex items-center justify-end gap-3 mt-6 pt-6 border-t border-border/50">
+                    <div className="flex items-center justify-between gap-3 mt-6 pt-6 border-t border-border/50">
                       <Button
                         variant="ghost"
                         onClick={onClose}
-                        className="hover:bg-muted/80"
+                        className="hover:bg-muted/80 flex-shrink-0"
                       >
                         Abbrechen
                       </Button>
+                      
+                      {/* Show primary CTA only when suggestions are available */}
+                      {suggestions.length > 0 && (
+                        <Button
+                          onClick={() => handleAddAllWorkouts()}
+                          className="gradient-primary shadow-glow hover:shadow-glow-lg transition-all flex-1 min-w-0"
+                          disabled={isLoading}
+                        >
+                          {isLoading ? (
+                            <>
+                              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                              Wird hinzugefügt...
+                            </>
+                          ) : (
+                            <>
+                              <span className="mr-2">🟢</span>
+                              <span className="truncate">Plan übernehmen</span>
+                            </>
+                          )}
+                        </Button>
+                      )}
                     </div>
                   )}
                 </div>
