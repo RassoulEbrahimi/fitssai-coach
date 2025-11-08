@@ -239,7 +239,7 @@ export function AddWorkoutModal({
       // Add new exercise - handle both Exercise and WorkoutSuggestion types
       dayData.exercises.push({
         name: exercise.name,
-        sets: typeof exercise.sets === 'number' ? exercise.sets.toString() : String(exercise.sets),
+        sets: typeof exercise.sets === 'number' ? exercise.sets : parseInt(String(exercise.sets)) || 1,
         reps: typeof exercise.reps === 'number' ? exercise.reps.toString() : String(exercise.reps),
         rest: isWorkoutSuggestion ? '90s' : (exercise as Exercise).rest || '90s',
         weight: isWorkoutSuggestion ? '' : (exercise as Exercise).weight || '',
@@ -326,7 +326,7 @@ export function AddWorkoutModal({
       // Add all suggestions
       const newExercises = suggestions.map(suggestion => ({
         name: suggestion.name,
-        sets: typeof suggestion.sets === 'number' ? suggestion.sets.toString() : String(suggestion.sets),
+        sets: typeof suggestion.sets === 'number' ? suggestion.sets : parseInt(String(suggestion.sets)) || 1,
         reps: typeof suggestion.reps === 'number' ? suggestion.reps.toString() : String(suggestion.reps),
         rest: '90s',
         weight: '',

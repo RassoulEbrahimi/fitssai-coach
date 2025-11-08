@@ -22,7 +22,13 @@ const fail = (message: string, status = 400) => json({ success: false, error: me
 // Validation schema for exercise
 const ExerciseSchema = z.object({
   name: z.string().min(1, "Exercise name is required").max(100),
-  sets: z.number().int().min(1).max(20),
+  sets: z.union([z.number(), z.string()]).transform(val => {
+    const num = typeof val === 'string' ? parseInt(val, 10) : val;
+    if (isNaN(num) || num < 1 || num > 20) {
+      throw new Error('Sets must be a number between 1 and 20');
+    }
+    return num;
+  }),
   reps: z.string().min(1).max(50),
   weight: z.string().max(50).optional(),
   rest: z.string().max(50).optional(),
