@@ -432,7 +432,7 @@ export function AddWorkoutModal({
                 </motion.button>
 
                 {/* Content */}
-                <div className="relative p-6 pt-8 pr-[max(1.5rem,env(safe-area-inset-right))]">
+                <div className="relative p-4 sm:p-6 pt-8 pr-[max(1rem,env(safe-area-inset-right))] sm:pr-[max(1.5rem,env(safe-area-inset-right))]">
                   <h2 className="text-2xl font-semibold mb-6 text-center bg-gradient-to-r from-primary via-emerald-400 to-teal-400 bg-clip-text text-transparent">
                     Training hinzufügen
                   </h2>
@@ -455,7 +455,7 @@ export function AddWorkoutModal({
                       </TabsTrigger>
                     </TabsList>
 
-                     <ScrollArea className="h-[min(60vh,520px)] px-6 pr-[max(1.5rem,env(safe-area-inset-right))] overflow-x-visible">
+                     <ScrollArea className="h-[min(60vh,520px)] px-4 sm:px-6 pr-[max(1rem,env(safe-area-inset-right))] sm:pr-[max(1.5rem,env(safe-area-inset-right))] overflow-x-visible">
                       <TabsContent value="ai" className="mt-0">
                          <AIPromptAssist
                           dayContext={dayContext}

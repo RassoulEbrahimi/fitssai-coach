@@ -683,7 +683,7 @@ export function AIPromptAssist({
               )}
             </div>
 
-            <div className="space-y-3 overflow-x-visible w-full">
+            <div className="space-y-3 overflow-x-visible w-full min-w-0">
               {suggestions.map((suggestion, idx) => (
                 <motion.div
                   key={idx}
@@ -704,17 +704,18 @@ export function AIPromptAssist({
                     filter: { duration: 1.2, times: [0, 0.5, 1] }
                   }}
                   whileHover={prefersReducedMotion ? {} : { scale: 1.02 }}
-                  className="w-full max-w-full p-4 rounded-2xl bg-primary/10 border border-primary/30 backdrop-blur-xl overflow-visible"
+                  className="w-full max-w-full min-w-0 p-3 sm:p-4 rounded-xl sm:rounded-2xl bg-primary/10 border border-primary/30 backdrop-blur-xl overflow-visible"
+                  style={{ wordWrap: 'break-word', overflowWrap: 'anywhere', hyphens: 'auto' }}
                 >
-                  <div className="flex justify-between items-start mb-2">
-                    <span className="font-semibold text-primary">{suggestion.name}</span>
-                    <span className="text-xs text-primary/70">{suggestion.duration} min</span>
+                  <div className="flex justify-between items-start gap-2 mb-2 min-w-0">
+                    <span className="font-semibold text-primary text-sm sm:text-base break-words min-w-0 flex-1">{suggestion.name}</span>
+                    <span className="text-xs text-primary/70 flex-shrink-0">{suggestion.duration} min</span>
                   </div>
-                  <p className="text-xs text-muted-foreground mb-2">
+                  <p className="text-xs text-muted-foreground mb-2 break-words">
                     {suggestion.sets} Sätze × {suggestion.reps} Wdh.
                   </p>
                   {suggestion.description && (
-                    <p className="text-xs text-muted-foreground/80 mb-3 italic">
+                    <p className="text-xs text-muted-foreground/80 mb-3 italic break-words" style={{ wordWrap: 'break-word', overflowWrap: 'anywhere' }}>
                       {suggestion.description}
                     </p>
                   )}
@@ -755,7 +756,7 @@ export function AIPromptAssist({
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: suggestions.length * 0.1 + 0.2 }}
-                className="sticky bottom-0 pt-4 pb-[max(0.5rem,env(safe-area-inset-bottom))] overflow-visible px-6 bg-gradient-to-t from-background via-background to-transparent"
+                className="sticky bottom-0 pt-4 pb-[max(0.5rem,env(safe-area-inset-bottom))] overflow-visible px-4 sm:px-6 bg-gradient-to-t from-background via-background to-transparent -mx-4 sm:-mx-6"
               >
                 <motion.div
                   animate={
