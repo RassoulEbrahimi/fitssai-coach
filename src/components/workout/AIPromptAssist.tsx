@@ -709,15 +709,19 @@ export function AIPromptAssist({
                 >
                   <div className="flex justify-between items-start gap-2 mb-2 min-w-0">
                     <span className="font-semibold text-primary text-sm sm:text-base break-words min-w-0 flex-1">{suggestion.name}</span>
-                    <span className="text-xs text-primary/70 flex-shrink-0">{suggestion.duration} min</span>
+                    <span className="text-xs text-muted-foreground flex-shrink-0 whitespace-nowrap">
+                      {suggestion.sets} Sätze × {suggestion.reps} Wdh.
+                    </span>
                   </div>
-                  <p className="text-xs text-muted-foreground mb-2 break-words">
-                    {suggestion.sets} Sätze × {suggestion.reps} Wdh.
-                  </p>
                   {suggestion.description && (
-                    <p className="text-xs text-muted-foreground/80 mb-3 italic break-words" style={{ wordWrap: 'break-word', overflowWrap: 'anywhere' }}>
-                      {suggestion.description}
-                    </p>
+                    <div className="relative mb-3">
+                      <p className="text-xs text-muted-foreground/80 italic break-words pr-16" style={{ wordWrap: 'break-word', overflowWrap: 'anywhere' }}>
+                        {suggestion.description}
+                      </p>
+                      <span className="absolute bottom-0 right-0 text-xs text-primary/70 whitespace-nowrap">
+                        {suggestion.duration} min
+                      </span>
+                    </div>
                   )}
                   {/* Only show individual add button for single workout mode */}
                   {selectedType === 'single-workout' && (
