@@ -707,18 +707,20 @@ export function AIPromptAssist({
                   className="w-full max-w-full min-w-0 p-3 sm:p-4 rounded-xl sm:rounded-2xl bg-primary/10 border border-primary/30 backdrop-blur-xl overflow-visible"
                   style={{ wordWrap: 'break-word', overflowWrap: 'anywhere', hyphens: 'auto' }}
                 >
-                  <div className="flex justify-between items-start gap-2 mb-2 min-w-0">
-                    <span className="font-semibold text-primary text-sm sm:text-base break-words min-w-0 flex-1">{suggestion.name}</span>
-                    <span className="text-xs text-muted-foreground flex-shrink-0 whitespace-nowrap">
+                  <div className="grid grid-cols-[1fr_auto] gap-x-2 items-start mb-2">
+                    <span className="font-semibold text-primary text-sm sm:text-base break-words min-w-0" style={{ wordWrap: 'break-word', overflowWrap: 'anywhere' }}>
+                      {suggestion.name}
+                    </span>
+                    <span className="text-xs text-muted-foreground whitespace-nowrap">
                       {suggestion.sets} Sätze × {suggestion.reps} Wdh.
                     </span>
                   </div>
                   {suggestion.description && (
-                    <div className="flex flex-wrap items-end justify-between gap-2 mb-3">
-                      <p className="text-xs text-muted-foreground/80 italic break-words flex-1 min-w-0" style={{ wordWrap: 'break-word', overflowWrap: 'anywhere' }}>
+                    <div className="grid grid-cols-[1fr_auto] gap-x-2 items-end mb-3">
+                      <p className="text-xs text-muted-foreground/80 italic break-words min-w-0" style={{ wordWrap: 'break-word', overflowWrap: 'anywhere' }}>
                         {suggestion.description}
                       </p>
-                      <span className="text-xs text-primary/70 whitespace-nowrap flex-shrink-0">
+                      <span className="text-xs text-primary/70 whitespace-nowrap">
                         {suggestion.duration} min
                       </span>
                     </div>
