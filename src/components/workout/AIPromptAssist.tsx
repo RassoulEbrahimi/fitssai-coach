@@ -714,11 +714,11 @@ export function AIPromptAssist({
                     </span>
                   </div>
                   {suggestion.description && (
-                    <div className="relative mb-3">
-                      <p className="text-xs text-muted-foreground/80 italic break-words pr-16" style={{ wordWrap: 'break-word', overflowWrap: 'anywhere' }}>
+                    <div className="flex flex-wrap items-end justify-between gap-2 mb-3">
+                      <p className="text-xs text-muted-foreground/80 italic break-words flex-1 min-w-0" style={{ wordWrap: 'break-word', overflowWrap: 'anywhere' }}>
                         {suggestion.description}
                       </p>
-                      <span className="absolute bottom-0 right-0 text-xs text-primary/70 whitespace-nowrap">
+                      <span className="text-xs text-primary/70 whitespace-nowrap flex-shrink-0">
                         {suggestion.duration} min
                       </span>
                     </div>
