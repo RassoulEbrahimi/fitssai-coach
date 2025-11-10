@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Button } from '@/components/ui/button';
-import { Loader2, RefreshCw, Sparkles, Calendar, Dumbbell, Brain } from 'lucide-react';
+import { Loader2, RefreshCw, Sparkles, Calendar, Dumbbell, Brain, Maximize2, Minimize2 } from 'lucide-react';
 import { InlineEditableText } from './InlineEditableText';
 import { cn } from '@/lib/utils';
 import { useWorkoutContext } from '@/hooks/useWorkoutContext';
@@ -13,6 +13,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { AISuccessOverlay } from '@/components/ui/AISuccessOverlay';
 import { SmartFocusBar, SmartFocusType } from './SmartFocusBar';
 import { supabase } from '@/integrations/supabase/client';
+import { Switch } from '@/components/ui/switch';
 
 type AIState = 'idle' | 'thinking' | 'results' | 'applied';
 
@@ -58,6 +59,10 @@ export function AIPromptAssist({
     const saved = localStorage.getItem('fitssai:lastSmartFocus');
     return (saved as SmartFocusType) || 'auto';
   });
+  const [isCompact, setIsCompact] = useState(() => {
+    const saved = localStorage.getItem('fitssai:compactCards');
+    return saved === 'true';
+  });
   const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   const workoutContext = useWorkoutContext();
   const { user } = useAuth();
@@ -66,6 +71,11 @@ export function AIPromptAssist({
   useEffect(() => {
     localStorage.setItem('fitssai:lastSmartFocus', smartFocus);
   }, [smartFocus]);
+
+  // Persist compact mode to localStorage
+  useEffect(() => {
+    localStorage.setItem('fitssai:compactCards', isCompact.toString());
+  }, [isCompact]);
 
   // Update aiState based on loading and suggestions
   useEffect(() => {
@@ -683,6 +693,21 @@ export function AIPromptAssist({
               )}
             </div>
 
+            {/* Compact density toggle */}
+            <div className="flex items-center justify-end gap-2 pb-2">
+              <span className="text-xs text-muted-foreground">Kompakt</span>
+              <Switch
+                checked={isCompact}
+                onCheckedChange={setIsCompact}
+                aria-label="Toggle compact card layout"
+              />
+              {isCompact ? (
+                <Minimize2 className="w-3.5 h-3.5 text-muted-foreground" />
+              ) : (
+                <Maximize2 className="w-3.5 h-3.5 text-muted-foreground" />
+              )}
+            </div>
+
             <div className="space-y-3 overflow-x-visible w-full min-w-0">
               {suggestions.map((suggestion, idx) => (
                 <motion.div
@@ -704,15 +729,24 @@ export function AIPromptAssist({
                     filter: { duration: 1.2, times: [0, 0.5, 1] }
                   }}
                   whileHover={prefersReducedMotion ? {} : { scale: 1.02 }}
-                  className="w-full max-w-full min-w-0 p-3 sm:p-4 rounded-xl sm:rounded-2xl bg-primary/10 border border-primary/30 backdrop-blur-xl overflow-visible"
+                  className={cn(
+                    "w-full max-w-full min-w-0 rounded-xl sm:rounded-2xl bg-primary/10 border border-primary/30 backdrop-blur-xl overflow-visible",
+                    isCompact ? "p-2 sm:p-2.5" : "p-3 sm:p-4"
+                  )}
                   style={{ wordWrap: 'break-word', overflowWrap: 'anywhere', hyphens: 'auto' }}
                 >
-                  <div className="grid grid-cols-[1fr_auto] gap-x-2 items-start mb-2">
-                    <span className="font-semibold text-primary text-sm sm:text-base break-words min-w-0" style={{ wordWrap: 'break-word', overflowWrap: 'anywhere' }}>
+                  <div className={cn("grid grid-cols-[1fr_auto] gap-x-2 items-start", isCompact ? "mb-1" : "mb-2")}>
+                    <span 
+                      className={cn(
+                        "font-semibold text-primary break-words min-w-0",
+                        isCompact ? "text-xs sm:text-sm" : "text-sm sm:text-base"
+                      )}
+                      style={{ wordWrap: 'break-word', overflowWrap: 'anywhere' }}
+                    >
                       {suggestion.name}
                     </span>
                     <motion.span 
-                      className="text-xs text-muted-foreground whitespace-nowrap"
+                      className={cn("text-muted-foreground whitespace-nowrap", isCompact ? "text-[10px]" : "text-xs")}
                       initial={{ opacity: 0, x: 10 }}
                       animate={{ opacity: 1, x: 0 }}
                       transition={{ delay: idx * 0.1 + 0.3, duration: 0.4 }}
@@ -721,12 +755,18 @@ export function AIPromptAssist({
                     </motion.span>
                   </div>
                   {suggestion.description && (
-                    <div className="grid grid-cols-[1fr_auto] gap-x-2 items-end mb-3">
-                      <p className="text-xs text-muted-foreground/80 italic break-words min-w-0" style={{ wordWrap: 'break-word', overflowWrap: 'anywhere' }}>
+                    <div className={cn("grid grid-cols-[1fr_auto] gap-x-2 items-end", isCompact ? "mb-1.5" : "mb-3")}>
+                      <p 
+                        className={cn(
+                          "text-muted-foreground/80 italic break-words min-w-0",
+                          isCompact ? "text-[10px]" : "text-xs"
+                        )}
+                        style={{ wordWrap: 'break-word', overflowWrap: 'anywhere' }}
+                      >
                         {suggestion.description}
                       </p>
                       <motion.span 
-                        className="text-xs text-primary/70 whitespace-nowrap"
+                        className={cn("text-primary/70 whitespace-nowrap", isCompact ? "text-[10px]" : "text-xs")}
                         initial={{ opacity: 0, x: 10 }}
                         animate={{ opacity: 1, x: 0 }}
                         transition={{ delay: idx * 0.1 + 0.5, duration: 0.4 }}
