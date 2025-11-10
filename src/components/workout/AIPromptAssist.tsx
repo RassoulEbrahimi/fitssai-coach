@@ -711,18 +711,28 @@ export function AIPromptAssist({
                     <span className="font-semibold text-primary text-sm sm:text-base break-words min-w-0" style={{ wordWrap: 'break-word', overflowWrap: 'anywhere' }}>
                       {suggestion.name}
                     </span>
-                    <span className="text-xs text-muted-foreground whitespace-nowrap">
+                    <motion.span 
+                      className="text-xs text-muted-foreground whitespace-nowrap"
+                      initial={{ opacity: 0, x: 10 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      transition={{ delay: idx * 0.1 + 0.3, duration: 0.4 }}
+                    >
                       {suggestion.sets} Sätze × {suggestion.reps} Wdh.
-                    </span>
+                    </motion.span>
                   </div>
                   {suggestion.description && (
                     <div className="grid grid-cols-[1fr_auto] gap-x-2 items-end mb-3">
                       <p className="text-xs text-muted-foreground/80 italic break-words min-w-0" style={{ wordWrap: 'break-word', overflowWrap: 'anywhere' }}>
                         {suggestion.description}
                       </p>
-                      <span className="text-xs text-primary/70 whitespace-nowrap">
+                      <motion.span 
+                        className="text-xs text-primary/70 whitespace-nowrap"
+                        initial={{ opacity: 0, x: 10 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        transition={{ delay: idx * 0.1 + 0.5, duration: 0.4 }}
+                      >
                         {suggestion.duration} min
-                      </span>
+                      </motion.span>
                     </div>
                   )}
                   {/* Only show individual add button for single workout mode */}
