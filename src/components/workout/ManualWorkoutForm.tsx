@@ -83,17 +83,22 @@ export const ManualWorkoutForm: React.FC<ManualWorkoutFormProps> = ({
       <div className="space-y-2">
         <Label className="text-emerald-200">Übung auswählen</Label>
         {selectedExercise ? (
-          <div className="flex items-center justify-between p-3 bg-emerald-500/10 rounded-lg border border-emerald-400/30 backdrop-blur-xl">
-            <div className="flex items-center gap-2">
-              <span className="text-2xl">{selectedExercise.icon}</span>
-              <span className="font-medium text-emerald-100">{selectedExercise.name}</span>
+          <div className="flex items-center justify-between gap-2 px-3 sm:px-4 py-3 bg-emerald-500/10 rounded-lg border border-emerald-400/30 backdrop-blur-xl min-w-0 w-full">
+            <div className="flex items-center gap-2 flex-1 min-w-0">
+              <span className="text-2xl flex-shrink-0">{selectedExercise.icon}</span>
+              <span 
+                className="font-medium text-emerald-100 truncate" 
+                title={selectedExercise.name}
+              >
+                {selectedExercise.name}
+              </span>
             </div>
             <Button
               type="button"
               variant="ghost"
               size="sm"
               onClick={() => setSelectedExercise(null)}
-              className="h-8 text-emerald-300 hover:text-emerald-100"
+              className="h-8 text-emerald-300 hover:text-emerald-100 flex-shrink-0 ml-2"
             >
               Ändern
             </Button>
