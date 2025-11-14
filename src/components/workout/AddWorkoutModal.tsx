@@ -432,7 +432,7 @@ export function AddWorkoutModal({
                 </motion.button>
 
                 {/* Content */}
-                <div className="relative px-3 sm:px-4 py-4 sm:py-6 pt-8 pr-[max(0.75rem,env(safe-area-inset-right))] sm:pr-[max(1rem,env(safe-area-inset-right))]">
+                <div className="relative px-3 sm:px-4 py-4 sm:py-6 pt-8 pr-[max(0.75rem,env(safe-area-inset-right))] sm:pr-[max(1rem,env(safe-area-inset-right))] pb-[calc(5rem+env(safe-area-inset-bottom))] md:pb-6">
                   <h2 className="text-2xl font-semibold mb-6 text-center bg-gradient-to-r from-primary via-emerald-400 to-teal-400 bg-clip-text text-transparent">
                     Training hinzufügen
                   </h2>
@@ -479,7 +479,7 @@ export function AddWorkoutModal({
 
                   {/* Footer buttons - Only for AI tab */}
                   {activeTab === 'ai' && (
-                    <div className="flex items-center justify-between gap-3 mt-6 pt-6 border-t border-border/50">
+                    <div className="flex items-center justify-between gap-3 mt-6 pt-6 border-t border-border/50 md:relative md:bottom-auto fixed bottom-[calc(5rem+env(safe-area-inset-bottom))] left-0 right-0 px-3 sm:px-4 bg-background/95 backdrop-blur-xl border-t md:border-t-0 md:bg-transparent md:backdrop-blur-none md:px-0 z-10">
                       <Button
                         variant="ghost"
                         onClick={onClose}
