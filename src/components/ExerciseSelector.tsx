@@ -111,6 +111,7 @@ export const ExerciseSelector: React.FC<ExerciseSelectorProps> = ({
           value={searchValue}
           onValueChange={setSearchValue}
           autoFocus={false}
+          inputMode="search"
         />
       </Command>
       
