@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
+import { Edit3 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -98,9 +99,10 @@ export const ManualWorkoutForm: React.FC<ManualWorkoutFormProps> = ({
               variant="ghost"
               size="sm"
               onClick={() => setSelectedExercise(null)}
-              className="h-8 text-emerald-300 hover:text-emerald-100 flex-shrink-0 ml-2"
+              className="h-8 w-8 p-0 text-emerald-300 hover:text-emerald-100 flex-shrink-0 ml-2 transition-colors duration-200"
+              title="Ändern"
             >
-              Ändern
+              <Edit3 className="w-5 h-5" />
             </Button>
           </div>
         ) : (
