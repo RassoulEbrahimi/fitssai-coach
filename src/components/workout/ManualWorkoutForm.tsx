@@ -79,10 +79,9 @@ export const ManualWorkoutForm: React.FC<ManualWorkoutFormProps> = ({
   };
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-4 max-w-full overflow-hidden px-3">
+    <form onSubmit={handleSubmit} className="space-y-3 sm:space-y-4 max-w-full overflow-hidden px-3 pt-2 sm:pt-4">
       {/* Exercise Selection */}
-      <div className="space-y-2">
-        <Label className="text-emerald-200">Übung auswählen</Label>
+      <div>
         <AnimatePresence mode="wait">
           {selectedExercise ? (
             <motion.div
@@ -132,7 +131,7 @@ export const ManualWorkoutForm: React.FC<ManualWorkoutFormProps> = ({
 
       {/* Dynamic Fields Based on Exercise Type */}
       {selectedExercise && (
-        <div className="space-y-4 pt-4 border-t border-emerald-400/20">
+        <div className="space-y-3 sm:space-y-4 pt-3 sm:pt-4 border-t border-emerald-400/20">
           <AnimatePresence mode="wait">
             {selectedExercise.type === 'cardio' ? (
               <motion.div
@@ -235,7 +234,7 @@ export const ManualWorkoutForm: React.FC<ManualWorkoutFormProps> = ({
       )}
 
       {/* Form Actions */}
-      <div className="flex flex-wrap justify-between gap-2 pt-4 w-full max-w-full">
+      <div className="flex flex-wrap justify-between gap-2 pt-3 sm:pt-4 w-full max-w-full">
         {onCancel && (
           <Button
             type="button"
@@ -265,7 +264,7 @@ export const ManualWorkoutForm: React.FC<ManualWorkoutFormProps> = ({
           <Button
             type="submit"
             disabled={!isFormValid() || isLoading}
-            className="flex-1 sm:flex-none bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600 text-white font-medium shadow-lg"
+            className="flex-1 sm:flex-none bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600 text-white font-medium shadow-lg py-2.5 sm:py-3"
           >
             {isLoading ? 'Wird hinzugefügt...' : 'Hinzufügen'}
           </Button>
