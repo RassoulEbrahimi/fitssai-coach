@@ -303,7 +303,11 @@ const InlineEditableExercise: React.FC<InlineEditableExerciseProps> = ({
               <ChevronsUpDown className="ml-1 h-3 w-3 shrink-0 opacity-50" />
             </Button>
           </PopoverTrigger>
-          <PopoverContent className="w-[90vw] sm:w-[420px] p-3 z-[100] animate-in fade-in-0 zoom-in-95 data-[side=bottom]:slide-in-from-top-2 data-[side=top]:slide-in-from-bottom-2 duration-200" align="start">
+          <PopoverContent 
+            className="w-[90vw] sm:w-[420px] p-3 z-[100] animate-in fade-in-0 zoom-in-95 data-[side=bottom]:slide-in-from-top-2 data-[side=top]:slide-in-from-bottom-2 duration-200" 
+            align="start"
+            onOpenAutoFocus={(e) => e.preventDefault()}
+          >
             <ExerciseSelector 
               onSelect={handleNameChange} 
               currentExercise={PREDEFINED_EXERCISES.find(ex => ex.name === exercise.name) || null} 
