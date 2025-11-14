@@ -131,28 +131,28 @@ export const ManualWorkoutForm: React.FC<ManualWorkoutFormProps> = ({
       {selectedExercise && (
         <div className="space-y-4 pt-4 border-t border-emerald-400/20">
           {selectedExercise.type === 'cardio' ? (
-            // Cardio fields
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div className="space-y-2 min-w-0">
-                <Label htmlFor="distance" className="text-emerald-200">Distanz (km)</Label>
+            // Cardio fields - Compact 2-column grid
+            <div className="grid grid-cols-2 gap-3 sm:gap-4">
+              <div className="space-y-1 min-w-0 flex-1">
+                <Label htmlFor="distance" className="text-xs font-medium text-emerald-200">Distanz</Label>
                 <Input
                   id="distance"
                   type="text"
-                  placeholder="z.B. 5"
+                  placeholder="z.B. 5 km"
                   value={distance}
                   onChange={(e) => setDistance(e.target.value)}
-                  className="bg-emerald-500/5 border-emerald-400/30 text-emerald-100"
+                  className="bg-emerald-500/5 border-emerald-400/30 text-emerald-100 py-2.5 px-3 sm:py-3"
                 />
               </div>
-              <div className="space-y-2 min-w-0">
-                <Label htmlFor="duration" className="text-emerald-200">Zeit (min)</Label>
+              <div className="space-y-1 min-w-0 flex-1">
+                <Label htmlFor="duration" className="text-xs font-medium text-emerald-200">Zeit</Label>
                 <Input
                   id="duration"
                   type="text"
-                  placeholder="z.B. 30"
+                  placeholder="z.B. 30 min"
                   value={duration}
                   onChange={(e) => setDuration(e.target.value)}
-                  className="bg-emerald-500/5 border-emerald-400/30 text-emerald-100"
+                  className="bg-emerald-500/5 border-emerald-400/30 text-emerald-100 py-2.5 px-3 sm:py-3"
                 />
               </div>
             </div>
