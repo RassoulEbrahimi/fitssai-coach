@@ -157,61 +157,56 @@ export const ManualWorkoutForm: React.FC<ManualWorkoutFormProps> = ({
               </div>
             </div>
           ) : (
-            // Strength training fields
-            <>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div className="space-y-2 min-w-0">
-                  <Label htmlFor="sets" className="text-emerald-200">Sätze *</Label>
-                  <Input
-                    id="sets"
-                    type="number"
-                    min="1"
-                    max="20"
-                    value={sets}
-                    onChange={(e) => setSets(e.target.value)}
-                    required
-                    className="bg-emerald-500/5 border-emerald-400/30 text-emerald-100"
-                  />
-                </div>
-                <div className="space-y-2 min-w-0">
-                  <Label htmlFor="reps" className="text-emerald-200">Wiederholungen *</Label>
-                  <Input
-                    id="reps"
-                    type="text"
-                    placeholder="z.B. 8-12"
-                    value={reps}
-                    onChange={(e) => setReps(e.target.value)}
-                    required
-                    className="bg-emerald-500/5 border-emerald-400/30 text-emerald-100"
-                  />
-                </div>
+            // Strength training fields - Compact 2×2 grid
+            <div className="grid grid-cols-2 gap-3 sm:gap-4">
+              <div className="space-y-1 min-w-0 flex-1">
+                <Label htmlFor="sets" className="text-xs font-medium text-emerald-200">Sätze *</Label>
+                <Input
+                  id="sets"
+                  type="number"
+                  min="1"
+                  max="20"
+                  value={sets}
+                  onChange={(e) => setSets(e.target.value)}
+                  required
+                  className="bg-emerald-500/5 border-emerald-400/30 text-emerald-100 py-2.5 px-3 sm:py-3"
+                />
               </div>
-              
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div className="space-y-2 min-w-0">
-                  <Label htmlFor="weight" className="text-emerald-200">Gewicht (optional)</Label>
-                  <Input
-                    id="weight"
-                    type="text"
-                    placeholder="z.B. 60kg"
-                    value={weight}
-                    onChange={(e) => setWeight(e.target.value)}
-                    className="bg-emerald-500/5 border-emerald-400/30 text-emerald-100"
-                  />
-                </div>
-                <div className="space-y-2 min-w-0">
-                  <Label htmlFor="rest" className="text-emerald-200">Pause (optional)</Label>
-                  <Input
-                    id="rest"
-                    type="text"
-                    placeholder="z.B. 90s"
-                    value={rest}
-                    onChange={(e) => setRest(e.target.value)}
-                    className="bg-emerald-500/5 border-emerald-400/30 text-emerald-100"
-                  />
-                </div>
+              <div className="space-y-1 min-w-0 flex-1">
+                <Label htmlFor="reps" className="text-xs font-medium text-emerald-200">Reps *</Label>
+                <Input
+                  id="reps"
+                  type="text"
+                  placeholder="z.B. 8-12"
+                  value={reps}
+                  onChange={(e) => setReps(e.target.value)}
+                  required
+                  className="bg-emerald-500/5 border-emerald-400/30 text-emerald-100 py-2.5 px-3 sm:py-3"
+                />
               </div>
-            </>
+              <div className="space-y-1 min-w-0 flex-1">
+                <Label htmlFor="weight" className="text-xs font-medium text-emerald-200">Gewicht</Label>
+                <Input
+                  id="weight"
+                  type="text"
+                  placeholder="z.B. 60kg"
+                  value={weight}
+                  onChange={(e) => setWeight(e.target.value)}
+                  className="bg-emerald-500/5 border-emerald-400/30 text-emerald-100 py-2.5 px-3 sm:py-3"
+                />
+              </div>
+              <div className="space-y-1 min-w-0 flex-1">
+                <Label htmlFor="rest" className="text-xs font-medium text-emerald-200">Pause</Label>
+                <Input
+                  id="rest"
+                  type="text"
+                  placeholder="z.B. 90s"
+                  value={rest}
+                  onChange={(e) => setRest(e.target.value)}
+                  className="bg-emerald-500/5 border-emerald-400/30 text-emerald-100 py-2.5 px-3 sm:py-3"
+                />
+              </div>
+            </div>
           )}
         </div>
       )}
