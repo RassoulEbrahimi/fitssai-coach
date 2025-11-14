@@ -78,7 +78,7 @@ export const ManualWorkoutForm: React.FC<ManualWorkoutFormProps> = ({
   };
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-4">
+    <form onSubmit={handleSubmit} className="space-y-4 max-w-full overflow-hidden px-3">
       {/* Exercise Selection */}
       <div className="space-y-2">
         <Label className="text-emerald-200">Übung auswählen</Label>
@@ -108,8 +108,8 @@ export const ManualWorkoutForm: React.FC<ManualWorkoutFormProps> = ({
         <div className="space-y-4 pt-4 border-t border-emerald-400/20">
           {selectedExercise.type === 'cardio' ? (
             // Cardio fields
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="space-y-2 min-w-0">
                 <Label htmlFor="distance" className="text-emerald-200">Distanz (km)</Label>
                 <Input
                   id="distance"
@@ -120,7 +120,7 @@ export const ManualWorkoutForm: React.FC<ManualWorkoutFormProps> = ({
                   className="bg-emerald-500/5 border-emerald-400/30 text-emerald-100"
                 />
               </div>
-              <div className="space-y-2">
+              <div className="space-y-2 min-w-0">
                 <Label htmlFor="duration" className="text-emerald-200">Zeit (min)</Label>
                 <Input
                   id="duration"
@@ -135,8 +135,8 @@ export const ManualWorkoutForm: React.FC<ManualWorkoutFormProps> = ({
           ) : (
             // Strength training fields
             <>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="space-y-2 min-w-0">
                   <Label htmlFor="sets" className="text-emerald-200">Sätze *</Label>
                   <Input
                     id="sets"
@@ -149,7 +149,7 @@ export const ManualWorkoutForm: React.FC<ManualWorkoutFormProps> = ({
                     className="bg-emerald-500/5 border-emerald-400/30 text-emerald-100"
                   />
                 </div>
-                <div className="space-y-2">
+                <div className="space-y-2 min-w-0">
                   <Label htmlFor="reps" className="text-emerald-200">Wiederholungen *</Label>
                   <Input
                     id="reps"
@@ -163,8 +163,8 @@ export const ManualWorkoutForm: React.FC<ManualWorkoutFormProps> = ({
                 </div>
               </div>
               
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="space-y-2 min-w-0">
                   <Label htmlFor="weight" className="text-emerald-200">Gewicht (optional)</Label>
                   <Input
                     id="weight"
@@ -175,7 +175,7 @@ export const ManualWorkoutForm: React.FC<ManualWorkoutFormProps> = ({
                     className="bg-emerald-500/5 border-emerald-400/30 text-emerald-100"
                   />
                 </div>
-                <div className="space-y-2">
+                <div className="space-y-2 min-w-0">
                   <Label htmlFor="rest" className="text-emerald-200">Pause (optional)</Label>
                   <Input
                     id="rest"
@@ -193,7 +193,7 @@ export const ManualWorkoutForm: React.FC<ManualWorkoutFormProps> = ({
       )}
 
       {/* Form Actions */}
-      <div className="flex justify-end gap-2 pt-4">
+      <div className="flex flex-wrap justify-between gap-2 pt-4 w-full max-w-full">
         {onCancel && (
           <Button
             type="button"
@@ -223,7 +223,7 @@ export const ManualWorkoutForm: React.FC<ManualWorkoutFormProps> = ({
           <Button
             type="submit"
             disabled={!isFormValid() || isLoading}
-            className="bg-emerald-500 hover:bg-emerald-600 text-white w-full"
+            className="flex-1 sm:flex-none bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600 text-white font-medium shadow-lg"
           >
             {isLoading ? 'Wird hinzugefügt...' : 'Hinzufügen'}
           </Button>
