@@ -432,7 +432,7 @@ export function AddWorkoutModal({
                 </motion.button>
 
                 {/* Content */}
-                <div className="relative px-3 sm:px-4 py-4 sm:py-6 pt-8 pr-[max(0.75rem,env(safe-area-inset-right))] sm:pr-[max(1rem,env(safe-area-inset-right))] pb-[max(1rem,env(safe-area-inset-bottom))] sm:pb-6">
+                <div className="relative px-3 sm:px-4 py-4 sm:py-6 pt-8 pr-[max(0.75rem,env(safe-area-inset-right))] sm:pr-[max(1rem,env(safe-area-inset-right))] pb-[max(0.5rem,env(safe-area-inset-bottom))] sm:pb-6">
                   <h2 className="text-2xl font-semibold mb-6 text-center bg-gradient-to-r from-primary via-emerald-400 to-teal-400 bg-clip-text text-transparent">
                     Training hinzufügen
                   </h2>
@@ -455,7 +455,7 @@ export function AddWorkoutModal({
                       </TabsTrigger>
                     </TabsList>
 
-                     <ScrollArea className="h-[min(calc(60vh-140px),480px)] sm:h-[min(60vh,520px)] px-3 sm:px-4 pr-[max(0.75rem,env(safe-area-inset-right))] sm:pr-[max(1rem,env(safe-area-inset-right))] max-w-full overflow-x-hidden">
+                     <ScrollArea className="h-[min(calc(60vh-100px),500px)] sm:h-[min(60vh,520px)] px-3 sm:px-4 pr-[max(0.75rem,env(safe-area-inset-right))] sm:pr-[max(1rem,env(safe-area-inset-right))] max-w-full overflow-x-hidden">
                       <TabsContent value="ai" className="mt-0">
                          <AIPromptAssist
                           dayContext={dayContext}
@@ -479,7 +479,7 @@ export function AddWorkoutModal({
 
                   {/* Footer buttons - Only for AI tab */}
                   {activeTab === 'ai' && (
-                    <div className="flex items-center justify-between gap-3 mt-6 pt-6 border-t border-border/50 pb-[max(2rem,calc(env(safe-area-inset-bottom)+96px))] sm:pb-6">
+                    <div className="flex items-center justify-between gap-3 mt-6 pt-6 border-t border-border/50 pb-[max(1rem,calc(env(safe-area-inset-bottom)+32px))] sm:pb-6">
                       <Button
                         variant="ghost"
                         onClick={onClose}
