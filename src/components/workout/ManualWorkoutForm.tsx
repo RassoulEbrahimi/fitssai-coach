@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import { Edit3 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -83,31 +83,48 @@ export const ManualWorkoutForm: React.FC<ManualWorkoutFormProps> = ({
       {/* Exercise Selection */}
       <div className="space-y-2">
         <Label className="text-emerald-200">Übung auswählen</Label>
-        {selectedExercise ? (
-          <div className="flex items-center justify-between gap-2 px-3 sm:px-4 py-3 bg-emerald-500/10 rounded-lg border border-emerald-400/30 backdrop-blur-xl min-w-0 w-full">
-            <div className="flex items-center gap-2 flex-1 min-w-0">
-              <span className="text-2xl flex-shrink-0">{selectedExercise.icon}</span>
-              <span 
-                className="font-medium text-emerald-100 truncate" 
-                title={selectedExercise.name}
-              >
-                {selectedExercise.name}
-              </span>
-            </div>
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              onClick={() => setSelectedExercise(null)}
-              className="h-8 w-8 p-0 text-emerald-300 hover:text-emerald-100 flex-shrink-0 ml-2 transition-colors duration-200"
-              title="Ändern"
+        <AnimatePresence mode="wait">
+          {selectedExercise ? (
+            <motion.div
+              key="selected-exercise"
+              initial={{ opacity: 0, scale: 0.95, y: -10 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 10 }}
+              transition={{ duration: 0.2, ease: "easeOut" }}
+              className="flex items-center justify-between gap-2 px-3 sm:px-4 py-3 bg-emerald-500/10 rounded-lg border border-emerald-400/30 backdrop-blur-xl min-w-0 w-full"
             >
-              <Edit3 className="w-5 h-5" />
-            </Button>
-          </div>
-        ) : (
-          <ExerciseSelector onSelect={handleSelectExercise} />
-        )}
+              <div className="flex items-center gap-2 flex-1 min-w-0">
+                <span className="text-2xl flex-shrink-0">{selectedExercise.icon}</span>
+                <span 
+                  className="font-medium text-emerald-100 truncate" 
+                  title={selectedExercise.name}
+                >
+                  {selectedExercise.name}
+                </span>
+              </div>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => setSelectedExercise(null)}
+                className="h-8 w-8 p-0 text-emerald-300 hover:text-emerald-100 flex-shrink-0 ml-2 transition-colors duration-200"
+                title="Ändern"
+              >
+                <Edit3 className="w-5 h-5" />
+              </Button>
+            </motion.div>
+          ) : (
+            <motion.div
+              key="exercise-selector"
+              initial={{ opacity: 0, scale: 0.95, y: 10 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: -10 }}
+              transition={{ duration: 0.2, ease: "easeOut" }}
+            >
+              <ExerciseSelector onSelect={handleSelectExercise} />
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
 
       {/* Dynamic Fields Based on Exercise Type */}
