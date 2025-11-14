@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Command,
   CommandEmpty,
@@ -48,17 +48,42 @@ export const PREDEFINED_EXERCISES = [
 
 interface ExerciseSelectorProps {
   onSelect: (exercise: typeof PREDEFINED_EXERCISES[number]) => void;
-  currentExerciseName?: string;
+  currentExercise?: typeof PREDEFINED_EXERCISES[number] | null;
   className?: string;
 }
 
 export const ExerciseSelector: React.FC<ExerciseSelectorProps> = ({
   onSelect,
-  currentExerciseName,
+  currentExercise,
   className,
 }) => {
   const [searchValue, setSearchValue] = useState('');
   const [selectedTab, setSelectedTab] = useState<'strength' | 'cardio' | 'core'>('strength');
+  const [highlightedExercise, setHighlightedExercise] = useState<string | null>(null);
+  const exerciseRefs = useRef<Record<string, HTMLDivElement | null>>({});
+
+  // Set initial tab based on current exercise type
+  useEffect(() => {
+    if (currentExercise) {
+      const tabMap: Record<string, 'strength' | 'cardio' | 'core'> = {
+        'cardio': 'cardio',
+        'strength': currentExercise.icon === '🧘' ? 'core' : 'strength',
+      };
+      setSelectedTab(tabMap[currentExercise.type] || 'strength');
+      
+      // Highlight and scroll after a short delay to ensure DOM is ready
+      setTimeout(() => {
+        setHighlightedExercise(currentExercise.name);
+        exerciseRefs.current[currentExercise.name]?.scrollIntoView({ 
+          block: 'center', 
+          behavior: 'smooth' 
+        });
+        
+        // Remove highlight after 1 second
+        setTimeout(() => setHighlightedExercise(null), 1000);
+      }, 100);
+    }
+  }, [currentExercise]);
 
   const hasSearch = searchValue.trim().length > 0;
   let exercises = [...PREDEFINED_EXERCISES];
@@ -108,9 +133,10 @@ export const ExerciseSelector: React.FC<ExerciseSelectorProps> = ({
                   key={exercise.name}
                   value={exercise.name}
                   onSelect={() => onSelect(exercise)}
+                  ref={(el) => exerciseRefs.current[exercise.name] = el}
                   className={cn(
                     "cursor-pointer",
-                    currentExerciseName === exercise.name && "bg-primary/10"
+                    highlightedExercise === exercise.name && "animate-pulse bg-emerald-500/10"
                   )}
                 >
                   <span className="mr-2 text-lg">{exercise.icon}</span>
@@ -127,9 +153,10 @@ export const ExerciseSelector: React.FC<ExerciseSelectorProps> = ({
                   key={exercise.name}
                   value={exercise.name}
                   onSelect={() => onSelect(exercise)}
+                  ref={(el) => exerciseRefs.current[exercise.name] = el}
                   className={cn(
                     "cursor-pointer",
-                    currentExerciseName === exercise.name && "bg-primary/10"
+                    highlightedExercise === exercise.name && "animate-pulse bg-emerald-500/10"
                   )}
                 >
                   <span className="mr-2 text-lg">{exercise.icon}</span>

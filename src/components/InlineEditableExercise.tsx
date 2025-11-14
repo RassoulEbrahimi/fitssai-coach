@@ -304,7 +304,10 @@ const InlineEditableExercise: React.FC<InlineEditableExerciseProps> = ({
             </Button>
           </PopoverTrigger>
           <PopoverContent className="w-[90vw] sm:w-[420px] p-3 z-[100] animate-in fade-in-0 zoom-in-95 data-[side=bottom]:slide-in-from-top-2 data-[side=top]:slide-in-from-bottom-2 duration-200" align="start">
-            <ExerciseSelector onSelect={handleNameChange} currentExerciseName={exercise.name} />
+            <ExerciseSelector 
+              onSelect={handleNameChange} 
+              currentExercise={PREDEFINED_EXERCISES.find(ex => ex.name === exercise.name) || null} 
+            />
           </PopoverContent>
         </Popover>
 

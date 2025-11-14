@@ -121,7 +121,10 @@ export const ManualWorkoutForm: React.FC<ManualWorkoutFormProps> = ({
               exit={{ opacity: 0, scale: 0.95, y: -10 }}
               transition={{ duration: 0.2, ease: "easeOut" }}
             >
-              <ExerciseSelector onSelect={handleSelectExercise} />
+              <ExerciseSelector 
+                onSelect={handleSelectExercise} 
+                currentExercise={selectedExercise}
+              />
             </motion.div>
           )}
         </AnimatePresence>
