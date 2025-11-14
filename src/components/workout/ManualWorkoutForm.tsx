@@ -130,84 +130,104 @@ export const ManualWorkoutForm: React.FC<ManualWorkoutFormProps> = ({
       {/* Dynamic Fields Based on Exercise Type */}
       {selectedExercise && (
         <div className="space-y-4 pt-4 border-t border-emerald-400/20">
-          {selectedExercise.type === 'cardio' ? (
-            // Cardio fields - Compact 2-column grid
-            <div className="grid grid-cols-2 gap-3 sm:gap-4">
-              <div className="space-y-1 min-w-0 flex-1">
-                <Label htmlFor="distance" className="text-xs font-medium text-emerald-200">Distanz</Label>
-                <Input
-                  id="distance"
-                  type="text"
-                  placeholder="z.B. 5 km"
-                  value={distance}
-                  onChange={(e) => setDistance(e.target.value)}
-                  className="bg-emerald-500/5 border-emerald-400/30 text-emerald-100 py-2.5 px-3 sm:py-3"
-                />
-              </div>
-              <div className="space-y-1 min-w-0 flex-1">
-                <Label htmlFor="duration" className="text-xs font-medium text-emerald-200">Zeit</Label>
-                <Input
-                  id="duration"
-                  type="text"
-                  placeholder="z.B. 30 min"
-                  value={duration}
-                  onChange={(e) => setDuration(e.target.value)}
-                  className="bg-emerald-500/5 border-emerald-400/30 text-emerald-100 py-2.5 px-3 sm:py-3"
-                />
-              </div>
-            </div>
-          ) : (
-            // Strength training fields - Compact 2×2 grid
-            <div className="grid grid-cols-2 gap-3 sm:gap-4">
-              <div className="space-y-1 min-w-0 flex-1">
-                <Label htmlFor="sets" className="text-xs font-medium text-emerald-200">Sätze *</Label>
-                <Input
-                  id="sets"
-                  type="number"
-                  min="1"
-                  max="20"
-                  value={sets}
-                  onChange={(e) => setSets(e.target.value)}
-                  required
-                  className="bg-emerald-500/5 border-emerald-400/30 text-emerald-100 py-2.5 px-3 sm:py-3"
-                />
-              </div>
-              <div className="space-y-1 min-w-0 flex-1">
-                <Label htmlFor="reps" className="text-xs font-medium text-emerald-200">Reps *</Label>
-                <Input
-                  id="reps"
-                  type="text"
-                  placeholder="z.B. 8-12"
-                  value={reps}
-                  onChange={(e) => setReps(e.target.value)}
-                  required
-                  className="bg-emerald-500/5 border-emerald-400/30 text-emerald-100 py-2.5 px-3 sm:py-3"
-                />
-              </div>
-              <div className="space-y-1 min-w-0 flex-1">
-                <Label htmlFor="weight" className="text-xs font-medium text-emerald-200">Gewicht</Label>
-                <Input
-                  id="weight"
-                  type="text"
-                  placeholder="z.B. 60kg"
-                  value={weight}
-                  onChange={(e) => setWeight(e.target.value)}
-                  className="bg-emerald-500/5 border-emerald-400/30 text-emerald-100 py-2.5 px-3 sm:py-3"
-                />
-              </div>
-              <div className="space-y-1 min-w-0 flex-1">
-                <Label htmlFor="rest" className="text-xs font-medium text-emerald-200">Pause</Label>
-                <Input
-                  id="rest"
-                  type="text"
-                  placeholder="z.B. 90s"
-                  value={rest}
-                  onChange={(e) => setRest(e.target.value)}
-                  className="bg-emerald-500/5 border-emerald-400/30 text-emerald-100 py-2.5 px-3 sm:py-3"
-                />
-              </div>
-            </div>
-          )}
+          <AnimatePresence mode="wait">
+            {selectedExercise.type === 'cardio' ? (
+              <motion.div
+                key="cardio"
+                layout
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -8 }}
+                transition={{ duration: 0.25, ease: "easeInOut" }}
+              >
+                {/* Cardio fields - Compact 2-column grid */}
+                <div className="grid grid-cols-2 gap-3 sm:gap-4">
+                  <div className="space-y-1 min-w-0 flex-1">
+                    <Label htmlFor="distance" className="text-xs font-medium text-emerald-200">Distanz</Label>
+                    <Input
+                      id="distance"
+                      type="text"
+                      placeholder="z.B. 5 km"
+                      value={distance}
+                      onChange={(e) => setDistance(e.target.value)}
+                      className="bg-emerald-500/5 border-emerald-400/30 text-emerald-100 py-2.5 px-3 sm:py-3"
+                    />
+                  </div>
+                  <div className="space-y-1 min-w-0 flex-1">
+                    <Label htmlFor="duration" className="text-xs font-medium text-emerald-200">Zeit</Label>
+                    <Input
+                      id="duration"
+                      type="text"
+                      placeholder="z.B. 30 min"
+                      value={duration}
+                      onChange={(e) => setDuration(e.target.value)}
+                      className="bg-emerald-500/5 border-emerald-400/30 text-emerald-100 py-2.5 px-3 sm:py-3"
+                    />
+                  </div>
+                </div>
+              </motion.div>
+            ) : (
+              <motion.div
+                key="strength"
+                layout
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -8 }}
+                transition={{ duration: 0.25, ease: "easeInOut" }}
+              >
+                {/* Strength training fields - Compact 2×2 grid */}
+                <div className="grid grid-cols-2 gap-3 sm:gap-4">
+                  <div className="space-y-1 min-w-0 flex-1">
+                    <Label htmlFor="sets" className="text-xs font-medium text-emerald-200">Sätze *</Label>
+                    <Input
+                      id="sets"
+                      type="number"
+                      min="1"
+                      max="20"
+                      value={sets}
+                      onChange={(e) => setSets(e.target.value)}
+                      required
+                      className="bg-emerald-500/5 border-emerald-400/30 text-emerald-100 py-2.5 px-3 sm:py-3"
+                    />
+                  </div>
+                  <div className="space-y-1 min-w-0 flex-1">
+                    <Label htmlFor="reps" className="text-xs font-medium text-emerald-200">Reps *</Label>
+                    <Input
+                      id="reps"
+                      type="text"
+                      placeholder="z.B. 8-12"
+                      value={reps}
+                      onChange={(e) => setReps(e.target.value)}
+                      required
+                      className="bg-emerald-500/5 border-emerald-400/30 text-emerald-100 py-2.5 px-3 sm:py-3"
+                    />
+                  </div>
+                  <div className="space-y-1 min-w-0 flex-1">
+                    <Label htmlFor="weight" className="text-xs font-medium text-emerald-200">Gewicht</Label>
+                    <Input
+                      id="weight"
+                      type="text"
+                      placeholder="z.B. 60kg"
+                      value={weight}
+                      onChange={(e) => setWeight(e.target.value)}
+                      className="bg-emerald-500/5 border-emerald-400/30 text-emerald-100 py-2.5 px-3 sm:py-3"
+                    />
+                  </div>
+                  <div className="space-y-1 min-w-0 flex-1">
+                    <Label htmlFor="rest" className="text-xs font-medium text-emerald-200">Pause</Label>
+                    <Input
+                      id="rest"
+                      type="text"
+                      placeholder="z.B. 90s"
+                      value={rest}
+                      onChange={(e) => setRest(e.target.value)}
+                      className="bg-emerald-500/5 border-emerald-400/30 text-emerald-100 py-2.5 px-3 sm:py-3"
+                    />
+                  </div>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
         </div>
       )}
 
