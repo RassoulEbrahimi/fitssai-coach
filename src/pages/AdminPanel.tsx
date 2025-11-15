@@ -58,7 +58,6 @@ interface UserProfile {
   height: number;
   fitness_goal: string;
   dietary_preference: string;
-  is_admin: boolean;
   created_at: string;
   email?: string;
 }
@@ -125,14 +124,10 @@ const AdminPanel = () => {
     if (!user) return;
     
     try {
-      const { data, error } = await supabase
-        .from('profiles')
-        .select('is_admin')
-        .eq('id', user.id)
-        .single();
+      const { data, error } = await supabase.rpc('is_current_user_admin');
       
       if (error) throw error;
-      setIsAdmin(data?.is_admin || false);
+      setIsAdmin(data || false);
     } catch (error) {
       console.error('Error checking admin status:', error);
       setIsAdmin(false);
@@ -152,7 +147,6 @@ const AdminPanel = () => {
         height: u.height,
         fitness_goal: u.fitness_goal,
         dietary_preference: u.dietary_preference,
-        is_admin: u.is_admin,
         created_at: u.created_at,
       })));
     } catch (error) {
@@ -160,28 +154,6 @@ const AdminPanel = () => {
       // Error toast already handled in invokeAdmin
     } finally {
       setLoadingUsers(false);
-    }
-  };
-
-  const toggleAdminStatus = async (userId: string, currentStatus: boolean) => {
-    try {
-      const { error } = await supabase
-        .from('profiles')
-        .update({ is_admin: !currentStatus })
-        .eq('id', userId);
-
-      if (error) throw error;
-
-      setUsers(users.map(user => 
-        user.id === userId 
-          ? { ...user, is_admin: !currentStatus }
-          : user
-      ));
-
-      toast.success(`Admin status ${!currentStatus ? 'granted' : 'revoked'} successfully`);
-    } catch (error) {
-      console.error('Error updating admin status:', error);
-      toast.error('Failed to update admin status');
     }
   };
 
@@ -341,38 +313,6 @@ const AdminPanel = () => {
                 </div>
               </CardContent>
             </Card>
-            
-            <Card className="gradient-card border-primary/20">
-              <CardContent className="p-6">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm text-muted-foreground">
-                      Admins
-                    </p>
-                    <p className="text-2xl font-bold text-primary">
-                      {users.filter(u => u.is_admin).length}
-                    </p>
-                  </div>
-                  <ShieldCheck className="h-8 w-8 text-primary" />
-                </div>
-              </CardContent>
-            </Card>
-            
-            <Card className="gradient-card border-primary/20">
-              <CardContent className="p-6">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm text-muted-foreground">
-                      Normale Benutzer
-                    </p>
-                    <p className="text-2xl font-bold text-primary">
-                      {users.filter(u => !u.is_admin).length}
-                    </p>
-                  </div>
-                  <UserCheck className="h-8 w-8 text-primary" />
-                </div>
-              </CardContent>
-            </Card>
 
             <Card className="gradient-card border-primary/20">
               <CardContent className="p-6">
@@ -426,7 +366,6 @@ const AdminPanel = () => {
                         <TableHead>Größe</TableHead>
                         <TableHead>Ziel</TableHead>
                         <TableHead>Diät</TableHead>
-                        <TableHead>Rolle</TableHead>
                         <TableHead>Erstellt</TableHead>
                         <TableHead>Aktionen</TableHead>
                       </TableRow>
@@ -440,27 +379,9 @@ const AdminPanel = () => {
                           <TableCell>{user.height} cm</TableCell>
                           <TableCell>{formatGoal(user.fitness_goal)}</TableCell>
                           <TableCell>{formatDiet(user.dietary_preference)}</TableCell>
-                          <TableCell>
-                            <Badge variant={user.is_admin ? "default" : "secondary"}>
-                              {user.is_admin ? 'Admin' : 'Benutzer'}
-                            </Badge>
-                          </TableCell>
                           <TableCell>{formatDate(user.created_at)}</TableCell>
                           <TableCell>
                             <div className="flex items-center gap-2">
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => toggleAdminStatus(user.id, user.is_admin)}
-                                disabled={user.id === user?.id} // Prevent self-modification
-                              >
-                                {user.is_admin ? (
-                                  <UserX className="h-4 w-4" />
-                                ) : (
-                                  <UserCheck className="h-4 w-4" />
-                                )}
-                              </Button>
-                              
                               <AlertDialog>
                                 <AlertDialogTrigger asChild>
                                   <Button 

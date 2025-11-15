@@ -83,14 +83,10 @@ export const ProfileCard = ({ profile, onProfileUpdate, workoutProgress }: Profi
     if (!user) return;
     
     try {
-      const { data, error } = await supabase
-        .from('profiles')
-        .select('is_admin')
-        .eq('id', user.id)
-        .single();
+      const { data, error } = await supabase.rpc('is_current_user_admin');
       
       if (error) throw error;
-      setIsAdmin(data?.is_admin || false);
+      setIsAdmin(data || false);
     } catch (error) {
       console.error('Error checking admin status:', error);
       setIsAdmin(false);
