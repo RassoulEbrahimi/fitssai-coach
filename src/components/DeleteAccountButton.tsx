@@ -33,8 +33,9 @@ export const DeleteAccountButton: React.FC = () => {
         throw new Error("No active session found");
       }
 
-      // Call the edge function to delete account
+      // Request deletion with grace period
       const { data, error } = await supabase.functions.invoke('delete-account', {
+        body: { action: 'request' },
         headers: {
           Authorization: `Bearer ${session.access_token}`,
         },
@@ -42,40 +43,19 @@ export const DeleteAccountButton: React.FC = () => {
 
       if (error) throw error;
 
-      // Show success message
+      // Show success message with grace period info
       toast({
-        title: "Konto gelöscht",
-        description: "Dein Konto und alle Daten wurden erfolgreich entfernt.",
+        title: "Löschung geplant",
+        description: `Dein Konto wird in 14 Tagen gelöscht. Du kannst die Löschung jederzeit in den Einstellungen abbrechen.`,
       });
       
-      // Clear local storage
-      localStorage.clear();
-      sessionStorage.clear();
+      setIsDeleting(false);
+      setShowConfirm(false);
       
-      // Play exit animation sequence
-      setShowExitAnimation(true);
-      
-      // Optional: Play heartbeat sound
-      try {
-        const audio = new Audio("/audio/heartbeat.mp3");
-        audio.volume = 0.3;
-        audio.play().catch(() => {
-          // Ignore if audio fails to load
-        });
-      } catch (e) {
-        // Audio is optional, continue without it
-      }
-      
-      // Redirect to farewell screen after animation completes
-      setTimeout(() => {
-        navigate("/farewell");
-      }, 1500);
-      
-    } catch (error) {
-      console.error("Account deletion failed:", error);
+    } catch (error: any) {
       toast({
         title: "Fehler",
-        description: "Konto konnte nicht gelöscht werden. Bitte versuche es erneut.",
+        description: error.message || "Anfrage konnte nicht verarbeitet werden.",
         variant: "destructive",
       });
       setIsDeleting(false);

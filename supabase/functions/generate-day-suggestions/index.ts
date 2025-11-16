@@ -30,20 +30,12 @@ serve(async (req) => {
   }
 
   try {
-    // Log environment variable presence
-    console.log('[Diagnostics] Using OpenAI key variable: OPENAI_API_KEY_New');
     const openAIApiKey = Deno.env.get('OPENAI_API_KEY_New');
     const SUPABASE_URL = Deno.env.get('SUPABASE_URL');
     const SUPABASE_ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY');
-    
-    console.log('[Diagnostics] Environment check:', {
-      hasOpenAIKey: !!openAIApiKey,
-      hasSupabaseURL: !!SUPABASE_URL,
-      hasSupabaseAnonKey: !!SUPABASE_ANON_KEY
-    });
 
     if (!openAIApiKey) {
-      console.error('[Error] OpenAI API key not found in environment');
+      console.error('[ERROR] Missing OpenAI configuration');
       return new Response(
         JSON.stringify({ error: 'AI-Dienst nicht konfiguriert', code: 'OPENAI_KEY_MISSING' }),
         { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -51,7 +43,7 @@ serve(async (req) => {
     }
 
     if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
-      console.error('[Error] Missing Supabase configuration');
+      console.error('[ERROR] Missing Supabase configuration');
       return new Response(
         JSON.stringify({ error: 'Server-Konfigurationsfehler', code: 'SUPABASE_CONFIG_MISSING' }),
         { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -67,18 +59,11 @@ serve(async (req) => {
 
     // Get current user
     const { data: { user }, error: userError } = await supabaseClient.auth.getUser();
-    
-    console.log('[Diagnostics] Auth check:', {
-      hasUser: !!user,
-      userId: user?.id,
-      userEmail: user?.email,
-      authError: userError?.message
-    });
 
     if (userError || !user) {
-      console.error('[Error] Auth failed:', userError);
+      console.error('[ERROR] Authentication failed');
       return new Response(
-        JSON.stringify({ error: 'Nicht autorisiert', code: 'UNAUTHORIZED', details: userError?.message }),
+        JSON.stringify({ error: 'Nicht autorisiert', code: 'UNAUTHORIZED' }),
         { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
@@ -88,24 +73,15 @@ serve(async (req) => {
     const validation = GenerateSuggestionsSchema.safeParse(body);
     
     if (!validation.success) {
-      const errors = validation.error.errors.map(e => `${e.path.join('.')}: ${e.message}`).join(', ');
-      console.error('[Error] Validation failed:', errors);
+      console.error('[ERROR] Input validation failed');
       return new Response(
-        JSON.stringify({ error: `Validation error: ${errors}`, code: 'VALIDATION_ERROR' }),
+        JSON.stringify({ error: 'Ungültige Eingabedaten', code: 'VALIDATION_ERROR' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
     
     const { day_of_week, available_time, focus_type } = validation.data;
     const custom_prompt = sanitizePrompt(validation.data.custom_prompt);
-    
-    console.log('[Diagnostics] Validated request:', {
-      day_of_week,
-      available_time,
-      userId: user.id,
-      hasCustomPrompt: !!custom_prompt,
-      focus_type
-    });
 
     // Fetch user profile
     const { data: profile, error: profileError } = await supabaseClient
@@ -114,36 +90,16 @@ serve(async (req) => {
       .eq('id', user.id)
       .single();
 
-    console.log('[Diagnostics] Profile fetch result:', {
-      hasProfile: !!profile,
-      profileError: profileError?.message,
-      profileData: profile ? {
-        fitness_goal: profile.fitness_goal,
-        experience_level: profile.experience_level,
-        age: profile.age,
-        weight: profile.weight,
-        height: profile.height
-      } : null
-    });
-
     if (profileError || !profile) {
-      console.error('[Error] Profile not found:', profileError);
+      console.error('[ERROR] Profile fetch failed');
       return new Response(
         JSON.stringify({ 
           error: 'Profil nicht gefunden', 
-          code: 'PROFILE_NOT_FOUND',
-          details: profileError?.message 
+          code: 'PROFILE_NOT_FOUND'
         }),
         { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
-
-    console.log('[Info] Generating suggestions for:', { 
-      userId: user.id, 
-      day: day_of_week, 
-      goal: profile.fitness_goal,
-      experience: profile.experience_level 
-    });
 
     // Fetch user feedback for adaptive prompting
     const { data: feedbackData } = await supabaseClient
@@ -152,10 +108,6 @@ serve(async (req) => {
       .eq('user_id', user.id)
       .order('created_at', { ascending: false })
       .limit(20);
-
-    console.log('[Info] Feedback data retrieved:', {
-      feedbackCount: feedbackData?.length || 0
-    });
 
     // Initialize feedback counts at function scope
     const feedbackCounts = {
@@ -200,8 +152,6 @@ Make exercises specific, realistic, and suitable for their level. Include rest p
         if (reason.includes("notstyle") || reason === "notstyle") feedbackCounts.notstyle++;
       }
 
-      console.log('[Info] Feedback analysis:', feedbackCounts);
-
       // Adjust prompt based on patterns
       if (feedbackCounts.hard > feedbackCounts.light * 1.5) {
         prompt += "\n\nWICHTIG: Der Nutzer fand vorherige Workouts oft zu anstrengend. Passe die Intensität leicht nach unten an, reduziere Gewichte um 10-15% und füge mehr Pausenzeit ein.";
@@ -245,14 +195,10 @@ Make exercises specific, realistic, and suitable for their level. Include rest p
         // auto → no extra line
     }
 
-    // 🔒 Validate prompt before sending to OpenAI
+    // Validate prompt before sending to OpenAI
     if (!prompt || prompt.trim().length < 10) {
-      console.warn("[generate-day-suggestions] Empty prompt detected. Using fallback prompt.");
       prompt = "Erstelle ein 30-minütiges Ganzkörper-Workout mit Fokus auf Kraft, Core und Ausdauer.";
     }
-
-    console.log('[Info] Calling OpenAI API with model: gpt-4o-mini');
-    console.log('[Info] Prompt length:', prompt.length);
 
     // Start performance tracking
     const startTime = performance.now();
@@ -281,12 +227,6 @@ Make exercises specific, realistic, and suitable for their level. Include rest p
       }),
     });
 
-      console.log('[Diagnostics] OpenAI response:', {
-        status: response.status,
-        statusText: response.statusText,
-        ok: response.ok
-      });
-
       aiStatusCode = response.status;
       aiSuccess = response.ok;
 
@@ -296,78 +236,50 @@ Make exercises specific, realistic, and suitable for their level. Include rest p
         
         // Handle rate limit / quota exhaustion specifically
         if (response.status === 429 || errorText.includes('insufficient_quota')) {
-          console.error('[OpenAI 429 Error] Rate or Quota exceeded:', {
-            status: response.status,
-            statusText: response.statusText,
-            body: errorText
-          });
+          console.error('[ERROR] OpenAI rate limit exceeded');
           return new Response(
             JSON.stringify({
               error: 'AI-Dienst überlastet oder Kontingent erschöpft.',
-              code: 'RATE_LIMIT_OR_QUOTA_EXCEEDED',
-              details: 'OpenAI hat den Zugriff vorübergehend eingeschränkt. Bitte später erneut versuchen.'
+              code: 'RATE_LIMIT_OR_QUOTA_EXCEEDED'
             }),
             { status: 429, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
           );
         }
 
-        console.error('[Error] OpenAI API error:', {
-          status: response.status,
-          statusText: response.statusText,
-          errorBody: errorText
-        });
+        console.error('[ERROR] OpenAI API request failed');
         return new Response(
           JSON.stringify({ 
             error: 'Fehler beim Generieren der Vorschläge', 
-            code: 'GENERATION_FAILED', 
-            details: `OpenAI API returned ${response.status}: ${errorText}` 
+            code: 'GENERATION_FAILED'
           }),
           { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }
 
       const data = await response.json();
-    console.log('[Diagnostics] OpenAI raw response data:', {
-      hasChoices: !!data.choices,
-      choicesLength: data.choices?.length,
-      hasContent: !!data.choices?.[0]?.message?.content
-    });
-
     const generatedContent = data.choices[0].message.content;
-    console.log('[Diagnostics] Generated content (first 200 chars):', generatedContent?.substring(0, 200));
 
     let parsedContent;
     try {
       parsedContent = JSON.parse(generatedContent);
-      console.log('[Info] Successfully parsed AI response:', {
-        hasSuggestions: !!parsedContent.suggestions,
-        suggestionsCount: parsedContent.suggestions?.length
-      });
     } catch (parseError: any) {
-      console.error('[Error] Failed to parse OpenAI JSON response:', {
-        error: parseError.message,
-        content: generatedContent
-      });
+      console.error('[ERROR] Failed to parse AI response');
       return new Response(
         JSON.stringify({ 
           error: 'KI-Antwort konnte nicht verarbeitet werden', 
-          code: 'GENERATION_FAILED',
-          details: `JSON parse error: ${parseError.message}` 
+          code: 'GENERATION_FAILED'
         }),
         { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-      // ✅ Validate that we have actual suggestions
+      // Validate that we have actual suggestions
       if (!parsedContent || !parsedContent.suggestions || parsedContent.suggestions.length === 0) {
-        console.error('[generate-day-suggestions] No suggestions returned from AI.');
+        console.error('[ERROR] No suggestions generated');
         return new Response(
           JSON.stringify({
             error: 'Keine Vorschläge erhalten',
-            code: 'NO_SUGGESTIONS',
-            details: 'AI konnte keine Vorschläge generieren. Bitte erneut versuchen oder Eingaben prüfen.',
-            promptUsed: prompt.substring(0, 200),
-            feedbackSummary: feedbackCounts
+            code: 'NO_SUGGESTIONS'
           }),
           { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
@@ -396,24 +308,17 @@ Make exercises specific, realistic, and suitable for their level. Include rest p
           status_code: aiStatusCode || null,
           error_message: aiErrorMessage
         });
-        console.log(`[AI Log] Logged request: success=${aiSuccess}, latency=${latency}ms, status=${aiStatusCode}`);
       } catch (logError: any) {
-        console.error('[Error] Failed to log AI request:', logError.message);
         // Don't fail the request if logging fails
       }
     }
 
   } catch (error: any) {
-    console.error('[Error] Unhandled exception in generate-day-suggestions:', {
-      message: error.message,
-      stack: error.stack,
-      name: error.name
-    });
+    console.error('[ERROR] Unhandled exception:', error.message);
     return new Response(
       JSON.stringify({ 
-        error: error.message || 'Unerwarteter Fehler',
-        code: 'INTERNAL_ERROR',
-        details: error.stack || error.toString()
+        error: 'Ein unerwarteter Fehler ist aufgetreten',
+        code: 'INTERNAL_ERROR'
       }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
