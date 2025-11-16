@@ -4,6 +4,7 @@ import { motion, useReducedMotion } from "framer-motion"
 import { LucideIcon } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useTheme } from "@/hooks/useTheme"
+import { GlassFilter } from "./glass-filter"
 
 interface NavItem {
   name: string
@@ -67,16 +68,35 @@ export const NavBar = React.forwardRef<HTMLDivElement, NavBarProps>(
         style={{ willChange: 'opacity' }}
         />
         
+        {/* Glass filter definition */}
+        <GlassFilter />
+        
         {/* Main navbar container - optimized backdrop */}
         <div 
           className={cn(
-            "relative flex items-center justify-center gap-3 rounded-full border backdrop-blur-md py-1 px-1 transition-all duration-500 shadow-lg",
+            "relative flex items-center justify-center gap-3 rounded-full border py-1 px-1 transition-all duration-500 shadow-lg overflow-hidden",
             isDark
-              ? "bg-emerald-950/60 border-emerald-700/40 shadow-[0_0_15px_rgba(16,185,129,0.15)]"
-              : "bg-emerald-100/60 border-emerald-300/40 shadow-[0_0_15px_rgba(16,185,129,0.1)]"
+              ? "border-emerald-700/40 shadow-[0_0_15px_rgba(16,185,129,0.15)]"
+              : "border-emerald-300/40 shadow-[0_0_15px_rgba(16,185,129,0.1)]"
           )}
           style={{ willChange: 'opacity' }}
         >
+          {/* Frosted glass background layer */}
+          <div 
+            className={cn(
+              "absolute inset-0 rounded-full",
+              isDark
+                ? "bg-emerald-950/70"
+                : "bg-emerald-100/70"
+            )}
+            style={{ 
+              backdropFilter: 'url("#container-glass") blur(16px)',
+              WebkitBackdropFilter: 'url("#container-glass") blur(16px)',
+            }}
+          />
+          
+          {/* Navigation items - positioned above glass background */}
+          <div className="relative z-10 flex items-center gap-3">
           {items.map((item) => {
             const Icon = item.icon
             const isActive = activeTab === item.id
@@ -191,6 +211,7 @@ export const NavBar = React.forwardRef<HTMLDivElement, NavBarProps>(
               </motion.button>
             )
           })}
+          </div>
         </div>
       </motion.div>
     </div>
