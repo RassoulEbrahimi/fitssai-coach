@@ -11,6 +11,14 @@ import { ArrowLeft } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { useEffect } from "react";
 import Navbar from "@/components/Navbar";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { z } from "zod";
+
+const authSchema = z.object({
+  email: z.string().email("Invalid email address").max(255, "Email too long"),
+  password: z.string().min(6, "Password must be at least 6 characters").max(100, "Password too long")
+});
 
 const AuthPage = () => {
   const { t } = useTranslation();
@@ -18,10 +26,12 @@ const AuthPage = () => {
   const navigate = useNavigate();
   const { user } = useAuth();
   const [loading, setLoading] = useState(false);
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
 
   const isSignUp = mode === 'sign-up';
+
+  const { register, handleSubmit, formState: { errors } } = useForm<z.infer<typeof authSchema>>({
+    resolver: zodResolver(authSchema)
+  });
 
   // Redirect if already authenticated
   useEffect(() => {
@@ -30,14 +40,13 @@ const AuthPage = () => {
     }
   }, [user, navigate]);
 
-  const handleSignUp = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSignUp = async (data: z.infer<typeof authSchema>) => {
     setLoading(true);
     
     try {
       const { error } = await supabase.auth.signUp({
-        email,
-        password,
+        email: data.email,
+        password: data.password,
         options: {
           emailRedirectTo: `${window.location.origin}/dashboard`
         }
@@ -53,14 +62,13 @@ const AuthPage = () => {
     }
   };
 
-  const handleSignIn = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSignIn = async (data: z.infer<typeof authSchema>) => {
     setLoading(true);
     
     try {
       const { error } = await supabase.auth.signInWithPassword({
-        email,
-        password,
+        email: data.email,
+        password: data.password,
       });
       
       if (error) throw error;
@@ -100,17 +108,18 @@ const AuthPage = () => {
           </CardHeader>
           
           <CardContent>
-            <form onSubmit={isSignUp ? handleSignUp : handleSignIn} className="space-y-4">
+            <form onSubmit={handleSubmit(isSignUp ? handleSignUp : handleSignIn)} className="space-y-4">
               <div>
                 <Label htmlFor="email">{t('auth.email')}</Label>
                 <Input
                   id="email"
                   type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  required
+                  {...register("email")}
                   className="mt-1"
                 />
+                {errors.email && (
+                  <p className="text-sm text-destructive mt-1">{errors.email.message}</p>
+                )}
               </div>
               
               <div>
@@ -118,11 +127,12 @@ const AuthPage = () => {
                 <Input
                   id="password"
                   type="password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  required
+                  {...register("password")}
                   className="mt-1"
                 />
+                {errors.password && (
+                  <p className="text-sm text-destructive mt-1">{errors.password.message}</p>
+                )}
               </div>
               
               <Button 
