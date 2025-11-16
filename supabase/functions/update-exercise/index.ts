@@ -78,18 +78,16 @@ serve(async (req) => {
       return fail('Unauthorized', 401);
     }
 
-    console.log(`[update-exercise] Request from user: ${user.id}`);
+    console.log('[update-exercise] Processing request');
 
     // Parse and validate request body
     const body = await req.json();
-    console.log('[update-exercise] Received body:', JSON.stringify(body, null, 2));
     
     const validation = UpdateExerciseRequestSchema.safeParse(body);
     
     if (!validation.success) {
       const flattened = validation.error.flatten();
-      console.error('[update-exercise] Validation error:', JSON.stringify(flattened, null, 2));
-      console.error('[update-exercise] Validation issues:', validation.error.issues);
+      console.error('[update-exercise] Validation failed');
       return fail(JSON.stringify({
         error: 'Validation error',
         details: flattened.fieldErrors,
@@ -103,7 +101,7 @@ serve(async (req) => {
 
     const { planId, weekKey, dayIndex, exerciseIndex, exercise } = validation.data;
 
-    console.log(`[update-exercise] Updating ${weekKey} day ${dayIndex} exercise ${exerciseIndex} in plan ${planId}`);
+    console.log('[update-exercise] Updating exercise');
 
     // Fetch plan with row lock to ensure atomic update
     const { data: plan, error: fetchError } = await supabaseClient
