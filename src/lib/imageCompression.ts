@@ -3,20 +3,27 @@
  * @param file - The original image file
  * @param maxSize - Maximum dimension (width or height) in pixels
  * @param quality - Compression quality (0-1)
+ * @param onProgress - Optional callback to track compression progress (0-100)
  * @returns Compressed image file
  */
 export const compressImage = async (
   file: File,
   maxSize: number = 512,
-  quality: number = 0.75
+  quality: number = 0.75,
+  onProgress?: (progress: number) => void
 ): Promise<File> => {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     
+    // Report initial progress
+    onProgress?.(0);
+    
     reader.onload = (e) => {
+      onProgress?.(20); // File read complete
       const img = new Image();
       
       img.onload = () => {
+        onProgress?.(40); // Image loaded
         // Calculate new dimensions maintaining aspect ratio
         let width = img.width;
         let height = img.height;
@@ -49,6 +56,8 @@ export const compressImage = async (
         ctx.imageSmoothingQuality = 'high';
         ctx.drawImage(img, 0, 0, width, height);
         
+        onProgress?.(60); // Image drawn to canvas
+        
         // Determine output format and extension
         let mimeType = 'image/webp';
         let extension = 'webp';
@@ -62,6 +71,8 @@ export const compressImage = async (
         // Convert to blob
         canvas.toBlob(
           (blob) => {
+            onProgress?.(80); // Blob creation started
+            
             if (!blob) {
               reject(new Error('Failed to compress image'));
               return;
@@ -78,6 +89,7 @@ export const compressImage = async (
             );
             
             console.log(`Image compressed: ${(file.size / 1024).toFixed(1)}KB → ${(compressedFile.size / 1024).toFixed(1)}KB`);
+            onProgress?.(100); // Compression complete
             resolve(compressedFile);
           },
           mimeType,
