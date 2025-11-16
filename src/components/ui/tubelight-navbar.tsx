@@ -86,12 +86,13 @@ export const NavBar = React.forwardRef<HTMLDivElement, NavBarProps>(
             className={cn(
               "absolute inset-0 rounded-full",
               isDark
-                ? "bg-emerald-950/70"
-                : "bg-emerald-100/70"
+                ? "bg-emerald-950/25"
+                : "bg-emerald-100/25"
             )}
             style={{ 
-              backdropFilter: 'url("#container-glass") blur(16px)',
-              WebkitBackdropFilter: 'url("#container-glass") blur(16px)',
+              filter: 'url("#container-glass")',
+              backdropFilter: 'blur(18px)',
+              WebkitBackdropFilter: 'blur(18px)',
             }}
           />
           
