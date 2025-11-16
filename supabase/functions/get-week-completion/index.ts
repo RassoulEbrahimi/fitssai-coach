@@ -59,7 +59,7 @@ Deno.serve(async (req) => {
       );
     }
 
-    console.log(`[get-week-completion] Fetching week completion for user ${user.id}, plan ${planId}, week ${weekKey}`);
+    console.log('[get-week-completion] Processing request');
 
     // Fetch workout plan to calculate workout_day dates
     const { data: plan, error: planError } = await sb
@@ -102,7 +102,7 @@ Deno.serve(async (req) => {
       );
     }
 
-    console.log(`[get-week-completion] Found ${logs?.length || 0} logs for week ${weekKey}`);
+    console.log(`[get-week-completion] Found ${logs?.length || 0} logs`);
 
     // Build flat completion map: { "Week 1_0_0": true, "Week 1_0_1": false, ... }
     const completionMap: Record<string, boolean> = {};
