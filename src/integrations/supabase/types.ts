@@ -77,6 +77,42 @@ export type Database = {
         }
         Relationships: []
       }
+      deletion_requests: {
+        Row: {
+          cancelled: boolean
+          cancelled_at: string | null
+          confirmation_token: string
+          confirmed: boolean
+          confirmed_at: string | null
+          deletion_date: string
+          id: string
+          requested_at: string
+          user_id: string
+        }
+        Insert: {
+          cancelled?: boolean
+          cancelled_at?: string | null
+          confirmation_token: string
+          confirmed?: boolean
+          confirmed_at?: string | null
+          deletion_date: string
+          id?: string
+          requested_at?: string
+          user_id: string
+        }
+        Update: {
+          cancelled?: boolean
+          cancelled_at?: string | null
+          confirmation_token?: string
+          confirmed?: boolean
+          confirmed_at?: string | null
+          deletion_date?: string
+          id?: string
+          requested_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       nutrition_plans: {
         Row: {
           content: Json

@@ -88,7 +88,6 @@ export const ProfileCard = ({ profile, onProfileUpdate, workoutProgress }: Profi
       if (error) throw error;
       setIsAdmin(data || false);
     } catch (error) {
-      console.error('Error checking admin status:', error);
       setIsAdmin(false);
     }
   };

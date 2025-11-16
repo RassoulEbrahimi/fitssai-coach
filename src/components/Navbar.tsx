@@ -76,7 +76,6 @@ const Navbar = () => {
       if (error) throw error;
       setIsAdmin(data || false);
     } catch (error) {
-      console.error('Error checking admin status:', error);
       setIsAdmin(false);
     }
   };
