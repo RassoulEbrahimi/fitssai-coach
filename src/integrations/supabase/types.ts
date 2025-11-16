@@ -109,7 +109,6 @@ export type Database = {
           full_name: string | null
           height: number
           id: string
-          is_admin: boolean
           updated_at: string
           weight: number
         }
@@ -123,7 +122,6 @@ export type Database = {
           full_name?: string | null
           height: number
           id: string
-          is_admin?: boolean
           updated_at?: string
           weight: number
         }
@@ -137,7 +135,6 @@ export type Database = {
           full_name?: string | null
           height?: number
           id?: string
-          is_admin?: boolean
           updated_at?: string
           weight?: number
         }
