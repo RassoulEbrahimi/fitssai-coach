@@ -32,6 +32,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { toast } from "sonner";
 import { getAvatarUrl, uploadAvatar, updateProfileAvatar } from "@/lib/avatarUtils";
+import { compressImage } from "@/lib/imageCompression";
 
 interface ProfileCardProps {
   profile: any;
@@ -125,8 +126,11 @@ export const ProfileCard = ({ profile, onProfileUpdate, workoutProgress }: Profi
 
     setIsUploading(true);
     try {
-      // Upload file to storage and get path
-      const avatarPath = await uploadAvatar(user.id, file);
+      // Compress and resize image before upload
+      const compressedFile = await compressImage(file, 512, 0.75);
+      
+      // Upload compressed file to storage and get path
+      const avatarPath = await uploadAvatar(user.id, compressedFile);
       
       // Update profile with avatar path
       await updateProfileAvatar(user.id, avatarPath);
