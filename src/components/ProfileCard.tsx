@@ -33,6 +33,7 @@ import { z } from "zod";
 import { toast } from "sonner";
 import { getAvatarUrl, uploadAvatar, updateProfileAvatar } from "@/lib/avatarUtils";
 import { compressImage } from "@/lib/imageCompression";
+import { AvatarCropDialog } from "@/components/profile/AvatarCropDialog";
 
 interface ProfileCardProps {
   profile: any;
@@ -59,6 +60,8 @@ export const ProfileCard = ({ profile, onProfileUpdate, workoutProgress }: Profi
   const [isUploading, setIsUploading] = useState(false);
   const [avatarCacheBuster, setAvatarCacheBuster] = useState<string>('');
   const [isAdmin, setIsAdmin] = useState(false);
+  const [isCropDialogOpen, setIsCropDialogOpen] = useState(false);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const progressPercentage = workoutProgress.total > 0 
@@ -124,10 +127,23 @@ export const ProfileCard = ({ profile, onProfileUpdate, workoutProgress }: Profi
     const file = event.target.files?.[0];
     if (!file || !user) return;
 
+    // Open crop dialog with selected file
+    setSelectedFile(file);
+    setIsCropDialogOpen(true);
+    
+    // Reset file input so the same file can be selected again
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  };
+
+  const handleCroppedImage = async (croppedFile: File) => {
+    if (!user) return;
+
     setIsUploading(true);
     try {
-      // Compress and resize image before upload
-      const compressedFile = await compressImage(file, 512, 0.75);
+      // Compress and resize cropped image before upload
+      const compressedFile = await compressImage(croppedFile, 512, 0.75);
       
       // Upload compressed file to storage and get path
       const avatarPath = await uploadAvatar(user.id, compressedFile);
@@ -516,6 +532,14 @@ export const ProfileCard = ({ profile, onProfileUpdate, workoutProgress }: Profi
           </motion.div>
         </CardContent>
       </Card>
+
+      {/* Avatar Crop Dialog */}
+      <AvatarCropDialog
+        open={isCropDialogOpen}
+        onClose={() => setIsCropDialogOpen(false)}
+        file={selectedFile}
+        onCropped={handleCroppedImage}
+      />
     </motion.div>
   );
 };
