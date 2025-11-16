@@ -125,14 +125,10 @@ const AdminPanel = () => {
     if (!user) return;
     
     try {
-      const { data, error } = await supabase
-        .from('profiles')
-        .select('is_admin')
-        .eq('id', user.id)
-        .single();
+      const { data, error } = await supabase.rpc('is_current_user_admin');
       
       if (error) throw error;
-      setIsAdmin(data?.is_admin || false);
+      setIsAdmin(data || false);
     } catch (error) {
       console.error('Error checking admin status:', error);
       setIsAdmin(false);
@@ -165,12 +161,23 @@ const AdminPanel = () => {
 
   const toggleAdminStatus = async (userId: string, currentStatus: boolean) => {
     try {
-      const { error } = await supabase
-        .from('profiles')
-        .update({ is_admin: !currentStatus })
-        .eq('id', userId);
-
-      if (error) throw error;
+      if (!currentStatus) {
+        // Grant admin - insert role
+        const { error } = await supabase
+          .from('user_roles')
+          .insert({ user_id: userId, role: 'admin' });
+        
+        if (error) throw error;
+      } else {
+        // Revoke admin - delete role
+        const { error } = await supabase
+          .from('user_roles')
+          .delete()
+          .eq('user_id', userId)
+          .eq('role', 'admin');
+        
+        if (error) throw error;
+      }
 
       setUsers(users.map(user => 
         user.id === userId 

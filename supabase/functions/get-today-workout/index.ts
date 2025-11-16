@@ -1,6 +1,7 @@
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { z } from "https://deno.land/x/zod@v3.22.4/mod.ts";
 import { getBerlinToday } from "../_shared/dateUtils.ts";
 
 const corsHeaders = {
@@ -17,6 +18,13 @@ const json = (obj: any, status = 200) =>
 const ok = (obj: Record<string, any> = {}) => json({ success: true, ...obj }, 200);
 const fail = (message: string, code?: string) =>
   json({ success: false, error: message, code }, 200);
+
+// Validation schema
+const GetWorkoutSchema = z.object({
+  weekKey: z.string().regex(/^Week [1-4]$/, 'Week key must be "Week 1", "Week 2", "Week 3", or "Week 4"'),
+  dayIndex: z.number().int().min(0).max(6, 'Day index must be between 0 and 6'),
+  planId: z.string().uuid('Invalid plan ID format'),
+});
 
 serve(async (req) => {
   // Handle CORS preflight requests
@@ -46,15 +54,17 @@ serve(async (req) => {
       return fail('Nicht autorisiert', 'AUTH');
     }
 
-    // Parse request body for weekKey, dayIndex, and planId
+    // Parse request body
     const body = await req.json();
-    const { weekKey, dayIndex, planId } = body;
-
-    // SAFEGUARD: weekKey and dayIndex are the real selected week/day.
-    // We fetch completion status for the actual selected week, not any mirror source.
-    if (!weekKey || dayIndex === undefined || !planId) {
-      return fail('weekKey, dayIndex und planId sind erforderlich', 'MISSING_PARAMS');
+    
+    // Validate input
+    const validation = GetWorkoutSchema.safeParse(body);
+    if (!validation.success) {
+      const errors = validation.error.errors.map(e => `${e.path.join('.')}: ${e.message}`).join(', ');
+      return fail(`Validation error: ${errors}`, 'VALIDATION_ERROR');
     }
+    
+    const { weekKey, dayIndex, planId } = validation.data;
 
     console.log(`Loading completion map for user ${user.id}, plan ${planId}, ${weekKey} day ${dayIndex}`);
 
