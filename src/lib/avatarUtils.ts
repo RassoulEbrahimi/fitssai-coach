@@ -25,23 +25,88 @@ export const getAvatarUrl = (avatarPath: string | null, cacheBuster?: string): s
 
 /**
  * Upload avatar file and return the storage path
+ * @param userId - User ID
+ * @param file - File to upload
+ * @param onProgress - Optional callback to track upload progress (0-100)
  */
-export const uploadAvatar = async (userId: string, file: File): Promise<string> => {
+export const uploadAvatar = async (
+  userId: string, 
+  file: File,
+  onProgress?: (progress: number) => void
+): Promise<string> => {
   const fileExt = file.name.split('.').pop();
   const fileName = `${userId}/profile.${fileExt}`;
   
-  const { data, error } = await supabase.storage
-    .from('avatars')
-    .upload(fileName, file, {
-      upsert: true, // Replace existing file
-      contentType: file.type
-    });
+  // If progress tracking is not needed, use standard upload
+  if (!onProgress) {
+    const { data, error } = await supabase.storage
+      .from('avatars')
+      .upload(fileName, file, {
+        upsert: true,
+        contentType: file.type
+      });
 
-  if (error) {
-    throw error;
+    if (error) {
+      throw error;
+    }
+
+    return data.path;
   }
 
-  return data.path;
+  // Use XMLHttpRequest for progress tracking
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    
+    reader.onload = async () => {
+      try {
+        const { data: sessionData } = await supabase.auth.getSession();
+        const token = sessionData?.session?.access_token;
+        
+        if (!token) {
+          throw new Error('No authentication token available');
+        }
+
+        const xhr = new XMLHttpRequest();
+        const projectUrl = 'https://zkamhncwbgieifloosqn.supabase.co';
+        const uploadUrl = `${projectUrl}/storage/v1/object/avatars/${fileName}`;
+
+        xhr.upload.addEventListener('progress', (evt) => {
+          if (evt.lengthComputable) {
+            const percentComplete = (evt.loaded / evt.total) * 100;
+            onProgress(percentComplete);
+          }
+        });
+
+        xhr.addEventListener('load', () => {
+          if (xhr.status >= 200 && xhr.status < 300) {
+            onProgress(100);
+            resolve(fileName);
+          } else {
+            reject(new Error(`Upload failed with status ${xhr.status}`));
+          }
+        });
+
+        xhr.addEventListener('error', () => {
+          reject(new Error('Upload failed'));
+        });
+
+        xhr.open('POST', uploadUrl);
+        xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+        xhr.setRequestHeader('Content-Type', file.type);
+        xhr.setRequestHeader('x-upsert', 'true');
+        
+        xhr.send(file);
+      } catch (error) {
+        reject(error);
+      }
+    };
+    
+    reader.onerror = () => {
+      reject(new Error('Failed to read file'));
+    };
+    
+    reader.readAsArrayBuffer(file);
+  });
 };
 
 /**

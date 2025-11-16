@@ -34,6 +34,8 @@ import { toast } from "sonner";
 import { getAvatarUrl, uploadAvatar, updateProfileAvatar } from "@/lib/avatarUtils";
 import { compressImage } from "@/lib/imageCompression";
 import { AvatarCropDialog } from "@/components/profile/AvatarCropDialog";
+import { AvatarUploadProgress } from "@/components/profile/AvatarUploadProgress";
+import { AnimatePresence } from "framer-motion";
 
 interface ProfileCardProps {
   profile: any;
@@ -62,6 +64,8 @@ export const ProfileCard = ({ profile, onProfileUpdate, workoutProgress }: Profi
   const [isAdmin, setIsAdmin] = useState(false);
   const [isCropDialogOpen, setIsCropDialogOpen] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [uploadStatus, setUploadStatus] = useState<'compressing' | 'uploading' | 'finished'>('compressing');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const progressPercentage = workoutProgress.total > 0 
@@ -141,18 +145,44 @@ export const ProfileCard = ({ profile, onProfileUpdate, workoutProgress }: Profi
     if (!user) return;
 
     setIsUploading(true);
+    setUploadProgress(0);
+    setUploadStatus('compressing');
+    
     try {
-      // Compress and resize cropped image before upload
-      const compressedFile = await compressImage(croppedFile, 512, 0.75);
+      // Compress and resize cropped image with progress tracking (0-50%)
+      const compressedFile = await compressImage(
+        croppedFile, 
+        512, 
+        0.75,
+        (progress) => {
+          // Map compression progress to 0-50%
+          setUploadProgress(progress * 0.5);
+        }
+      );
       
-      // Upload compressed file to storage and get path
-      const avatarPath = await uploadAvatar(user.id, compressedFile);
+      // Upload compressed file with progress tracking (50-100%)
+      setUploadStatus('uploading');
+      const avatarPath = await uploadAvatar(
+        user.id, 
+        compressedFile,
+        (progress) => {
+          // Map upload progress to 50-100%
+          setUploadProgress(50 + progress * 0.5);
+        }
+      );
       
       // Update profile with avatar path
       await updateProfileAvatar(user.id, avatarPath);
       
+      // Set final state
+      setUploadStatus('finished');
+      setUploadProgress(100);
+      
       // Set cache buster to force image refresh
       setAvatarCacheBuster(Date.now().toString());
+      
+      // Small delay to show 100% before hiding
+      await new Promise(resolve => setTimeout(resolve, 500));
       
       toast.success(t('profile.avatarUploadSuccess'));
       onProfileUpdate(); // Refresh profile data
@@ -161,6 +191,7 @@ export const ProfileCard = ({ profile, onProfileUpdate, workoutProgress }: Profi
       toast.error(t('profile.avatarUploadError'));
     } finally {
       setIsUploading(false);
+      setUploadProgress(0);
     }
   };
 
@@ -540,6 +571,16 @@ export const ProfileCard = ({ profile, onProfileUpdate, workoutProgress }: Profi
         file={selectedFile}
         onCropped={handleCroppedImage}
       />
+
+      {/* Upload Progress Overlay */}
+      <AnimatePresence>
+        {isUploading && (
+          <AvatarUploadProgress
+            progress={uploadProgress}
+            status={uploadStatus}
+          />
+        )}
+      </AnimatePresence>
     </motion.div>
   );
 };
