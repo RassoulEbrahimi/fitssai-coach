@@ -1,10 +1,26 @@
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { z } from "https://deno.land/x/zod@v3.22.4/mod.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+};
+
+// Validation schema
+const GenerateSuggestionsSchema = z.object({
+  day_of_week: z.string().min(1).max(50, 'Day of week must be less than 50 characters'),
+  available_time: z.number().int().min(5, 'Available time must be at least 5 minutes').max(300, 'Available time must be less than 300 minutes'),
+  custom_prompt: z.string().max(1000, 'Custom prompt must be less than 1000 characters').optional(),
+  focus_type: z.enum(['auto', 'strength', 'cardio', 'flexibility', 'mobility']).default('auto'),
+});
+
+// Sanitize custom prompt to prevent injection attacks
+const sanitizePrompt = (prompt: string | undefined): string | undefined => {
+  if (!prompt) return undefined;
+  // Remove control characters and trim
+  return prompt.replace(/[\x00-\x1F\x7F]/g, '').trim();
 };
 
 serve(async (req) => {
@@ -67,9 +83,23 @@ serve(async (req) => {
       );
     }
 
-    const { day_of_week, available_time, custom_prompt, focus_type = 'auto' } = await req.json();
+    // Parse and validate request body
+    const body = await req.json();
+    const validation = GenerateSuggestionsSchema.safeParse(body);
     
-    console.log('[Diagnostics] Request body:', {
+    if (!validation.success) {
+      const errors = validation.error.errors.map(e => `${e.path.join('.')}: ${e.message}`).join(', ');
+      console.error('[Error] Validation failed:', errors);
+      return new Response(
+        JSON.stringify({ error: `Validation error: ${errors}`, code: 'VALIDATION_ERROR' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+    
+    const { day_of_week, available_time, focus_type } = validation.data;
+    const custom_prompt = sanitizePrompt(validation.data.custom_prompt);
+    
+    console.log('[Diagnostics] Validated request:', {
       day_of_week,
       available_time,
       userId: user.id,

@@ -42,13 +42,9 @@ serve(async (req) => {
     if (userErr || !user) return json({ success: false, error: "Nicht angemeldet.", code: "AUTH" });
 
     // 3) AuthZ — must be admin
-    const { data: profile, error: profErr } = await sb
-      .from("profiles")
-      .select("is_admin")
-      .eq("id", user.id)
-      .maybeSingle();
+    const { data: isAdmin, error: profErr } = await sb.rpc("is_current_user_admin");
     if (profErr) return json({ success: false, error: "Profilprüfung fehlgeschlagen.", code: "DB" });
-    if (!profile?.is_admin) return json({ success: false, error: "Keine Berechtigung.", code: "FORBIDDEN" });
+    if (!isAdmin) return json({ success: false, error: "Keine Berechtigung.", code: "FORBIDDEN" });
 
     // Parse `action` tolerantly: prefer JSON body; else query param; else default
     let action: "users" | "plans" | undefined;
@@ -88,15 +84,24 @@ serve(async (req) => {
     if (action === "users") {
       const { data: profilesData, error: pErr } = await sb
         .from("profiles")
-        .select("id, age, weight, height, fitness_goal, dietary_preference, is_admin, created_at")
+        .select("id, age, weight, height, fitness_goal, dietary_preference, created_at")
         .order("created_at", { ascending: false });
       if (pErr) return json({ success: false, error: "Benutzer konnten nicht geladen werden.", code: "DB" });
+
+      const { data: rolesData, error: rErr } = await sb
+        .from("user_roles")
+        .select("user_id, role")
+        .eq("role", "admin");
+      if (rErr) return json({ success: false, error: "Rollen konnten nicht geladen werden.", code: "DB" });
+
+      const adminUserIds = new Set((rolesData || []).map((r: any) => r.user_id));
 
       const { data: authUsers, error: aErr } = await sb.auth.admin.listUsers();
       if (aErr) return json({ success: false, error: "Benutzer konnten nicht geladen werden.", code: "AUTH_ADMIN" });
 
       const users = (profilesData || []).map((p: any) => ({
         ...p,
+        is_admin: adminUserIds.has(p.id),
         email: (authUsers?.users || []).find((u: any) => u.id === p.id)?.email ?? "N/A",
       }));
       return json({ success: true, users });

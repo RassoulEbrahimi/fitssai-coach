@@ -1,6 +1,7 @@
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { z } from "https://deno.land/x/zod@v3.22.4/mod.ts";
 import { getBerlinToday, getWorkoutDateString } from "../_shared/dateUtils.ts";
 
 const corsHeaders = {
@@ -17,6 +18,15 @@ const json = (obj: any, status = 200) =>
 const ok = (obj: Record<string, any> = {}) => json({ success: true, ...obj }, 200);
 const fail = (message: string, code?: string) =>
   json({ success: false, error: message, code }, 200);
+
+// Validation schema
+const ToggleExerciseSchema = z.object({
+  planId: z.string().uuid('Invalid plan ID format'),
+  weekKey: z.string().regex(/^Week [1-4]$/, 'Week key must be "Week 1", "Week 2", "Week 3", or "Week 4"'),
+  dayIndex: z.number().int().min(0).max(6, 'Day index must be between 0 and 6'),
+  exerciseIndex: z.number().int().min(0, 'Exercise index must be non-negative'),
+  completed: z.boolean('Completed must be a boolean'),
+});
 
 serve(async (req) => {
   // Handle CORS preflight requests
@@ -47,14 +57,15 @@ serve(async (req) => {
     }
 
     const body = await req.json();
-    const { planId, weekKey, dayIndex, exerciseIndex, completed } = body;
-
-    // CRITICAL: weekKey and dayIndex are the real selected week/day, never the mirror source.
-    // This ensures completion logs are recorded for the actual selected week,
-    // even if the UI displays exercises from a mirrored week (week1/week2 fallback).
-    if (!planId || !weekKey || dayIndex === undefined || exerciseIndex === undefined || completed === undefined) {
-      return fail('planId, weekKey, dayIndex, exerciseIndex und completed sind erforderlich', 'MISSING_PARAMS');
+    
+    // Validate input
+    const validation = ToggleExerciseSchema.safeParse(body);
+    if (!validation.success) {
+      const errors = validation.error.errors.map(e => `${e.path.join('.')}: ${e.message}`).join(', ');
+      return fail(`Validation error: ${errors}`, 'VALIDATION_ERROR');
     }
+    
+    const { planId, weekKey, dayIndex, exerciseIndex, completed } = validation.data;
 
     console.log(`Toggling exercise for user ${user.id}, plan ${planId}, ${weekKey} day ${dayIndex} exercise ${exerciseIndex} to ${completed}`);
 
