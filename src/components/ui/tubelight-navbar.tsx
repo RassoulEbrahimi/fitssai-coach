@@ -38,72 +38,73 @@ export const NavBar = React.forwardRef<HTMLDivElement, NavBarProps>(
     <div 
       ref={ref}
       className={cn(
-        "fixed bottom-4 left-1/2 z-50 flex justify-center items-center w-fit",
+        "fixed bottom-4 inset-x-0 z-50 pointer-events-none",
         className,
       )}
       style={{ 
-        transform: 'translateX(-50%)',
         paddingBottom: 'env(safe-area-inset-bottom)' 
       }}
     >
       {/* Glass filter definition */}
       <GlassFilter />
       
-      {/* Relative wrapper for glass layer - NO transforms here */}
-      <div className="relative flex items-center justify-center">
-        {/* Frosted glass background layer - outside animation context */}
-        <div 
-          className={cn(
-            "absolute inset-0 rounded-full pointer-events-none",
-            isDark
-              ? "bg-emerald-950/25"
-              : "bg-emerald-100/25"
-          )}
-          style={{ 
-            filter: 'url("#container-glass")',
-            backdropFilter: 'blur(18px)',
-            WebkitBackdropFilter: 'blur(18px)',
-          }}
-        />
-        
-        {/* Animated content wrapper */}
-        <motion.div
-          initial={{ y: 100, opacity: 0 }}
-          animate={{ 
-            y: 0, 
-            opacity: 1 
-          }}
-          transition={{ 
-            type: prefersReducedMotion ? "tween" : "spring", 
-            stiffness: 150, 
-            damping: 20,
-            duration: prefersReducedMotion ? 0.2 : undefined
-          }}
-          className="relative flex items-center justify-center"
-          style={{ willChange: 'transform, opacity' }}
-        >
-          {/* Soft neon glow shadow below navbar - optimized with CSS only */}
-          <div className={cn(
-            "absolute inset-0 bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] rounded-full blur-lg transition-opacity duration-500",
-            isDark 
-              ? "from-emerald-500/25 via-emerald-500/15 to-transparent"
-              : "from-emerald-400/20 via-emerald-300/10 to-transparent"
-          )} 
-          style={{ willChange: 'opacity' }}
-          />
-          
-          {/* Main navbar container - no backdrop here, just structure */}
+      {/* Flex container to center the navbar */}
+      <div className="flex justify-center">
+        {/* Relative wrapper with overflow-hidden and rounded-full for glass layer */}
+        <div className="relative overflow-hidden rounded-full pointer-events-auto">
+          {/* Frosted glass background layer - outside animation context */}
           <div 
             className={cn(
-              "relative flex items-center justify-center gap-3 rounded-full border py-1 px-1 transition-all duration-500 shadow-lg",
+              "absolute inset-0 rounded-full pointer-events-none",
               isDark
-                ? "border-emerald-700/40 shadow-[0_0_15px_rgba(16,185,129,0.15)]"
-                : "border-emerald-300/40 shadow-[0_0_15px_rgba(16,185,129,0.1)]"
+                ? "bg-emerald-950/25"
+                : "bg-emerald-100/25"
             )}
-          >
+            style={{ 
+              backdropFilter: 'blur(18px)',
+              WebkitBackdropFilter: 'blur(18px)',
+              filter: 'url("#container-glass")',
+            }}
+          />
           
-          {/* Navigation items - positioned above glass background */}
-          <div className="relative z-10 flex items-center gap-3">
+          {/* Animated content wrapper - ALL animations here */}
+          <motion.div
+            initial={{ y: 100, opacity: 0 }}
+            animate={{ 
+              y: 0, 
+              opacity: 1 
+            }}
+            transition={{ 
+              type: prefersReducedMotion ? "tween" : "spring", 
+              stiffness: 150, 
+              damping: 20,
+              duration: prefersReducedMotion ? 0.2 : undefined
+            }}
+            className="relative flex items-center justify-center"
+            style={{ willChange: 'transform, opacity' }}
+          >
+            {/* Soft neon glow shadow below navbar - optimized with CSS only */}
+            <div className={cn(
+              "absolute inset-0 bg-[radial-gradient(ellipse_at_center,_var(--tw-gradient-stops))] rounded-full blur-lg transition-opacity duration-500",
+              isDark 
+                ? "from-emerald-500/25 via-emerald-500/15 to-transparent"
+                : "from-emerald-400/20 via-emerald-300/10 to-transparent"
+            )} 
+            style={{ willChange: 'opacity' }}
+            />
+            
+            {/* Main navbar container - no backdrop here, just structure */}
+            <div 
+              className={cn(
+                "relative flex items-center justify-center gap-3 rounded-full border py-1 px-1 transition-all duration-500 shadow-lg",
+                isDark
+                  ? "border-emerald-700/40 shadow-[0_0_15px_rgba(16,185,129,0.15)]"
+                  : "border-emerald-300/40 shadow-[0_0_15px_rgba(16,185,129,0.1)]"
+              )}
+            >
+            
+            {/* Navigation items - positioned above glass background */}
+            <div className="relative z-10 flex items-center gap-3">
           {items.map((item) => {
             const Icon = item.icon
             const isActive = activeTab === item.id
@@ -218,10 +219,11 @@ export const NavBar = React.forwardRef<HTMLDivElement, NavBarProps>(
               </motion.button>
             )
           })}
+            </div>
           </div>
-        </div>
-      </motion.div>
-      </div> {/* Close relative wrapper for glass layer */}
+        </motion.div>
+        </div> {/* Close relative wrapper for glass layer */}
+      </div> {/* Close flex container */}
     </div>
   )
 })
