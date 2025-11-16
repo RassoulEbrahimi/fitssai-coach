@@ -11,34 +11,58 @@ import { useTranslation } from "react-i18next";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { z } from "zod";
+
+const onboardingSchema = z.object({
+  firstName: z.string().min(2, "Name must be at least 2 characters").max(50, "Name too long"),
+  age: z.number({ invalid_type_error: "Age is required" }).int().min(13, "Must be at least 13").max(120, "Invalid age"),
+  weight: z.number({ invalid_type_error: "Weight is required" }).int().min(30, "Weight must be at least 30kg").max(300, "Invalid weight"),
+  height: z.number({ invalid_type_error: "Height is required" }).int().min(100, "Height must be at least 100cm").max(250, "Invalid height"),
+  goal: z.enum(["gainMuscle", "loseFat", "improveCardio", "maintain"], { required_error: "Please select a goal" }),
+  diet: z.enum(["vegan", "vegetarian", "keto", "highProtein", "noPreference"], { required_error: "Please select a dietary preference" }),
+  experience: z.enum(["beginner", "intermediate", "advanced"], { required_error: "Please select experience level" })
+});
 
 const OnboardingForm = ({ onComplete }: { onComplete: () => void }) => {
   const { t } = useTranslation();
   const { user } = useAuth();
   const [step, setStep] = useState(1);
   const [loading, setLoading] = useState(false);
-  const [formData, setFormData] = useState({
-    firstName: "",
-    age: "",
-    weight: "",
-    height: "",
-    goal: "",
-    diet: "",
-    experience: ""
+
+  const { register, handleSubmit, formState: { errors }, trigger, setValue, watch } = useForm<z.infer<typeof onboardingSchema>>({
+    resolver: zodResolver(onboardingSchema),
+    mode: "onChange"
   });
 
+  const formData = watch();
   const totalSteps = 3;
   const progress = (step / totalSteps) * 100;
 
   const handleNext = async () => {
-    if (step < totalSteps) {
-      setStep(step + 1);
-    } else {
-      await saveProfile();
+    let fieldsToValidate: (keyof z.infer<typeof onboardingSchema>)[] = [];
+    
+    if (step === 1) {
+      fieldsToValidate = ["firstName", "age", "weight", "height"];
+    } else if (step === 2) {
+      fieldsToValidate = ["goal"];
+    } else if (step === 3) {
+      fieldsToValidate = ["diet", "experience"];
+    }
+
+    const isValid = await trigger(fieldsToValidate);
+    
+    if (isValid) {
+      if (step < totalSteps) {
+        setStep(step + 1);
+      } else {
+        await handleSubmit(saveProfile)();
+      }
     }
   };
 
-  const saveProfile = async () => {
+  const saveProfile = async (data: z.infer<typeof onboardingSchema>) => {
     if (!user) return;
 
     setLoading(true);
@@ -47,13 +71,13 @@ const OnboardingForm = ({ onComplete }: { onComplete: () => void }) => {
         .from('profiles')
         .upsert({
           id: user.id,
-          full_name: formData.firstName,
-          age: parseInt(formData.age),
-          weight: parseInt(formData.weight),
-          height: parseInt(formData.height),
-          fitness_goal: formData.goal,
-          dietary_preference: formData.diet,
-          experience_level: formData.experience,
+          full_name: data.firstName,
+          age: data.age,
+          weight: data.weight,
+          height: data.height,
+          fitness_goal: data.goal,
+          dietary_preference: data.diet,
+          experience_level: data.experience,
         });
 
       if (error) throw error;
@@ -61,7 +85,6 @@ const OnboardingForm = ({ onComplete }: { onComplete: () => void }) => {
       toast.success('Profile saved successfully!');
       onComplete();
     } catch (error: any) {
-      console.error('Error saving profile:', error);
       toast.error('Failed to save profile. Please try again.');
     } finally {
       setLoading(false);
@@ -98,12 +121,12 @@ const OnboardingForm = ({ onComplete }: { onComplete: () => void }) => {
                     id="firstName"
                     type="text"
                     placeholder="Gib deinen Namen ein"
-                    value={formData.firstName}
-                    onChange={(e) => setFormData({...formData, firstName: e.target.value})}
+                    {...register("firstName")}
                     className="mt-1"
-                    required
-                    minLength={2}
                   />
+                  {errors.firstName && (
+                    <p className="text-sm text-destructive mt-1">{errors.firstName.message}</p>
+                  )}
                 </div>
                 
                 <div>
@@ -112,10 +135,12 @@ const OnboardingForm = ({ onComplete }: { onComplete: () => void }) => {
                     id="age"
                     type="number"
                     placeholder={t('onboarding.fields.agePlaceholder')}
-                    value={formData.age}
-                    onChange={(e) => setFormData({...formData, age: e.target.value})}
+                    {...register("age", { valueAsNumber: true })}
                     className="mt-1"
                   />
+                  {errors.age && (
+                    <p className="text-sm text-destructive mt-1">{errors.age.message}</p>
+                  )}
                 </div>
                 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -125,10 +150,12 @@ const OnboardingForm = ({ onComplete }: { onComplete: () => void }) => {
                       id="weight"
                       type="number"
                       placeholder={t('onboarding.fields.weightPlaceholder')}
-                      value={formData.weight}
-                      onChange={(e) => setFormData({...formData, weight: e.target.value})}
+                      {...register("weight", { valueAsNumber: true })}
                       className="mt-1"
                     />
+                    {errors.weight && (
+                      <p className="text-sm text-destructive mt-1">{errors.weight.message}</p>
+                    )}
                   </div>
                   
                   <div>
@@ -137,10 +164,12 @@ const OnboardingForm = ({ onComplete }: { onComplete: () => void }) => {
                       id="height"
                       type="number"
                       placeholder={t('onboarding.fields.heightPlaceholder')}
-                      value={formData.height}
-                      onChange={(e) => setFormData({...formData, height: e.target.value})}
+                      {...register("height", { valueAsNumber: true })}
                       className="mt-1"
                     />
+                    {errors.height && (
+                      <p className="text-sm text-destructive mt-1">{errors.height.message}</p>
+                    )}
                   </div>
                 </div>
               </div>
@@ -155,7 +184,7 @@ const OnboardingForm = ({ onComplete }: { onComplete: () => void }) => {
                 <Label>{t('onboarding.fields.fitnessGoal')}</Label>
                 <RadioGroup 
                   value={formData.goal} 
-                  onValueChange={(value) => setFormData({...formData, goal: value})}
+                  onValueChange={(value) => setValue("goal", value as any)}
                   className="mt-3"
                 >
                   <div className="flex items-center space-x-2 p-4 rounded-lg border border-border hover:bg-muted/50 transition-smooth">
@@ -187,6 +216,9 @@ const OnboardingForm = ({ onComplete }: { onComplete: () => void }) => {
                     </Label>
                   </div>
                 </RadioGroup>
+                {errors.goal && (
+                  <p className="text-sm text-destructive mt-1">{errors.goal.message}</p>
+                )}
               </div>
             </div>
           )}
@@ -197,7 +229,7 @@ const OnboardingForm = ({ onComplete }: { onComplete: () => void }) => {
               
               <div>
                 <Label>{t('onboarding.fields.dietaryPreference')}</Label>
-                <Select value={formData.diet} onValueChange={(value) => setFormData({...formData, diet: value})}>
+                <Select value={formData.diet} onValueChange={(value) => setValue("diet", value as any)}>
                   <SelectTrigger className="mt-1">
                     <SelectValue placeholder={t('onboarding.fields.dietaryPreferencePlaceholder')} />
                   </SelectTrigger>
@@ -209,11 +241,14 @@ const OnboardingForm = ({ onComplete }: { onComplete: () => void }) => {
                     <SelectItem value="highProtein">{t('onboarding.diet.highProtein')}</SelectItem>
                   </SelectContent>
                 </Select>
+                {errors.diet && (
+                  <p className="text-sm text-destructive mt-1">{errors.diet.message}</p>
+                )}
               </div>
               
               <div>
                 <Label>{t('dashboard.experienceLevel.label')}</Label>
-                <Select value={formData.experience} onValueChange={(value) => setFormData({...formData, experience: value})}>
+                <Select value={formData.experience} onValueChange={(value) => setValue("experience", value as any)}>
                   <SelectTrigger className="mt-1">
                     <SelectValue placeholder={t('dashboard.experienceLevel.placeholder')} />
                   </SelectTrigger>
@@ -223,6 +258,9 @@ const OnboardingForm = ({ onComplete }: { onComplete: () => void }) => {
                     <SelectItem value="advanced">{t('dashboard.experienceLevel.advancedDesc')}</SelectItem>
                   </SelectContent>
                 </Select>
+                {errors.experience && (
+                  <p className="text-sm text-destructive mt-1">{errors.experience.message}</p>
+                )}
               </div>
             </div>
           )}
