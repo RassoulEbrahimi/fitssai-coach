@@ -158,14 +158,11 @@ serve(async (req) => {
       }
 
       // Check if current user is admin
-      const { data: adminProfile, error: adminError } = await supabaseClient
-        .from('profiles')
-        .select('is_admin')
-        .eq('id', user.id)
-        .single();
+      const { data: isAdmin, error: adminError } = await supabaseClient
+        .rpc('is_current_user_admin');
 
-      if (adminError || !adminProfile?.is_admin) {
-        console.error('Admin check failed:', adminError);
+      if (adminError || !isAdmin) {
+        console.error('[ERROR] Admin check failed');
         return fail('Admin-Zugriff erforderlich', 'ADMIN_REQUIRED');
       }
 
