@@ -63,7 +63,6 @@ export const NavBar = React.forwardRef<HTMLDivElement, NavBarProps>(
             style={{ 
               backdropFilter: 'blur(18px)',
               WebkitBackdropFilter: 'blur(18px)',
-              filter: 'url("#container-glass")',
             }}
           />
           
