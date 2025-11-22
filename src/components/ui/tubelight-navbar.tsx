@@ -63,6 +63,9 @@ export const NavBar = React.forwardRef<HTMLDivElement, NavBarProps>(
             style={{ 
               backdropFilter: 'blur(18px)',
               WebkitBackdropFilter: 'blur(18px)',
+              backgroundImage: `url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAAQklEQVRYR+2WQQ4AIAhDuf9/Zq9gsiSYmc8mEh+ttKKqiKiFVFUVEREREREREREREREREREREREREREREREREREREdksgAeNCRCbp/TzAAAAAElFTkSuQmCC")`,
+              backgroundSize: '128px 128px',
+              backgroundRepeat: 'repeat',
             }}
           />
           
