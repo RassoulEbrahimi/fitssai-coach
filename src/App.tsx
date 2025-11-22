@@ -9,6 +9,7 @@ import { useTranslation } from "react-i18next";
 import { AuthProvider } from "@/hooks/useAuth";
 import { ThemeProvider } from "@/hooks/useTheme";
 import { PreferencesProvider } from "@/contexts/PreferencesContext";
+import { TrainingProvider } from "@/contexts/TrainingContext";
 import RootRedirect from "@/components/RootRedirect";
 import AuthPage from './pages/AuthPage';
 import DashboardPage from './pages/DashboardPage';
@@ -90,28 +91,30 @@ const App = () => {
     >
       <ThemeProvider>
         <PreferencesProvider>
-          <AuthProvider>
-            <TooltipProvider>
-            <div className="sr-only focus:not-sr-only focus:absolute focus:top-0 focus:left-0 focus:p-2 focus:bg-background focus:z-50">
-              <a href="#main-content" className="mr-4">Zum Hauptinhalt springen</a>
-              <a href="#navigation">Zur Navigation springen</a>
-            </div>
-            <Toaster />
-            <Sonner />
-            <BrowserRouter>
-              <Routes>
-                <Route path="/" element={<RootRedirect />} />
-                <Route path="/auth/:mode" element={<AuthPage />} />
-            <Route path="/dashboard" element={<DashboardPage />} />
-            <Route path="/onboarding" element={<OnboardingPage />} />
-            <Route path="/admin" element={<AdminPanel />} />
-            <Route path="/farewell" element={<FarewellPage />} />
-                {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
-                <Route path="*" element={<NotFound />} />
-              </Routes>
-            </BrowserRouter>
-            </TooltipProvider>
-          </AuthProvider>
+          <TrainingProvider>
+            <AuthProvider>
+              <TooltipProvider>
+              <div className="sr-only focus:not-sr-only focus:absolute focus:top-0 focus:left-0 focus:p-2 focus:bg-background focus:z-50">
+                <a href="#main-content" className="mr-4">Zum Hauptinhalt springen</a>
+                <a href="#navigation">Zur Navigation springen</a>
+              </div>
+              <Toaster />
+              <Sonner />
+              <BrowserRouter>
+                <Routes>
+                  <Route path="/" element={<RootRedirect />} />
+                  <Route path="/auth/:mode" element={<AuthPage />} />
+              <Route path="/dashboard" element={<DashboardPage />} />
+              <Route path="/onboarding" element={<OnboardingPage />} />
+              <Route path="/admin" element={<AdminPanel />} />
+              <Route path="/farewell" element={<FarewellPage />} />
+                  {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
+                  <Route path="*" element={<NotFound />} />
+                </Routes>
+              </BrowserRouter>
+              </TooltipProvider>
+            </AuthProvider>
+          </TrainingProvider>
         </PreferencesProvider>
       </ThemeProvider>
     </PersistQueryClientProvider>
