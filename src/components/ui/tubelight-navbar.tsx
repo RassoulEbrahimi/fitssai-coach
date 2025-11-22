@@ -29,6 +29,20 @@ export const NavBar = React.forwardRef<HTMLDivElement, NavBarProps>(
   const [activeShimmer, setActiveShimmer] = useState(false)
   const shimmerTimeoutRef = React.useRef<NodeJS.Timeout | null>(null)
 
+  // Dynamic shimmer color mapping based on active tab
+  const getShimmerColors = React.useCallback(() => {
+    const tabIndex = items.findIndex(item => item.id === activeTab)
+    const colors = [
+      { ambient: 'rgba(16, 185, 129, 0.025)', active: 'rgba(16, 185, 129, 0.06)' }, // emerald
+      { ambient: 'rgba(59, 130, 246, 0.025)', active: 'rgba(59, 130, 246, 0.06)' },  // blue
+      { ambient: 'rgba(168, 85, 247, 0.025)', active: 'rgba(168, 85, 247, 0.06)' },  // purple
+      { ambient: 'rgba(236, 72, 153, 0.025)', active: 'rgba(236, 72, 153, 0.06)' },  // pink
+    ]
+    return colors[tabIndex % colors.length] || colors[0]
+  }, [activeTab, items])
+
+  const shimmerColors = getShimmerColors()
+
   const triggerActiveShimmer = React.useCallback(() => {
     if (prefersReducedMotion) return
     setActiveShimmer(true)
@@ -126,11 +140,11 @@ export const NavBar = React.forwardRef<HTMLDivElement, NavBarProps>(
           {/* Ambient shimmer layer - always running */}
           {!prefersReducedMotion && (
             <div
-              className="absolute inset-0 rounded-full pointer-events-none"
+              className="absolute inset-0 rounded-full pointer-events-none transition-all duration-700"
               style={{
                 backgroundImage: `
-                  radial-gradient(ellipse 120% 80% at 50% 50%, transparent 40%, rgba(255,255,255,0.03) 50%, transparent 60%),
-                  linear-gradient(125deg, transparent 25%, rgba(255,255,255,0.025) 45%, rgba(255,255,255,0.035) 50%, rgba(255,255,255,0.025) 55%, transparent 75%)
+                  radial-gradient(ellipse 120% 80% at 50% 50%, transparent 40%, ${shimmerColors.ambient} 50%, transparent 60%),
+                  linear-gradient(125deg, transparent 25%, ${shimmerColors.ambient} 45%, rgba(255,255,255,0.035) 50%, ${shimmerColors.ambient} 55%, transparent 75%)
                 `,
                 backgroundSize: '500% 500%',
                 backgroundBlendMode: 'soft-light',
@@ -146,7 +160,7 @@ export const NavBar = React.forwardRef<HTMLDivElement, NavBarProps>(
               className="absolute inset-0 rounded-full pointer-events-none"
               style={{
                 backgroundImage: `
-                  linear-gradient(130deg, transparent 20%, rgba(255,255,255,0.06) 45%, rgba(255,255,255,0.08) 50%, rgba(255,255,255,0.06) 55%, transparent 80%)
+                  linear-gradient(130deg, transparent 20%, ${shimmerColors.active} 45%, rgba(255,255,255,0.08) 50%, ${shimmerColors.active} 55%, transparent 80%)
                 `,
                 backgroundSize: '400% 400%',
                 backgroundBlendMode: 'overlay',
