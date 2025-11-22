@@ -60,7 +60,7 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
   const { t } = useTranslation();
   const { user } = useAuth();
   const { showToast } = useThrottledToast();
-  const { todayWorkouts, syncFromPlan } = useTraining();
+  const { todayWorkouts } = useTraining();
   
   // Reactive Berlin "today" - updates automatically at midnight
   const berlinToday = useBerlinToday();
@@ -68,20 +68,8 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
   // Use consolidated workout helpers hook
   const { getWeekContentWithFallback } = useWorkoutHelpers(workoutPlan);
 
-  // Get exercises from the same source as the week list (may be mirrored for UI display)
-  const weekData = getWeekContentWithFallback(weekKey);
-  const dayData = weekData[dayIndex];
-  const planExercises = dayData?.exercises || [];
-  
-  // Sync plan exercises to training context when they change
-  useEffect(() => {
-    if (planExercises.length > 0) {
-      syncFromPlan(planExercises, weekKey, dayIndex);
-    }
-  }, [planExercises, weekKey, dayIndex, syncFromPlan]);
-  
-  // Use training context exercises for rendering (reactive to all changes)
-  const exercises = todayWorkouts.length > 0 ? todayWorkouts : planExercises;
+  // Display exercises ONLY from TrainingContext (reactive to all changes)
+  const exercises = todayWorkouts;
   const isRestDay = !exercises.length;
 
   // Memoized exercise list rendering
