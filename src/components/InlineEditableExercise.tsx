@@ -3,7 +3,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { Info, Loader2, ChevronsUpDown } from 'lucide-react';
+import { Info, Loader2, ChevronsUpDown, Trash2 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import type { Exercise } from '@/hooks/useExerciseEditor';
 import { cn } from '@/lib/utils';
@@ -142,6 +142,7 @@ interface InlineEditableExerciseProps {
   exerciseIndex: number;
   onUpdate: (updatedExercise: Exercise) => Promise<void>;
   onInfo: () => void;
+  onDelete?: (exerciseIndex: number) => void;
   isUpdating?: boolean;
 }
 const InlineEditableExercise: React.FC<InlineEditableExerciseProps> = ({
@@ -149,6 +150,7 @@ const InlineEditableExercise: React.FC<InlineEditableExerciseProps> = ({
   exerciseIndex,
   onUpdate,
   onInfo,
+  onDelete,
   isUpdating = false
 }) => {
   const {
@@ -371,6 +373,23 @@ const InlineEditableExercise: React.FC<InlineEditableExerciseProps> = ({
           <span className="text-sm leading-none" aria-hidden="true">⏱️</span>
           <Input type="text" value={localDuration} onChange={handleDurationChange} onBlur={handleDurationBlur} placeholder="30min" disabled={isSaving || isUpdating} className="h-auto w-auto min-w-[2.5rem] max-w-[4rem] border-0 bg-transparent p-0 text-xs sm:text-sm font-medium focus-visible:ring-0 focus-visible:ring-offset-0" />
         </div>}
+
+      {/* Delete button */}
+      {onDelete && (
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => onDelete(exerciseIndex)}
+          disabled={isSaving || isUpdating}
+          className="ml-auto h-auto w-auto p-1.5 text-[#ff4d4d] hover:text-[#ff4d4d] hover:bg-[#ff4d4d]/10 hover:scale-110 transition-all duration-200 flex-shrink-0"
+          style={{ 
+            filter: 'drop-shadow(0 1px 2px rgba(255, 77, 77, 0.2))'
+          }}
+          aria-label={`${exercise.name} löschen`}
+        >
+          <Trash2 className="h-[18px] w-[18px]" />
+        </Button>
+      )}
     </div>;
 };
 export default InlineEditableExercise;
