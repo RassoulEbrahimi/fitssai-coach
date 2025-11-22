@@ -35,18 +35,30 @@ export const NavBar = React.forwardRef<HTMLDivElement, NavBarProps>(
   }, [])
 
   return (
-    <div 
-      ref={ref}
-      className={cn(
-        "fixed bottom-4 inset-x-0 z-50 pointer-events-none",
-        className,
-      )}
-      style={{ 
-        paddingBottom: 'env(safe-area-inset-bottom)' 
-      }}
-    >
-      {/* Glass filter definition */}
-      <GlassFilter />
+    <>
+      <style>{`
+        @keyframes shimmer-glass {
+          0% {
+            background-position: -200% -200%, 0 0;
+          }
+          100% {
+            background-position: 200% 200%, 0 0;
+          }
+        }
+      `}</style>
+      
+      <div 
+        ref={ref}
+        className={cn(
+          "fixed bottom-4 inset-x-0 z-50 pointer-events-none",
+          className,
+        )}
+        style={{ 
+          paddingBottom: 'env(safe-area-inset-bottom)' 
+        }}
+      >
+        {/* Glass filter definition */}
+        <GlassFilter />
       
       {/* Flex container to center the navbar */}
       <div className="flex justify-center">
@@ -63,9 +75,14 @@ export const NavBar = React.forwardRef<HTMLDivElement, NavBarProps>(
             style={{ 
               backdropFilter: 'blur(18px)',
               WebkitBackdropFilter: 'blur(18px)',
-              backgroundImage: `url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAAQklEQVRYR+2WQQ4AIAhDuf9/Zq9gsiSYmc8mEh+ttKKqiKiFVFUVEREREREREREREREREREREREREREREREREREREdksgAeNCRCbp/TzAAAAAElFTkSuQmCC")`,
-              backgroundSize: '128px 128px',
-              backgroundRepeat: 'repeat',
+              backgroundImage: `
+                linear-gradient(135deg, transparent 30%, rgba(255,255,255,0.04) 50%, transparent 70%),
+                url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAAQklEQVRYR+2WQQ4AIAhDuf9/Zq9gsiSYmc8mEh+ttKKqiKiFVFUVEREREREREREREREREREREREREREREREREREREdksgAeNCRCbp/TzAAAAAElFTkSuQmCC")
+              `,
+              backgroundSize: '400% 400%, 128px 128px',
+              backgroundRepeat: 'no-repeat, repeat',
+              animation: 'shimmer-glass 4s ease-in-out infinite',
+              willChange: 'background-position',
             }}
           />
           
@@ -226,7 +243,8 @@ export const NavBar = React.forwardRef<HTMLDivElement, NavBarProps>(
         </motion.div>
         </div> {/* Close relative wrapper for glass layer */}
       </div> {/* Close flex container */}
-    </div>
+      </div>
+    </>
   )
 })
 
