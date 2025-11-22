@@ -485,6 +485,13 @@ const WorkoutView: React.FC<WorkoutViewProps> = ({
     handleOpenAddExercise(weekKey, dayIndex, 'ai');
     logEvent('ai_autofill_opened', { weekKey, dayIndex });
   };
+
+  // Placeholder delete handler (UI only, no logic yet)
+  const handleDeleteExercise = (weekKey: string, dayIndex: number, exerciseIndex: number) => {
+    console.log('Delete exercise triggered:', { weekKey, dayIndex, exerciseIndex });
+    // TODO: Implement delete logic
+  };
+
   // Show loading skeleton while plan is being fetched
   if (isLoadingPlan) {
     return <ExerciseListSkeleton />;
@@ -876,11 +883,14 @@ const WorkoutView: React.FC<WorkoutViewProps> = ({
                                   </Button>
                                 </div>
                               ) : (
-                                  <Suspense fallback={<ExerciseListSkeleton />}>
+                                   <Suspense fallback={<ExerciseListSkeleton />}>
                                    <ExerciseList
                                      exercises={exercises}
                                      onUpdateExercise={(exerciseIndex, updatedExercise) =>
                                        handleUpdateExercise(wk, dayIndex, exerciseIndex, updatedExercise)
+                                     }
+                                     onDeleteExercise={(exerciseIndex) =>
+                                       handleDeleteExercise(wk, dayIndex, exerciseIndex)
                                      }
                                      isUpdating={isUpdating}
                                    />

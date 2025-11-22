@@ -19,12 +19,14 @@ interface ExerciseListProps {
   exercises: any[];
   // Inline editing support
   onUpdateExercise?: (exerciseIndex: number, exercise: Exercise) => Promise<void>;
+  onDeleteExercise?: (exerciseIndex: number) => void;
   isUpdating?: boolean;
 }
 
 const ExerciseList: React.FC<ExerciseListProps> = ({ 
   exercises,
   onUpdateExercise,
+  onDeleteExercise,
   isUpdating = false,
 }) => {
   const { t } = useTranslation();
@@ -99,6 +101,7 @@ const ExerciseList: React.FC<ExerciseListProps> = ({
                   exerciseIndex={exerciseIndex}
                   onUpdate={(updatedExercise) => onUpdateExercise(exerciseIndex, updatedExercise)}
                   onInfo={handleExerciseInfo}
+                  onDelete={onDeleteExercise}
                   isUpdating={isUpdating}
                 />
               </motion.li>
