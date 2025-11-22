@@ -1,11 +1,15 @@
 import React from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "@/components/ui/button";
-import { RefreshCw } from "lucide-react";
+import { RefreshCw, Sparkles } from "lucide-react";
 import { ProfileCard } from "@/components/ProfileCard";
 import { AIAnalyticsCard } from "@/components/AIAnalyticsCard";
 import { LogoutButton } from "@/components/LogoutButton";
 import { DeleteAccountButton } from "@/components/DeleteAccountButton";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
+import { useAdvancedGlassPreference } from "@/hooks/useAdvancedGlassPreference";
 
 interface ProfileViewProps {
   profile: any;
@@ -26,6 +30,8 @@ const ProfileView: React.FC<ProfileViewProps> = React.memo(({
   nutritionPlan,
   onGeneratePlans
 }) => {
+  const { enabled: advancedGlassEnabled, setEnabled: setAdvancedGlassEnabled } = useAdvancedGlassPreference();
+
   return (
     <AnimatePresence mode="wait">
       <motion.div
@@ -41,6 +47,38 @@ const ProfileView: React.FC<ProfileViewProps> = React.memo(({
           onProfileUpdate={onProfileUpdate}
           workoutProgress={workoutProgress}
         />
+
+        {/* Advanced Glass Preference Toggle */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.4, delay: 0.1 }}
+        >
+          <Card className="border-border/50 bg-card/50 backdrop-blur-sm">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-lg">
+                <Sparkles className="w-5 h-5 text-primary" />
+                Premium Liquid Glass Navigation
+              </CardTitle>
+              <CardDescription className="text-sm">
+                Enable advanced shimmer effects and dynamic color tints for the bottom navigation bar. 
+                When disabled, a simpler frosted glass design is used for better focus and battery life.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="flex items-center justify-between">
+                <Label htmlFor="advanced-glass-toggle" className="text-sm font-medium cursor-pointer">
+                  {advancedGlassEnabled ? 'Premium effects enabled' : 'Simple glass design'}
+                </Label>
+                <Switch
+                  id="advanced-glass-toggle"
+                  checked={advancedGlassEnabled}
+                  onCheckedChange={setAdvancedGlassEnabled}
+                />
+              </div>
+            </CardContent>
+          </Card>
+        </motion.div>
         
         {/* AI Analytics Section */}
         <motion.div

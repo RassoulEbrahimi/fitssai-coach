@@ -7,10 +7,11 @@ type Tab = 'workout' | 'nutrition' | 'profile' | 'dashboard'
 interface FitssNavBarProps {
   activeTab: 'dashboard' | 'workout' | 'nutrition' | 'profile'
   onChange: (tab: Tab) => void
+  enableAdvancedGlass?: boolean
 }
 
 export const FitssNavBar = forwardRef<HTMLDivElement, FitssNavBarProps>(
-  ({ activeTab, onChange }, ref) => {
+  ({ activeTab, onChange, enableAdvancedGlass = false }, ref) => {
     const navItems = [
       { name: "Dashboard", id: "dashboard", icon: Home },
       { name: "Trainingsplan", id: "workout", icon: Dumbbell },
@@ -24,6 +25,7 @@ export const FitssNavBar = forwardRef<HTMLDivElement, FitssNavBarProps>(
         items={navItems} 
         activeTab={activeTab}
         onTabChange={(id) => onChange(id as Tab)}
+        enableAdvancedGlass={enableAdvancedGlass}
       />
     )
   }
