@@ -141,38 +141,36 @@ export const NavBar = React.forwardRef<HTMLDivElement, NavBarProps>(
             }}
           />
           
-          {/* Ambient shimmer layer - only when advanced glass is enabled */}
-          {shimmerEnabled && (
-            <div
-              className="absolute inset-0 rounded-full pointer-events-none transition-all duration-700"
-              style={{
-                backgroundImage: `
-                  radial-gradient(ellipse 120% 80% at 50% 50%, transparent 40%, ${shimmerColors.ambient} 50%, transparent 60%),
-                  linear-gradient(125deg, transparent 25%, ${shimmerColors.ambient} 45%, rgba(255,255,255,0.035) 50%, ${shimmerColors.ambient} 55%, transparent 75%)
-                `,
-                backgroundSize: '500% 500%',
-                backgroundBlendMode: 'soft-light',
-                animation: 'shimmer-ambient 7.5s ease-in-out infinite',
-                willChange: 'background-position',
-              }}
-            />
-          )}
+          {/* Ambient shimmer layer - smooth transition based on preference */}
+          <div
+            className="absolute inset-0 rounded-full pointer-events-none transition-opacity duration-700 ease-in-out"
+            style={{
+              opacity: shimmerEnabled ? 1 : 0,
+              backgroundImage: `
+                radial-gradient(ellipse 120% 80% at 50% 50%, transparent 40%, ${shimmerColors.ambient} 50%, transparent 60%),
+                linear-gradient(125deg, transparent 25%, ${shimmerColors.ambient} 45%, rgba(255,255,255,0.035) 50%, ${shimmerColors.ambient} 55%, transparent 75%)
+              `,
+              backgroundSize: '500% 500%',
+              backgroundBlendMode: 'soft-light',
+              animation: shimmerEnabled ? 'shimmer-ambient 7.5s ease-in-out infinite' : 'none',
+              willChange: shimmerEnabled ? 'background-position, opacity' : 'opacity',
+            }}
+          />
 
-          {/* Active shimmer layer - only when advanced glass is enabled */}
-          {shimmerEnabled && activeShimmer && (
-            <div
-              className="absolute inset-0 rounded-full pointer-events-none"
-              style={{
-                backgroundImage: `
-                  linear-gradient(130deg, transparent 20%, ${shimmerColors.active} 45%, rgba(255,255,255,0.08) 50%, ${shimmerColors.active} 55%, transparent 80%)
-                `,
-                backgroundSize: '400% 400%',
-                backgroundBlendMode: 'overlay',
-                animation: 'shimmer-active 1.6s ease-out forwards',
-                willChange: 'background-position, opacity',
-              }}
-            />
-          )}
+          {/* Active shimmer layer - smooth transition based on preference */}
+          <div
+            className="absolute inset-0 rounded-full pointer-events-none transition-opacity duration-500 ease-in-out"
+            style={{
+              opacity: shimmerEnabled && activeShimmer ? 1 : 0,
+              backgroundImage: `
+                linear-gradient(130deg, transparent 20%, ${shimmerColors.active} 45%, rgba(255,255,255,0.08) 50%, ${shimmerColors.active} 55%, transparent 80%)
+              `,
+              backgroundSize: '400% 400%',
+              backgroundBlendMode: 'overlay',
+              animation: shimmerEnabled && activeShimmer ? 'shimmer-active 1.6s ease-out forwards' : 'none',
+              willChange: shimmerEnabled && activeShimmer ? 'background-position, opacity' : 'opacity',
+            }}
+          />
           
           {/* Animated content wrapper - ALL animations here */}
           <motion.div
