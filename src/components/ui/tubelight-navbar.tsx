@@ -26,6 +26,15 @@ export const NavBar = React.forwardRef<HTMLDivElement, NavBarProps>(
   const isDark = actualTheme === "dark"
   const [pressedButton, setPressedButton] = useState<string | null>(null)
   const prefersReducedMotion = useReducedMotion()
+  const [activeShimmer, setActiveShimmer] = useState(false)
+  const shimmerTimeoutRef = React.useRef<NodeJS.Timeout | null>(null)
+
+  const triggerActiveShimmer = React.useCallback(() => {
+    if (prefersReducedMotion) return
+    setActiveShimmer(true)
+    if (shimmerTimeoutRef.current) clearTimeout(shimmerTimeoutRef.current)
+    shimmerTimeoutRef.current = setTimeout(() => setActiveShimmer(false), 1600)
+  }, [prefersReducedMotion])
 
   useEffect(() => {
     const handleResize = () => setIsMobile(window.innerWidth < 768)
@@ -34,15 +43,45 @@ export const NavBar = React.forwardRef<HTMLDivElement, NavBarProps>(
     return () => window.removeEventListener("resize", handleResize)
   }, [])
 
+  useEffect(() => {
+    const handleScroll = () => triggerActiveShimmer()
+    window.addEventListener("scroll", handleScroll, { passive: true })
+    return () => window.removeEventListener("scroll", handleScroll)
+  }, [triggerActiveShimmer])
+
+  useEffect(() => {
+    triggerActiveShimmer()
+  }, [activeTab, triggerActiveShimmer])
+
+  useEffect(() => {
+    return () => {
+      if (shimmerTimeoutRef.current) clearTimeout(shimmerTimeoutRef.current)
+    }
+  }, [])
+
   return (
     <>
       <style>{`
-        @keyframes shimmer-glass {
+        @keyframes shimmer-ambient {
           0% {
-            background-position: -200% -200%, 0 0;
+            background-position: -250% -250%;
           }
           100% {
-            background-position: 200% 200%, 0 0;
+            background-position: 250% 250%;
+          }
+        }
+        
+        @keyframes shimmer-active {
+          0% {
+            background-position: -180% -180%;
+            opacity: 0;
+          }
+          30% {
+            opacity: 1;
+          }
+          100% {
+            background-position: 180% 180%;
+            opacity: 0;
           }
         }
       `}</style>
@@ -63,7 +102,10 @@ export const NavBar = React.forwardRef<HTMLDivElement, NavBarProps>(
       {/* Flex container to center the navbar */}
       <div className="flex justify-center">
         {/* Relative wrapper with overflow-hidden and rounded-full for glass layer */}
-        <div className="relative overflow-hidden rounded-full pointer-events-auto">
+        <div 
+          className="relative overflow-hidden rounded-full pointer-events-auto"
+          onMouseMove={!prefersReducedMotion ? triggerActiveShimmer : undefined}
+        >
           {/* Frosted glass background layer - outside animation context */}
           <div 
             className={cn(
@@ -75,16 +117,44 @@ export const NavBar = React.forwardRef<HTMLDivElement, NavBarProps>(
             style={{ 
               backdropFilter: 'blur(18px)',
               WebkitBackdropFilter: 'blur(18px)',
-              backgroundImage: `
-                linear-gradient(135deg, transparent 30%, rgba(255,255,255,0.04) 50%, transparent 70%),
-                url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAAQklEQVRYR+2WQQ4AIAhDuf9/Zq9gsiSYmc8mEh+ttKKqiKiFVFUVEREREREREREREREREREREREREREREREREREREdksgAeNCRCbp/TzAAAAAElFTkSuQmCC")
-              `,
-              backgroundSize: '400% 400%, 128px 128px',
-              backgroundRepeat: 'no-repeat, repeat',
-              animation: 'shimmer-glass 4s ease-in-out infinite',
-              willChange: 'background-position',
+              backgroundImage: `url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAAQklEQVRYR+2WQQ4AIAhDuf9/Zq9gsiSYmc8mEh+ttKKqiKiFVFUVEREREREREREREREREREREREREREREREREREREdksgAeNCRCbp/TzAAAAAElFTkSuQmCC")`,
+              backgroundSize: '128px 128px',
+              backgroundRepeat: 'repeat',
             }}
           />
+          
+          {/* Ambient shimmer layer - always running */}
+          {!prefersReducedMotion && (
+            <div
+              className="absolute inset-0 rounded-full pointer-events-none"
+              style={{
+                backgroundImage: `
+                  radial-gradient(ellipse 120% 80% at 50% 50%, transparent 40%, rgba(255,255,255,0.03) 50%, transparent 60%),
+                  linear-gradient(125deg, transparent 25%, rgba(255,255,255,0.025) 45%, rgba(255,255,255,0.035) 50%, rgba(255,255,255,0.025) 55%, transparent 75%)
+                `,
+                backgroundSize: '500% 500%',
+                backgroundBlendMode: 'soft-light',
+                animation: 'shimmer-ambient 7.5s ease-in-out infinite',
+                willChange: 'background-position',
+              }}
+            />
+          )}
+          
+          {/* Active shimmer layer - triggered on interaction */}
+          {!prefersReducedMotion && activeShimmer && (
+            <div
+              className="absolute inset-0 rounded-full pointer-events-none"
+              style={{
+                backgroundImage: `
+                  linear-gradient(130deg, transparent 20%, rgba(255,255,255,0.06) 45%, rgba(255,255,255,0.08) 50%, rgba(255,255,255,0.06) 55%, transparent 80%)
+                `,
+                backgroundSize: '400% 400%',
+                backgroundBlendMode: 'overlay',
+                animation: 'shimmer-active 1.6s ease-out forwards',
+                willChange: 'background-position, opacity',
+              }}
+            />
+          )}
           
           {/* Animated content wrapper - ALL animations here */}
           <motion.div
