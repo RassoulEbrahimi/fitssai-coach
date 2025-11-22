@@ -114,13 +114,12 @@ import {
 } from "@/lib/workoutDateUtils";
 import { useBerlinToday } from "@/hooks/useBerlinToday";
 import { useWorkoutHelpers } from "@/hooks/useWorkoutHelpers";
-import { useAdvancedGlassPreference } from "@/hooks/useAdvancedGlassPreference";
+import { usePreferences } from "@/contexts/PreferencesContext";
 
 const Dashboard = () => {
   const { t, i18n } = useTranslation();
   const { user } = useAuth();
-  const { enabled: enableAdvancedGlass } = useAdvancedGlassPreference();
-  const [refreshFlag, setRefreshFlag] = useState(0);
+  const { enableAdvancedGlass } = usePreferences();
   
   // Reactive Berlin "today" - updates automatically at midnight
   const berlinToday = useBerlinToday();
@@ -270,13 +269,6 @@ const Dashboard = () => {
     };
     window.addEventListener('hashchange', onHashChange);
     return () => window.removeEventListener('hashchange', onHashChange);
-  }, []);
-
-  // Listen for advanced glass preference changes for instant reactivity
-  useEffect(() => {
-    const handler = () => setRefreshFlag(v => v + 1);
-    window.addEventListener('fitssai-advanced-glass-updated', handler);
-    return () => window.removeEventListener('fitssai-advanced-glass-updated', handler);
   }, []);
 
   const fetchProfile = async () => {
@@ -855,7 +847,6 @@ const Dashboard = () => {
       
       <BottomNavPortal>
         <FitssNavBar 
-          key={refreshFlag}
           ref={bottomNavRef}
           activeTab={activeTab} 
           enableAdvancedGlass={enableAdvancedGlass}

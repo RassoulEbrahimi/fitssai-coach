@@ -9,7 +9,7 @@ import { DeleteAccountButton } from "@/components/DeleteAccountButton";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
-import { useAdvancedGlassPreference } from "@/hooks/useAdvancedGlassPreference";
+import { usePreferences } from "@/contexts/PreferencesContext";
 
 interface ProfileViewProps {
   profile: any;
@@ -30,7 +30,7 @@ const ProfileView: React.FC<ProfileViewProps> = React.memo(({
   nutritionPlan,
   onGeneratePlans
 }) => {
-  const { enabled: advancedGlassEnabled, setEnabled: setAdvancedGlassEnabled } = useAdvancedGlassPreference();
+  const { enableAdvancedGlass, setEnableAdvancedGlass } = usePreferences();
 
   return (
     <AnimatePresence mode="wait">
@@ -68,12 +68,12 @@ const ProfileView: React.FC<ProfileViewProps> = React.memo(({
             <CardContent>
               <div className="flex items-center justify-between">
                 <Label htmlFor="advanced-glass-toggle" className="text-sm font-medium cursor-pointer">
-                  {advancedGlassEnabled ? 'Premium effects enabled' : 'Simple glass design'}
+                  {enableAdvancedGlass ? 'Premium effects enabled' : 'Simple glass design'}
                 </Label>
                 <Switch
                   id="advanced-glass-toggle"
-                  checked={advancedGlassEnabled}
-                  onCheckedChange={setAdvancedGlassEnabled}
+                  checked={enableAdvancedGlass}
+                  onCheckedChange={setEnableAdvancedGlass}
                 />
               </div>
             </CardContent>
