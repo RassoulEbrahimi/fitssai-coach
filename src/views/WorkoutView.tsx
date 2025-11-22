@@ -415,6 +415,13 @@ const WorkoutView: React.FC<WorkoutViewProps> = ({
                 queryKey: ['week-completion', livePlan.id, wk] 
               });
             });
+            
+            // Sync updated exercises to TrainingContext for instant UI update
+            const weekData = getWeekContentWithFallback(weekKey);
+            const dayData = weekData[dayIndex];
+            const updatedExercises = dayData?.exercises || [];
+            syncFromPlan(updatedExercises, weekKey, dayIndex);
+            
             resolve();
           },
           onError: () => {
@@ -441,30 +448,34 @@ const WorkoutView: React.FC<WorkoutViewProps> = ({
       return;
     }
 
+    const targetWeekKey = addExerciseDialog.weekKey;
+    const targetDayIndex = addExerciseDialog.dayIndex;
+
     // Add to backend via mutation
-    addExercise({
-      planId: livePlan.id,
-      weekKey: addExerciseDialog.weekKey,
-      dayIndex: addExerciseDialog.dayIndex,
-      exercise,
-    });
-
-    // Optimistically add to training context for instant UI update
-    const newWorkoutItem = {
-      id: `${addExerciseDialog.weekKey}_${addExerciseDialog.dayIndex}_${Date.now()}`,
-      ...exercise,
-      weekKey: addExerciseDialog.weekKey,
-      dayIndex: addExerciseDialog.dayIndex,
-      completed: false,
-    };
-    addWorkout(newWorkoutItem);
-
-    // Invalidate all week completions to refresh progress rings
-    ['Week 1', 'Week 2', 'Week 3', 'Week 4'].forEach(weekKey => {
-      queryClient.invalidateQueries({ 
-        queryKey: ['week-completion', livePlan.id, weekKey] 
-      });
-    });
+    addExercise(
+      {
+        planId: livePlan.id,
+        weekKey: targetWeekKey,
+        dayIndex: targetDayIndex,
+        exercise,
+      },
+      {
+        onSuccess: () => {
+          // Invalidate all week completions to refresh progress rings
+          ['Week 1', 'Week 2', 'Week 3', 'Week 4'].forEach(weekKey => {
+            queryClient.invalidateQueries({ 
+              queryKey: ['week-completion', livePlan.id, weekKey] 
+            });
+          });
+          
+          // Sync updated exercises to TrainingContext for instant UI update
+          const weekData = getWeekContentWithFallback(targetWeekKey);
+          const dayData = weekData[targetDayIndex];
+          const updatedExercises = dayData?.exercises || [];
+          syncFromPlan(updatedExercises, targetWeekKey, targetDayIndex);
+        }
+      }
+    );
 
     setAddExerciseDialog({ open: false, weekKey: null, dayIndex: null, mode: 'manual' });
   };
@@ -505,6 +516,13 @@ const WorkoutView: React.FC<WorkoutViewProps> = ({
 
   // Get mirror info for the current week
   const mirrorInfo = useMemo(() => getWeekMirrorInfo(wk), [wk, getWeekMirrorInfo]);
+
+  // Sync exercises to TrainingContext whenever selected date/week/day changes
+  useEffect(() => {
+    const dayData = weekData[activeDayIndex];
+    const exercises = dayData?.exercises || [];
+    syncFromPlan(exercises, wk, activeDayIndex);
+  }, [wk, activeDayIndex, weekData, syncFromPlan]);
 
   // Compute header date from active day or fallback to day 0
   const headerDate = getDateFor(wk, activeDayIndex ?? 0) ?? getDateFor(wk, 0);
