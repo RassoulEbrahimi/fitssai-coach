@@ -8,6 +8,7 @@ import { useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { AuthProvider } from "@/hooks/useAuth";
 import { ThemeProvider } from "@/hooks/useTheme";
+import { PreferencesProvider } from "@/contexts/PreferencesContext";
 import RootRedirect from "@/components/RootRedirect";
 import AuthPage from './pages/AuthPage';
 import DashboardPage from './pages/DashboardPage';
@@ -88,8 +89,9 @@ const App = () => {
       }}
     >
       <ThemeProvider>
-        <AuthProvider>
-          <TooltipProvider>
+        <PreferencesProvider>
+          <AuthProvider>
+            <TooltipProvider>
             <div className="sr-only focus:not-sr-only focus:absolute focus:top-0 focus:left-0 focus:p-2 focus:bg-background focus:z-50">
               <a href="#main-content" className="mr-4">Zum Hauptinhalt springen</a>
               <a href="#navigation">Zur Navigation springen</a>
@@ -108,8 +110,9 @@ const App = () => {
                 <Route path="*" element={<NotFound />} />
               </Routes>
             </BrowserRouter>
-          </TooltipProvider>
-        </AuthProvider>
+            </TooltipProvider>
+          </AuthProvider>
+        </PreferencesProvider>
       </ThemeProvider>
     </PersistQueryClientProvider>
   );
