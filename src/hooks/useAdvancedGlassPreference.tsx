@@ -17,6 +17,8 @@ export function useAdvancedGlassPreference() {
     try {
       localStorage.setItem(STORAGE_KEY, String(value));
       setEnabledState(value);
+      // Dispatch custom event for instant reactivity across components
+      window.dispatchEvent(new Event('fitssai-advanced-glass-updated'));
     } catch (error) {
       console.error('Failed to save advanced glass preference:', error);
     }
