@@ -16,11 +16,12 @@ interface NavBarProps {
   items: NavItem[]
   activeTab: string
   onTabChange: (id: string) => void
+  enableAdvancedGlass?: boolean
   className?: string
 }
 
 export const NavBar = React.forwardRef<HTMLDivElement, NavBarProps>(
-  ({ items, activeTab, onTabChange, className }, ref) => {
+  ({ items, activeTab, onTabChange, enableAdvancedGlass = false, className }, ref) => {
   const [isMobile, setIsMobile] = useState(false)
   const { actualTheme } = useTheme()
   const isDark = actualTheme === "dark"
@@ -43,12 +44,15 @@ export const NavBar = React.forwardRef<HTMLDivElement, NavBarProps>(
 
   const shimmerColors = getShimmerColors()
 
+  // Computed flag: shimmer enabled only if advanced glass is ON and motion is allowed
+  const shimmerEnabled = enableAdvancedGlass && !prefersReducedMotion;
+
   const triggerActiveShimmer = React.useCallback(() => {
-    if (prefersReducedMotion) return
+    if (!shimmerEnabled) return
     setActiveShimmer(true)
     if (shimmerTimeoutRef.current) clearTimeout(shimmerTimeoutRef.current)
     shimmerTimeoutRef.current = setTimeout(() => setActiveShimmer(false), 1600)
-  }, [prefersReducedMotion])
+  }, [shimmerEnabled])
 
   useEffect(() => {
     const handleResize = () => setIsMobile(window.innerWidth < 768)
@@ -137,8 +141,8 @@ export const NavBar = React.forwardRef<HTMLDivElement, NavBarProps>(
             }}
           />
           
-          {/* Ambient shimmer layer - always running */}
-          {!prefersReducedMotion && (
+          {/* Ambient shimmer layer - only when advanced glass is enabled */}
+          {shimmerEnabled && (
             <div
               className="absolute inset-0 rounded-full pointer-events-none transition-all duration-700"
               style={{
@@ -153,9 +157,9 @@ export const NavBar = React.forwardRef<HTMLDivElement, NavBarProps>(
               }}
             />
           )}
-          
-          {/* Active shimmer layer - triggered on interaction */}
-          {!prefersReducedMotion && activeShimmer && (
+
+          {/* Active shimmer layer - only when advanced glass is enabled */}
+          {shimmerEnabled && activeShimmer && (
             <div
               className="absolute inset-0 rounded-full pointer-events-none"
               style={{

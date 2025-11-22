@@ -114,10 +114,12 @@ import {
 } from "@/lib/workoutDateUtils";
 import { useBerlinToday } from "@/hooks/useBerlinToday";
 import { useWorkoutHelpers } from "@/hooks/useWorkoutHelpers";
+import { useAdvancedGlassPreference } from "@/hooks/useAdvancedGlassPreference";
 
 const Dashboard = () => {
   const { t, i18n } = useTranslation();
   const { user } = useAuth();
+  const { enabled: enableAdvancedGlass } = useAdvancedGlassPreference();
   
   // Reactive Berlin "today" - updates automatically at midnight
   const berlinToday = useBerlinToday();
@@ -847,6 +849,7 @@ const Dashboard = () => {
         <FitssNavBar 
           ref={bottomNavRef}
           activeTab={activeTab} 
+          enableAdvancedGlass={enableAdvancedGlass}
           onChange={(tab) => {
             setHashForTab(tab);
             setActiveTab(tab);  // Immediately update state for instant UI response
