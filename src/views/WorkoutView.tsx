@@ -31,6 +31,7 @@ import { useAddExercise } from "@/hooks/useAddExercise";
 import { Plus } from "lucide-react";
 import { SpeedDial } from "@/components/SpeedDial";
 import { WorkoutFeedbackCard } from "@/components/feedback/WorkoutFeedbackCard";
+import { useTraining } from "@/contexts/TrainingContext";
 
 const ExerciseList = React.lazy(() => import("@/views/ExerciseList"));
 interface WorkoutViewProps {
@@ -78,6 +79,7 @@ const WorkoutView: React.FC<WorkoutViewProps> = ({
   } = useToast();
   const { user } = useAuth();
   const queryClient = useQueryClient();
+  const { addWorkout, syncFromPlan } = useTraining();
 
   // React Query: Subscribe to live workout plan updates
   const planId = workoutPlan?.id;
@@ -439,12 +441,23 @@ const WorkoutView: React.FC<WorkoutViewProps> = ({
       return;
     }
 
+    // Add to backend via mutation
     addExercise({
       planId: livePlan.id,
       weekKey: addExerciseDialog.weekKey,
       dayIndex: addExerciseDialog.dayIndex,
       exercise,
     });
+
+    // Optimistically add to training context for instant UI update
+    const newWorkoutItem = {
+      id: `${addExerciseDialog.weekKey}_${addExerciseDialog.dayIndex}_${Date.now()}`,
+      ...exercise,
+      weekKey: addExerciseDialog.weekKey,
+      dayIndex: addExerciseDialog.dayIndex,
+      completed: false,
+    };
+    addWorkout(newWorkoutItem);
 
     // Invalidate all week completions to refresh progress rings
     ['Week 1', 'Week 2', 'Week 3', 'Week 4'].forEach(weekKey => {

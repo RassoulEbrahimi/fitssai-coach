@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -18,6 +18,7 @@ import { CompletionState, isExerciseCompleted } from "@/lib/completionUtils";
 import { useWorkoutHelpers } from "@/hooks/useWorkoutHelpers";
 import { useThrottledToast } from "@/hooks/useThrottledToast";
 import { TodayWorkoutSkeleton } from "@/components/skeletons/TodayWorkoutSkeleton";
+import { useTraining } from "@/contexts/TrainingContext";
 
 interface TodayWorkoutCardProps {
   selectedDate: Date;
@@ -59,6 +60,7 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
   const { t } = useTranslation();
   const { user } = useAuth();
   const { showToast } = useThrottledToast();
+  const { todayWorkouts, syncFromPlan } = useTraining();
   
   // Reactive Berlin "today" - updates automatically at midnight
   const berlinToday = useBerlinToday();
@@ -69,7 +71,17 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
   // Get exercises from the same source as the week list (may be mirrored for UI display)
   const weekData = getWeekContentWithFallback(weekKey);
   const dayData = weekData[dayIndex];
-  const exercises = dayData?.exercises || [];
+  const planExercises = dayData?.exercises || [];
+  
+  // Sync plan exercises to training context when they change
+  useEffect(() => {
+    if (planExercises.length > 0) {
+      syncFromPlan(planExercises, weekKey, dayIndex);
+    }
+  }, [planExercises, weekKey, dayIndex, syncFromPlan]);
+  
+  // Use training context exercises for rendering (reactive to all changes)
+  const exercises = todayWorkouts.length > 0 ? todayWorkouts : planExercises;
   const isRestDay = !exercises.length;
 
   // Memoized exercise list rendering
