@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { motion } from 'framer-motion';
+import { motion, useAnimation } from 'framer-motion';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -159,6 +159,7 @@ const InlineEditableExercise: React.FC<InlineEditableExerciseProps> = ({
   } = useTranslation();
   const [isSaving, setIsSaving] = useState(false);
   const [openNamePopover, setOpenNamePopover] = useState(false);
+  const controls = useAnimation();
 
   // Parse distance/duration from description for cardio exercises
   const parseDescription = (desc: string) => {
@@ -309,8 +310,10 @@ const InlineEditableExercise: React.FC<InlineEditableExerciseProps> = ({
         dragConstraints={{ left: -80, right: 0 }}
         dragElastic={0.2}
         dragTransition={{ bounceStiffness: 300, bounceDamping: 20 }}
-        animate={{ x: 0 }}
-        transition={{ type: 'spring', stiffness: 300, damping: 25 }}
+        animate={controls}
+        onDragEnd={() => {
+          controls.start({ x: 0, transition: { type: 'spring', stiffness: 300, damping: 30 } });
+        }}
         className={cn(
           "flex flex-wrap items-center gap-2 p-1 sm:p-1.5 bg-background relative",
           (isSaving || isUpdating) && "opacity-60 pointer-events-none"
