@@ -32,6 +32,9 @@ import { Plus } from "lucide-react";
 import { SpeedDial } from "@/components/SpeedDial";
 import { WorkoutFeedbackCard } from "@/components/feedback/WorkoutFeedbackCard";
 import { useTraining } from "@/contexts/TrainingContext";
+import { useDeleteExercise } from "@/hooks/useDeleteExercise";
+import { useRestoreExercise } from "@/hooks/useRestoreExercise";
+import { Button as ToastButton } from "@/components/ui/button";
 
 const ExerciseList = React.lazy(() => import("@/views/ExerciseList"));
 interface WorkoutViewProps {
@@ -79,7 +82,17 @@ const WorkoutView: React.FC<WorkoutViewProps> = ({
   } = useToast();
   const { user } = useAuth();
   const queryClient = useQueryClient();
-  const { addWorkout, syncFromPlan } = useTraining();
+  const { addWorkout, syncFromPlan, removeWorkout } = useTraining();
+  const { deleteExercise, isDeleting } = useDeleteExercise();
+  const { restoreExercise, isRestoring } = useRestoreExercise();
+
+  // Ref to store last deleted exercise for undo functionality
+  const lastDeletedRef = useRef<{
+    exercise: Exercise;
+    weekKey: string;
+    dayIndex: number;
+    exerciseIndex: number;
+  } | null>(null);
 
   // React Query: Subscribe to live workout plan updates
   const planId = workoutPlan?.id;
@@ -486,10 +499,129 @@ const WorkoutView: React.FC<WorkoutViewProps> = ({
     logEvent('ai_autofill_opened', { weekKey, dayIndex });
   };
 
-  // Placeholder delete handler (UI only, no logic yet)
+  // Delete exercise with undo toast
   const handleDeleteExercise = (weekKey: string, dayIndex: number, exerciseIndex: number) => {
-    console.log('Delete exercise triggered:', { weekKey, dayIndex, exerciseIndex });
-    // TODO: Implement delete logic
+    if (!livePlan?.id) return;
+
+    // Get the exercise from weekData before deleting
+    const weekContent = getWeekContentWithFallback(weekKey);
+    const dayData = weekContent[dayIndex];
+    const exercise = dayData?.exercises?.[exerciseIndex];
+
+    if (!exercise) {
+      console.error('Exercise not found for deletion');
+      return;
+    }
+
+    // Store deleted exercise for undo
+    lastDeletedRef.current = {
+      exercise,
+      weekKey,
+      dayIndex,
+      exerciseIndex,
+    };
+
+    // Remove from TrainingContext immediately
+    const exerciseId = `${weekKey}_${dayIndex}_${exerciseIndex}`;
+    removeWorkout(exerciseId);
+
+    // Delete from backend
+    deleteExercise(
+      {
+        planId: livePlan.id,
+        weekKey,
+        dayIndex,
+        exerciseIndex,
+      },
+      {
+        onSuccess: () => {
+          // Sync updated exercises to TrainingContext
+          const updatedWeekContent = getWeekContentWithFallback(weekKey);
+          const updatedDayData = updatedWeekContent[dayIndex];
+          const updatedExercises = updatedDayData?.exercises || [];
+          syncFromPlan(updatedExercises, weekKey, dayIndex);
+
+          // Show undo toast
+          toast({
+            title: "Exercise deleted",
+            description: exercise.name,
+            duration: 4000,
+            action: (
+              <ToastButton
+                variant="outline"
+                size="sm"
+                onClick={() => handleUndoDelete()}
+              >
+                UNDO
+              </ToastButton>
+            ),
+          });
+
+          logEvent('exercise_deleted', { weekKey, dayIndex, exerciseIndex, exerciseName: exercise.name });
+        },
+        onError: (error) => {
+          // Restore to TrainingContext on error
+          addWorkout({
+            id: exerciseId,
+            ...exercise,
+            weekKey,
+            dayIndex,
+            exerciseIndex,
+          });
+
+          toast({
+            title: "Failed to delete exercise",
+            description: error instanceof Error ? error.message : "Please try again",
+            variant: "destructive",
+          });
+        },
+      }
+    );
+  };
+
+  // Undo delete handler
+  const handleUndoDelete = () => {
+    if (!lastDeletedRef.current || !livePlan?.id) return;
+
+    const { exercise, weekKey, dayIndex, exerciseIndex } = lastDeletedRef.current;
+
+    // Restore to backend
+    restoreExercise(
+      {
+        planId: livePlan.id,
+        weekKey,
+        dayIndex,
+        exerciseIndex,
+        exercise,
+      },
+      {
+        onSuccess: () => {
+          // Sync restored exercises to TrainingContext
+          const restoredWeekContent = getWeekContentWithFallback(weekKey);
+          const restoredDayData = restoredWeekContent[dayIndex];
+          const restoredExercises = restoredDayData?.exercises || [];
+          syncFromPlan(restoredExercises, weekKey, dayIndex);
+
+          toast({
+            title: "Exercise restored",
+            description: exercise.name,
+            duration: 2000,
+          });
+
+          logEvent('exercise_restored', { weekKey, dayIndex, exerciseIndex, exerciseName: exercise.name });
+
+          // Clear the ref
+          lastDeletedRef.current = null;
+        },
+        onError: (error) => {
+          toast({
+            title: "Failed to restore exercise",
+            description: error instanceof Error ? error.message : "Please try again",
+            variant: "destructive",
+          });
+        },
+      }
+    );
   };
 
   // Show loading skeleton while plan is being fetched
