@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { motion } from 'framer-motion';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -292,104 +293,126 @@ const InlineEditableExercise: React.FC<InlineEditableExerciseProps> = ({
       setIsSaving(false);
     }
   };
-  return <div className={cn("flex flex-wrap items-center gap-2 p-1 sm:p-1.5", (isSaving || isUpdating) && "opacity-60 pointer-events-none")}>
-      {/* Exercise name container - shrink-wrapped with rounded background */}
-      <div className="inline-flex items-center gap-1.5 px-2 py-1 bg-accent/30 rounded-md border border-border/30">
-        <Popover open={openNamePopover} onOpenChange={setOpenNamePopover}>
-          <PopoverTrigger asChild>
-            <Button variant="ghost" role="combobox" aria-expanded={openNamePopover} className="h-auto p-0 font-medium text-foreground text-sm hover:bg-transparent" disabled={isSaving || isUpdating}>
-              <span className="mr-1 text-base flex-shrink-0">
-                {currentExerciseDetails?.icon || '💪'}
-              </span>
-              <span className="whitespace-nowrap">{exercise.name}</span>
-              <ChevronsUpDown className="ml-1 h-3 w-3 shrink-0 opacity-50" />
-            </Button>
-          </PopoverTrigger>
-          <PopoverContent 
-            className="w-[90vw] sm:w-[420px] p-3 z-[100] animate-in fade-in-0 zoom-in-95 data-[side=bottom]:slide-in-from-top-2 data-[side=top]:slide-in-from-bottom-2 duration-200" 
-            align="start"
-            onOpenAutoFocus={(e) => e.preventDefault()}
-          >
-            <ExerciseSelector 
-              onSelect={handleNameChange} 
-              currentExercise={PREDEFINED_EXERCISES.find(ex => ex.name === exercise.name) || null} 
-            />
-          </PopoverContent>
-        </Popover>
-
-        {/* Action icons immediately to the right */}
-        {(isSaving || isUpdating) && <Loader2 className="h-3.5 w-3.5 animate-spin text-primary flex-shrink-0" />}
-        <Button variant="ghost" size="sm" onClick={onInfo} className="h-auto w-auto p-0 text-muted-foreground hover:text-foreground hover:bg-transparent flex-shrink-0" aria-label={`Info für ${exercise.name}`}>
-          <Info className="h-3.5 w-3.5" />
-        </Button>
+  return (
+    <div className="relative overflow-hidden">
+      {/* Background delete panel - revealed on swipe */}
+      <div className="absolute inset-0 bg-[#ff4d4d]/20 flex items-center justify-end pr-4">
+        <div className="flex items-center gap-2 text-[#ff4d4d]">
+          <Trash2 className="h-5 w-5" />
+          <span className="text-sm font-medium">Löschen</span>
+        </div>
       </div>
 
-      {/* Parameter fields - inline with auto width */}
-      {requiredFields.includes('sets') && <div className="inline-flex items-center justify-center shrink gap-0.5 px-1.5 py-1 bg-background/50 rounded-md border border-border/30">
-          <span className="text-sm leading-none" aria-hidden="true">🏋️</span>
-          <Select value={String(exercise.sets)} onValueChange={handleSetsChange} disabled={isSaving || isUpdating}>
-            <SelectTrigger className="h-auto w-auto border-0 bg-transparent p-0 text-xs sm:text-sm font-medium focus:ring-0 [&>svg]:hidden">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent className="bg-background border-border z-50 shadow-lg">
-              {Array.from({
-            length: 10
-          }, (_, i) => i + 1).map(num => <SelectItem key={num} value={String(num)} className="hover:bg-accent focus:bg-accent">
-                  {num}
-                </SelectItem>)}
-            </SelectContent>
-          </Select>
-          <span className="text-xs sm:text-sm text-muted-foreground leading-none">×</span>
-          <Select value={String(exercise.reps)} onValueChange={handleRepsChange} disabled={isSaving || isUpdating}>
-            <SelectTrigger className="h-auto w-auto border-0 bg-transparent p-0 text-xs sm:text-sm font-medium focus:ring-0 [&>svg]:hidden">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent className="bg-background border-border z-50 shadow-lg">
-              {Array.from({
-            length: 20
-          }, (_, i) => i + 1).map(num => <SelectItem key={num} value={String(num)} className="hover:bg-accent focus:bg-accent">
-                  {num}
-                </SelectItem>)}
-            </SelectContent>
-          </Select>
-        </div>}
+      {/* Draggable content */}
+      <motion.div
+        drag="x"
+        dragConstraints={{ left: -80, right: 0 }}
+        dragElastic={0.2}
+        dragTransition={{ bounceStiffness: 300, bounceDamping: 20 }}
+        className={cn(
+          "flex flex-wrap items-center gap-2 p-1 sm:p-1.5 bg-background relative",
+          (isSaving || isUpdating) && "opacity-60 pointer-events-none"
+        )}
+      >
+        {/* Exercise name container - shrink-wrapped with rounded background */}
+        <div className="inline-flex items-center gap-1.5 px-2 py-1 bg-accent/30 rounded-md border border-border/30">
+          <Popover open={openNamePopover} onOpenChange={setOpenNamePopover}>
+            <PopoverTrigger asChild>
+              <Button variant="ghost" role="combobox" aria-expanded={openNamePopover} className="h-auto p-0 font-medium text-foreground text-sm hover:bg-transparent" disabled={isSaving || isUpdating}>
+                <span className="mr-1 text-base flex-shrink-0">
+                  {currentExerciseDetails?.icon || '💪'}
+                </span>
+                <span className="whitespace-nowrap">{exercise.name}</span>
+                <ChevronsUpDown className="ml-1 h-3 w-3 shrink-0 opacity-50" />
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent 
+              className="w-[90vw] sm:w-[420px] p-3 z-[100] animate-in fade-in-0 zoom-in-95 data-[side=bottom]:slide-in-from-top-2 data-[side=top]:slide-in-from-bottom-2 duration-200" 
+              align="start"
+              onOpenAutoFocus={(e) => e.preventDefault()}
+            >
+              <ExerciseSelector 
+                onSelect={handleNameChange} 
+                currentExercise={PREDEFINED_EXERCISES.find(ex => ex.name === exercise.name) || null} 
+              />
+            </PopoverContent>
+          </Popover>
 
-      {requiredFields.includes('weight') && <div className="inline-flex items-center justify-center shrink gap-0.5 px-1.5 py-1 bg-background/50 rounded-md border border-border/30">
-          <span className="text-sm leading-none" aria-hidden="true">⚖️</span>
-          <Input type="text" value={localWeight} onChange={handleWeightChange} onBlur={handleWeightBlur} placeholder="kg" disabled={isSaving || isUpdating} className="h-auto w-auto min-w-[1.4rem] max-w-[1.6rem] border-0 bg-transparent p-0 text-xs sm:text-sm font-medium focus-visible:ring-0 focus-visible:ring-offset-0" />
-        </div>}
+          {/* Action icons immediately to the right */}
+          {(isSaving || isUpdating) && <Loader2 className="h-3.5 w-3.5 animate-spin text-primary flex-shrink-0" />}
+          <Button variant="ghost" size="sm" onClick={onInfo} className="h-auto w-auto p-0 text-muted-foreground hover:text-foreground hover:bg-transparent flex-shrink-0" aria-label={`Info für ${exercise.name}`}>
+            <Info className="h-3.5 w-3.5" />
+          </Button>
+        </div>
 
-      {requiredFields.includes('rest') && <div className="inline-flex items-center justify-center shrink gap-0.5 px-1.5 py-1 bg-background/50 rounded-md border border-border/30">
-          <span className="text-sm leading-none" aria-hidden="true">⏱</span>
-          <Input type="text" value={localRest} onChange={handleRestChange} onBlur={handleRestBlur} placeholder="90s" disabled={isSaving || isUpdating} className="h-auto w-auto min-w-[1.6rem] max-w-[1.7rem] border-0 bg-transparent p-0 text-xs sm:text-sm font-medium focus-visible:ring-0 focus-visible:ring-offset-0" />
-        </div>}
+        {/* Parameter fields - inline with auto width */}
+        {requiredFields.includes('sets') && <div className="inline-flex items-center justify-center shrink gap-0.5 px-1.5 py-1 bg-background/50 rounded-md border border-border/30">
+            <span className="text-sm leading-none" aria-hidden="true">🏋️</span>
+            <Select value={String(exercise.sets)} onValueChange={handleSetsChange} disabled={isSaving || isUpdating}>
+              <SelectTrigger className="h-auto w-auto border-0 bg-transparent p-0 text-xs sm:text-sm font-medium focus:ring-0 [&>svg]:hidden">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent className="bg-background border-border z-50 shadow-lg">
+                {Array.from({
+              length: 10
+            }, (_, i) => i + 1).map(num => <SelectItem key={num} value={String(num)} className="hover:bg-accent focus:bg-accent">
+                    {num}
+                  </SelectItem>)}
+              </SelectContent>
+            </Select>
+            <span className="text-xs sm:text-sm text-muted-foreground leading-none">×</span>
+            <Select value={String(exercise.reps)} onValueChange={handleRepsChange} disabled={isSaving || isUpdating}>
+              <SelectTrigger className="h-auto w-auto border-0 bg-transparent p-0 text-xs sm:text-sm font-medium focus:ring-0 [&>svg]:hidden">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent className="bg-background border-border z-50 shadow-lg">
+                {Array.from({
+              length: 20
+            }, (_, i) => i + 1).map(num => <SelectItem key={num} value={String(num)} className="hover:bg-accent focus:bg-accent">
+                    {num}
+                  </SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>}
 
-      {requiredFields.includes('distance') && <div className="inline-flex items-center justify-center shrink gap-0.5 px-1.5 py-1 bg-background/50 rounded-md border border-border/30">
-          <span className="text-sm leading-none" aria-hidden="true">📏</span>
-          <Input type="text" value={localDistance} onChange={handleDistanceChange} onBlur={handleDistanceBlur} placeholder="5km" disabled={isSaving || isUpdating} className="h-auto w-auto min-w-[2rem] max-w-[3rem] border-0 bg-transparent p-0 text-xs sm:text-sm font-medium focus-visible:ring-0 focus-visible:ring-offset-0" />
-        </div>}
+        {requiredFields.includes('weight') && <div className="inline-flex items-center justify-center shrink gap-0.5 px-1.5 py-1 bg-background/50 rounded-md border border-border/30">
+            <span className="text-sm leading-none" aria-hidden="true">⚖️</span>
+            <Input type="text" value={localWeight} onChange={handleWeightChange} onBlur={handleWeightBlur} placeholder="kg" disabled={isSaving || isUpdating} className="h-auto w-auto min-w-[1.4rem] max-w-[1.6rem] border-0 bg-transparent p-0 text-xs sm:text-sm font-medium focus-visible:ring-0 focus-visible:ring-offset-0" />
+          </div>}
 
-      {requiredFields.includes('duration') && <div className="inline-flex items-center justify-center shrink gap-0.5 px-1.5 py-1 bg-background/50 rounded-md border border-border/30">
-          <span className="text-sm leading-none" aria-hidden="true">⏱️</span>
-          <Input type="text" value={localDuration} onChange={handleDurationChange} onBlur={handleDurationBlur} placeholder="30min" disabled={isSaving || isUpdating} className="h-auto w-auto min-w-[2.5rem] max-w-[4rem] border-0 bg-transparent p-0 text-xs sm:text-sm font-medium focus-visible:ring-0 focus-visible:ring-offset-0" />
-        </div>}
+        {requiredFields.includes('rest') && <div className="inline-flex items-center justify-center shrink gap-0.5 px-1.5 py-1 bg-background/50 rounded-md border border-border/30">
+            <span className="text-sm leading-none" aria-hidden="true">⏱</span>
+            <Input type="text" value={localRest} onChange={handleRestChange} onBlur={handleRestBlur} placeholder="90s" disabled={isSaving || isUpdating} className="h-auto w-auto min-w-[1.6rem] max-w-[1.7rem] border-0 bg-transparent p-0 text-xs sm:text-sm font-medium focus-visible:ring-0 focus-visible:ring-offset-0" />
+          </div>}
 
-      {/* Delete button */}
-      {onDelete && (
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={() => onDelete(exerciseIndex)}
-          disabled={isSaving || isUpdating}
-          className="ml-auto h-auto w-auto p-1.5 text-[#ff4d4d] hover:text-[#ff4d4d] hover:bg-[#ff4d4d]/10 hover:scale-110 transition-all duration-200 flex-shrink-0"
-          style={{ 
-            filter: 'drop-shadow(0 1px 2px rgba(255, 77, 77, 0.2))'
-          }}
-          aria-label={`${exercise.name} löschen`}
-        >
-          <Trash2 className="h-[18px] w-[18px]" />
-        </Button>
-      )}
-    </div>;
+        {requiredFields.includes('distance') && <div className="inline-flex items-center justify-center shrink gap-0.5 px-1.5 py-1 bg-background/50 rounded-md border border-border/30">
+            <span className="text-sm leading-none" aria-hidden="true">📏</span>
+            <Input type="text" value={localDistance} onChange={handleDistanceChange} onBlur={handleDistanceBlur} placeholder="5km" disabled={isSaving || isUpdating} className="h-auto w-auto min-w-[2rem] max-w-[3rem] border-0 bg-transparent p-0 text-xs sm:text-sm font-medium focus-visible:ring-0 focus-visible:ring-offset-0" />
+          </div>}
+
+        {requiredFields.includes('duration') && <div className="inline-flex items-center justify-center shrink gap-0.5 px-1.5 py-1 bg-background/50 rounded-md border border-border/30">
+            <span className="text-sm leading-none" aria-hidden="true">⏱️</span>
+            <Input type="text" value={localDuration} onChange={handleDurationChange} onBlur={handleDurationBlur} placeholder="30min" disabled={isSaving || isUpdating} className="h-auto w-auto min-w-[2.5rem] max-w-[4rem] border-0 bg-transparent p-0 text-xs sm:text-sm font-medium focus-visible:ring-0 focus-visible:ring-offset-0" />
+          </div>}
+
+        {/* Delete button */}
+        {onDelete && (
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => onDelete(exerciseIndex)}
+            disabled={isSaving || isUpdating}
+            className="ml-auto h-auto w-auto p-1.5 text-[#ff4d4d] hover:text-[#ff4d4d] hover:bg-[#ff4d4d]/10 hover:scale-110 transition-all duration-200 flex-shrink-0"
+            style={{ 
+              filter: 'drop-shadow(0 1px 2px rgba(255, 77, 77, 0.2))'
+            }}
+            aria-label={`${exercise.name} löschen`}
+          >
+            <Trash2 className="h-[18px] w-[18px]" />
+          </Button>
+        )}
+      </motion.div>
+    </div>
+  );
 };
 export default InlineEditableExercise;
