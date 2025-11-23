@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { motion, useAnimation } from 'framer-motion';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -159,7 +159,9 @@ const InlineEditableExercise: React.FC<InlineEditableExerciseProps> = ({
   } = useTranslation();
   const [isSaving, setIsSaving] = useState(false);
   const [openNamePopover, setOpenNamePopover] = useState(false);
+  const [isDeleteOpen, setIsDeleteOpen] = useState(false);
   const controls = useAnimation();
+  const autoCloseTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   // Parse distance/duration from description for cardio exercises
   const parseDescription = (desc: string) => {
@@ -193,6 +195,31 @@ const InlineEditableExercise: React.FC<InlineEditableExerciseProps> = ({
     setLocalDistance(parsed.distance);
     setLocalDuration(parsed.duration);
   }, [exercise.weight, exercise.rest, exercise.description]);
+
+  // Cleanup timer on unmount
+  React.useEffect(() => {
+    return () => {
+      if (autoCloseTimerRef.current) {
+        clearTimeout(autoCloseTimerRef.current);
+      }
+    };
+  }, []);
+
+  const clearAutoCloseTimer = () => {
+    if (autoCloseTimerRef.current) {
+      clearTimeout(autoCloseTimerRef.current);
+      autoCloseTimerRef.current = null;
+    }
+  };
+
+  const closeDeletePanel = () => {
+    clearAutoCloseTimer();
+    setIsDeleteOpen(false);
+    controls.start({ 
+      x: 0, 
+      transition: { type: 'spring', stiffness: 300, damping: 30 } 
+    });
+  };
 
   // Get current exercise definition to know which fields to show
   const currentExerciseDetails = PREDEFINED_EXERCISES_WITH_FIELDS.find(ex => ex.name === exercise.name);
@@ -251,6 +278,7 @@ const InlineEditableExercise: React.FC<InlineEditableExerciseProps> = ({
     }
   };
   const handleDeleteClick = async () => {
+    clearAutoCloseTimer();
     await controls.start({ 
       x: -500, 
       opacity: 0, 
@@ -327,11 +355,16 @@ const InlineEditableExercise: React.FC<InlineEditableExerciseProps> = ({
         dragElastic={0.2}
         dragTransition={{ bounceStiffness: 300, bounceDamping: 20 }}
         animate={controls}
+        onDragStart={() => {
+          clearAutoCloseTimer();
+        }}
         onDragEnd={(event, info) => {
           const dragDistance = info.offset.x;
           
           if (dragDistance <= -150) {
             // Deep swipe - auto delete with slide-out animation
+            clearAutoCloseTimer();
+            setIsDeleteOpen(false);
             controls.start({ 
               x: -500, 
               opacity: 0, 
@@ -343,16 +376,26 @@ const InlineEditableExercise: React.FC<InlineEditableExerciseProps> = ({
             });
           } else if (dragDistance <= -60) {
             // Short swipe - reveal delete button
+            setIsDeleteOpen(true);
             controls.start({ 
               x: -80, 
               transition: { type: 'spring', stiffness: 300, damping: 30 } 
             });
+            // Start auto-close timer
+            clearAutoCloseTimer();
+            autoCloseTimerRef.current = setTimeout(() => {
+              closeDeletePanel();
+            }, 3000);
           } else {
             // Cancel - snap back to closed
-            controls.start({ 
-              x: 0, 
-              transition: { type: 'spring', stiffness: 300, damping: 30 } 
-            });
+            closeDeletePanel();
+          }
+        }}
+        onClick={(e) => {
+          if (isDeleteOpen) {
+            e.preventDefault();
+            e.stopPropagation();
+            closeDeletePanel();
           }
         }}
         className={cn(
