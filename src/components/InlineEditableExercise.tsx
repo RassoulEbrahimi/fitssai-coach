@@ -336,7 +336,7 @@ const InlineEditableExercise: React.FC<InlineEditableExerciseProps> = ({
   return (
     <div className="relative overflow-hidden">
       {/* Background delete panel - revealed on swipe */}
-      <div className="absolute inset-0 bg-destructive/20 flex items-center justify-end pr-4">
+      <div className="absolute inset-0 bg-destructive/20 flex items-center justify-end pr-6">
         <Button
           variant="ghost"
           size="sm"
@@ -351,7 +351,7 @@ const InlineEditableExercise: React.FC<InlineEditableExerciseProps> = ({
       {/* Draggable content */}
       <motion.div
         drag="x"
-        dragConstraints={{ left: -80, right: 0 }}
+        dragConstraints={{ left: -120, right: 0 }}
         dragElastic={0.2}
         dragTransition={{ bounceStiffness: 300, bounceDamping: 20 }}
         animate={controls}
@@ -378,7 +378,7 @@ const InlineEditableExercise: React.FC<InlineEditableExerciseProps> = ({
             // Short swipe - reveal delete button
             setIsDeleteOpen(true);
             controls.start({ 
-              x: -80, 
+              x: -120, 
               transition: { type: 'spring', stiffness: 300, damping: 30 } 
             });
             // Start auto-close timer
