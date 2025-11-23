@@ -486,12 +486,6 @@ const WorkoutView: React.FC<WorkoutViewProps> = ({
               queryKey: ['week-completion', livePlan.id, weekKey] 
             });
           });
-          
-          // Sync updated exercises to TrainingContext for instant UI update
-          const weekData = getWeekContentWithFallback(targetWeekKey);
-          const dayData = weekData[targetDayIndex];
-          const updatedExercises = dayData?.exercises || [];
-          syncFromPlan(updatedExercises, targetWeekKey, targetDayIndex);
 
           // Restore scroll position after DOM update
           requestAnimationFrame(() => {
@@ -537,11 +531,7 @@ const WorkoutView: React.FC<WorkoutViewProps> = ({
       exerciseIndex,
     };
 
-    // Remove from TrainingContext immediately
-    const exerciseId = `${weekKey}_${dayIndex}_${exerciseIndex}`;
-    removeWorkout(exerciseId);
-
-    // Delete from backend
+    // Delete from backend (TrainingContext will sync via useEffect when weekData updates)
     deleteExercise(
       {
         planId: livePlan.id,
@@ -551,12 +541,6 @@ const WorkoutView: React.FC<WorkoutViewProps> = ({
       },
       {
         onSuccess: () => {
-          // Sync updated exercises to TrainingContext
-          const updatedWeekContent = getWeekContentWithFallback(weekKey);
-          const updatedDayData = updatedWeekContent[dayIndex];
-          const updatedExercises = updatedDayData?.exercises || [];
-          syncFromPlan(updatedExercises, weekKey, dayIndex);
-
           // Restore scroll position after DOM update
           requestAnimationFrame(() => {
             if (scrollContainerRef.current) {
@@ -583,15 +567,6 @@ const WorkoutView: React.FC<WorkoutViewProps> = ({
           logEvent('exercise_deleted', { weekKey, dayIndex, exerciseIndex, exerciseName: exercise.name });
         },
         onError: (error) => {
-          // Restore to TrainingContext on error
-          addWorkout({
-            id: exerciseId,
-            ...exercise,
-            weekKey,
-            dayIndex,
-            exerciseIndex,
-          });
-
           toast({
             title: "Failed to delete exercise",
             description: error instanceof Error ? error.message : "Please try again",
@@ -611,7 +586,7 @@ const WorkoutView: React.FC<WorkoutViewProps> = ({
     // Capture scroll position before restoring
     const prevScroll = scrollContainerRef.current?.scrollTop ?? 0;
 
-    // Restore to backend
+    // Restore to backend (TrainingContext will sync via useEffect when weekData updates)
     restoreExercise(
       {
         planId: livePlan.id,
@@ -622,12 +597,6 @@ const WorkoutView: React.FC<WorkoutViewProps> = ({
       },
       {
         onSuccess: () => {
-          // Sync restored exercises to TrainingContext
-          const restoredWeekContent = getWeekContentWithFallback(weekKey);
-          const restoredDayData = restoredWeekContent[dayIndex];
-          const restoredExercises = restoredDayData?.exercises || [];
-          syncFromPlan(restoredExercises, weekKey, dayIndex);
-
           // Restore scroll position after DOM update
           requestAnimationFrame(() => {
             if (scrollContainerRef.current) {
@@ -691,19 +660,9 @@ const WorkoutView: React.FC<WorkoutViewProps> = ({
 
   // Sync exercises to TrainingContext whenever selected date/week/day changes
   useEffect(() => {
-    // Capture scroll position before sync
-    const prevScroll = scrollContainerRef.current?.scrollTop ?? 0;
-
     const dayData = weekData[activeDayIndex];
     const exercises = dayData?.exercises || [];
     syncFromPlan(exercises, wk, activeDayIndex);
-
-    // Restore scroll position after DOM update
-    requestAnimationFrame(() => {
-      if (scrollContainerRef.current) {
-        scrollContainerRef.current.scrollTop = prevScroll;
-      }
-    });
   }, [wk, activeDayIndex, weekData, syncFromPlan]);
 
   // Compute header date from active day or fallback to day 0
