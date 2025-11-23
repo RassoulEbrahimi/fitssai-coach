@@ -162,6 +162,14 @@ const InlineEditableExercise: React.FC<InlineEditableExerciseProps> = ({
   const [isDeleteOpen, setIsDeleteOpen] = useState(false);
   const controls = useAnimation();
   const autoCloseTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const hasVibratedThresholdRef = useRef(false);
+
+  // Helper function for safe haptic feedback
+  const vibrate = (pattern: number | number[]) => {
+    if ('vibrate' in navigator) {
+      navigator.vibrate(pattern);
+    }
+  };
 
   // Parse distance/duration from description for cardio exercises
   const parseDescription = (desc: string) => {
@@ -279,6 +287,7 @@ const InlineEditableExercise: React.FC<InlineEditableExerciseProps> = ({
   };
   const handleDeleteClick = async () => {
     clearAutoCloseTimer();
+    vibrate(15); // Success feedback
     await controls.start({ 
       x: -500, 
       opacity: 0, 
@@ -357,6 +366,14 @@ const InlineEditableExercise: React.FC<InlineEditableExerciseProps> = ({
         animate={controls}
         onDragStart={() => {
           clearAutoCloseTimer();
+          hasVibratedThresholdRef.current = false; // Reset threshold flag
+        }}
+        onDrag={(event, info) => {
+          // Trigger threshold vibration once when crossing -60px
+          if (info.offset.x <= -60 && !hasVibratedThresholdRef.current) {
+            vibrate(10); // Threshold feedback
+            hasVibratedThresholdRef.current = true;
+          }
         }}
         onDragEnd={(event, info) => {
           const dragDistance = info.offset.x;
@@ -365,6 +382,7 @@ const InlineEditableExercise: React.FC<InlineEditableExerciseProps> = ({
             // Deep swipe - auto delete with slide-out animation
             clearAutoCloseTimer();
             setIsDeleteOpen(false);
+            vibrate(15); // Success feedback
             controls.start({ 
               x: -500, 
               opacity: 0, 
