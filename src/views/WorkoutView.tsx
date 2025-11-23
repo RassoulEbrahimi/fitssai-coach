@@ -124,6 +124,9 @@ const WorkoutView: React.FC<WorkoutViewProps> = ({
   const dayRefs = useRef<{
     [key: number]: HTMLDivElement | null;
   }>({});
+  
+  // Scroll container ref for scroll stabilization
+  const scrollContainerRef = useRef<HTMLDivElement | null>(null);
 
   // Get day index from selectedDate (0 = Monday, 6 = Sunday) using plan-based calculation
   const getDayIndexForDate = (date: Date): number => {
@@ -464,6 +467,9 @@ const WorkoutView: React.FC<WorkoutViewProps> = ({
     const targetWeekKey = addExerciseDialog.weekKey;
     const targetDayIndex = addExerciseDialog.dayIndex;
 
+    // Capture scroll position before adding
+    const prevScroll = scrollContainerRef.current?.scrollTop ?? 0;
+
     // Add to backend via mutation
     addExercise(
       {
@@ -486,6 +492,13 @@ const WorkoutView: React.FC<WorkoutViewProps> = ({
           const dayData = weekData[targetDayIndex];
           const updatedExercises = dayData?.exercises || [];
           syncFromPlan(updatedExercises, targetWeekKey, targetDayIndex);
+
+          // Restore scroll position after DOM update
+          requestAnimationFrame(() => {
+            if (scrollContainerRef.current) {
+              scrollContainerRef.current.scrollTop = prevScroll;
+            }
+          });
         }
       }
     );
@@ -502,6 +515,9 @@ const WorkoutView: React.FC<WorkoutViewProps> = ({
   // Delete exercise with undo toast
   const handleDeleteExercise = (weekKey: string, dayIndex: number, exerciseIndex: number) => {
     if (!livePlan?.id) return;
+
+    // Capture scroll position before deleting
+    const prevScroll = scrollContainerRef.current?.scrollTop ?? 0;
 
     // Get the exercise from weekData before deleting
     const weekContent = getWeekContentWithFallback(weekKey);
@@ -540,6 +556,13 @@ const WorkoutView: React.FC<WorkoutViewProps> = ({
           const updatedDayData = updatedWeekContent[dayIndex];
           const updatedExercises = updatedDayData?.exercises || [];
           syncFromPlan(updatedExercises, weekKey, dayIndex);
+
+          // Restore scroll position after DOM update
+          requestAnimationFrame(() => {
+            if (scrollContainerRef.current) {
+              scrollContainerRef.current.scrollTop = prevScroll;
+            }
+          });
 
           // Show undo toast
           toast({
@@ -585,6 +608,9 @@ const WorkoutView: React.FC<WorkoutViewProps> = ({
 
     const { exercise, weekKey, dayIndex, exerciseIndex } = lastDeletedRef.current;
 
+    // Capture scroll position before restoring
+    const prevScroll = scrollContainerRef.current?.scrollTop ?? 0;
+
     // Restore to backend
     restoreExercise(
       {
@@ -601,6 +627,13 @@ const WorkoutView: React.FC<WorkoutViewProps> = ({
           const restoredDayData = restoredWeekContent[dayIndex];
           const restoredExercises = restoredDayData?.exercises || [];
           syncFromPlan(restoredExercises, weekKey, dayIndex);
+
+          // Restore scroll position after DOM update
+          requestAnimationFrame(() => {
+            if (scrollContainerRef.current) {
+              scrollContainerRef.current.scrollTop = prevScroll;
+            }
+          });
 
           toast({
             title: "Exercise restored",
@@ -658,9 +691,19 @@ const WorkoutView: React.FC<WorkoutViewProps> = ({
 
   // Sync exercises to TrainingContext whenever selected date/week/day changes
   useEffect(() => {
+    // Capture scroll position before sync
+    const prevScroll = scrollContainerRef.current?.scrollTop ?? 0;
+
     const dayData = weekData[activeDayIndex];
     const exercises = dayData?.exercises || [];
     syncFromPlan(exercises, wk, activeDayIndex);
+
+    // Restore scroll position after DOM update
+    requestAnimationFrame(() => {
+      if (scrollContainerRef.current) {
+        scrollContainerRef.current.scrollTop = prevScroll;
+      }
+    });
   }, [wk, activeDayIndex, weekData, syncFromPlan]);
 
   // Compute header date from active day or fallback to day 0
@@ -909,7 +952,7 @@ const WorkoutView: React.FC<WorkoutViewProps> = ({
             </p>
           </div>
         </CardHeader>
-        <CardContent className="p-4 space-y-4">
+        <CardContent ref={scrollContainerRef} className="p-4 space-y-4">
           {Array.from({ length: 7 }, (_, dayIndex) => {
           // Get day data from weekData array, or null if not present
           const day = weekData[dayIndex] || null;
