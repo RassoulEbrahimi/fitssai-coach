@@ -309,6 +309,8 @@ const InlineEditableExercise: React.FC<InlineEditableExerciseProps> = ({
         dragConstraints={{ left: -80, right: 0 }}
         dragElastic={0.2}
         dragTransition={{ bounceStiffness: 300, bounceDamping: 20 }}
+        animate={{ x: 0 }}
+        transition={{ type: 'spring', stiffness: 300, damping: 25 }}
         className={cn(
           "flex flex-wrap items-center gap-2 p-1 sm:p-1.5 bg-background relative",
           (isSaving || isUpdating) && "opacity-60 pointer-events-none"
@@ -394,23 +396,6 @@ const InlineEditableExercise: React.FC<InlineEditableExerciseProps> = ({
             <span className="text-sm leading-none" aria-hidden="true">⏱️</span>
             <Input type="text" value={localDuration} onChange={handleDurationChange} onBlur={handleDurationBlur} placeholder="30min" disabled={isSaving || isUpdating} className="h-auto w-auto min-w-[2.5rem] max-w-[4rem] border-0 bg-transparent p-0 text-xs sm:text-sm font-medium focus-visible:ring-0 focus-visible:ring-offset-0" />
           </div>}
-
-        {/* Delete button */}
-        {onDelete && (
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => onDelete(exerciseIndex)}
-            disabled={isSaving || isUpdating}
-            className="ml-auto h-auto w-auto p-1.5 text-[#ff4d4d] hover:text-[#ff4d4d] hover:bg-[#ff4d4d]/10 hover:scale-110 transition-all duration-200 flex-shrink-0"
-            style={{ 
-              filter: 'drop-shadow(0 1px 2px rgba(255, 77, 77, 0.2))'
-            }}
-            aria-label={`${exercise.name} löschen`}
-          >
-            <Trash2 className="h-[18px] w-[18px]" />
-          </Button>
-        )}
       </motion.div>
     </div>
   );
