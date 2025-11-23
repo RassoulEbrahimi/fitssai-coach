@@ -250,6 +250,17 @@ const InlineEditableExercise: React.FC<InlineEditableExerciseProps> = ({
       handleFieldUpdate('description', newDescription);
     }
   };
+  const handleDeleteClick = async () => {
+    await controls.start({ 
+      x: -500, 
+      opacity: 0, 
+      transition: { type: 'spring', stiffness: 300, damping: 30 } 
+    });
+    if (onDelete) {
+      onDelete(exerciseIndex);
+    }
+  };
+
   const handleNameChange = async (selectedExercise: typeof PREDEFINED_EXERCISES[number]) => {
     const selectedExerciseWithFields = PREDEFINED_EXERCISES_WITH_FIELDS.find(ex => ex.name === selectedExercise.name);
     if (!selectedExerciseWithFields) return;
@@ -297,11 +308,16 @@ const InlineEditableExercise: React.FC<InlineEditableExerciseProps> = ({
   return (
     <div className="relative overflow-hidden">
       {/* Background delete panel - revealed on swipe */}
-      <div className="absolute inset-0 bg-[#ff4d4d]/20 flex items-center justify-end pr-4">
-        <div className="flex items-center gap-2 text-[#ff4d4d]">
+      <div className="absolute inset-0 bg-destructive/20 flex items-center justify-end pr-4">
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={handleDeleteClick}
+          className="flex items-center gap-2 text-destructive hover:text-destructive hover:bg-transparent"
+        >
           <Trash2 className="h-5 w-5" />
           <span className="text-sm font-medium">Löschen</span>
-        </div>
+        </Button>
       </div>
 
       {/* Draggable content */}
@@ -311,8 +327,33 @@ const InlineEditableExercise: React.FC<InlineEditableExerciseProps> = ({
         dragElastic={0.2}
         dragTransition={{ bounceStiffness: 300, bounceDamping: 20 }}
         animate={controls}
-        onDragEnd={() => {
-          controls.start({ x: 0, transition: { type: 'spring', stiffness: 300, damping: 30 } });
+        onDragEnd={(event, info) => {
+          const dragDistance = info.offset.x;
+          
+          if (dragDistance <= -150) {
+            // Deep swipe - auto delete with slide-out animation
+            controls.start({ 
+              x: -500, 
+              opacity: 0, 
+              transition: { type: 'spring', stiffness: 300, damping: 30 } 
+            }).then(() => {
+              if (onDelete) {
+                onDelete(exerciseIndex);
+              }
+            });
+          } else if (dragDistance <= -60) {
+            // Short swipe - reveal delete button
+            controls.start({ 
+              x: -80, 
+              transition: { type: 'spring', stiffness: 300, damping: 30 } 
+            });
+          } else {
+            // Cancel - snap back to closed
+            controls.start({ 
+              x: 0, 
+              transition: { type: 'spring', stiffness: 300, damping: 30 } 
+            });
+          }
         }}
         className={cn(
           "flex flex-wrap items-center gap-2 p-1 sm:p-1.5 bg-background relative",
