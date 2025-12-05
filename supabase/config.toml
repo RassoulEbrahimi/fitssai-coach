@@ -20,3 +20,9 @@ verify_jwt = true
 
 [functions.generate-day-suggestions]
 verify_jwt = true
+
+[functions.get-daily-quote]
+verify_jwt = true
+
+[functions.delete-account]
+verify_jwt = true
