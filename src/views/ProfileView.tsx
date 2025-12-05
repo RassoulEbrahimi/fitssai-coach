@@ -221,6 +221,22 @@ const ProfileView: React.FC<ProfileViewProps> = React.memo(({
   const handleSave = async () => {
     if (!profile?.id) return;
     
+    // Client-side validation for data integrity
+    const { weight, height, age } = formData;
+    
+    if (weight !== 0 && (weight < 20 || weight > 500)) {
+      toast.error("Gewicht muss zwischen 20 und 500 kg liegen");
+      return;
+    }
+    if (height !== 0 && (height < 50 || height > 300)) {
+      toast.error("Größe muss zwischen 50 und 300 cm liegen");
+      return;
+    }
+    if (age !== 0 && (age < 1 || age > 150)) {
+      toast.error("Alter muss zwischen 1 und 150 Jahren liegen");
+      return;
+    }
+    
     setIsSaving(true);
     try {
       // Upload avatar if selected
@@ -235,10 +251,10 @@ const ProfileView: React.FC<ProfileViewProps> = React.memo(({
       const { error } = await supabase
         .from("profiles")
         .update({
-          full_name: formData.full_name || null,
-          weight: formData.weight || null,
-          height: formData.height || null,
-          age: formData.age || null,
+          full_name: formData.full_name?.trim() || null,
+          weight: weight || null,
+          height: height || null,
+          age: age || null,
         })
         .eq("id", profile.id);
 
@@ -488,18 +504,54 @@ const ProfileView: React.FC<ProfileViewProps> = React.memo(({
             <div className="flex flex-col items-center gap-3">
               <div 
                 className="relative cursor-pointer group"
-                onClick={() => fileInputRef.current?.click()}
+                onClick={() => !isUploading && fileInputRef.current?.click()}
               >
                 <div className="absolute -inset-1 bg-gradient-to-br from-emerald-400 to-emerald-600 rounded-full blur-md opacity-40 group-hover:opacity-60 transition-opacity" />
-                <Avatar className="relative h-24 w-24 border-2 border-emerald-400/50">
-                  <AvatarImage src={avatarPreview || avatarUrl || undefined} alt={displayName} />
+                <Avatar className="relative h-24 w-24 border-2 border-emerald-400/50 overflow-hidden">
+                  <AvatarImage 
+                    src={avatarPreview || avatarUrl || undefined} 
+                    alt={displayName}
+                    className="object-cover"
+                  />
                   <AvatarFallback className="bg-emerald-500/20 text-emerald-400 text-2xl font-bold">
                     {getInitials(formData.full_name || profile?.full_name)}
                   </AvatarFallback>
                 </Avatar>
-                <div className="absolute inset-0 flex items-center justify-center bg-black/50 rounded-full opacity-0 group-hover:opacity-100 transition-opacity">
-                  <Camera className="w-6 h-6 text-white" />
-                </div>
+                
+                {/* Upload Progress Overlay */}
+                {isUploading ? (
+                  <div className="absolute inset-0 flex items-center justify-center bg-black/60 rounded-full">
+                    <div className="relative">
+                      <svg className="w-12 h-12 animate-spin" viewBox="0 0 50 50">
+                        <circle
+                          cx="25"
+                          cy="25"
+                          r="20"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="3"
+                          className="text-emerald-400/30"
+                        />
+                        <circle
+                          cx="25"
+                          cy="25"
+                          r="20"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="3"
+                          strokeDasharray="80"
+                          strokeDashoffset="60"
+                          strokeLinecap="round"
+                          className="text-emerald-400"
+                        />
+                      </svg>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="absolute inset-0 flex items-center justify-center bg-black/50 rounded-full opacity-0 group-hover:opacity-100 transition-opacity">
+                    <Camera className="w-6 h-6 text-white" />
+                  </div>
+                )}
               </div>
               <input
                 ref={fileInputRef}
@@ -508,7 +560,9 @@ const ProfileView: React.FC<ProfileViewProps> = React.memo(({
                 className="hidden"
                 onChange={handleFileSelect}
               />
-              <p className="text-xs text-muted-foreground">Klicke zum Ändern</p>
+              <p className="text-xs text-muted-foreground">
+                {isUploading ? "Wird hochgeladen..." : "Klicke zum Ändern"}
+              </p>
             </div>
 
             <div className="space-y-2">
