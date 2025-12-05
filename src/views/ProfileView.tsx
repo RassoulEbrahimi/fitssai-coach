@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from "react";
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
-import { RefreshCw, Sparkles, User, Ruler, Weight, Activity, Settings, Calendar, Crown, Pencil, Target, Utensils, Camera, Loader2, Flame, Clock, Zap } from "lucide-react";
+import { RefreshCw, Sparkles, User, Ruler, Weight, Activity, Settings, Calendar, Crown, Pencil, Target, Utensils, Camera, Loader2, Flame, Clock, Zap, Sun, Moon, Monitor } from "lucide-react";
 import { AIAnalyticsCard } from "@/components/AIAnalyticsCard";
 import { LogoutButton } from "@/components/LogoutButton";
 import { DeleteAccountButton } from "@/components/DeleteAccountButton";
@@ -240,6 +240,51 @@ const ProfileView: React.FC<ProfileViewProps> = React.memo(({
     minutes: 0,
     calories: 0,
   });
+
+  // Theme state
+  type ThemeMode = 'system' | 'light' | 'dark';
+  const [themeMode, setThemeMode] = useState<ThemeMode>(() => {
+    const stored = localStorage.getItem('fitssai.theme');
+    return (stored as ThemeMode) || 'system';
+  });
+
+  // Theme effect
+  useEffect(() => {
+    const applyTheme = (mode: ThemeMode) => {
+      const root = document.documentElement;
+      
+      if (mode === 'dark') {
+        root.classList.add('dark');
+      } else if (mode === 'light') {
+        root.classList.remove('dark');
+      } else {
+        // System mode
+        const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+        if (prefersDark) {
+          root.classList.add('dark');
+        } else {
+          root.classList.remove('dark');
+        }
+      }
+    };
+
+    applyTheme(themeMode);
+    localStorage.setItem('fitssai.theme', themeMode);
+
+    // Listen for system changes only when in system mode
+    if (themeMode === 'system') {
+      const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
+      const handler = (e: MediaQueryListEvent) => {
+        if (e.matches) {
+          document.documentElement.classList.add('dark');
+        } else {
+          document.documentElement.classList.remove('dark');
+        }
+      };
+      mediaQuery.addEventListener('change', handler);
+      return () => mediaQuery.removeEventListener('change', handler);
+    }
+  }, [themeMode]);
 
   // Fetch user stats on mount
   useEffect(() => {
@@ -608,8 +653,45 @@ const ProfileView: React.FC<ProfileViewProps> = React.memo(({
           <Settings className="w-4 h-4 text-emerald-400" />
           <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wider">Einstellungen</h2>
         </div>
-        <GlassCard className="p-4">
-          <div className="flex items-center justify-between">
+        <GlassCard className="p-4 space-y-5">
+          {/* Appearance / Theme Toggle */}
+          <div>
+            <div className="flex items-center gap-3 mb-3">
+              <div className="p-2 rounded-lg bg-blue-500/20 text-blue-400">
+                {themeMode === 'dark' ? <Moon className="w-4 h-4" /> : themeMode === 'light' ? <Sun className="w-4 h-4" /> : <Monitor className="w-4 h-4" />}
+              </div>
+              <div>
+                <span className="text-sm font-medium text-foreground">Erscheinungsbild</span>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Farbschema für die App
+                </p>
+              </div>
+            </div>
+            {/* Segmented Control */}
+            <div className="flex rounded-xl bg-white/5 p-1 gap-1">
+              {[
+                { value: 'system' as const, icon: Monitor, label: 'System' },
+                { value: 'light' as const, icon: Sun, label: 'Hell' },
+                { value: 'dark' as const, icon: Moon, label: 'Dunkel' },
+              ].map(({ value, icon: Icon, label }) => (
+                <button
+                  key={value}
+                  onClick={() => setThemeMode(value)}
+                  className={`flex-1 flex items-center justify-center gap-1.5 py-2 px-3 rounded-lg text-xs font-medium transition-all ${
+                    themeMode === value
+                      ? 'bg-emerald-500/20 text-emerald-400 shadow-sm'
+                      : 'text-muted-foreground hover:bg-white/5'
+                  }`}
+                >
+                  <Icon className="w-3.5 h-3.5" />
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Premium Glass Toggle */}
+          <div className="flex items-center justify-between pt-2 border-t border-white/5">
             <div className="flex items-center gap-3">
               <div className="p-2 rounded-lg bg-emerald-500/20 text-emerald-400">
                 <Sparkles className="w-4 h-4" />
