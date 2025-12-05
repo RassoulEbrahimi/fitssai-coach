@@ -1,7 +1,7 @@
 import React, { useState, useRef } from "react";
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
-import { RefreshCw, Sparkles, User, Ruler, Weight, Activity, Settings, Calendar, Crown, Pencil, Target, Utensils, Camera, Loader2 } from "lucide-react";
+import { RefreshCw, Sparkles, User, Ruler, Weight, Activity, Settings, Calendar, Crown, Pencil, Target, Utensils, Camera, Loader2, Flame, Clock, Zap } from "lucide-react";
 import { AIAnalyticsCard } from "@/components/AIAnalyticsCard";
 import { LogoutButton } from "@/components/LogoutButton";
 import { DeleteAccountButton } from "@/components/DeleteAccountButton";
@@ -92,6 +92,91 @@ const GlassCard: React.FC<{ children: React.ReactNode; className?: string; onCli
   >
     <div className="absolute inset-0 bg-gradient-to-br from-white/5 to-transparent pointer-events-none" />
     <div className="relative">{children}</div>
+  </div>
+);
+
+// Circular Progress Component
+interface CircularProgressProps {
+  value: number;
+  max: number;
+  size?: number;
+  strokeWidth?: number;
+  className?: string;
+  children?: React.ReactNode;
+}
+
+const CircularProgress: React.FC<CircularProgressProps> = ({
+  value,
+  max,
+  size = 100,
+  strokeWidth = 8,
+  className = "",
+  children,
+}) => {
+  const percentage = max > 0 ? Math.min((value / max) * 100, 100) : 0;
+  const radius = (size - strokeWidth) / 2;
+  const circumference = 2 * Math.PI * radius;
+  const dashOffset = circumference * (1 - percentage / 100);
+
+  return (
+    <div className={`relative inline-flex items-center justify-center ${className}`} style={{ width: size, height: size }}>
+      <svg
+        width={size}
+        height={size}
+        className="block"
+        style={{ transform: 'rotate(-90deg)' }}
+        role="img"
+        aria-label={`Progress ${Math.round(percentage)}%`}
+      >
+        {/* Track */}
+        <circle
+          cx={size / 2}
+          cy={size / 2}
+          r={radius}
+          fill="none"
+          strokeWidth={strokeWidth}
+          className="text-white/10"
+          stroke="currentColor"
+        />
+        {/* Progress with gradient effect */}
+        <circle
+          cx={size / 2}
+          cy={size / 2}
+          r={radius}
+          fill="none"
+          strokeWidth={strokeWidth}
+          strokeLinecap="round"
+          className="text-emerald-400"
+          stroke="currentColor"
+          strokeDasharray={circumference}
+          strokeDashoffset={dashOffset}
+          style={{ 
+            transition: 'stroke-dashoffset 0.8s cubic-bezier(0.4, 0, 0.2, 1)',
+            filter: 'drop-shadow(0 0 6px hsl(var(--emerald-glow, 160 84% 50%) / 0.5))'
+          }}
+        />
+      </svg>
+      <div className="absolute inset-0 flex flex-col items-center justify-center">
+        {children}
+      </div>
+    </div>
+  );
+};
+
+// Mini stat item for progress section
+const MiniStat: React.FC<{
+  icon: React.ReactNode;
+  label: string;
+  value: string;
+}> = ({ icon, label, value }) => (
+  <div className="flex items-center gap-2">
+    <div className="p-1.5 rounded-lg bg-white/10 text-muted-foreground">
+      {icon}
+    </div>
+    <div>
+      <p className="text-xs text-muted-foreground">{label}</p>
+      <p className="text-sm font-semibold text-foreground">{value}</p>
+    </div>
   </div>
 );
 
@@ -396,6 +481,53 @@ const ProfileView: React.FC<ProfileViewProps> = React.memo(({
             </div>
           </StatCard>
         </div>
+      </motion.section>
+
+      {/* Section 2.5: Training & Progress */}
+      <motion.section variants={itemVariants}>
+        <div className="flex items-center gap-2 mb-3 px-1">
+          <Activity className="w-4 h-4 text-emerald-400" />
+          <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wider">Training & Fortschritt</h2>
+        </div>
+        <GlassCard className="p-5">
+          <div className="flex items-center gap-6">
+            {/* Left: Circular Progress */}
+            <div className="flex flex-col items-center gap-2">
+              <CircularProgress 
+                value={workoutProgress.completed} 
+                max={workoutProgress.total || 7}
+                size={90}
+                strokeWidth={8}
+              >
+                <span className="text-lg font-bold text-foreground">
+                  {workoutProgress.total > 0 
+                    ? `${workoutProgress.completed}/${workoutProgress.total}`
+                    : "0/7"}
+                </span>
+              </CircularProgress>
+              <span className="text-xs text-muted-foreground font-medium">Wochenziel</span>
+            </div>
+            
+            {/* Right: Stats Grid */}
+            <div className="flex-1 grid grid-cols-1 gap-3">
+              <MiniStat 
+                icon={<Flame className="w-3.5 h-3.5 text-orange-400" />}
+                label="Streak"
+                value="3 Tage"
+              />
+              <MiniStat 
+                icon={<Clock className="w-3.5 h-3.5 text-blue-400" />}
+                label="Gesamtzeit"
+                value="120 Min"
+              />
+              <MiniStat 
+                icon={<Zap className="w-3.5 h-3.5 text-amber-400" />}
+                label="Kcal"
+                value="850"
+              />
+            </div>
+          </div>
+        </GlassCard>
       </motion.section>
 
       {/* Section 3: Goals & Diet */}
