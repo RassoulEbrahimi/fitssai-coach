@@ -1,7 +1,7 @@
-import React, { useState } from "react";
+import React, { useState, useRef } from "react";
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
-import { RefreshCw, Sparkles, User, Ruler, Weight, Activity, Settings, Calendar, Crown, Pencil } from "lucide-react";
+import { RefreshCw, Sparkles, User, Ruler, Weight, Activity, Settings, Calendar, Crown, Pencil, Target, Utensils, Camera, Loader2 } from "lucide-react";
 import { AIAnalyticsCard } from "@/components/AIAnalyticsCard";
 import { LogoutButton } from "@/components/LogoutButton";
 import { DeleteAccountButton } from "@/components/DeleteAccountButton";
@@ -11,9 +11,11 @@ import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { usePreferences } from "@/contexts/PreferencesContext";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import { uploadAvatar, updateProfileAvatar, getAvatarUrl } from "@/lib/avatarUtils";
 
 interface ProfileViewProps {
   profile: any;
@@ -38,6 +40,22 @@ const getBMIStatus = (bmi: number | null): { label: string; color: string } => {
   if (bmi < 25) return { label: "Normal", color: "text-emerald-400" };
   if (bmi < 30) return { label: "Übergewicht", color: "text-amber-400" };
   return { label: "Adipositas", color: "text-red-400" };
+};
+
+// Goal and diet mappings
+const fitnessGoalLabels: Record<string, string> = {
+  muscle_gain: "Muskelaufbau",
+  weight_loss: "Gewichtsverlust",
+  maintenance: "Erhaltung",
+  endurance: "Ausdauer",
+};
+
+const dietaryLabels: Record<string, string> = {
+  standard: "Standard",
+  vegan: "Vegan",
+  vegetarian: "Vegetarisch",
+  keto: "Keto",
+  pescetarian: "Pescetarisch",
 };
 
 // Animation variants
@@ -67,8 +85,11 @@ const itemVariants = {
 };
 
 // Glass card component
-const GlassCard: React.FC<{ children: React.ReactNode; className?: string }> = ({ children, className = "" }) => (
-  <div className={`relative overflow-hidden rounded-2xl border border-white/10 bg-white/5 backdrop-blur-md ${className}`}>
+const GlassCard: React.FC<{ children: React.ReactNode; className?: string; onClick?: () => void }> = ({ children, className = "", onClick }) => (
+  <div 
+    className={`relative overflow-hidden rounded-2xl border border-white/10 bg-white/5 backdrop-blur-md ${onClick ? "cursor-pointer hover:bg-white/10 transition-colors" : ""} ${className}`}
+    onClick={onClick}
+  >
     <div className="absolute inset-0 bg-gradient-to-br from-white/5 to-transparent pointer-events-none" />
     <div className="relative">{children}</div>
   </div>
@@ -109,12 +130,23 @@ const ProfileView: React.FC<ProfileViewProps> = React.memo(({
 }) => {
   const { enableAdvancedGlass, setEnableAdvancedGlass } = usePreferences();
   const [isEditOpen, setIsEditOpen] = useState(false);
+  const [isGoalsOpen, setIsGoalsOpen] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
+  const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  
   const [formData, setFormData] = useState({
     full_name: "",
     weight: 0,
     height: 0,
     age: 0,
+  });
+
+  const [goalsData, setGoalsData] = useState({
+    fitness_goal: "",
+    dietary_preference: "",
   });
 
   // Get values from profile or show placeholder
@@ -125,9 +157,16 @@ const ProfileView: React.FC<ProfileViewProps> = React.memo(({
   const isPro = true; // Placeholder - will be connected to subscription later
   const memberSince = profile?.created_at ? new Date(profile.created_at).getFullYear() : "--";
 
+  // Get avatar URL
+  const avatarUrl = getAvatarUrl(profile?.avatar_path);
+
   // Calculate BMI from real data
   const bmi = calculateBMI(profile?.weight, profile?.height);
   const bmiStatus = getBMIStatus(bmi);
+
+  // Get display values for goals
+  const displayGoal = fitnessGoalLabels[profile?.fitness_goal] || profile?.fitness_goal || "--";
+  const displayDiet = dietaryLabels[profile?.dietary_preference] || profile?.dietary_preference || "--";
 
   // Get initials for avatar
   const getInitials = (name: string | null | undefined) => {
@@ -142,7 +181,41 @@ const ProfileView: React.FC<ProfileViewProps> = React.memo(({
       height: profile?.height || 0,
       age: profile?.age || 0,
     });
+    setAvatarPreview(null);
+    setSelectedFile(null);
     setIsEditOpen(true);
+  };
+
+  const handleOpenGoals = () => {
+    setGoalsData({
+      fitness_goal: profile?.fitness_goal || "",
+      dietary_preference: profile?.dietary_preference || "",
+    });
+    setIsGoalsOpen(true);
+  };
+
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Validate file type
+    if (!file.type.startsWith('image/')) {
+      toast.error("Bitte wähle ein Bild aus");
+      return;
+    }
+
+    // Validate file size (max 5MB)
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error("Bild darf maximal 5MB groß sein");
+      return;
+    }
+
+    setSelectedFile(file);
+    const reader = new FileReader();
+    reader.onload = () => {
+      setAvatarPreview(reader.result as string);
+    };
+    reader.readAsDataURL(file);
   };
 
   const handleSave = async () => {
@@ -150,6 +223,15 @@ const ProfileView: React.FC<ProfileViewProps> = React.memo(({
     
     setIsSaving(true);
     try {
+      // Upload avatar if selected
+      let avatarPath = profile?.avatar_path;
+      if (selectedFile) {
+        setIsUploading(true);
+        avatarPath = await uploadAvatar(profile.id, selectedFile);
+        await updateProfileAvatar(profile.id, avatarPath);
+        setIsUploading(false);
+      }
+
       const { error } = await supabase
         .from("profiles")
         .update({
@@ -164,9 +246,38 @@ const ProfileView: React.FC<ProfileViewProps> = React.memo(({
 
       toast.success("Profil aktualisiert");
       setIsEditOpen(false);
+      setSelectedFile(null);
+      setAvatarPreview(null);
       onProfileUpdate();
     } catch (error) {
       console.error("Error updating profile:", error);
+      toast.error("Fehler beim Speichern");
+    } finally {
+      setIsSaving(false);
+      setIsUploading(false);
+    }
+  };
+
+  const handleSaveGoals = async () => {
+    if (!profile?.id) return;
+    
+    setIsSaving(true);
+    try {
+      const { error } = await supabase
+        .from("profiles")
+        .update({
+          fitness_goal: goalsData.fitness_goal || null,
+          dietary_preference: goalsData.dietary_preference || null,
+        })
+        .eq("id", profile.id);
+
+      if (error) throw error;
+
+      toast.success("Ziele aktualisiert");
+      setIsGoalsOpen(false);
+      onProfileUpdate();
+    } catch (error) {
+      console.error("Error updating goals:", error);
       toast.error("Fehler beim Speichern");
     } finally {
       setIsSaving(false);
@@ -184,15 +295,18 @@ const ProfileView: React.FC<ProfileViewProps> = React.memo(({
       <motion.section variants={itemVariants} className="pt-4">
         <GlassCard className="p-6">
           <div className="flex items-center gap-4">
-            {/* Avatar with glow ring */}
-            <div className="relative">
-              <div className="absolute -inset-1 bg-gradient-to-br from-emerald-400 to-emerald-600 rounded-full blur-md opacity-60" />
-              <Avatar className="relative h-20 w-20 border-2 border-emerald-400/50 shadow-lg shadow-emerald-500/30">
-                <AvatarImage src={profile?.avatar_url} alt={displayName} />
+            {/* Avatar with glow ring - clickable */}
+            <div className="relative cursor-pointer group" onClick={handleOpenEdit}>
+              <div className="absolute -inset-1 bg-gradient-to-br from-emerald-400 to-emerald-600 rounded-full blur-md opacity-60 group-hover:opacity-80 transition-opacity" />
+              <Avatar className="relative h-20 w-20 border-2 border-emerald-400/50 shadow-lg shadow-emerald-500/30 group-hover:border-emerald-400 transition-colors">
+                <AvatarImage src={avatarUrl || undefined} alt={displayName} />
                 <AvatarFallback className="bg-emerald-500/20 text-emerald-400 text-xl font-bold">
                   {getInitials(profile?.full_name)}
                 </AvatarFallback>
               </Avatar>
+              <div className="absolute inset-0 flex items-center justify-center bg-black/40 rounded-full opacity-0 group-hover:opacity-100 transition-opacity">
+                <Camera className="w-5 h-5 text-white" />
+              </div>
             </div>
             
             {/* User info */}
@@ -268,7 +382,47 @@ const ProfileView: React.FC<ProfileViewProps> = React.memo(({
         </div>
       </motion.section>
 
-      {/* Section 3: Settings */}
+      {/* Section 3: Goals & Diet */}
+      <motion.section variants={itemVariants}>
+        <div className="flex items-center gap-2 mb-3 px-1">
+          <Target className="w-4 h-4 text-emerald-400" />
+          <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wider">Ernährung & Ziele</h2>
+        </div>
+        <GlassCard className="p-4">
+          <div className="flex items-start justify-between">
+            <div className="flex-1 grid grid-cols-2 gap-4">
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-lg bg-emerald-500/20 text-emerald-400">
+                  <Target className="w-4 h-4" />
+                </div>
+                <div>
+                  <span className="text-xs text-muted-foreground uppercase tracking-wider">Ziel</span>
+                  <p className="text-sm font-medium text-foreground">{displayGoal}</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-lg bg-amber-500/20 text-amber-400">
+                  <Utensils className="w-4 h-4" />
+                </div>
+                <div>
+                  <span className="text-xs text-muted-foreground uppercase tracking-wider">Diät</span>
+                  <p className="text-sm font-medium text-foreground">{displayDiet}</p>
+                </div>
+              </div>
+            </div>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8 shrink-0"
+              onClick={handleOpenGoals}
+            >
+              <Pencil className="h-3.5 w-3.5" />
+            </Button>
+          </div>
+        </GlassCard>
+      </motion.section>
+
+      {/* Section 4: Settings */}
       <motion.section variants={itemVariants}>
         <div className="flex items-center gap-2 mb-3 px-1">
           <Settings className="w-4 h-4 text-emerald-400" />
@@ -330,6 +484,33 @@ const ProfileView: React.FC<ProfileViewProps> = React.memo(({
             <DialogTitle>Profil bearbeiten</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-4">
+            {/* Avatar Upload Area */}
+            <div className="flex flex-col items-center gap-3">
+              <div 
+                className="relative cursor-pointer group"
+                onClick={() => fileInputRef.current?.click()}
+              >
+                <div className="absolute -inset-1 bg-gradient-to-br from-emerald-400 to-emerald-600 rounded-full blur-md opacity-40 group-hover:opacity-60 transition-opacity" />
+                <Avatar className="relative h-24 w-24 border-2 border-emerald-400/50">
+                  <AvatarImage src={avatarPreview || avatarUrl || undefined} alt={displayName} />
+                  <AvatarFallback className="bg-emerald-500/20 text-emerald-400 text-2xl font-bold">
+                    {getInitials(formData.full_name || profile?.full_name)}
+                  </AvatarFallback>
+                </Avatar>
+                <div className="absolute inset-0 flex items-center justify-center bg-black/50 rounded-full opacity-0 group-hover:opacity-100 transition-opacity">
+                  <Camera className="w-6 h-6 text-white" />
+                </div>
+              </div>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={handleFileSelect}
+              />
+              <p className="text-xs text-muted-foreground">Klicke zum Ändern</p>
+            </div>
+
             <div className="space-y-2">
               <Label htmlFor="edit-name">Name</Label>
               <Input
@@ -373,10 +554,69 @@ const ProfileView: React.FC<ProfileViewProps> = React.memo(({
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setIsEditOpen(false)}>
+            <Button variant="outline" onClick={() => setIsEditOpen(false)} disabled={isSaving}>
               Abbrechen
             </Button>
-            <Button onClick={handleSave} disabled={isSaving}>
+            <Button onClick={handleSave} disabled={isSaving || isUploading}>
+              {isUploading ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Hochladen...
+                </>
+              ) : isSaving ? "Speichern..." : "Speichern"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Goals Dialog */}
+      <Dialog open={isGoalsOpen} onOpenChange={setIsGoalsOpen}>
+        <DialogContent className="bg-background/95 backdrop-blur-xl border-white/10">
+          <DialogHeader>
+            <DialogTitle>Ziele bearbeiten</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="edit-goal">Fitness-Ziel</Label>
+              <Select
+                value={goalsData.fitness_goal}
+                onValueChange={(value) => setGoalsData(prev => ({ ...prev, fitness_goal: value }))}
+              >
+                <SelectTrigger id="edit-goal">
+                  <SelectValue placeholder="Wähle dein Ziel" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="muscle_gain">Muskelaufbau</SelectItem>
+                  <SelectItem value="weight_loss">Gewichtsverlust</SelectItem>
+                  <SelectItem value="maintenance">Erhaltung</SelectItem>
+                  <SelectItem value="endurance">Ausdauer</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="edit-diet">Ernährungsweise</Label>
+              <Select
+                value={goalsData.dietary_preference}
+                onValueChange={(value) => setGoalsData(prev => ({ ...prev, dietary_preference: value }))}
+              >
+                <SelectTrigger id="edit-diet">
+                  <SelectValue placeholder="Wähle deine Ernährungsweise" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="standard">Standard</SelectItem>
+                  <SelectItem value="vegan">Vegan</SelectItem>
+                  <SelectItem value="vegetarian">Vegetarisch</SelectItem>
+                  <SelectItem value="keto">Keto</SelectItem>
+                  <SelectItem value="pescetarian">Pescetarisch</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsGoalsOpen(false)} disabled={isSaving}>
+              Abbrechen
+            </Button>
+            <Button onClick={handleSaveGoals} disabled={isSaving}>
               {isSaving ? "Speichern..." : "Speichern"}
             </Button>
           </DialogFooter>
