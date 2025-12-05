@@ -1,4 +1,4 @@
-import React, { useState, useRef } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { RefreshCw, Sparkles, User, Ruler, Weight, Activity, Settings, Calendar, Crown, Pencil, Target, Utensils, Camera, Loader2, Flame, Clock, Zap } from "lucide-react";
@@ -233,6 +233,38 @@ const ProfileView: React.FC<ProfileViewProps> = React.memo(({
     fitness_goal: "",
     dietary_preference: "",
   });
+
+  // User stats from database
+  const [userStats, setUserStats] = useState({
+    streak: 0,
+    minutes: 0,
+    calories: 0,
+  });
+
+  // Fetch user stats on mount
+  useEffect(() => {
+    const fetchUserStats = async () => {
+      try {
+        const { data, error } = await supabase.rpc('get_user_stats');
+        if (error) {
+          console.error('Error fetching user stats:', error);
+          return;
+        }
+        if (data && typeof data === 'object') {
+          const stats = data as { streak?: number; minutes?: number; calories?: number };
+          setUserStats({
+            streak: stats.streak ?? 0,
+            minutes: stats.minutes ?? 0,
+            calories: stats.calories ?? 0,
+          });
+        }
+      } catch (err) {
+        console.error('Failed to fetch user stats:', err);
+      }
+    };
+
+    fetchUserStats();
+  }, [profile?.id]);
 
   // Get values from profile or show placeholder
   const displayName = profile?.full_name || "--";
@@ -513,17 +545,17 @@ const ProfileView: React.FC<ProfileViewProps> = React.memo(({
               <MiniStat 
                 icon={<Flame className="w-3.5 h-3.5 text-orange-400" />}
                 label="Streak"
-                value="3 Tage"
+                value={`${userStats.streak} ${userStats.streak === 1 ? 'Tag' : 'Tage'}`}
               />
               <MiniStat 
                 icon={<Clock className="w-3.5 h-3.5 text-blue-400" />}
                 label="Gesamtzeit"
-                value="120 Min"
+                value={`${userStats.minutes} Min`}
               />
               <MiniStat 
                 icon={<Zap className="w-3.5 h-3.5 text-amber-400" />}
                 label="Kcal"
-                value="850"
+                value={userStats.calories.toLocaleString('de-DE')}
               />
             </div>
           </div>
