@@ -199,10 +199,12 @@ export type Database = {
       }
       workout_logs: {
         Row: {
+          calories_burned: number
           completed: boolean
           completed_at: string | null
           created_at: string
           day_index: number | null
+          duration_minutes: number
           exercise_index: number | null
           id: string
           plan_id: string | null
@@ -211,10 +213,12 @@ export type Database = {
           workout_day: string
         }
         Insert: {
+          calories_burned?: number
           completed?: boolean
           completed_at?: string | null
           created_at?: string
           day_index?: number | null
+          duration_minutes?: number
           exercise_index?: number | null
           id?: string
           plan_id?: string | null
@@ -223,10 +227,12 @@ export type Database = {
           workout_day: string
         }
         Update: {
+          calories_burned?: number
           completed?: boolean
           completed_at?: string | null
           created_at?: string
           day_index?: number | null
+          duration_minutes?: number
           exercise_index?: number | null
           id?: string
           plan_id?: string | null
