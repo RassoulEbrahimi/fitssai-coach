@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect, useCallback } from "react";
+import React, { useState, useMemo, useCallback } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -19,6 +19,7 @@ import { useThrottledToast } from "@/hooks/useThrottledToast";
 import { TodayWorkoutSkeleton } from "@/components/skeletons/TodayWorkoutSkeleton";
 import { useTraining } from "@/contexts/TrainingContext";
 import WorkoutDetailsDialog from "@/components/workout/WorkoutDetailsDialog";
+import { estimateCalories } from "@/lib/calorieEstimation";
 
 interface TodayWorkoutCardProps {
   selectedDate: Date;
@@ -64,12 +65,15 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
   const { showToast } = useThrottledToast();
   const { todayWorkouts } = useTraining();
   
+  const DEFAULT_DURATION = 10;
+  
   // Workout details dialog state
   const [detailsDialog, setDetailsDialog] = useState<{
     open: boolean;
     exerciseIndex: number;
     exerciseName: string;
-  }>({ open: false, exerciseIndex: -1, exerciseName: "" });
+    estimatedCalories: number;
+  }>({ open: false, exerciseIndex: -1, exerciseName: "", estimatedCalories: 50 });
   
   // Reactive Berlin "today" - updates automatically at midnight
   const berlinToday = useBerlinToday();
@@ -108,11 +112,16 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
 
       showToast(t('todayWorkout.uncompleted'));
     } else {
+      // Calculate estimated calories based on exercise type
+      const exerciseName = exercises[exerciseIndex]?.name || '';
+      const estimatedCalories = estimateCalories(exerciseName, DEFAULT_DURATION);
+      
       // Open dialog to enter duration/calories before completing
       setDetailsDialog({
         open: true,
         exerciseIndex,
-        exerciseName: exercises[exerciseIndex]?.name || ''
+        exerciseName,
+        estimatedCalories
       });
     }
   }, [user, workoutPlan, completionMap, weekKey, dayIndex, exercises, toggleExerciseMutation, showToast, t]);
@@ -142,7 +151,7 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
       caloriesBurned: calories
     });
 
-    setDetailsDialog({ open: false, exerciseIndex: -1, exerciseName: "" });
+    setDetailsDialog({ open: false, exerciseIndex: -1, exerciseName: "", estimatedCalories: 50 });
     showToast(t('todayWorkout.completed'));
   }, [detailsDialog, weekKey, dayIndex, exercises, workoutPlan, toggleExerciseMutation, showToast, t]);
 
@@ -375,6 +384,8 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
         exerciseName={detailsDialog.exerciseName}
         onConfirm={handleConfirmWorkoutDetails}
         isLoading={isToggling}
+        initialDuration={DEFAULT_DURATION}
+        initialCalories={detailsDialog.estimatedCalories}
       />
     </WorkoutErrorBoundary>
   );

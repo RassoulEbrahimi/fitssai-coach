@@ -19,6 +19,8 @@ interface WorkoutDetailsDialogProps {
   exerciseName: string;
   onConfirm: (duration: number, calories: number) => void;
   isLoading?: boolean;
+  initialDuration?: number;
+  initialCalories?: number;
 }
 
 const DEFAULT_DURATION = 10;
@@ -30,18 +32,20 @@ const WorkoutDetailsDialog: React.FC<WorkoutDetailsDialogProps> = ({
   exerciseName,
   onConfirm,
   isLoading = false,
+  initialDuration = DEFAULT_DURATION,
+  initialCalories = DEFAULT_CALORIES,
 }) => {
   const { t } = useTranslation();
-  const [duration, setDuration] = useState<string>(String(DEFAULT_DURATION));
-  const [calories, setCalories] = useState<string>(String(DEFAULT_CALORIES));
+  const [duration, setDuration] = useState<string>(String(initialDuration));
+  const [calories, setCalories] = useState<string>(String(initialCalories));
 
-  // Reset values when dialog opens
+  // Reset values when dialog opens with new initial values
   useEffect(() => {
     if (open) {
-      setDuration(String(DEFAULT_DURATION));
-      setCalories(String(DEFAULT_CALORIES));
+      setDuration(String(initialDuration));
+      setCalories(String(initialCalories));
     }
-  }, [open]);
+  }, [open, initialDuration, initialCalories]);
 
   const handleConfirm = () => {
     const durationNum = parseInt(duration) || DEFAULT_DURATION;
