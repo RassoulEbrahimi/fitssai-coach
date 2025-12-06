@@ -51,8 +51,16 @@ const DashboardPage = () => {
   if (hasProfile === false) {
     return <Navigate to="/onboarding" replace />;
   }
+  if (isFocusMode) {
+    return (
+      <WorkoutErrorBoundary>
+        <Dashboard />
+      </WorkoutErrorBoundary>
+    );
+  }
+
   return (
-    <div className={`min-h-screen bg-background ${isFocusMode ? '' : ''}`}>
+    <div className="min-h-screen bg-background">
       <WorkoutErrorBoundary>
         <Dashboard />
       </WorkoutErrorBoundary>
