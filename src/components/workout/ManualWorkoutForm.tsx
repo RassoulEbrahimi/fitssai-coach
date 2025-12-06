@@ -1,10 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Edit3 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { ExerciseSelector, PREDEFINED_EXERCISES } from '@/components/ExerciseSelector';
+import { ExerciseSelector, type DatabaseExercise } from '@/components/ExerciseSelector';
 import type { Exercise } from '@/hooks/useExerciseEditor';
 
 interface ManualWorkoutFormProps {
@@ -19,7 +19,7 @@ export const ManualWorkoutForm: React.FC<ManualWorkoutFormProps> = ({
   onCancel,
 }) => {
   // Exercise selection state
-  const [selectedExercise, setSelectedExercise] = useState<typeof PREDEFINED_EXERCISES[number] | null>(null);
+  const [selectedExercise, setSelectedExercise] = useState<DatabaseExercise | null>(null);
   
   // Form state for strength exercises
   const [sets, setSets] = useState('3');
@@ -31,7 +31,7 @@ export const ManualWorkoutForm: React.FC<ManualWorkoutFormProps> = ({
   const [distance, setDistance] = useState('');
   const [duration, setDuration] = useState('');
 
-  const handleSelectExercise = (exercise: typeof PREDEFINED_EXERCISES[number]) => {
+  const handleSelectExercise = (exercise: DatabaseExercise) => {
     setSelectedExercise(exercise);
   };
 

@@ -9,46 +9,44 @@ import {
 } from '@/components/ui/command';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { cn } from '@/lib/utils';
+import { supabase } from '@/integrations/supabase/client';
+import { Loader2 } from 'lucide-react';
 
-// Predefined exercises with their types
-export const PREDEFINED_EXERCISES = [
-  // Cardio
-  { name: 'Laufen', type: 'cardio', icon: '🏃' },
-  { name: 'Radfahren', type: 'cardio', icon: '🚴' },
-  { name: 'Schwimmen', type: 'cardio', icon: '🏊' },
-  { name: 'Rudern', type: 'cardio', icon: '🚣' },
-  
-  // Upper Body - Push
-  { name: 'Bankdrücken', type: 'strength', icon: '💪' },
-  { name: 'Schrägbankdrücken', type: 'strength', icon: '💪' },
-  { name: 'Schulterdrücken', type: 'strength', icon: '💪' },
-  { name: 'Liegestütze', type: 'strength', icon: '💪' },
-  { name: 'Dips', type: 'strength', icon: '💪' },
-  
-  // Upper Body - Pull
-  { name: 'Klimmzüge', type: 'strength', icon: '💪' },
-  { name: 'Latziehen', type: 'strength', icon: '💪' },
-  { name: 'Rudern', type: 'strength', icon: '💪' },
-  { name: 'Bizepscurls', type: 'strength', icon: '💪' },
-  
-  // Lower Body
-  { name: 'Kniebeugen', type: 'strength', icon: '🦵' },
-  { name: 'Kreuzheben', type: 'strength', icon: '🦵' },
-  { name: 'Beinpresse', type: 'strength', icon: '🦵' },
-  { name: 'Ausfallschritte', type: 'strength', icon: '🦵' },
-  { name: 'Beinbeuger', type: 'strength', icon: '🦵' },
-  { name: 'Beinstrecker', type: 'strength', icon: '🦵' },
-  { name: 'Wadenheben', type: 'strength', icon: '🦵' },
-  
-  // Core
-  { name: 'Planks', type: 'strength', icon: '🧘' },
-  { name: 'Crunches', type: 'strength', icon: '🧘' },
-  { name: 'Russian Twists', type: 'strength', icon: '🧘' },
-] as const;
+// Type for exercise from database
+export interface DatabaseExercise {
+  id: string;
+  name: string;
+  target_muscle: string;
+  category: string;
+  type: 'strength' | 'cardio';
+  icon: string;
+}
+
+// Map target muscles to icons
+const muscleToIcon: Record<string, string> = {
+  'Chest': '💪',
+  'Back': '🦴',
+  'Legs': '🦵',
+  'Shoulders': '💪',
+  'Triceps': '💪',
+  'Biceps': '💪',
+  'Abs': '🧘',
+};
+
+// Map target muscles to tabs
+const muscleToTab: Record<string, 'upper' | 'lower' | 'core'> = {
+  'Chest': 'upper',
+  'Back': 'upper',
+  'Shoulders': 'upper',
+  'Triceps': 'upper',
+  'Biceps': 'upper',
+  'Legs': 'lower',
+  'Abs': 'core',
+};
 
 interface ExerciseSelectorProps {
-  onSelect: (exercise: typeof PREDEFINED_EXERCISES[number]) => void;
-  currentExercise?: typeof PREDEFINED_EXERCISES[number] | null;
+  onSelect: (exercise: DatabaseExercise) => void;
+  currentExercise?: DatabaseExercise | null;
   className?: string;
 }
 
@@ -58,20 +56,55 @@ export const ExerciseSelector: React.FC<ExerciseSelectorProps> = ({
   className,
 }) => {
   const [searchValue, setSearchValue] = useState('');
-  const [selectedTab, setSelectedTab] = useState<'strength' | 'cardio' | 'core'>('strength');
+  const [selectedTab, setSelectedTab] = useState<'upper' | 'lower' | 'core'>('upper');
   const [highlightedExercise, setHighlightedExercise] = useState<string | null>(null);
+  const [exercises, setExercises] = useState<DatabaseExercise[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
   const exerciseRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
-  // Set initial tab based on current exercise type
+  // Fetch exercises from database
+  useEffect(() => {
+    const fetchExercises = async () => {
+      setIsLoading(true);
+      try {
+        const { data, error } = await supabase
+          .from('exercises')
+          .select('*')
+          .order('name');
+
+        if (error) {
+          console.error('Error fetching exercises:', error);
+          return;
+        }
+
+        // Transform database exercises to include type and icon
+        const transformedExercises: DatabaseExercise[] = (data || []).map(ex => ({
+          id: ex.id,
+          name: ex.name,
+          target_muscle: ex.target_muscle,
+          category: ex.category,
+          type: 'strength' as const, // All gym exercises are strength
+          icon: muscleToIcon[ex.target_muscle] || '💪',
+        }));
+
+        setExercises(transformedExercises);
+      } catch (err) {
+        console.error('Failed to fetch exercises:', err);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchExercises();
+  }, []);
+
+  // Set initial tab based on current exercise
   useEffect(() => {
     if (currentExercise) {
-      const tabMap: Record<string, 'strength' | 'cardio' | 'core'> = {
-        'cardio': 'cardio',
-        'strength': currentExercise.icon === '🧘' ? 'core' : 'strength',
-      };
-      setSelectedTab(tabMap[currentExercise.type] || 'strength');
+      const tab = muscleToTab[currentExercise.target_muscle] || 'upper';
+      setSelectedTab(tab);
       
-      // Highlight and scroll after a short delay to ensure DOM is ready
+      // Highlight and scroll after a short delay
       setTimeout(() => {
         setHighlightedExercise(currentExercise.name);
         exerciseRefs.current[currentExercise.name]?.scrollIntoView({ 
@@ -79,29 +112,57 @@ export const ExerciseSelector: React.FC<ExerciseSelectorProps> = ({
           behavior: 'smooth' 
         });
         
-        // Remove highlight after 1 second
         setTimeout(() => setHighlightedExercise(null), 1000);
       }, 100);
     }
   }, [currentExercise]);
 
   const hasSearch = searchValue.trim().length > 0;
-  let exercises = [...PREDEFINED_EXERCISES];
   
-  // If no search, filter by selected tab
-  if (!hasSearch) {
-    if (selectedTab === 'cardio') {
-      exercises = exercises.filter(ex => ex.type === 'cardio');
+  // Filter exercises based on search and selected tab
+  let filteredExercises = [...exercises];
+  
+  if (hasSearch) {
+    // Normalize search for German characters
+    const normalizedSearch = searchValue.toLowerCase();
+    filteredExercises = filteredExercises.filter(ex => 
+      ex.name.toLowerCase().includes(normalizedSearch)
+    );
+  } else {
+    // Filter by selected tab
+    if (selectedTab === 'upper') {
+      filteredExercises = filteredExercises.filter(ex => 
+        ['Chest', 'Back', 'Shoulders', 'Triceps', 'Biceps'].includes(ex.target_muscle)
+      );
+    } else if (selectedTab === 'lower') {
+      filteredExercises = filteredExercises.filter(ex => 
+        ex.target_muscle === 'Legs'
+      );
     } else if (selectedTab === 'core') {
-      exercises = exercises.filter(ex => ex.icon === '🧘');
-    } else {
-      exercises = exercises.filter(ex => ex.type === 'strength' && ex.icon !== '🧘');
+      filteredExercises = filteredExercises.filter(ex => 
+        ex.target_muscle === 'Abs'
+      );
     }
   }
   
-  // Group by category
-  const cardio = exercises.filter(ex => ex.type === 'cardio');
-  const strength = exercises.filter(ex => ex.type === 'strength');
+  // Group by target muscle
+  const groupedExercises = filteredExercises.reduce((acc, ex) => {
+    const muscle = ex.target_muscle;
+    if (!acc[muscle]) acc[muscle] = [];
+    acc[muscle].push(ex);
+    return acc;
+  }, {} as Record<string, DatabaseExercise[]>);
+
+  // German translations for muscle groups
+  const muscleTranslations: Record<string, string> = {
+    'Chest': 'Brust',
+    'Back': 'Rücken',
+    'Legs': 'Beine',
+    'Shoulders': 'Schultern',
+    'Triceps': 'Trizeps',
+    'Biceps': 'Bizeps',
+    'Abs': 'Bauch',
+  };
 
   return (
     <div className={cn("space-y-3", className)}>
@@ -115,59 +176,54 @@ export const ExerciseSelector: React.FC<ExerciseSelectorProps> = ({
         />
       </Command>
       
-      <Tabs value={selectedTab} onValueChange={(v) => setSelectedTab(v as 'strength' | 'cardio' | 'core')}>
+      <Tabs value={selectedTab} onValueChange={(v) => setSelectedTab(v as 'upper' | 'lower' | 'core')}>
         <TabsList className="grid w-full grid-cols-3">
-          <TabsTrigger value="strength">💪 Strength</TabsTrigger>
-          <TabsTrigger value="cardio">🏃 Cardio</TabsTrigger>
+          <TabsTrigger value="upper">💪 Oberkörper</TabsTrigger>
+          <TabsTrigger value="lower">🦵 Beine</TabsTrigger>
           <TabsTrigger value="core">🧘 Core</TabsTrigger>
         </TabsList>
       </Tabs>
       
       <Command className="rounded-lg border">
         <CommandList>
-          <CommandEmpty>Keine Übung gefunden.</CommandEmpty>
-          
-          {cardio.length > 0 && (
-            <CommandGroup heading="Cardio">
-              {cardio.map((exercise) => (
-                <CommandItem
-                  key={exercise.name}
-                  value={exercise.name}
-                  onSelect={() => onSelect(exercise)}
-                  ref={(el) => exerciseRefs.current[exercise.name] = el}
-                  className={cn(
-                    "cursor-pointer",
-                    highlightedExercise === exercise.name && "animate-pulse bg-emerald-500/10"
-                  )}
-                >
-                  <span className="mr-2 text-lg">{exercise.icon}</span>
-                  <span>{exercise.name}</span>
-                </CommandItem>
+          {isLoading ? (
+            <div className="flex items-center justify-center py-6">
+              <Loader2 className="h-5 w-5 animate-spin text-emerald-400" />
+              <span className="ml-2 text-sm text-muted-foreground">Übungen laden...</span>
+            </div>
+          ) : (
+            <>
+              <CommandEmpty>Keine Übung gefunden.</CommandEmpty>
+              
+              {Object.entries(groupedExercises).map(([muscle, muscleExercises]) => (
+                <CommandGroup key={muscle} heading={muscleTranslations[muscle] || muscle}>
+                  {muscleExercises.map((exercise) => (
+                    <CommandItem
+                      key={exercise.id}
+                      value={exercise.name}
+                      onSelect={() => onSelect(exercise)}
+                      ref={(el) => { exerciseRefs.current[exercise.name] = el; }}
+                      className={cn(
+                        "cursor-pointer",
+                        highlightedExercise === exercise.name && "animate-pulse bg-emerald-500/10"
+                      )}
+                    >
+                      <span className="mr-2 text-lg">{exercise.icon}</span>
+                      <div className="flex flex-col">
+                        <span>{exercise.name}</span>
+                        <span className="text-xs text-muted-foreground">{exercise.category}</span>
+                      </div>
+                    </CommandItem>
+                  ))}
+                </CommandGroup>
               ))}
-            </CommandGroup>
-          )}
-          
-          {strength.length > 0 && (
-            <CommandGroup heading="Krafttraining">
-              {strength.map((exercise) => (
-                <CommandItem
-                  key={exercise.name}
-                  value={exercise.name}
-                  onSelect={() => onSelect(exercise)}
-                  ref={(el) => exerciseRefs.current[exercise.name] = el}
-                  className={cn(
-                    "cursor-pointer",
-                    highlightedExercise === exercise.name && "animate-pulse bg-emerald-500/10"
-                  )}
-                >
-                  <span className="mr-2 text-lg">{exercise.icon}</span>
-                  <span>{exercise.name}</span>
-                </CommandItem>
-              ))}
-            </CommandGroup>
+            </>
           )}
         </CommandList>
       </Command>
     </div>
   );
 };
+
+// Export for backwards compatibility - but now uses database
+export const PREDEFINED_EXERCISES: DatabaseExercise[] = [];
