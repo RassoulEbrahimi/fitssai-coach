@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from "react";
+import React, { useState, useMemo, useEffect, useCallback } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -10,15 +10,15 @@ import { format } from "date-fns";
 import { de } from "date-fns/locale";
 import { isBerlinPast, isBerlinFuture } from "@/lib/dateUtils";
 import { useBerlinToday } from "@/hooks/useBerlinToday";
-import { CalendarIcon, PencilIcon, CheckCircle2, WifiOff } from "lucide-react";
+import { PencilIcon, CheckCircle2, WifiOff } from "lucide-react";
 import WorkoutErrorBoundary from "@/components/WorkoutErrorBoundary";
 import { logEvent } from "@/lib/telemetryClient";
-import { toastSuccess } from "@/lib/toastWithIcon";
 import { CompletionState, isExerciseCompleted } from "@/lib/completionUtils";
 import { useWorkoutHelpers } from "@/hooks/useWorkoutHelpers";
 import { useThrottledToast } from "@/hooks/useThrottledToast";
 import { TodayWorkoutSkeleton } from "@/components/skeletons/TodayWorkoutSkeleton";
 import { useTraining } from "@/contexts/TrainingContext";
+import WorkoutDetailsDialog from "@/components/workout/WorkoutDetailsDialog";
 
 interface TodayWorkoutCardProps {
   selectedDate: Date;
@@ -37,6 +37,8 @@ interface TodayWorkoutCardProps {
     dayIndex: number;
     exerciseIndex: number;
     completed: boolean;
+    durationMinutes?: number;
+    caloriesBurned?: number;
   }) => void;
   isToggling: boolean;
   isOnline?: boolean;
@@ -62,6 +64,13 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
   const { showToast } = useThrottledToast();
   const { todayWorkouts } = useTraining();
   
+  // Workout details dialog state
+  const [detailsDialog, setDetailsDialog] = useState<{
+    open: boolean;
+    exerciseIndex: number;
+    exerciseName: string;
+  }>({ open: false, exerciseIndex: -1, exerciseName: "" });
+  
   // Reactive Berlin "today" - updates automatically at midnight
   const berlinToday = useBerlinToday();
 
@@ -71,6 +80,71 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
   // Display exercises ONLY from TrainingContext (reactive to all changes)
   const exercises = todayWorkouts;
   const isRestDay = !exercises.length;
+
+  // Handle opening the details dialog or uncompleting an exercise
+  const handleExerciseClick = useCallback((exerciseIndex: number) => {
+    if (!user || !workoutPlan) return;
+    
+    const isCurrentlyCompleted = isExerciseCompleted(completionMap, weekKey, dayIndex, exerciseIndex);
+    
+    if (isCurrentlyCompleted) {
+      // Uncomplete immediately (no dialog needed)
+      logEvent('exercise_toggle_ui', {
+        weekKey,
+        dayIndex,
+        exerciseIndex,
+        completed: false,
+        completionKey: `${weekKey}_${dayIndex}_${exerciseIndex}`,
+        exerciseName: exercises[exerciseIndex]?.name
+      });
+
+      toggleExerciseMutation({
+        planId: workoutPlan.id,
+        weekKey,
+        dayIndex,
+        exerciseIndex,
+        completed: false
+      });
+
+      showToast(t('todayWorkout.uncompleted'));
+    } else {
+      // Open dialog to enter duration/calories before completing
+      setDetailsDialog({
+        open: true,
+        exerciseIndex,
+        exerciseName: exercises[exerciseIndex]?.name || ''
+      });
+    }
+  }, [user, workoutPlan, completionMap, weekKey, dayIndex, exercises, toggleExerciseMutation, showToast, t]);
+
+  // Handle confirming workout details from dialog
+  const handleConfirmWorkoutDetails = useCallback((duration: number, calories: number) => {
+    const { exerciseIndex } = detailsDialog;
+    
+    logEvent('exercise_toggle_ui', {
+      weekKey,
+      dayIndex,
+      exerciseIndex,
+      completed: true,
+      completionKey: `${weekKey}_${dayIndex}_${exerciseIndex}`,
+      exerciseName: exercises[exerciseIndex]?.name,
+      durationMinutes: duration,
+      caloriesBurned: calories
+    });
+
+    toggleExerciseMutation({
+      planId: workoutPlan.id,
+      weekKey,
+      dayIndex,
+      exerciseIndex,
+      completed: true,
+      durationMinutes: duration,
+      caloriesBurned: calories
+    });
+
+    setDetailsDialog({ open: false, exerciseIndex: -1, exerciseName: "" });
+    showToast(t('todayWorkout.completed'));
+  }, [detailsDialog, weekKey, dayIndex, exercises, workoutPlan, toggleExerciseMutation, showToast, t]);
 
   // Memoized exercise list rendering
   const exerciseListContent = useMemo(() => {
@@ -89,11 +163,11 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
             exit={{ opacity: 0, scale: 0.95 }}
             whileTap={{ scale: 0.98 }} 
             transition={{ duration: 0.2 }}
-            onClick={() => handleToggleExercise(index)} 
+            onClick={() => handleExerciseClick(index)} 
             onKeyDown={(e) => {
               if (e.key === 'Enter' || e.key === ' ') {
                 e.preventDefault();
-                handleToggleExercise(index);
+                handleExerciseClick(index);
               }
             }}
             className="flex items-center gap-3 p-4 bg-background rounded-lg border hover:bg-muted/50 active:bg-muted/70 transition-all duration-150 cursor-pointer min-h-[56px] touch-manipulation px-[12px] py-[12px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
@@ -143,7 +217,7 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
         </AnimatePresence>
       );
     });
-  }, [exercises, completionMap, weekKey, dayIndex]);
+  }, [exercises, completionMap, weekKey, dayIndex, handleExerciseClick]);
 
   // Date context logic - using reactive today
   const selectedDateStr = format(selectedDate, 'yyyy-MM-dd');
@@ -188,42 +262,6 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
         block: 'start'
       });
     }
-  };
-
-  // SAFEGUARD: weekKey and dayIndex props are the real selected week/day.
-  // Even if exercises are displayed from a mirrored source (week1/week2),
-  // all backend operations use the actual weekKey/dayIndex passed as props.
-
-  const handleToggleExercise = async (exerciseIndex: number) => {
-    if (!user || !workoutPlan) return;
-    
-    // Use helper to check current completion state
-    const isCurrentlyCompleted = isExerciseCompleted(completionMap, weekKey, dayIndex, exerciseIndex);
-    const isNowCompleted = !isCurrentlyCompleted;
-
-    logEvent('exercise_toggle_ui', {
-      weekKey,
-      dayIndex,
-      exerciseIndex,
-      completed: isNowCompleted,
-      completionKey: `${weekKey}_${dayIndex}_${exerciseIndex}`,
-      exerciseName: exercises[exerciseIndex]?.name
-    });
-
-    // Call mutation with optimistic update handled by React Query
-    toggleExerciseMutation({
-      planId: workoutPlan.id,
-      weekKey,
-      dayIndex,
-      exerciseIndex,
-      completed: isNowCompleted
-    });
-
-    // Show toast notification with throttle
-    logEvent('aria_announcement_triggered', { context: 'exercise_toggle', completed: isNowCompleted });
-    showToast(
-      isNowCompleted ? t('todayWorkout.completed') : t('todayWorkout.uncompleted')
-    );
   };
 
   // Render skeleton loading state
@@ -329,6 +367,15 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
         </CardContent>
       </Card>
     </motion.div>
+
+      {/* Workout Details Dialog */}
+      <WorkoutDetailsDialog
+        open={detailsDialog.open}
+        onOpenChange={(open) => setDetailsDialog(prev => ({ ...prev, open }))}
+        exerciseName={detailsDialog.exerciseName}
+        onConfirm={handleConfirmWorkoutDetails}
+        isLoading={isToggling}
+      />
     </WorkoutErrorBoundary>
   );
 };

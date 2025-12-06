@@ -263,6 +263,10 @@
     "reps": "Wiederholungen",
     "weight": "Gewicht",
     "rest": "Pause",
+    "detailsTitle": "Workout Details",
+    "duration": "Dauer (Minuten)",
+    "calories": "Kalorien verbrannt",
+    "complete": "Abschließen",
     "optional": "optional",
     "updateSuccess": "Übung aktualisiert",
     "updateFailed": "Aktualisierung fehlgeschlagen",
@@ -307,7 +311,8 @@
   },
   "common": {
     "save": "Speichern",
-    "cancel": "Abbrechen"
+    "cancel": "Abbrechen",
+    "saving": "Speichern..."
   },
   "todayWorkout": {
     "title": "Heutiges Training",
@@ -321,7 +326,9 @@
     "toggleError": "Fehler beim Aktualisieren der Übung",
     "exerciseCompleted": "Übung abgeschlossen",
     "exerciseUncompleted": "Übung zurückgesetzt",
-    "toggleExercise": "{{name}} als erledigt markieren"
+    "toggleExercise": "{{name}} als erledigt markieren",
+    "completed": "Übung abgeschlossen",
+    "uncompleted": "Übung zurückgesetzt"
   },
   "mirror": {
     "copiedFromWeek": "Kopiert von W{{weekNumber}}",

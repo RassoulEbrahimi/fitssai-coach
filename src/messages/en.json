@@ -249,6 +249,10 @@
     "reps": "Reps",
     "weight": "Weight",
     "rest": "Rest",
+    "detailsTitle": "Workout Details",
+    "duration": "Duration (minutes)",
+    "calories": "Calories burned",
+    "complete": "Complete",
     "optional": "optional",
     "updateSuccess": "Exercise updated",
     "updateFailed": "Update failed",
@@ -293,7 +297,8 @@
   },
   "common": {
     "save": "Save",
-    "cancel": "Cancel"
+    "cancel": "Cancel",
+    "saving": "Saving..."
   },
   "todayWorkout": {
     "title": "Today's Workout",
@@ -307,7 +312,9 @@
     "toggleError": "Error updating exercise",
     "exerciseCompleted": "Exercise completed",
     "exerciseUncompleted": "Exercise reset",
-    "toggleExercise": "Mark {{name}} as complete"
+    "toggleExercise": "Mark {{name}} as complete",
+    "completed": "Exercise completed",
+    "uncompleted": "Exercise reset"
   },
   "mirror": {
     "copiedFromWeek": "Copied from W{{weekNumber}}",
