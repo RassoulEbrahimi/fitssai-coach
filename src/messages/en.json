@@ -319,7 +319,8 @@
     "trainingInProgress": "Training in progress",
     "dailyWorkout": "Daily Workout",
     "estimatedDuration": "{{mins}} Min",
-    "exercisesCount": "{{count}} exercises"
+    "exercisesCount": "{{count}} exercises",
+    "progressLabel": "{{completed}} of {{total}} done"
   },
   "mirror": {
     "copiedFromWeek": "Copied from W{{weekNumber}}",
