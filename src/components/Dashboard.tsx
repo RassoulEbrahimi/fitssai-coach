@@ -115,11 +115,13 @@ import {
 import { useBerlinToday } from "@/hooks/useBerlinToday";
 import { useWorkoutHelpers } from "@/hooks/useWorkoutHelpers";
 import { usePreferences } from "@/contexts/PreferencesContext";
+import { useFocusMode } from "@/contexts/FocusModeContext";
 
 const Dashboard = () => {
   const { t, i18n } = useTranslation();
   const { user } = useAuth();
   const { enableAdvancedGlass } = usePreferences();
+  const { isFocusMode } = useFocusMode();
   
   // Reactive Berlin "today" - updates automatically at midnight
   const berlinToday = useBerlinToday();
@@ -715,10 +717,10 @@ const Dashboard = () => {
   
   return (
     <div className="relative min-h-screen z-20">
-      <VideoBackground />
+      {!isFocusMode && <VideoBackground />}
       <motion.div 
         id="main-content"
-        className="relative z-10 max-w-7xl mx-auto px-4 md:px-6 pt-4 pb-[calc(64px+env(safe-area-inset-bottom))] md:pb-6"
+        className={`relative z-10 max-w-7xl mx-auto ${isFocusMode ? 'px-0' : 'px-4 md:px-6 pt-4 pb-[calc(64px+env(safe-area-inset-bottom))] md:pb-6'}`}
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.4, ease: "easeOut" }}
