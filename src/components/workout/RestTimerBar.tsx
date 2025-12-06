@@ -51,13 +51,16 @@ export const RestTimerBar: React.FC<RestTimerBarProps> = ({
             "bg-muted/50 border border-border"
           )}
         >
-          {/* Timer header */}
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
+          {/* Timer header - 3-column centered layout */}
+          <div className="flex items-center">
+            {/* Left: Pause label */}
+            <div className="flex-1 flex items-center gap-2">
               <Timer className="w-4 h-4 text-primary" />
               <span className="text-sm font-medium text-foreground">Pause</span>
             </div>
-            <div className="flex items-center gap-2">
+            
+            {/* Center: Timer text */}
+            <div className="flex-1 flex justify-center">
               <span className={cn(
                 "text-lg font-bold tabular-nums",
                 remainingSeconds <= 10 && remainingSeconds > 0
@@ -66,6 +69,10 @@ export const RestTimerBar: React.FC<RestTimerBarProps> = ({
               )}>
                 {formatRestTime(remainingSeconds)}
               </span>
+            </div>
+            
+            {/* Right: Skip button */}
+            <div className="flex-1 flex justify-end">
               <Button
                 variant="ghost"
                 size="icon"

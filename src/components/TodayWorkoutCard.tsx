@@ -407,10 +407,10 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
             {/* Dark gradient overlay */}
             <div className="absolute inset-0 bg-gradient-to-t from-background via-background/70 to-black/40" />
             
-            {/* Fullscreen toggle button */}
+            {/* Fullscreen toggle button - top right */}
             <button
               onClick={toggleFullScreen}
-              className="absolute top-3 left-3 z-20 p-2 rounded-full bg-black/50 text-white/90 backdrop-blur-sm hover:bg-black/70 transition-colors"
+              className="absolute top-3 right-3 z-30 p-2 rounded-full bg-black/50 text-white/90 backdrop-blur-sm hover:bg-black/70 transition-colors"
               aria-label={isFocusMode ? "Vollbild beenden" : "Vollbild"}
             >
               {isFocusMode ? (
@@ -420,9 +420,9 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
               )}
             </button>
             
-            {/* Offline badge */}
+            {/* Offline badge - positioned below fullscreen toggle */}
             {isOfflineData && (
-              <div className="absolute top-3 right-3 z-20">
+              <div className="absolute top-14 right-3 z-20">
                 <TooltipProvider>
                   <Tooltip>
                     <TooltipTrigger asChild>
