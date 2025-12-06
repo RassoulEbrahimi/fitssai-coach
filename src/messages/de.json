@@ -336,7 +336,10 @@
     "exercisesCount": "{{count}} Übungen",
     "progressLabel": "{{completed}} von {{total}} erledigt",
     "finishTraining": "Training beenden",
-    "finishMessage": "Starke Leistung! Dein Training ist abgeschlossen. 🔥"
+    "finishMessage": "Starke Leistung! Dein Training ist abgeschlossen. 🔥",
+    "summaryTitle": "Training beendet! 🎉",
+    "summaryBody": "Du hast {{completed}} von {{total}} Übungen erledigt.",
+    "summaryClose": "Schließen"
   },
   "mirror": {
     "copiedFromWeek": "Kopiert von W{{weekNumber}}",

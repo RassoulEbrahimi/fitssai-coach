@@ -322,7 +322,10 @@
     "exercisesCount": "{{count}} exercises",
     "progressLabel": "{{completed}} of {{total}} done",
     "finishTraining": "Finish Training",
-    "finishMessage": "Great job! Your workout is complete. 🔥"
+    "finishMessage": "Great job! Your workout is complete. 🔥",
+    "summaryTitle": "Workout Complete! 🎉",
+    "summaryBody": "You completed {{completed}} of {{total}} exercises.",
+    "summaryClose": "Close"
   },
   "mirror": {
     "copiedFromWeek": "Copied from W{{weekNumber}}",
