@@ -5,6 +5,13 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
 import { motion, AnimatePresence } from "framer-motion";
 import { useTranslation } from "react-i18next";
 import { useAuth } from "@/hooks/useAuth";
@@ -485,6 +492,8 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
                       : 0;
                     const isComplete = progressPercent === 100;
                     
+                    const [showSummary, setShowSummary] = useState(false);
+                    
                     const handleFinishTraining = () => {
                       // Trigger confetti celebration
                       confetti({
@@ -494,6 +503,12 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
                         colors: ['#10b981', '#34d399', '#059669']
                       });
                       
+                      // Show summary modal
+                      setShowSummary(true);
+                    };
+                    
+                    const handleCloseSummary = () => {
+                      setShowSummary(false);
                       setIsStarted(false);
                       try {
                         localStorage.removeItem(getStartedStorageKey(selectedDateStr));
@@ -541,6 +556,27 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
                           {isComplete && <Check className="w-5 h-5" />}
                           {t('todayWorkout.finishTraining')}
                         </Button>
+                        
+                        {/* Summary Dialog */}
+                        <Dialog open={showSummary} onOpenChange={setShowSummary}>
+                          <DialogContent className="sm:max-w-md">
+                            <DialogHeader>
+                              <DialogTitle className="text-xl text-center">
+                                {t('todayWorkout.summaryTitle')}
+                              </DialogTitle>
+                            </DialogHeader>
+                            <div className="py-4 text-center">
+                              <p className="text-muted-foreground">
+                                {t('todayWorkout.summaryBody', { completed: completedCount, total: totalExercises })}
+                              </p>
+                            </div>
+                            <DialogFooter className="sm:justify-center">
+                              <Button onClick={handleCloseSummary} className="w-full sm:w-auto">
+                                {t('todayWorkout.summaryClose')}
+                              </Button>
+                            </DialogFooter>
+                          </DialogContent>
+                        </Dialog>
                       </>
                     );
                   })()}
