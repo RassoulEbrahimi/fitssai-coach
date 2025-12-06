@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useCallback } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
@@ -10,7 +10,7 @@ import { format } from "date-fns";
 import { de } from "date-fns/locale";
 import { isBerlinPast, isBerlinFuture } from "@/lib/dateUtils";
 import { useBerlinToday } from "@/hooks/useBerlinToday";
-import { PencilIcon, CheckCircle2, WifiOff } from "lucide-react";
+import { Play, CheckCircle2, WifiOff, Clock, Dumbbell, Flame } from "lucide-react";
 import WorkoutErrorBoundary from "@/components/WorkoutErrorBoundary";
 import { logEvent } from "@/lib/telemetryClient";
 import { CompletionState, isExerciseCompleted } from "@/lib/completionUtils";
@@ -20,6 +20,7 @@ import { TodayWorkoutSkeleton } from "@/components/skeletons/TodayWorkoutSkeleto
 import { useTraining } from "@/contexts/TrainingContext";
 import WorkoutDetailsDialog from "@/components/workout/WorkoutDetailsDialog";
 import { estimateCalories } from "@/lib/calorieEstimation";
+import workoutHeroBg from "@/assets/workout-hero-bg.jpg";
 
 interface TodayWorkoutCardProps {
   selectedDate: Date;
@@ -66,6 +67,9 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
   const { todayWorkouts } = useTraining();
   
   const DEFAULT_DURATION = 10;
+  
+  // Hero "started" state
+  const [isStarted, setIsStarted] = useState(false);
   
   // Workout details dialog state
   const [detailsDialog, setDetailsDialog] = useState<{
@@ -278,64 +282,68 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
     const cardTitle = getCardTitle();
     return <TodayWorkoutSkeleton title={cardTitle.text} titleClassName={cardTitle.className} />;
   }
+  // Calculate estimated total duration
+  const estimatedTotalMinutes = exercises.length * DEFAULT_DURATION;
+  
+  // Get workout name from plan or use default
+  const workoutName = workoutPlan?.content?.name || t('todayWorkout.dailyWorkout');
+
   if (isRestDay) {
-    const cardTitle = getCardTitle();
-    return <Card className="border-border">
-        <CardHeader className="pb-4">
-          <div className="flex items-center justify-between">
-            <CardTitle className={cardTitle.className}>
-              {cardTitle.text}
-            </CardTitle>
-            {isFuture && <Button variant="ghost" size="sm" onClick={scrollToWeekCard} aria-label="Zu Wochenplan springen" className="text-xs text-muted-foreground hover:text-foreground">
-                <PencilIcon className="w-4 h-4 mr-1" />
-                {t('todayWorkout.goToWeekCard')}
-              </Button>}
-            <div className="text-right">
-              <div className="text-xs text-muted-foreground">
-                {format(selectedDate, 'EEEE', {
-                locale: de
-              })}
-              </div>
-              <div className="text-xs font-medium">
-                {format(selectedDate, 'dd.MM.yyyy')}
-              </div>
-            </div>
+    return (
+      <Card className="border-border overflow-hidden">
+        {/* Hero header for rest day */}
+        <div className="relative h-40">
+          <img 
+            src={workoutHeroBg} 
+            alt="" 
+            className="absolute inset-0 w-full h-full object-cover opacity-40"
+          />
+          <div className="absolute inset-0 bg-gradient-to-t from-background via-background/80 to-transparent" />
+          <div className="relative z-10 p-6 h-full flex flex-col justify-end">
+            <h2 className="text-xl font-bold text-foreground">
+              {t('todayWorkout.restDay').split('—')[0]}
+            </h2>
+            <p className="text-sm text-muted-foreground mt-1">
+              {format(selectedDate, 'EEEE, dd.MM.yyyy', { locale: de })}
+            </p>
           </div>
-        </CardHeader>
-        <CardContent>
-          <div className="text-center py-6 text-muted-foreground">
+        </div>
+        <CardContent className="pt-4">
+          <div className="text-center py-4 text-muted-foreground">
             <p className="text-sm">{t('todayWorkout.restDay')}</p>
           </div>
         </CardContent>
-      </Card>;
+      </Card>
+    );
   }
-  const cardTitle = getCardTitle();
   
   return (
     <WorkoutErrorBoundary>
-      <motion.div initial={{
-        opacity: 0,
-        y: 20
-      }} animate={{
-        opacity: 1,
-        y: 0
-      }} transition={{
-        duration: 0.4
-      }}>
-        <Card className="border-border">
-        <CardHeader className="pb-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <CardTitle className={cardTitle.className} role="heading" aria-level={2}>
-                {cardTitle.text}
-              </CardTitle>
-              {isOfflineData && (
+      <motion.div 
+        initial={{ opacity: 0, y: 20 }} 
+        animate={{ opacity: 1, y: 0 }} 
+        transition={{ duration: 0.4 }}
+      >
+        <Card className="border-border overflow-hidden shadow-lg">
+          {/* Hero Header Section */}
+          <div className="relative h-48 sm:h-56">
+            <img 
+              src={workoutHeroBg} 
+              alt="" 
+              className="absolute inset-0 w-full h-full object-cover"
+            />
+            {/* Dark gradient overlay */}
+            <div className="absolute inset-0 bg-gradient-to-t from-background via-background/70 to-black/40" />
+            
+            {/* Offline badge */}
+            {isOfflineData && (
+              <div className="absolute top-3 right-3 z-20">
                 <TooltipProvider>
                   <Tooltip>
                     <TooltipTrigger asChild>
                       <Badge 
                         variant="outline" 
-                        className="text-xs bg-muted/50 border-muted-foreground/20 text-muted-foreground cursor-help"
+                        className="text-xs bg-black/50 border-white/20 text-white/90 backdrop-blur-sm cursor-help"
                         aria-label="Offline gespeicherte Daten"
                       >
                         <WifiOff className="w-3 h-3 mr-1" aria-hidden="true" />
@@ -345,37 +353,108 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
                     <TooltipContent side="bottom" className="max-w-xs">
                       <p className="text-sm">
                         Diese Daten wurden vor {cacheAgeHours > 0 ? `${cacheAgeHours} Stunden` : 'weniger als 1 Stunde'} 
-                        {' '}zwischengespeichert und sind offline verfügbar. Änderungen werden synchronisiert, 
-                        sobald die Verbindung wiederhergestellt ist.
+                        {' '}zwischengespeichert und sind offline verfügbar.
                       </p>
                     </TooltipContent>
                   </Tooltip>
                 </TooltipProvider>
+              </div>
+            )}
+            
+            {/* Hero content */}
+            <div className="relative z-10 p-6 h-full flex flex-col justify-end">
+              {/* Date badge */}
+              <Badge 
+                variant="secondary" 
+                className="w-fit mb-2 bg-primary/20 text-primary-foreground border-none backdrop-blur-sm"
+              >
+                {format(selectedDate, 'EEEE', { locale: de })}
+              </Badge>
+              
+              {/* Workout title */}
+              <h2 className="text-2xl sm:text-3xl font-bold text-white drop-shadow-lg">
+                {workoutName}
+              </h2>
+              
+              {/* Metadata row */}
+              <div className="flex items-center gap-4 mt-2 text-white/80 text-sm">
+                <div className="flex items-center gap-1.5">
+                  <Clock className="w-4 h-4" />
+                  <span>{t('todayWorkout.estimatedDuration', { mins: estimatedTotalMinutes })}</span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <Dumbbell className="w-4 h-4" />
+                  <span>{t('todayWorkout.exercisesCount', { count: exercises.length })}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+          
+          {/* Content Section */}
+          <CardContent className="pt-4">
+            <AnimatePresence mode="wait">
+              {!isStarted ? (
+                /* Pre-start view: blurred exercises preview + Start button */
+                <motion.div
+                  key="pre-start"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0, y: -10 }}
+                  transition={{ duration: 0.3 }}
+                >
+                  {/* Blurred preview of exercises */}
+                  <div className="relative">
+                    <div className="space-y-2 blur-[2px] opacity-50 pointer-events-none select-none max-h-32 overflow-hidden">
+                      {exercises.slice(0, 3).map((exercise: any, index: number) => (
+                        <div 
+                          key={index}
+                          className="flex items-center gap-3 p-3 bg-muted/30 rounded-lg"
+                        >
+                          <div className="w-5 h-5 rounded-full border-2 border-muted-foreground/30" />
+                          <div className="flex-1">
+                            <div className="h-4 w-32 bg-muted rounded" />
+                            <div className="h-3 w-24 bg-muted/50 rounded mt-1" />
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                    <div className="absolute inset-0 bg-gradient-to-t from-background via-background/50 to-transparent" />
+                  </div>
+                  
+                  {/* Start Training Button */}
+                  <Button 
+                    onClick={() => setIsStarted(true)}
+                    className="w-full mt-4 h-14 text-lg font-semibold gap-2"
+                    size="lg"
+                  >
+                    <Play className="w-5 h-5" />
+                    {t('todayWorkout.startTraining')}
+                  </Button>
+                </motion.div>
+              ) : (
+                /* Started view: full exercise list */
+                <motion.div
+                  key="started"
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.3 }}
+                >
+                  {/* In progress indicator */}
+                  <div className="flex items-center gap-2 mb-4 text-sm text-primary">
+                    <Flame className="w-4 h-4 animate-pulse" />
+                    <span className="font-medium">{t('todayWorkout.trainingInProgress')}</span>
+                  </div>
+                  
+                  {/* Exercise list */}
+                  <div className="space-y-3">
+                    {exerciseListContent}
+                  </div>
+                </motion.div>
               )}
-            </div>
-            {isFuture && <Button variant="ghost" size="sm" onClick={scrollToWeekCard} aria-label="Zu Wochenplan springen" className="text-xs text-muted-foreground hover:text-foreground">
-                <PencilIcon className="w-4 h-4 mr-1" />
-                {t('todayWorkout.goToWeekCard')}
-              </Button>}
-            <div className="text-right">
-              <div className="text-xs text-muted-foreground">
-                {format(selectedDate, 'EEEE', {
-                locale: de
-              })}
-              </div>
-              <div className="text-xs font-medium">
-                {format(selectedDate, 'dd.MM.yyyy')}
-              </div>
-            </div>
-          </div>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-3">
-            {exerciseListContent}
-          </div>
-        </CardContent>
-      </Card>
-    </motion.div>
+            </AnimatePresence>
+          </CardContent>
+        </Card>
+      </motion.div>
 
       {/* Workout Details Dialog */}
       <WorkoutDetailsDialog
