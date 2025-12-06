@@ -339,7 +339,8 @@
     "finishMessage": "Starke Leistung! Dein Training ist abgeschlossen. 🔥",
     "summaryTitle": "Training beendet! 🎉",
     "summaryBody": "Du hast {{completed}} von {{total}} Übungen erledigt.",
-    "summaryClose": "Schließen"
+    "summaryClose": "Schließen",
+    "summaryTime": "Gesamtzeit"
   },
   "mirror": {
     "copiedFromWeek": "Kopiert von W{{weekNumber}}",

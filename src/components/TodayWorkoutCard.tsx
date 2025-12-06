@@ -34,6 +34,16 @@ import workoutHeroBg from "@/assets/workout-hero-bg.jpg";
 // Helper to get localStorage key for started state
 const getStartedStorageKey = (dateStr: string) => `fitssai.workout_started_${dateStr}`;
 
+// Helper to get localStorage key for timer start time
+const getTimerStorageKey = (dateStr: string) => `fitssai.workout_timer_start_${dateStr}`;
+
+// Format duration in mm:ss
+const formatDuration = (seconds: number): string => {
+  const mins = Math.floor(seconds / 60);
+  const secs = seconds % 60;
+  return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+};
+
 interface TodayWorkoutCardProps {
   selectedDate: Date;
   weekKey: string;
@@ -125,6 +135,42 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
   
   // Summary dialog state (must be at top level for hooks rules)
   const [showSummary, setShowSummary] = useState(false);
+  
+  // Session timer state
+  const [duration, setDuration] = useState(0);
+  
+  // Timer effect - tracks workout duration while started
+  useEffect(() => {
+    if (!isStarted) {
+      return;
+    }
+    
+    const timerKey = getTimerStorageKey(selectedDateStr);
+    
+    // Get or set start time
+    let startTime: number;
+    try {
+      const stored = localStorage.getItem(timerKey);
+      if (stored) {
+        startTime = parseInt(stored, 10);
+      } else {
+        startTime = Date.now();
+        localStorage.setItem(timerKey, startTime.toString());
+      }
+    } catch {
+      startTime = Date.now();
+    }
+    
+    // Update duration immediately
+    setDuration(Math.floor((Date.now() - startTime) / 1000));
+    
+    // Update every second
+    const interval = setInterval(() => {
+      setDuration(Math.floor((Date.now() - startTime) / 1000));
+    }, 1000);
+    
+    return () => clearInterval(interval);
+  }, [isStarted, selectedDateStr]);
   
   // Reactive Berlin "today" - updates automatically at midnight
   const berlinToday = useBerlinToday();
@@ -523,8 +569,10 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
                     const handleCloseSummary = () => {
                       setShowSummary(false);
                       setIsStarted(false);
+                      setDuration(0);
                       try {
                         localStorage.removeItem(getStartedStorageKey(selectedDateStr));
+                        localStorage.removeItem(getTimerStorageKey(selectedDateStr));
                       } catch {
                         // Ignore localStorage errors
                       }
@@ -540,6 +588,7 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
                             <div className="flex items-center gap-2 text-primary">
                               <Flame className="w-4 h-4 animate-pulse" />
                               <span className="font-medium">{t('todayWorkout.trainingInProgress')}</span>
+                              <span className="text-xs text-muted-foreground ml-1">⏱️ {formatDuration(duration)}</span>
                             </div>
                             <span className="text-muted-foreground text-xs">
                               {t('todayWorkout.progressLabel', { completed: completedCount, total: totalExercises })}
@@ -578,9 +627,12 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
                                 {t('todayWorkout.summaryTitle')}
                               </DialogTitle>
                             </DialogHeader>
-                            <div className="py-4 text-center">
+                            <div className="py-4 text-center space-y-2">
                               <p className="text-muted-foreground">
                                 {t('todayWorkout.summaryBody', { completed: completedCount, total: totalExercises })}
+                              </p>
+                              <p className="text-sm text-muted-foreground">
+                                ⏱️ {t('todayWorkout.summaryTime')}: {formatDuration(duration)}
                               </p>
                             </div>
                             <DialogFooter className="sm:justify-center">
