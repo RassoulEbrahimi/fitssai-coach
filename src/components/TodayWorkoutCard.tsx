@@ -123,6 +123,9 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
     estimatedCalories: number;
   }>({ open: false, exerciseIndex: -1, exerciseName: "", estimatedCalories: 50 });
   
+  // Summary dialog state (must be at top level for hooks rules)
+  const [showSummary, setShowSummary] = useState(false);
+  
   // Reactive Berlin "today" - updates automatically at midnight
   const berlinToday = useBerlinToday();
 
@@ -491,8 +494,6 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
                       ? Math.round((completedCount / totalExercises) * 100) 
                       : 0;
                     const isComplete = progressPercent === 100;
-                    
-                    const [showSummary, setShowSummary] = useState(false);
                     
                     const handleFinishTraining = () => {
                       // Trigger confetti celebration
