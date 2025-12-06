@@ -113,6 +113,30 @@ export type Database = {
         }
         Relationships: []
       }
+      exercises: {
+        Row: {
+          category: string
+          created_at: string
+          id: string
+          name: string
+          target_muscle: string
+        }
+        Insert: {
+          category: string
+          created_at?: string
+          id?: string
+          name: string
+          target_muscle: string
+        }
+        Update: {
+          category?: string
+          created_at?: string
+          id?: string
+          name?: string
+          target_muscle?: string
+        }
+        Relationships: []
+      }
       nutrition_plans: {
         Row: {
           content: Json
