@@ -12,6 +12,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Clock, Flame } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import { estimateCalories } from "@/lib/calorieEstimation";
 
 interface WorkoutDetailsDialogProps {
   open: boolean;
@@ -82,7 +83,14 @@ const WorkoutDetailsDialog: React.FC<WorkoutDetailsDialogProps> = ({
               min={1}
               max={480}
               value={duration}
-              onChange={(e) => setDuration(e.target.value)}
+              onChange={(e) => {
+                const newDuration = e.target.value;
+                setDuration(newDuration);
+                // Auto-recalculate calories based on new duration
+                const durationNum = parseInt(newDuration) || DEFAULT_DURATION;
+                const newCalories = estimateCalories(exerciseName, durationNum);
+                setCalories(String(newCalories));
+              }}
               placeholder={String(DEFAULT_DURATION)}
               className="text-center text-lg font-medium"
               autoFocus
