@@ -387,13 +387,14 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
       <div
         className={
           isFocusMode
-            ? "fixed top-0 left-0 w-screen h-[100dvh] z-[99999] bg-background m-0 p-0 overflow-y-auto"
+            ? "fixed top-0 left-0 w-screen h-[100dvh] z-[99999] bg-background m-0 p-0 overflow-y-auto overscroll-contain"
             : ""
         }
+        style={isFocusMode ? { isolation: 'isolate' } : undefined}
       >
         <Card className={
           isFocusMode
-            ? "border-0 rounded-none shadow-none min-h-full pt-[env(safe-area-inset-top)]"
+            ? "border-0 rounded-none shadow-none min-h-full bg-background pt-[env(safe-area-inset-top)]"
             : "border-border overflow-hidden shadow-lg"
         }>
           {/* Hero Header Section */}
