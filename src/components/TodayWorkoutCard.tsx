@@ -2,6 +2,7 @@ import React, { useState, useMemo, useCallback, useEffect } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Progress } from "@/components/ui/progress";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { motion, AnimatePresence } from "framer-motion";
 import { useTranslation } from "react-i18next";
@@ -473,11 +474,37 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ duration: 0.3 }}
                 >
-                  {/* In progress indicator */}
-                  <div className="flex items-center gap-2 mb-4 text-sm text-primary">
-                    <Flame className="w-4 h-4 animate-pulse" />
-                    <span className="font-medium">{t('todayWorkout.trainingInProgress')}</span>
-                  </div>
+                {/* Progress section */}
+                  {(() => {
+                    const totalExercises = exercises.length;
+                    const completedCount = exercises.filter((_: any, idx: number) => 
+                      isExerciseCompleted(completionMap, weekKey, dayIndex, idx)
+                    ).length;
+                    const progressPercent = totalExercises > 0 
+                      ? Math.round((completedCount / totalExercises) * 100) 
+                      : 0;
+                    
+                    return (
+                      <div className="mb-4 space-y-2">
+                        {/* In progress indicator */}
+                        <div className="flex items-center justify-between text-sm">
+                          <div className="flex items-center gap-2 text-primary">
+                            <Flame className="w-4 h-4 animate-pulse" />
+                            <span className="font-medium">{t('todayWorkout.trainingInProgress')}</span>
+                          </div>
+                          <span className="text-muted-foreground text-xs">
+                            {t('todayWorkout.progressLabel', { completed: completedCount, total: totalExercises })}
+                          </span>
+                        </div>
+                        
+                        {/* Progress bar */}
+                        <Progress 
+                          value={progressPercent} 
+                          className="h-2 bg-muted/50"
+                        />
+                      </div>
+                    );
+                  })()}
                   
                   {/* Exercise list */}
                   <div className="space-y-3">
