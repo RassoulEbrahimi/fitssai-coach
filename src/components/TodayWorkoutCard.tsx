@@ -19,7 +19,7 @@ import { format } from "date-fns";
 import { de } from "date-fns/locale";
 import { isBerlinPast, isBerlinFuture } from "@/lib/dateUtils";
 import { useBerlinToday } from "@/hooks/useBerlinToday";
-import { Play, WifiOff, Clock, Dumbbell, Flame, Check } from "lucide-react";
+import { Play, WifiOff, Clock, Dumbbell, Flame, Check, Maximize2, Minimize2 } from "lucide-react";
 import WorkoutErrorBoundary from "@/components/WorkoutErrorBoundary";
 import { logEvent } from "@/lib/telemetryClient";
 import { CompletionState } from "@/lib/completionUtils";
@@ -137,6 +137,9 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
   
   // Summary dialog state
   const [showSummary, setShowSummary] = useState(false);
+  
+  // Full screen focus mode state
+  const [isFullScreen, setIsFullScreen] = useState(false);
   
   // Session timer state
   const [duration, setDuration] = useState(0);
@@ -358,6 +361,7 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
   const handleCloseSummary = () => {
     setShowSummary(false);
     setIsStarted(false);
+    setIsFullScreen(false);
     setDuration(0);
     try {
       localStorage.removeItem(getStartedStorageKey(selectedDateStr));
@@ -368,16 +372,41 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
     showToast(t('todayWorkout.finishMessage'));
   };
   
+  // Handle starting training - also enables fullscreen
+  const handleStartTraining = () => {
+    setIsStarted(true);
+    setIsFullScreen(true);
+  };
+
+  // Toggle fullscreen mode
+  const toggleFullScreen = () => {
+    setIsFullScreen((prev) => !prev);
+  };
+
+  // Dynamic container classes for fullscreen mode
+  const containerClasses = isFullScreen
+    ? "fixed inset-0 z-[100] h-[100dvh] w-screen bg-background overflow-y-auto transition-all duration-300 ease-in-out"
+    : "transition-all duration-300 ease-in-out";
+
+  const cardClasses = isFullScreen
+    ? "border-0 rounded-none shadow-none min-h-full"
+    : "border-border overflow-hidden shadow-lg";
+
+  const heroClasses = isFullScreen
+    ? "relative h-32 sm:h-40"
+    : "relative h-48 sm:h-56";
+  
   return (
     <WorkoutErrorBoundary>
       <motion.div 
         initial={{ opacity: 0, y: 20 }} 
         animate={{ opacity: 1, y: 0 }} 
         transition={{ duration: 0.4 }}
+        className={containerClasses}
       >
-        <Card className="border-border overflow-hidden shadow-lg">
+        <Card className={cardClasses}>
           {/* Hero Header Section */}
-          <div className="relative h-48 sm:h-56">
+          <div className={heroClasses}>
             <img 
               src={workoutHeroBg} 
               alt="" 
@@ -385,6 +414,19 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
             />
             {/* Dark gradient overlay */}
             <div className="absolute inset-0 bg-gradient-to-t from-background via-background/70 to-black/40" />
+            
+            {/* Fullscreen toggle button */}
+            <button
+              onClick={toggleFullScreen}
+              className="absolute top-3 left-3 z-20 p-2 rounded-full bg-black/50 text-white/90 backdrop-blur-sm hover:bg-black/70 transition-colors"
+              aria-label={isFullScreen ? "Vollbild beenden" : "Vollbild"}
+            >
+              {isFullScreen ? (
+                <Minimize2 className="w-5 h-5" />
+              ) : (
+                <Maximize2 className="w-5 h-5" />
+              )}
+            </button>
             
             {/* Offline badge */}
             {isOfflineData && (
@@ -442,7 +484,7 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
           </div>
           
           {/* Content Section */}
-          <CardContent className="pt-4">
+          <CardContent className={`pt-4 ${isFullScreen ? 'px-4 pb-safe' : ''}`}>
             <AnimatePresence mode="wait">
               {!isStarted ? (
                 /* Pre-start view: blurred exercises preview + Start button */
@@ -474,7 +516,7 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
                   
                   {/* Start Training Button */}
                   <Button 
-                    onClick={() => setIsStarted(true)}
+                    onClick={handleStartTraining}
                     className="w-full mt-4 h-14 text-lg font-semibold gap-2"
                     size="lg"
                   >
