@@ -384,27 +384,16 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
   
   return (
     <WorkoutErrorBoundary>
-      <motion.div 
-        layout
-        initial={{ opacity: 0, y: 20 }} 
-        animate={{ 
-          opacity: 1, 
-          y: 0,
-        }}
-        transition={{ 
-          type: "spring",
-          stiffness: 300,
-          damping: 30,
-        }}
+      <div
         className={
           isFocusMode
-            ? "fixed top-0 left-0 right-0 bottom-0 z-[9999] h-[100dvh] w-screen bg-background overflow-y-auto pt-[env(safe-area-inset-top)]"
+            ? "fixed top-0 left-0 w-screen h-[100dvh] z-[99999] bg-background m-0 p-0 overflow-y-auto"
             : ""
         }
       >
         <Card className={
           isFocusMode
-            ? "border-0 rounded-none shadow-none min-h-full"
+            ? "border-0 rounded-none shadow-none min-h-full pt-[env(safe-area-inset-top)]"
             : "border-border overflow-hidden shadow-lg"
         }>
           {/* Hero Header Section */}
@@ -614,7 +603,7 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
             </AnimatePresence>
           </CardContent>
         </Card>
-      </motion.div>
+      </div>
     </WorkoutErrorBoundary>
   );
 };
