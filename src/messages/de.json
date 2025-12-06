@@ -334,7 +334,9 @@
     "dailyWorkout": "Tägliches Training",
     "estimatedDuration": "{{mins}} Min",
     "exercisesCount": "{{count}} Übungen",
-    "progressLabel": "{{completed}} von {{total}} erledigt"
+    "progressLabel": "{{completed}} von {{total}} erledigt",
+    "finishTraining": "Training beenden",
+    "finishMessage": "Starke Leistung! Dein Training ist abgeschlossen. 🔥"
   },
   "mirror": {
     "copiedFromWeek": "Kopiert von W{{weekNumber}}",

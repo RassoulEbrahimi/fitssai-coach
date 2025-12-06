@@ -320,7 +320,9 @@
     "dailyWorkout": "Daily Workout",
     "estimatedDuration": "{{mins}} Min",
     "exercisesCount": "{{count}} exercises",
-    "progressLabel": "{{completed}} of {{total}} done"
+    "progressLabel": "{{completed}} of {{total}} done",
+    "finishTraining": "Finish Training",
+    "finishMessage": "Great job! Your workout is complete. 🔥"
   },
   "mirror": {
     "copiedFromWeek": "Copied from W{{weekNumber}}",

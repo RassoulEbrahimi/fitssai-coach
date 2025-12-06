@@ -11,7 +11,7 @@ import { format } from "date-fns";
 import { de } from "date-fns/locale";
 import { isBerlinPast, isBerlinFuture } from "@/lib/dateUtils";
 import { useBerlinToday } from "@/hooks/useBerlinToday";
-import { Play, CheckCircle2, WifiOff, Clock, Dumbbell, Flame } from "lucide-react";
+import { Play, CheckCircle2, WifiOff, Clock, Dumbbell, Flame, Check } from "lucide-react";
 import WorkoutErrorBoundary from "@/components/WorkoutErrorBoundary";
 import { logEvent } from "@/lib/telemetryClient";
 import { CompletionState, isExerciseCompleted } from "@/lib/completionUtils";
@@ -474,8 +474,7 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ duration: 0.3 }}
                 >
-                {/* Progress section */}
-                  {(() => {
+                {(() => {
                     const totalExercises = exercises.length;
                     const completedCount = exercises.filter((_: any, idx: number) => 
                       isExerciseCompleted(completionMap, weekKey, dayIndex, idx)
@@ -483,33 +482,59 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
                     const progressPercent = totalExercises > 0 
                       ? Math.round((completedCount / totalExercises) * 100) 
                       : 0;
+                    const isComplete = progressPercent === 100;
+                    
+                    const handleFinishTraining = () => {
+                      setIsStarted(false);
+                      try {
+                        localStorage.removeItem(getStartedStorageKey(selectedDateStr));
+                      } catch {
+                        // Ignore localStorage errors
+                      }
+                      showToast(t('todayWorkout.finishMessage'));
+                    };
                     
                     return (
-                      <div className="mb-4 space-y-2">
-                        {/* In progress indicator */}
-                        <div className="flex items-center justify-between text-sm">
-                          <div className="flex items-center gap-2 text-primary">
-                            <Flame className="w-4 h-4 animate-pulse" />
-                            <span className="font-medium">{t('todayWorkout.trainingInProgress')}</span>
+                      <>
+                        {/* Progress section */}
+                        <div className="mb-4 space-y-2">
+                          {/* In progress indicator */}
+                          <div className="flex items-center justify-between text-sm">
+                            <div className="flex items-center gap-2 text-primary">
+                              <Flame className="w-4 h-4 animate-pulse" />
+                              <span className="font-medium">{t('todayWorkout.trainingInProgress')}</span>
+                            </div>
+                            <span className="text-muted-foreground text-xs">
+                              {t('todayWorkout.progressLabel', { completed: completedCount, total: totalExercises })}
+                            </span>
                           </div>
-                          <span className="text-muted-foreground text-xs">
-                            {t('todayWorkout.progressLabel', { completed: completedCount, total: totalExercises })}
-                          </span>
+                          
+                          {/* Progress bar */}
+                          <Progress 
+                            value={progressPercent} 
+                            className="h-2 bg-muted/50"
+                          />
                         </div>
                         
-                        {/* Progress bar */}
-                        <Progress 
-                          value={progressPercent} 
-                          className="h-2 bg-muted/50"
-                        />
-                      </div>
+                        {/* Exercise list */}
+                        <div className="space-y-3">
+                          {exerciseListContent}
+                        </div>
+                        
+                        {/* Finish Training Button */}
+                        <Button
+                          onClick={handleFinishTraining}
+                          variant={isComplete ? "default" : "outline"}
+                          className={`w-full mt-4 h-12 text-base font-semibold gap-2 ${
+                            isComplete ? "animate-pulse" : ""
+                          }`}
+                        >
+                          {isComplete && <Check className="w-5 h-5" />}
+                          {t('todayWorkout.finishTraining')}
+                        </Button>
+                      </>
                     );
                   })()}
-                  
-                  {/* Exercise list */}
-                  <div className="space-y-3">
-                    {exerciseListContent}
-                  </div>
                 </motion.div>
               )}
             </AnimatePresence>
