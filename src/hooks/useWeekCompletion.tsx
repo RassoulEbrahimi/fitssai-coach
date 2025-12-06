@@ -53,6 +53,10 @@ interface ToggleExerciseParams {
   dayIndex: number;
   exerciseIndex: number;
   completed: boolean;
+  /** Duration in minutes (defaults to 10 if not provided) */
+  durationMinutes?: number;
+  /** Calories burned (defaults to 50 if not provided) */
+  caloriesBurned?: number;
 }
 
 export const useWeekCompletion = ({ planId, weekKey, enabled = true }: UseWeekCompletionParams) => {
@@ -191,6 +195,8 @@ export const useWeekCompletion = ({ planId, weekKey, enabled = true }: UseWeekCo
               dayIndex: params.dayIndex,
               exerciseIndex: params.exerciseIndex,
               completed: params.completed,
+              durationMinutes: params.durationMinutes,
+              caloriesBurned: params.caloriesBurned,
             },
           });
 

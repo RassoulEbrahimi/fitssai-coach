@@ -19,6 +19,10 @@ const ok = (obj: Record<string, any> = {}) => json({ success: true, ...obj }, 20
 const fail = (message: string, code?: string) =>
   json({ success: false, error: message, code }, 200);
 
+// Default values for duration and calories (legacy fallback)
+const DEFAULT_DURATION_MINUTES = 10;
+const DEFAULT_CALORIES_BURNED = 50;
+
 // Validation schema
 const ToggleExerciseSchema = z.object({
   planId: z.string().uuid('Invalid plan ID format'),
@@ -26,6 +30,8 @@ const ToggleExerciseSchema = z.object({
   dayIndex: z.number().int().min(0).max(6, 'Day index must be between 0 and 6'),
   exerciseIndex: z.number().int().min(0, 'Exercise index must be non-negative'),
   completed: z.boolean('Completed must be a boolean'),
+  durationMinutes: z.number().int().min(0).max(480).optional(), // 0-8 hours
+  caloriesBurned: z.number().int().min(0).max(5000).optional(), // 0-5000 cals
 });
 
 serve(async (req) => {
@@ -65,9 +71,21 @@ serve(async (req) => {
       return fail(`Validation error: ${errors}`, 'VALIDATION_ERROR');
     }
     
-    const { planId, weekKey, dayIndex, exerciseIndex, completed } = validation.data;
+    const { 
+      planId, 
+      weekKey, 
+      dayIndex, 
+      exerciseIndex, 
+      completed,
+      durationMinutes,
+      caloriesBurned,
+    } = validation.data;
 
-    console.log(`Toggling exercise for user ${user.id}, plan ${planId}, ${weekKey} day ${dayIndex} exercise ${exerciseIndex} to ${completed}`);
+    // Use provided values or fall back to defaults
+    const finalDuration = durationMinutes ?? DEFAULT_DURATION_MINUTES;
+    const finalCalories = caloriesBurned ?? DEFAULT_CALORIES_BURNED;
+
+    console.log(`Toggling exercise for user ${user.id}, plan ${planId}, ${weekKey} day ${dayIndex} exercise ${exerciseIndex} to ${completed} (duration: ${finalDuration}m, calories: ${finalCalories})`);
 
     // Fetch workout plan to get created_at for date calculation
     const { data: plan, error: planError } = await sb
@@ -100,6 +118,8 @@ serve(async (req) => {
         completed,
         completed_at: completedAt,
         workout_day: workoutDay, // Berlin-based date calculation
+        duration_minutes: finalDuration,
+        calories_burned: finalCalories,
       }, {
         onConflict: 'user_id,plan_id,week_key,day_index,exercise_index',
       });
