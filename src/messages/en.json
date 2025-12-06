@@ -325,7 +325,8 @@
     "finishMessage": "Great job! Your workout is complete. 🔥",
     "summaryTitle": "Workout Complete! 🎉",
     "summaryBody": "You completed {{completed}} of {{total}} exercises.",
-    "summaryClose": "Close"
+    "summaryClose": "Close",
+    "summaryTime": "Total time"
   },
   "mirror": {
     "copiedFromWeek": "Copied from W{{weekNumber}}",
