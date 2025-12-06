@@ -28,6 +28,7 @@ import { useThrottledToast } from "@/hooks/useThrottledToast";
 import { TodayWorkoutSkeleton } from "@/components/skeletons/TodayWorkoutSkeleton";
 import { useTraining } from "@/contexts/TrainingContext";
 import { useSetTracking } from "@/hooks/useSetTracking";
+import { useRestTimer } from "@/hooks/useRestTimer";
 import ExerciseWithSets from "@/components/workout/ExerciseWithSets";
 import workoutHeroBg from "@/assets/workout-hero-bg.jpg";
 
@@ -148,6 +149,13 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
     isTogglingSet,
     isLoadingSets,
   } = useSetTracking(workoutPlan?.id, weekKey, dayIndex);
+  
+  // Rest timer hook
+  const {
+    timerState,
+    startTimer,
+    skipTimer,
+  } = useRestTimer();
   
   // Timer effect - tracks workout duration while started
   useEffect(() => {
@@ -515,6 +523,9 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
                         onToggleSet={handleToggleSet}
                         isToggling={isTogglingSet}
                         defaultExpanded={index === 0}
+                        timerState={timerState}
+                        onStartTimer={startTimer}
+                        onSkipTimer={skipTimer}
                       />
                     ))}
                   </div>
