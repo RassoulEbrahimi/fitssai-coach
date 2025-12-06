@@ -314,7 +314,12 @@
     "exerciseUncompleted": "Exercise reset",
     "toggleExercise": "Mark {{name}} as complete",
     "completed": "Exercise completed",
-    "uncompleted": "Exercise reset"
+    "uncompleted": "Exercise reset",
+    "startTraining": "Start Training",
+    "trainingInProgress": "Training in progress",
+    "dailyWorkout": "Daily Workout",
+    "estimatedDuration": "{{mins}} Min",
+    "exercisesCount": "{{count}} exercises"
   },
   "mirror": {
     "copiedFromWeek": "Copied from W{{weekNumber}}",

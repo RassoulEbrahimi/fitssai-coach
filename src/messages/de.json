@@ -328,7 +328,12 @@
     "exerciseUncompleted": "Übung zurückgesetzt",
     "toggleExercise": "{{name}} als erledigt markieren",
     "completed": "Übung abgeschlossen",
-    "uncompleted": "Übung zurückgesetzt"
+    "uncompleted": "Übung zurückgesetzt",
+    "startTraining": "Training starten",
+    "trainingInProgress": "Training läuft",
+    "dailyWorkout": "Tägliches Training",
+    "estimatedDuration": "{{mins}} Min",
+    "exercisesCount": "{{count}} Übungen"
   },
   "mirror": {
     "copiedFromWeek": "Kopiert von W{{weekNumber}}",
