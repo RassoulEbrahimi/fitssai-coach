@@ -58,7 +58,12 @@ export const RestTimerBar: React.FC<RestTimerBarProps> = ({
               <span className="text-sm font-medium text-foreground">Pause</span>
             </div>
             <div className="flex items-center gap-2">
-              <span className="text-lg font-bold text-primary tabular-nums">
+              <span className={cn(
+                "text-lg font-bold tabular-nums",
+                remainingSeconds <= 10 && remainingSeconds > 0
+                  ? "text-amber-400 animate-pulse"
+                  : "text-primary"
+              )}>
                 {formatRestTime(remainingSeconds)}
               </span>
               <Button

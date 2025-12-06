@@ -42,6 +42,11 @@ export function useRestTimer(): UseRestTimerReturn {
             // Timer complete - show completion message
             if (intervalRef.current) clearInterval(intervalRef.current);
             
+            // Haptic feedback - double buzz pattern
+            if ('vibrate' in navigator) {
+              navigator.vibrate([200, 100, 200]);
+            }
+            
             // Auto-hide after 2.5 seconds
             completeTimeoutRef.current = setTimeout(() => {
               setTimerState({
