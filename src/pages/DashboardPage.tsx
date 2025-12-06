@@ -4,25 +4,28 @@ import Dashboard from "@/components/Dashboard";
 import WorkoutErrorBoundary from "@/components/WorkoutErrorBoundary";
 import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import { useFocusMode } from "@/contexts/FocusModeContext";
+
 const DashboardPage = () => {
-  const {
-    user,
-    loading
-  } = useAuth();
+  const { user, loading } = useAuth();
+  const { isFocusMode } = useFocusMode();
   const [hasProfile, setHasProfile] = useState<boolean | null>(null);
   const [checkingProfile, setCheckingProfile] = useState(true);
+
   useEffect(() => {
     if (user) {
       checkUserProfile();
     }
   }, [user]);
+
   const checkUserProfile = async () => {
     if (!user) return;
     try {
-      const {
-        data,
-        error
-      } = await supabase.from('profiles').select('id').eq('id', user.id).maybeSingle();
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('id')
+        .eq('id', user.id)
+        .maybeSingle();
       if (error) {
         console.error('Error checking profile:', error);
         return;
@@ -34,10 +37,13 @@ const DashboardPage = () => {
       setCheckingProfile(false);
     }
   };
+
   if (loading || checkingProfile) {
-    return <div className="min-h-screen bg-background flex items-center justify-center">
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
         <div className="text-xl">Loading...</div>
-      </div>;
+      </div>
+    );
   }
   if (!user) {
     return <Navigate to="/auth/sign-in" replace />;
@@ -45,12 +51,14 @@ const DashboardPage = () => {
   if (hasProfile === false) {
     return <Navigate to="/onboarding" replace />;
   }
-  return <div className="min-h-screen bg-background">
-      <div className="pt-4 px-0 mx-0 my-0 rounded-none py-[30px]">
+  return (
+    <div className="min-h-screen bg-background">
+      <div className={isFocusMode ? "" : "pt-4 px-0 mx-0 my-0 rounded-none py-[30px]"}>
         <WorkoutErrorBoundary>
           <Dashboard />
         </WorkoutErrorBoundary>
       </div>
-    </div>;
+    </div>
+  );
 };
 export default DashboardPage;

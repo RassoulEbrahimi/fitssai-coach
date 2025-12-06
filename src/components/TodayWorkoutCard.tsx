@@ -398,7 +398,7 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
         }}
         className={
           isFocusMode
-            ? "fixed inset-0 z-[100] h-[100dvh] w-screen bg-background overflow-y-auto"
+            ? "fixed inset-0 z-[100] h-[100dvh] w-screen bg-background overflow-y-auto pt-[env(safe-area-inset-top)]"
             : ""
         }
       >
