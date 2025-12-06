@@ -716,13 +716,13 @@ const Dashboard = () => {
   }
   
   return (
-    <div className="relative min-h-screen z-20">
+    <div className={`relative min-h-screen ${isFocusMode ? '' : 'z-20'}`}>
       {!isFocusMode && <VideoBackground />}
       <motion.div 
         id="main-content"
-        className={`relative z-10 max-w-7xl mx-auto ${isFocusMode ? 'px-0' : 'px-4 md:px-6 pt-4 pb-[calc(64px+env(safe-area-inset-bottom))] md:pb-6'}`}
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
+        className={`relative max-w-7xl mx-auto ${isFocusMode ? 'px-0 pt-0 pb-0' : 'z-10 px-4 md:px-6 pt-4 pb-[calc(64px+env(safe-area-inset-bottom))] md:pb-6'}`}
+        initial={isFocusMode ? false : { opacity: 0, y: 20 }}
+        animate={isFocusMode ? false : { opacity: 1, y: 0 }}
         transition={{ duration: 0.4, ease: "easeOut" }}
       >
 

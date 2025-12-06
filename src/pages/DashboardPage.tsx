@@ -52,12 +52,10 @@ const DashboardPage = () => {
     return <Navigate to="/onboarding" replace />;
   }
   return (
-    <div className="min-h-screen bg-background">
-      <div className={isFocusMode ? "" : "pt-4 px-0 mx-0 my-0 rounded-none py-[30px]"}>
-        <WorkoutErrorBoundary>
-          <Dashboard />
-        </WorkoutErrorBoundary>
-      </div>
+    <div className={`min-h-screen bg-background ${isFocusMode ? '' : ''}`}>
+      <WorkoutErrorBoundary>
+        <Dashboard />
+      </WorkoutErrorBoundary>
     </div>
   );
 };
