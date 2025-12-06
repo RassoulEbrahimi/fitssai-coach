@@ -61,7 +61,7 @@ export const ExerciseSetRow: React.FC<ExerciseSetRowProps> = ({
           "text-sm font-medium",
           isCompleted ? "text-foreground" : "text-muted-foreground"
         )}>
-          {targetReps} {targetWeight ? `× ${targetWeight}` : 'Reps'}
+          {targetReps} {targetWeight ? `× ${targetWeight}` : 'Wdh'}
         </span>
       </div>
 

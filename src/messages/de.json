@@ -1,6 +1,8 @@
 {
   "todayWorkout": {
-    "setCompleted": "Satz {{set}} abgeschlossen ✓"
+    "setCompleted": "Satz {{set}} erledigt ✓",
+    "setsLabel": "Sätze",
+    "repsShort": "Wdh"
   },
   "auth": {
     "subtitle": "Schließe dich Tausenden an, die ihre Fitnessziele erreichen",
