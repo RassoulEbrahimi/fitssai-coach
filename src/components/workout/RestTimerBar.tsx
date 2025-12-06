@@ -1,6 +1,6 @@
 import React from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Timer, X, Zap } from "lucide-react";
+import { Timer, SkipForward, Zap } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { formatRestTime } from "@/lib/restTimeParser";
 import { Button } from "@/components/ui/button";
@@ -19,9 +19,10 @@ export const RestTimerBar: React.FC<RestTimerBarProps> = ({
   isComplete,
   onSkip,
 }) => {
+  // Reversed: starts at 100% and drains to 0%
   const progressPercent = totalSeconds > 0 
-    ? Math.round(((totalSeconds - remainingSeconds) / totalSeconds) * 100) 
-    : 100;
+    ? Math.round((remainingSeconds / totalSeconds) * 100) 
+    : 0;
 
   return (
     <AnimatePresence mode="wait">
@@ -62,12 +63,12 @@ export const RestTimerBar: React.FC<RestTimerBarProps> = ({
               </span>
               <Button
                 variant="ghost"
-                size="sm"
+                size="icon"
                 onClick={onSkip}
-                className="h-7 px-2 text-xs text-muted-foreground hover:text-foreground"
+                className="h-7 w-7 text-muted-foreground hover:text-foreground"
+                aria-label="Überspringen"
               >
-                <X className="w-3 h-3 mr-1" />
-                Überspringen
+                <SkipForward className="w-4 h-4" />
               </Button>
             </div>
           </div>
