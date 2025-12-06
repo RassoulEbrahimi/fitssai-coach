@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useCallback, useEffect } from "react";
+import confetti from "canvas-confetti";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -485,6 +486,14 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
                     const isComplete = progressPercent === 100;
                     
                     const handleFinishTraining = () => {
+                      // Trigger confetti celebration
+                      confetti({
+                        particleCount: 100,
+                        spread: 70,
+                        origin: { y: 0.6 },
+                        colors: ['#10b981', '#34d399', '#059669']
+                      });
+                      
                       setIsStarted(false);
                       try {
                         localStorage.removeItem(getStartedStorageKey(selectedDateStr));
