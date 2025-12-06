@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useCallback } from "react";
+import React, { useState, useMemo, useCallback, useEffect } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -21,6 +21,9 @@ import { useTraining } from "@/contexts/TrainingContext";
 import WorkoutDetailsDialog from "@/components/workout/WorkoutDetailsDialog";
 import { estimateCalories } from "@/lib/calorieEstimation";
 import workoutHeroBg from "@/assets/workout-hero-bg.jpg";
+
+// Helper to get localStorage key for started state
+const getStartedStorageKey = (dateStr: string) => `fitssai.workout_started_${dateStr}`;
 
 interface TodayWorkoutCardProps {
   selectedDate: Date;
@@ -68,8 +71,40 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
   
   const DEFAULT_DURATION = 10;
   
-  // Hero "started" state
-  const [isStarted, setIsStarted] = useState(false);
+  // Format selected date for storage key
+  const selectedDateStr = format(selectedDate, 'yyyy-MM-dd');
+  
+  // Hero "started" state - initialized from localStorage
+  const [isStarted, setIsStarted] = useState(() => {
+    try {
+      return localStorage.getItem(getStartedStorageKey(selectedDateStr)) === 'true';
+    } catch {
+      return false;
+    }
+  });
+  
+  // Sync isStarted state to localStorage when it changes
+  useEffect(() => {
+    try {
+      if (isStarted) {
+        localStorage.setItem(getStartedStorageKey(selectedDateStr), 'true');
+      } else {
+        localStorage.removeItem(getStartedStorageKey(selectedDateStr));
+      }
+    } catch {
+      // Ignore localStorage errors
+    }
+  }, [isStarted, selectedDateStr]);
+  
+  // Reset isStarted when selected date changes (read from new date's storage)
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem(getStartedStorageKey(selectedDateStr)) === 'true';
+      setIsStarted(stored);
+    } catch {
+      setIsStarted(false);
+    }
+  }, [selectedDateStr]);
   
   // Workout details dialog state
   const [detailsDialog, setDetailsDialog] = useState<{
@@ -233,7 +268,6 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
   }, [exercises, completionMap, weekKey, dayIndex, handleExerciseClick]);
 
   // Date context logic - using reactive today
-  const selectedDateStr = format(selectedDate, 'yyyy-MM-dd');
   const isToday = selectedDateStr === berlinToday;
   const isPast = isBerlinPast(selectedDateStr);
   const isFuture = isBerlinFuture(selectedDateStr);
