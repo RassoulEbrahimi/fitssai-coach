@@ -496,13 +496,25 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
                     const isComplete = progressPercent === 100;
                     
                     const handleFinishTraining = () => {
-                      // Trigger confetti celebration
+                      // Trigger confetti celebration (emerald colors)
                       confetti({
                         particleCount: 100,
                         spread: 70,
                         origin: { y: 0.6 },
                         colors: ['#10b981', '#34d399', '#059669']
                       });
+                      
+                      // Double confetti for 100% completion
+                      if (isComplete) {
+                        setTimeout(() => {
+                          confetti({
+                            particleCount: 150,
+                            spread: 100,
+                            origin: { y: 0.6 },
+                            colors: ['#FFD700', '#FFA500', '#FF4500']
+                          });
+                        }, 500);
+                      }
                       
                       // Show summary modal
                       setShowSummary(true);
