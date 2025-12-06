@@ -295,6 +295,47 @@ export type Database = {
         }
         Relationships: []
       }
+      workout_set_logs: {
+        Row: {
+          completed_at: string
+          created_at: string
+          id: string
+          reps_completed: number
+          set_number: number
+          user_id: string
+          weight_used: number | null
+          workout_log_id: string | null
+        }
+        Insert: {
+          completed_at?: string
+          created_at?: string
+          id?: string
+          reps_completed: number
+          set_number: number
+          user_id: string
+          weight_used?: number | null
+          workout_log_id?: string | null
+        }
+        Update: {
+          completed_at?: string
+          created_at?: string
+          id?: string
+          reps_completed?: number
+          set_number?: number
+          user_id?: string
+          weight_used?: number | null
+          workout_log_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "workout_set_logs_workout_log_id_fkey"
+            columns: ["workout_log_id"]
+            isOneToOne: false
+            referencedRelation: "workout_logs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never

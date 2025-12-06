@@ -1,4 +1,7 @@
 {
+  "todayWorkout": {
+    "setCompleted": "Satz {{set}} abgeschlossen ✓"
+  },
   "auth": {
     "subtitle": "Schließe dich Tausenden an, die ihre Fitnessziele erreichen",
     "signIn": "Anmelden",

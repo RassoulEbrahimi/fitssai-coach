@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useCallback, useEffect } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import confetti from "canvas-confetti";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -19,16 +19,16 @@ import { format } from "date-fns";
 import { de } from "date-fns/locale";
 import { isBerlinPast, isBerlinFuture } from "@/lib/dateUtils";
 import { useBerlinToday } from "@/hooks/useBerlinToday";
-import { Play, CheckCircle2, WifiOff, Clock, Dumbbell, Flame, Check } from "lucide-react";
+import { Play, WifiOff, Clock, Dumbbell, Flame, Check } from "lucide-react";
 import WorkoutErrorBoundary from "@/components/WorkoutErrorBoundary";
 import { logEvent } from "@/lib/telemetryClient";
-import { CompletionState, isExerciseCompleted } from "@/lib/completionUtils";
+import { CompletionState } from "@/lib/completionUtils";
 import { useWorkoutHelpers } from "@/hooks/useWorkoutHelpers";
 import { useThrottledToast } from "@/hooks/useThrottledToast";
 import { TodayWorkoutSkeleton } from "@/components/skeletons/TodayWorkoutSkeleton";
 import { useTraining } from "@/contexts/TrainingContext";
-import WorkoutDetailsDialog from "@/components/workout/WorkoutDetailsDialog";
-import { estimateCalories } from "@/lib/calorieEstimation";
+import { useSetTracking } from "@/hooks/useSetTracking";
+import ExerciseWithSets from "@/components/workout/ExerciseWithSets";
 import workoutHeroBg from "@/assets/workout-hero-bg.jpg";
 
 // Helper to get localStorage key for started state
@@ -69,6 +69,15 @@ interface TodayWorkoutCardProps {
   isCached?: boolean;
   dataUpdatedAt?: number;
 }
+
+interface Exercise {
+  name: string;
+  sets: number | string;
+  reps: number | string;
+  weight?: string;
+  rest?: string;
+}
+
 const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
   selectedDate,
   weekKey,
@@ -125,19 +134,20 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
     }
   }, [selectedDateStr]);
   
-  // Workout details dialog state
-  const [detailsDialog, setDetailsDialog] = useState<{
-    open: boolean;
-    exerciseIndex: number;
-    exerciseName: string;
-    estimatedCalories: number;
-  }>({ open: false, exerciseIndex: -1, exerciseName: "", estimatedCalories: 50 });
-  
-  // Summary dialog state (must be at top level for hooks rules)
+  // Summary dialog state
   const [showSummary, setShowSummary] = useState(false);
   
   // Session timer state
   const [duration, setDuration] = useState(0);
+  
+  // Set-based tracking hook
+  const {
+    isSetCompleted,
+    getCompletedSetsCount,
+    toggleSet,
+    isTogglingSet,
+    isLoadingSets,
+  } = useSetTracking(workoutPlan?.id, weekKey, dayIndex);
   
   // Timer effect - tracks workout duration while started
   useEffect(() => {
@@ -179,151 +189,64 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
   const { getWeekContentWithFallback } = useWorkoutHelpers(workoutPlan);
 
   // Display exercises ONLY from TrainingContext (reactive to all changes)
-  const exercises = todayWorkouts;
+  const exercises = todayWorkouts as Exercise[];
   const isRestDay = !exercises.length;
 
-  // Handle opening the details dialog or uncompleting an exercise
-  const handleExerciseClick = useCallback((exerciseIndex: number) => {
+  // Handle toggling a set
+  const handleToggleSet = (params: {
+    exerciseIndex: number;
+    setNumber: number;
+    repsCompleted: number;
+    weightUsed: number | null;
+    completed: boolean;
+  }) => {
     if (!user || !workoutPlan) return;
-    
-    const isCurrentlyCompleted = isExerciseCompleted(completionMap, weekKey, dayIndex, exerciseIndex);
-    
-    if (isCurrentlyCompleted) {
-      // Uncomplete immediately (no dialog needed)
-      logEvent('exercise_toggle_ui', {
-        weekKey,
-        dayIndex,
-        exerciseIndex,
-        completed: false,
-        completionKey: `${weekKey}_${dayIndex}_${exerciseIndex}`,
-        exerciseName: exercises[exerciseIndex]?.name
-      });
 
-      toggleExerciseMutation({
-        planId: workoutPlan.id,
-        weekKey,
-        dayIndex,
-        exerciseIndex,
-        completed: false
-      });
-
-      showToast(t('todayWorkout.uncompleted'));
-    } else {
-      // Calculate estimated calories based on exercise type
-      const exerciseName = exercises[exerciseIndex]?.name || '';
-      const estimatedCalories = estimateCalories(exerciseName, DEFAULT_DURATION);
-      
-      // Open dialog to enter duration/calories before completing
-      setDetailsDialog({
-        open: true,
-        exerciseIndex,
-        exerciseName,
-        estimatedCalories
-      });
-    }
-  }, [user, workoutPlan, completionMap, weekKey, dayIndex, exercises, toggleExerciseMutation, showToast, t]);
-
-  // Handle confirming workout details from dialog
-  const handleConfirmWorkoutDetails = useCallback((duration: number, calories: number) => {
-    const { exerciseIndex } = detailsDialog;
-    
-    logEvent('exercise_toggle_ui', {
+    logEvent('set_toggle_ui', {
       weekKey,
       dayIndex,
-      exerciseIndex,
-      completed: true,
-      completionKey: `${weekKey}_${dayIndex}_${exerciseIndex}`,
-      exerciseName: exercises[exerciseIndex]?.name,
-      durationMinutes: duration,
-      caloriesBurned: calories
+      exerciseIndex: params.exerciseIndex,
+      setNumber: params.setNumber,
+      completed: params.completed,
+      exerciseName: exercises[params.exerciseIndex]?.name,
     });
 
-    toggleExerciseMutation({
+    toggleSet({
       planId: workoutPlan.id,
       weekKey,
       dayIndex,
-      exerciseIndex,
-      completed: true,
-      durationMinutes: duration,
-      caloriesBurned: calories
+      exerciseIndex: params.exerciseIndex,
+      setNumber: params.setNumber,
+      repsCompleted: params.repsCompleted,
+      weightUsed: params.weightUsed,
+      completed: params.completed,
     });
 
-    setDetailsDialog({ open: false, exerciseIndex: -1, exerciseName: "", estimatedCalories: 50 });
-    showToast(t('todayWorkout.completed'));
-  }, [detailsDialog, weekKey, dayIndex, exercises, workoutPlan, toggleExerciseMutation, showToast, t]);
+    if (params.completed) {
+      showToast(t('todayWorkout.setCompleted', { set: params.setNumber }));
+    }
+  };
 
-  // Memoized exercise list rendering
-  const exerciseListContent = useMemo(() => {
-    return (exercises || []).map((exercise: any, index: number) => {
-      const isCompleted = isExerciseCompleted(completionMap, weekKey, dayIndex, index);
-      const displaySets = typeof exercise.sets === 'string'
-        ? (parseInt(exercise.sets) || exercise.sets)
-        : exercise.sets;
+  // Calculate total sets and completed sets for progress
+  const progressStats = useMemo(() => {
+    let totalSets = 0;
+    let completedSets = 0;
 
-      return (
-        <AnimatePresence mode="wait" key={index}>
-          <motion.div 
-            layout
-            initial={{ opacity: 0, y: 10 }} 
-            animate={{ opacity: 1, y: 0, scale: 1 }} 
-            exit={{ opacity: 0, scale: 0.95 }}
-            whileTap={{ scale: 0.98 }} 
-            transition={{ duration: 0.2 }}
-            onClick={() => handleExerciseClick(index)} 
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' || e.key === ' ') {
-                e.preventDefault();
-                handleExerciseClick(index);
-              }
-            }}
-            className="flex items-center gap-3 p-4 bg-background rounded-lg border hover:bg-muted/50 active:bg-muted/70 transition-all duration-150 cursor-pointer min-h-[56px] touch-manipulation px-[12px] py-[12px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
-            role="checkbox"
-            aria-checked={isCompleted}
-            aria-label={`${exercise.name}, ${displaySets} Sätze, ${exercise.reps} Wiederholungen${isCompleted ? ' - abgeschlossen' : ' - offen'}`}
-            tabIndex={0}
-          >
-            <motion.div 
-              className={`w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 ${
-                isCompleted 
-                  ? 'bg-green-600' 
-                  : 'border-2 border-muted-foreground/30 bg-transparent'
-              }`}
-              initial={false}
-              animate={{
-                scale: isCompleted ? [1, 1.15, 1] : 1,
-                backgroundColor: isCompleted ? ['#16a34a', '#22c55e', '#16a34a'] : undefined
-              }}
-              transition={{
-                duration: 0.4,
-                ease: "easeOut"
-              }}
-            >
-              <AnimatePresence mode="wait">
-                {isCompleted && (
-                  <motion.div
-                    initial={{ scale: 0, opacity: 0, rotate: -90 }}
-                    animate={{ scale: 1, opacity: 1, rotate: 0 }}
-                    exit={{ scale: 0, opacity: 0, rotate: 90 }}
-                    transition={{ duration: 0.25, ease: "easeOut" }}
-                  >
-                    <CheckCircle2 className="h-3.5 w-3.5 text-white" aria-hidden="true" />
-                  </motion.div>
-                )}
-              </AnimatePresence>
-            </motion.div>
-            <div className="flex-1">
-              <div className="font-medium text-sm">{exercise.name}</div>
-              <div className="text-xs text-muted-foreground">
-                {displaySets} Sätze × {exercise.reps} Reps
-                {exercise.weight && ` • ${exercise.weight}`}
-                {exercise.rest && ` • ${exercise.rest} Pause`}
-              </div>
-            </div>
-          </motion.div>
-        </AnimatePresence>
-      );
+    exercises.forEach((exercise, index) => {
+      const numSets = typeof exercise.sets === 'number' 
+        ? exercise.sets 
+        : parseInt(String(exercise.sets), 10) || 3;
+      totalSets += numSets;
+      completedSets += getCompletedSetsCount(index);
     });
-  }, [exercises, completionMap, weekKey, dayIndex, handleExerciseClick]);
+
+    const progressPercent = totalSets > 0 
+      ? Math.round((completedSets / totalSets) * 100) 
+      : 0;
+    const isComplete = progressPercent === 100;
+
+    return { totalSets, completedSets, progressPercent, isComplete };
+  }, [exercises, getCompletedSetsCount]);
 
   // Date context logic - using reactive today
   const isToday = selectedDateStr === berlinToday;
@@ -358,22 +281,12 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
     };
   };
 
-  // Scroll to Week Card function
-  const scrollToWeekCard = () => {
-    const weekCardElement = document.getElementById('weekCard');
-    if (weekCardElement) {
-      weekCardElement.scrollIntoView({
-        behavior: 'smooth',
-        block: 'start'
-      });
-    }
-  };
-
   // Render skeleton loading state
-  if (isLoading) {
+  if (isLoading || isLoadingSets) {
     const cardTitle = getCardTitle();
     return <TodayWorkoutSkeleton title={cardTitle.text} titleClassName={cardTitle.className} />;
   }
+  
   // Calculate estimated total duration
   const estimatedTotalMinutes = exercises.length * DEFAULT_DURATION;
   
@@ -408,6 +321,44 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
       </Card>
     );
   }
+
+  const handleFinishTraining = () => {
+    // Trigger confetti celebration (emerald colors)
+    confetti({
+      particleCount: 100,
+      spread: 70,
+      origin: { y: 0.6 },
+      colors: ['#10b981', '#34d399', '#059669']
+    });
+    
+    // Double confetti for 100% completion
+    if (progressStats.isComplete) {
+      setTimeout(() => {
+        confetti({
+          particleCount: 150,
+          spread: 100,
+          origin: { y: 0.6 },
+          colors: ['#FFD700', '#FFA500', '#FF4500']
+        });
+      }, 500);
+    }
+    
+    // Show summary modal
+    setShowSummary(true);
+  };
+  
+  const handleCloseSummary = () => {
+    setShowSummary(false);
+    setIsStarted(false);
+    setDuration(0);
+    try {
+      localStorage.removeItem(getStartedStorageKey(selectedDateStr));
+      localStorage.removeItem(getTimerStorageKey(selectedDateStr));
+    } catch {
+      // Ignore localStorage errors
+    }
+    showToast(t('todayWorkout.finishMessage'));
+  };
   
   return (
     <WorkoutErrorBoundary>
@@ -497,7 +448,7 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
                   {/* Blurred preview of exercises */}
                   <div className="relative">
                     <div className="space-y-2 blur-[2px] opacity-50 pointer-events-none select-none max-h-32 overflow-hidden">
-                      {exercises.slice(0, 3).map((exercise: any, index: number) => (
+                      {exercises.slice(0, 3).map((exercise: Exercise, index: number) => (
                         <div 
                           key={index}
                           className="flex items-center gap-3 p-3 bg-muted/30 rounded-lg"
@@ -524,144 +475,91 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
                   </Button>
                 </motion.div>
               ) : (
-                /* Started view: full exercise list */
+                /* Started view: set-based exercise list */
                 <motion.div
                   key="started"
                   initial={{ opacity: 0, y: 10 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ duration: 0.3 }}
                 >
-                {(() => {
-                    const totalExercises = exercises.length;
-                    const completedCount = exercises.filter((_: any, idx: number) => 
-                      isExerciseCompleted(completionMap, weekKey, dayIndex, idx)
-                    ).length;
-                    const progressPercent = totalExercises > 0 
-                      ? Math.round((completedCount / totalExercises) * 100) 
-                      : 0;
-                    const isComplete = progressPercent === 100;
+                  {/* Progress section */}
+                  <div className="mb-4 space-y-2">
+                    {/* In progress indicator */}
+                    <div className="flex items-center justify-between text-sm">
+                      <div className="flex items-center gap-2 text-primary">
+                        <Flame className="w-4 h-4 animate-pulse" />
+                        <span className="font-medium">{t('todayWorkout.trainingInProgress')}</span>
+                        <span className="text-xs text-muted-foreground ml-1">⏱️ {formatDuration(duration)}</span>
+                      </div>
+                      <span className="text-muted-foreground text-xs">
+                        {progressStats.completedSets}/{progressStats.totalSets} Sätze
+                      </span>
+                    </div>
                     
-                    const handleFinishTraining = () => {
-                      // Trigger confetti celebration (emerald colors)
-                      confetti({
-                        particleCount: 100,
-                        spread: 70,
-                        origin: { y: 0.6 },
-                        colors: ['#10b981', '#34d399', '#059669']
-                      });
-                      
-                      // Double confetti for 100% completion
-                      if (isComplete) {
-                        setTimeout(() => {
-                          confetti({
-                            particleCount: 150,
-                            spread: 100,
-                            origin: { y: 0.6 },
-                            colors: ['#FFD700', '#FFA500', '#FF4500']
-                          });
-                        }, 500);
-                      }
-                      
-                      // Show summary modal
-                      setShowSummary(true);
-                    };
-                    
-                    const handleCloseSummary = () => {
-                      setShowSummary(false);
-                      setIsStarted(false);
-                      setDuration(0);
-                      try {
-                        localStorage.removeItem(getStartedStorageKey(selectedDateStr));
-                        localStorage.removeItem(getTimerStorageKey(selectedDateStr));
-                      } catch {
-                        // Ignore localStorage errors
-                      }
-                      showToast(t('todayWorkout.finishMessage'));
-                    };
-                    
-                    return (
-                      <>
-                        {/* Progress section */}
-                        <div className="mb-4 space-y-2">
-                          {/* In progress indicator */}
-                          <div className="flex items-center justify-between text-sm">
-                            <div className="flex items-center gap-2 text-primary">
-                              <Flame className="w-4 h-4 animate-pulse" />
-                              <span className="font-medium">{t('todayWorkout.trainingInProgress')}</span>
-                              <span className="text-xs text-muted-foreground ml-1">⏱️ {formatDuration(duration)}</span>
-                            </div>
-                            <span className="text-muted-foreground text-xs">
-                              {t('todayWorkout.progressLabel', { completed: completedCount, total: totalExercises })}
-                            </span>
-                          </div>
-                          
-                          {/* Progress bar */}
-                          <Progress 
-                            value={progressPercent} 
-                            className="h-2 bg-muted/50"
-                          />
-                        </div>
-                        
-                        {/* Exercise list */}
-                        <div className="space-y-3">
-                          {exerciseListContent}
-                        </div>
-                        
-                        {/* Finish Training Button */}
-                        <Button
-                          onClick={handleFinishTraining}
-                          variant={isComplete ? "default" : "outline"}
-                          className={`w-full mt-4 h-12 text-base font-semibold gap-2 ${
-                            isComplete ? "animate-pulse" : ""
-                          }`}
-                        >
-                          {isComplete && <Check className="w-5 h-5" />}
-                          {t('todayWorkout.finishTraining')}
+                    {/* Progress bar */}
+                    <Progress 
+                      value={progressStats.progressPercent} 
+                      className="h-2 bg-muted/50"
+                    />
+                  </div>
+                  
+                  {/* Set-based exercise list */}
+                  <div className="space-y-3">
+                    {exercises.map((exercise: Exercise, index: number) => (
+                      <ExerciseWithSets
+                        key={index}
+                        exercise={exercise}
+                        exerciseIndex={index}
+                        isSetCompleted={isSetCompleted}
+                        getCompletedSetsCount={getCompletedSetsCount}
+                        onToggleSet={handleToggleSet}
+                        isToggling={isTogglingSet}
+                        defaultExpanded={index === 0}
+                      />
+                    ))}
+                  </div>
+                  
+                  {/* Finish Training Button */}
+                  <Button
+                    onClick={handleFinishTraining}
+                    variant={progressStats.isComplete ? "default" : "outline"}
+                    className={`w-full mt-4 h-12 text-base font-semibold gap-2 ${
+                      progressStats.isComplete ? "animate-pulse" : ""
+                    }`}
+                  >
+                    {progressStats.isComplete && <Check className="w-5 h-5" />}
+                    {t('todayWorkout.finishTraining')}
+                  </Button>
+                  
+                  {/* Summary Dialog */}
+                  <Dialog open={showSummary} onOpenChange={setShowSummary}>
+                    <DialogContent className="sm:max-w-md">
+                      <DialogHeader>
+                        <DialogTitle className="text-xl text-center">
+                          {t('todayWorkout.summaryTitle')}
+                        </DialogTitle>
+                      </DialogHeader>
+                      <div className="py-4 text-center space-y-2">
+                        <p className="text-muted-foreground">
+                          {progressStats.completedSets} von {progressStats.totalSets} Sätzen abgeschlossen
+                        </p>
+                        <p className="text-sm text-muted-foreground">
+                          ⏱️ {t('todayWorkout.summaryTime')}: {formatDuration(duration)}
+                        </p>
+                      </div>
+                      <DialogFooter className="sm:justify-center">
+                        <Button onClick={handleCloseSummary} className="w-full sm:w-auto">
+                          {t('todayWorkout.summaryClose')}
                         </Button>
-                        
-                        {/* Summary Dialog */}
-                        <Dialog open={showSummary} onOpenChange={setShowSummary}>
-                          <DialogContent className="sm:max-w-md">
-                            <DialogHeader>
-                              <DialogTitle className="text-xl text-center">
-                                {t('todayWorkout.summaryTitle')}
-                              </DialogTitle>
-                            </DialogHeader>
-                            <div className="py-4 text-center space-y-2">
-                              <p className="text-muted-foreground">
-                                {t('todayWorkout.summaryBody', { completed: completedCount, total: totalExercises })}
-                              </p>
-                              <p className="text-sm text-muted-foreground">
-                                ⏱️ {t('todayWorkout.summaryTime')}: {formatDuration(duration)}
-                              </p>
-                            </div>
-                            <DialogFooter className="sm:justify-center">
-                              <Button onClick={handleCloseSummary} className="w-full sm:w-auto">
-                                {t('todayWorkout.summaryClose')}
-                              </Button>
-                            </DialogFooter>
-                          </DialogContent>
-                        </Dialog>
-                      </>
-                    );
-                  })()}
+                      </DialogFooter>
+                    </DialogContent>
+                  </Dialog>
                 </motion.div>
               )}
             </AnimatePresence>
           </CardContent>
         </Card>
       </motion.div>
-
-      {/* Workout Details Dialog */}
-      <WorkoutDetailsDialog
-        open={detailsDialog.open}
-        onOpenChange={(open) => setDetailsDialog(prev => ({ ...prev, open }))}
-        exerciseName={detailsDialog.exerciseName}
-        onConfirm={handleConfirmWorkoutDetails}
-        isLoading={isToggling}
-        initialDuration={DEFAULT_DURATION}
-        initialCalories={detailsDialog.estimatedCalories}
-      />
     </WorkoutErrorBoundary>
   );
 };
