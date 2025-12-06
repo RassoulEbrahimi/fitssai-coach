@@ -5,6 +5,8 @@ import { cn } from "@/lib/utils";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Progress } from "@/components/ui/progress";
 import ExerciseSetRow from "./ExerciseSetRow";
+import RestTimerBar from "./RestTimerBar";
+import { parseRestTime } from "@/lib/restTimeParser";
 
 interface Exercise {
   name: string;
@@ -12,6 +14,13 @@ interface Exercise {
   reps: number | string;
   weight?: string;
   rest?: string;
+}
+
+interface RestTimerState {
+  exerciseIndex: number | null;
+  remainingSeconds: number;
+  totalRestSeconds: number;
+  isComplete: boolean;
 }
 
 interface ExerciseWithSetsProps {
@@ -28,6 +37,10 @@ interface ExerciseWithSetsProps {
   }) => void;
   isToggling: boolean;
   defaultExpanded?: boolean;
+  // Rest timer props
+  timerState: RestTimerState;
+  onStartTimer: (exerciseIndex: number, durationSeconds: number) => void;
+  onSkipTimer: () => void;
 }
 
 export const ExerciseWithSets: React.FC<ExerciseWithSetsProps> = ({
@@ -38,6 +51,9 @@ export const ExerciseWithSets: React.FC<ExerciseWithSetsProps> = ({
   onToggleSet,
   isToggling,
   defaultExpanded = true,
+  timerState,
+  onStartTimer,
+  onSkipTimer,
 }) => {
   // Parse number of sets
   const totalSets = useMemo(() => {
@@ -70,15 +86,31 @@ export const ExerciseWithSets: React.FC<ExerciseWithSetsProps> = ({
     return Array.from({ length: totalSets }, (_, i) => i + 1);
   }, [totalSets]);
 
+  // Parse rest time for this exercise
+  const restSeconds = useMemo(() => {
+    return parseRestTime(exercise.rest);
+  }, [exercise.rest]);
+
+  // Check if timer is active for this exercise
+  const isTimerActive = timerState.exerciseIndex === exerciseIndex && 
+    (timerState.remainingSeconds > 0 || timerState.isComplete);
+
   const handleToggleSet = (setNumber: number) => {
     const isCurrentlyCompleted = isSetCompleted(exerciseIndex, setNumber);
+    const willBeCompleted = !isCurrentlyCompleted;
+
     onToggleSet({
       exerciseIndex,
       setNumber,
       repsCompleted: targetReps,
       weightUsed: weightValue,
-      completed: !isCurrentlyCompleted,
+      completed: willBeCompleted,
     });
+
+    // Start rest timer when a set is completed (not uncompleted)
+    if (willBeCompleted) {
+      onStartTimer(exerciseIndex, restSeconds);
+    }
   };
 
   return (
@@ -150,6 +182,16 @@ export const ExerciseWithSets: React.FC<ExerciseWithSetsProps> = ({
         {/* Sets list */}
         <CollapsibleContent>
           <div className="px-4 pb-4 space-y-2">
+            {/* Rest Timer Bar - shown when active for this exercise */}
+            {isTimerActive && (
+              <RestTimerBar
+                remainingSeconds={timerState.remainingSeconds}
+                totalSeconds={timerState.totalRestSeconds}
+                isComplete={timerState.isComplete}
+                onSkip={onSkipTimer}
+              />
+            )}
+            
             {setRows.map((setNumber) => (
               <ExerciseSetRow
                 key={setNumber}
