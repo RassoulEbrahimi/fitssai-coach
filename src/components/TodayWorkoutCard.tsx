@@ -27,6 +27,7 @@ import { useWorkoutHelpers } from "@/hooks/useWorkoutHelpers";
 import { useThrottledToast } from "@/hooks/useThrottledToast";
 import { TodayWorkoutSkeleton } from "@/components/skeletons/TodayWorkoutSkeleton";
 import { useTraining } from "@/contexts/TrainingContext";
+import { useFocusMode } from "@/contexts/FocusModeContext";
 import { useSetTracking } from "@/hooks/useSetTracking";
 import { useRestTimer } from "@/hooks/useRestTimer";
 import ExerciseWithSets from "@/components/workout/ExerciseWithSets";
@@ -96,6 +97,7 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
   const { t } = useTranslation();
   const { user } = useAuth();
   const { showToast } = useThrottledToast();
+  const { isFocusMode, setFocusMode } = useFocusMode();
   const { todayWorkouts } = useTraining();
   
   const DEFAULT_DURATION = 10;
@@ -137,9 +139,6 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
   
   // Summary dialog state
   const [showSummary, setShowSummary] = useState(false);
-  
-  // Full screen focus mode state
-  const [isFullScreen, setIsFullScreen] = useState(false);
   
   // Session timer state
   const [duration, setDuration] = useState(0);
@@ -361,7 +360,7 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
   const handleCloseSummary = () => {
     setShowSummary(false);
     setIsStarted(false);
-    setIsFullScreen(false);
+    setFocusMode(false);
     setDuration(0);
     try {
       localStorage.removeItem(getStartedStorageKey(selectedDateStr));
@@ -375,38 +374,41 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
   // Handle starting training - also enables fullscreen
   const handleStartTraining = () => {
     setIsStarted(true);
-    setIsFullScreen(true);
+    setFocusMode(true);
   };
 
   // Toggle fullscreen mode
   const toggleFullScreen = () => {
-    setIsFullScreen((prev) => !prev);
+    setFocusMode(!isFocusMode);
   };
-
-  // Dynamic container classes for fullscreen mode
-  const containerClasses = isFullScreen
-    ? "fixed inset-0 z-[100] h-[100dvh] w-screen bg-background overflow-y-auto transition-all duration-300 ease-in-out"
-    : "transition-all duration-300 ease-in-out";
-
-  const cardClasses = isFullScreen
-    ? "border-0 rounded-none shadow-none min-h-full"
-    : "border-border overflow-hidden shadow-lg";
-
-  const heroClasses = isFullScreen
-    ? "relative h-32 sm:h-40"
-    : "relative h-48 sm:h-56";
   
   return (
     <WorkoutErrorBoundary>
       <motion.div 
+        layout
         initial={{ opacity: 0, y: 20 }} 
-        animate={{ opacity: 1, y: 0 }} 
-        transition={{ duration: 0.4 }}
-        className={containerClasses}
+        animate={{ 
+          opacity: 1, 
+          y: 0,
+        }}
+        transition={{ 
+          type: "spring",
+          stiffness: 300,
+          damping: 30,
+        }}
+        className={
+          isFocusMode
+            ? "fixed inset-0 z-[100] h-[100dvh] w-screen bg-background overflow-y-auto"
+            : ""
+        }
       >
-        <Card className={cardClasses}>
+        <Card className={
+          isFocusMode
+            ? "border-0 rounded-none shadow-none min-h-full"
+            : "border-border overflow-hidden shadow-lg"
+        }>
           {/* Hero Header Section */}
-          <div className={heroClasses}>
+          <div className={isFocusMode ? "relative h-32 sm:h-40" : "relative h-48 sm:h-56"}>
             <img 
               src={workoutHeroBg} 
               alt="" 
@@ -419,9 +421,9 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
             <button
               onClick={toggleFullScreen}
               className="absolute top-3 left-3 z-20 p-2 rounded-full bg-black/50 text-white/90 backdrop-blur-sm hover:bg-black/70 transition-colors"
-              aria-label={isFullScreen ? "Vollbild beenden" : "Vollbild"}
+              aria-label={isFocusMode ? "Vollbild beenden" : "Vollbild"}
             >
-              {isFullScreen ? (
+              {isFocusMode ? (
                 <Minimize2 className="w-5 h-5" />
               ) : (
                 <Maximize2 className="w-5 h-5" />
@@ -484,7 +486,7 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
           </div>
           
           {/* Content Section */}
-          <CardContent className={`pt-4 ${isFullScreen ? 'px-4 pb-safe' : ''}`}>
+          <CardContent className={`pt-4 ${isFocusMode ? 'px-4 pb-safe' : ''}`}>
             <AnimatePresence mode="wait">
               {!isStarted ? (
                 /* Pre-start view: blurred exercises preview + Start button */

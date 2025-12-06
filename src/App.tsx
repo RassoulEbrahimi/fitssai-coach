@@ -9,6 +9,7 @@ import { useTranslation } from "react-i18next";
 import { AuthProvider } from "@/hooks/useAuth";
 import { ThemeProvider } from "@/hooks/useTheme";
 import { PreferencesProvider } from "@/contexts/PreferencesContext";
+import { FocusModeProvider } from "@/contexts/FocusModeContext";
 import { TrainingProvider } from "@/contexts/TrainingContext";
 import RootRedirect from "@/components/RootRedirect";
 import AuthPage from './pages/AuthPage';
@@ -91,7 +92,8 @@ const App = () => {
     >
       <ThemeProvider>
         <PreferencesProvider>
-          <TrainingProvider>
+          <FocusModeProvider>
+            <TrainingProvider>
             <AuthProvider>
               <TooltipProvider>
               <div className="sr-only focus:not-sr-only focus:absolute focus:top-0 focus:left-0 focus:p-2 focus:bg-background focus:z-50">
@@ -114,7 +116,8 @@ const App = () => {
               </BrowserRouter>
               </TooltipProvider>
             </AuthProvider>
-          </TrainingProvider>
+            </TrainingProvider>
+          </FocusModeProvider>
         </PreferencesProvider>
       </ThemeProvider>
     </PersistQueryClientProvider>

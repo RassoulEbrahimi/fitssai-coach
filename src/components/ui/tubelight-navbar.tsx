@@ -5,6 +5,7 @@ import { LucideIcon } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useTheme } from "@/hooks/useTheme"
 import { GlassFilter } from "./glass-filter"
+import { useFocusMode } from "@/contexts/FocusModeContext"
 
 interface NavItem {
   name: string
@@ -29,6 +30,7 @@ export const NavBar = React.forwardRef<HTMLDivElement, NavBarProps>(
   const prefersReducedMotion = useReducedMotion()
   const [activeShimmer, setActiveShimmer] = useState(false)
   const shimmerTimeoutRef = React.useRef<NodeJS.Timeout | null>(null)
+  const { isFocusMode } = useFocusMode()
 
   // Dynamic shimmer color mapping based on active tab
   const getShimmerColors = React.useCallback(() => {
@@ -104,10 +106,21 @@ export const NavBar = React.forwardRef<HTMLDivElement, NavBarProps>(
         }
       `}</style>
       
-      <div 
+      <motion.div 
         ref={ref}
+        initial={false}
+        animate={{
+          y: isFocusMode ? 100 : 0,
+          opacity: isFocusMode ? 0 : 1,
+        }}
+        transition={{
+          type: "spring",
+          stiffness: 300,
+          damping: 30,
+        }}
         className={cn(
           "fixed bottom-4 inset-x-0 z-50 pointer-events-none",
+          isFocusMode && "pointer-events-none",
           className,
         )}
         style={{ 
@@ -329,7 +342,7 @@ export const NavBar = React.forwardRef<HTMLDivElement, NavBarProps>(
         </motion.div>
         </div> {/* Close relative wrapper for glass layer */}
       </div> {/* Close flex container */}
-      </div>
+      </motion.div>
     </>
   )
 })
