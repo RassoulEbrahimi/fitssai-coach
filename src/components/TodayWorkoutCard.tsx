@@ -5,13 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-} from "@/components/ui/dialog";
+import WorkoutSummaryModal from "@/components/workout/WorkoutSummaryModal";
 import { motion, AnimatePresence } from "framer-motion";
 import { useTranslation } from "react-i18next";
 import { useAuth } from "@/hooks/useAuth";
@@ -578,29 +572,17 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
                     {t('todayWorkout.finishTraining')}
                   </Button>
                   
-                  {/* Summary Dialog */}
-                  <Dialog open={showSummary} onOpenChange={setShowSummary}>
-                    <DialogContent className="sm:max-w-md z-[100000]">
-                      <DialogHeader>
-                        <DialogTitle className="text-xl text-center">
-                          {t('todayWorkout.summaryTitle')}
-                        </DialogTitle>
-                      </DialogHeader>
-                      <div className="py-4 text-center space-y-2">
-                        <p className="text-muted-foreground">
-                          {progressStats.completedSets} von {progressStats.totalSets} Sätzen abgeschlossen
-                        </p>
-                        <p className="text-sm text-muted-foreground">
-                          ⏱️ {t('todayWorkout.summaryTime')}: {formatDuration(duration)}
-                        </p>
-                      </div>
-                      <DialogFooter className="sm:justify-center">
-                        <Button onClick={handleCloseSummary} className="w-full sm:w-auto">
-                          {t('todayWorkout.summaryClose')}
-                        </Button>
-                      </DialogFooter>
-                    </DialogContent>
-                  </Dialog>
+                  {/* Summary Modal */}
+                  <WorkoutSummaryModal
+                    open={showSummary}
+                    onClose={handleCloseSummary}
+                    exercises={exercises}
+                    duration={duration}
+                    workoutName={workoutName}
+                    selectedDate={selectedDate}
+                    getCompletedSetsCount={getCompletedSetsCount}
+                    isSetCompleted={isSetCompleted}
+                  />
                 </motion.div>
               )}
             </AnimatePresence>
