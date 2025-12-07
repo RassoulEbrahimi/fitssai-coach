@@ -333,12 +333,13 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
   }
 
   const handleFinishTraining = () => {
-    // Trigger confetti celebration (emerald colors)
+    // Trigger confetti celebration (emerald colors) with high z-index
     confetti({
       particleCount: 100,
       spread: 70,
       origin: { y: 0.6 },
-      colors: ['#10b981', '#34d399', '#059669']
+      colors: ['#10b981', '#34d399', '#059669'],
+      zIndex: 100001
     });
     
     // Double confetti for 100% completion
@@ -348,7 +349,8 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
           particleCount: 150,
           spread: 100,
           origin: { y: 0.6 },
-          colors: ['#FFD700', '#FFA500', '#FF4500']
+          colors: ['#FFD700', '#FFA500', '#FF4500'],
+          zIndex: 100001
         });
       }, 500);
     }
@@ -578,7 +580,7 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
                   
                   {/* Summary Dialog */}
                   <Dialog open={showSummary} onOpenChange={setShowSummary}>
-                    <DialogContent className="sm:max-w-md">
+                    <DialogContent className="sm:max-w-md z-[100000]">
                       <DialogHeader>
                         <DialogTitle className="text-xl text-center">
                           {t('todayWorkout.summaryTitle')}
