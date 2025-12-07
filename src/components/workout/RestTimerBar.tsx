@@ -56,7 +56,10 @@ export const RestTimerBar: React.FC<RestTimerBarProps> = ({
           initial="initial"
           animate="animate"
           exit="exit"
-          className="relative overflow-hidden rounded-2xl border border-border/50 bg-muted/30 backdrop-blur-sm"
+          className={cn(
+            "relative overflow-hidden rounded-2xl border border-border/50 bg-muted/30 backdrop-blur-sm transition-shadow duration-300",
+            isUrgent && "shadow-[0_0_20px_rgba(251,191,36,0.5)]"
+          )}
         >
           {/* Fluid background progress */}
           <div 
