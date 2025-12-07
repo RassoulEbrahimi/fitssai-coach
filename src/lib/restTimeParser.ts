@@ -43,11 +43,16 @@ export function parseRestTime(restString: string | undefined, defaultSeconds = 6
 }
 
 /**
- * Format seconds into mm:ss display format
+ * Format seconds into display format
+ * Shows only seconds (e.g., "45") if under 60 seconds
+ * Shows mm:ss (e.g., "01:30") if 60 seconds or more
  * @param seconds - Total seconds
- * @returns Formatted string like "01:30"
+ * @returns Formatted string
  */
 export function formatRestTime(seconds: number): string {
+  if (seconds < 60) {
+    return seconds.toString();
+  }
   const mins = Math.floor(seconds / 60);
   const secs = seconds % 60;
   return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
