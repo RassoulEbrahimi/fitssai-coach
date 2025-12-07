@@ -134,8 +134,11 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
   // Summary dialog state
   const [showSummary, setShowSummary] = useState(false);
   
-  // Session timer state
+  // Session timer state (live counter)
   const [duration, setDuration] = useState(0);
+  
+  // Frozen duration for summary modal (captured when finish is clicked)
+  const [frozenDuration, setFrozenDuration] = useState(0);
   
   // Set-based tracking hook
   const {
@@ -327,6 +330,9 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
   }
 
   const handleFinishTraining = () => {
+    // Freeze the duration at this moment
+    setFrozenDuration(duration);
+    
     // Trigger confetti celebration (emerald colors) with high z-index
     confetti({
       particleCount: 100,
@@ -577,7 +583,7 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
                     open={showSummary}
                     onClose={handleCloseSummary}
                     exercises={exercises}
-                    duration={duration}
+                    frozenDuration={frozenDuration}
                     workoutName={workoutName}
                     selectedDate={selectedDate}
                     getCompletedSetsCount={getCompletedSetsCount}
