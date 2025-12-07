@@ -24,7 +24,7 @@ interface WorkoutSummaryModalProps {
   open: boolean;
   onClose: () => void;
   exercises: Exercise[];
-  duration: number; // in seconds
+  frozenDuration: number; // Frozen duration in seconds (captured at finish click)
   workoutName: string;
   selectedDate: Date;
   getCompletedSetsCount: (exerciseIndex: number) => number;
@@ -108,34 +108,33 @@ const calculateWorkoutStats = (
   };
 };
 
-interface StatCardProps {
+interface StatRowProps {
   icon: React.ReactNode;
   label: string;
   value: string | number;
   unit?: string;
   delay?: number;
+  isLast?: boolean;
 }
 
-const StatCard: React.FC<StatCardProps> = ({ icon, label, value, unit, delay = 0 }) => (
+const StatRow: React.FC<StatRowProps> = ({ icon, label, value, unit, delay = 0, isLast = false }) => (
   <motion.div
-    initial={{ opacity: 0, y: 20, scale: 0.95 }}
-    animate={{ opacity: 1, y: 0, scale: 1 }}
-    transition={{ delay, duration: 0.4, type: "spring", stiffness: 150 }}
-    className="relative overflow-hidden rounded-xl bg-muted/40 border border-border/50 p-4 backdrop-blur-sm"
+    initial={{ opacity: 0, x: -10 }}
+    animate={{ opacity: 1, x: 0 }}
+    transition={{ delay, duration: 0.3 }}
+    className={`flex items-center justify-between py-3.5 ${
+      isLast ? '' : 'border-b border-border/30'
+    }`}
   >
-    {/* Subtle glow effect */}
-    <div className="absolute -top-8 -right-8 w-16 h-16 bg-primary/10 rounded-full blur-2xl" />
-    
-    <div className="relative flex flex-col gap-1">
-      <div className="flex items-center gap-2 text-muted-foreground">
+    <div className="flex items-center gap-3 text-muted-foreground">
+      <div className="p-1.5 rounded-md bg-muted/50">
         {icon}
-        <span className="text-xs font-medium uppercase tracking-wider">{label}</span>
       </div>
-      <div className="flex items-baseline gap-1">
-        <span className="text-2xl font-bold text-foreground">{value}</span>
-        {unit && <span className="text-sm text-muted-foreground">{unit}</span>}
-      </div>
+      <span className="text-sm font-medium">{label}</span>
     </div>
+    <span className="text-base font-semibold text-foreground whitespace-nowrap">
+      {value}{unit && <span className="text-muted-foreground font-normal ml-1">{unit}</span>}
+    </span>
   </motion.div>
 );
 
@@ -143,7 +142,7 @@ const WorkoutSummaryModal: React.FC<WorkoutSummaryModalProps> = ({
   open,
   onClose,
   exercises,
-  duration,
+  frozenDuration,
   workoutName,
   selectedDate,
   getCompletedSetsCount,
@@ -161,17 +160,17 @@ const WorkoutSummaryModal: React.FC<WorkoutSummaryModalProps> = ({
   return (
     <Dialog open={open} onOpenChange={(isOpen) => !isOpen && onClose()}>
       <DialogContent className="sm:max-w-md z-[100000] p-0 overflow-hidden bg-background/95 backdrop-blur-xl border-border/50">
-        {/* Header with gradient */}
-        <div className="relative bg-gradient-to-br from-primary/20 via-primary/10 to-transparent p-6 pb-4">
+        {/* Header */}
+        <div className="relative bg-gradient-to-br from-primary/20 via-primary/10 to-transparent px-6 pt-6 pb-4">
           <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-primary/20 via-transparent to-transparent" />
           
           <motion.div
             initial={{ opacity: 0, y: -10 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.4 }}
-            className="relative"
+            className="relative text-center"
           >
-            <DialogHeader className="text-left">
+            <DialogHeader>
               <DialogTitle className="text-2xl font-bold text-foreground">
                 Training beendet! 🎉
               </DialogTitle>
@@ -186,72 +185,57 @@ const WorkoutSummaryModal: React.FC<WorkoutSummaryModalProps> = ({
             initial={{ opacity: 0, scale: 0.8 }}
             animate={{ opacity: 1, scale: 1 }}
             transition={{ delay: 0.2, duration: 0.4, type: "spring" }}
-            className="absolute top-4 right-4"
+            className="flex justify-center mt-3"
           >
-            <div className={`px-3 py-1 rounded-full text-sm font-semibold ${
+            <div className={`px-4 py-1.5 rounded-full text-sm font-semibold ${
               completionPercent === 100 
                 ? 'bg-primary/20 text-primary' 
                 : 'bg-amber-500/20 text-amber-500'
             }`}>
-              {completionPercent}%
+              {completionPercent}% abgeschlossen
             </div>
           </motion.div>
         </div>
 
-        {/* Stats Grid */}
-        <div className="p-6 pt-4 space-y-4">
-          <div className="grid grid-cols-2 gap-3">
-            <StatCard
-              icon={<Clock className="w-4 h-4" />}
-              label="Trainingsdauer"
-              value={formatDurationLong(duration)}
-              unit="min"
-              delay={0.1}
-            />
-            <StatCard
-              icon={<Weight className="w-4 h-4" />}
-              label="Bewegtes Gewicht"
-              value={stats.totalVolume.toLocaleString('de-DE')}
-              unit="kg"
-              delay={0.15}
-            />
-            <StatCard
-              icon={<Dumbbell className="w-4 h-4" />}
-              label="Übungen"
-              value={`${stats.exercisesCompleted}/${stats.totalExercises}`}
-              delay={0.2}
-            />
-            <StatCard
-              icon={<CheckCircle2 className="w-4 h-4" />}
-              label="Sätze"
-              value={`${stats.completedSets}/${stats.totalSets}`}
-              delay={0.25}
-            />
-          </div>
-
-          {/* Total Reps - Full width */}
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.3, duration: 0.4 }}
-            className="relative overflow-hidden rounded-xl bg-primary/10 border border-primary/20 p-4"
-          >
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="p-2 rounded-lg bg-primary/20">
-                  <Repeat className="w-5 h-5 text-primary" />
-                </div>
-                <div>
-                  <p className="text-xs text-muted-foreground uppercase tracking-wider">Wiederholungen gesamt</p>
-                  <p className="text-2xl font-bold text-foreground">{stats.totalReps.toLocaleString('de-DE')}</p>
-                </div>
-              </div>
-            </div>
-          </motion.div>
+        {/* Stats List */}
+        <div className="px-6 py-4">
+          <StatRow
+            icon={<Clock className="w-4 h-4" />}
+            label="Trainingsdauer"
+            value={formatDurationLong(frozenDuration)}
+            unit="min"
+            delay={0.1}
+          />
+          <StatRow
+            icon={<Weight className="w-4 h-4" />}
+            label="Bewegtes Gewicht"
+            value={stats.totalVolume.toLocaleString('de-DE')}
+            unit="kg"
+            delay={0.15}
+          />
+          <StatRow
+            icon={<Dumbbell className="w-4 h-4" />}
+            label="Übungen"
+            value={`${stats.exercisesCompleted}/${stats.totalExercises}`}
+            delay={0.2}
+          />
+          <StatRow
+            icon={<CheckCircle2 className="w-4 h-4" />}
+            label="Sätze"
+            value={`${stats.completedSets}/${stats.totalSets}`}
+            delay={0.25}
+          />
+          <StatRow
+            icon={<Repeat className="w-4 h-4" />}
+            label="Wiederholungen"
+            value={stats.totalReps.toLocaleString('de-DE')}
+            delay={0.3}
+            isLast
+          />
         </div>
 
         {/* Footer */}
-        <DialogFooter className="p-6 pt-2 flex-col gap-2">
+        <DialogFooter className="px-6 pb-6 pt-2 flex-col gap-2">
           <motion.div
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
