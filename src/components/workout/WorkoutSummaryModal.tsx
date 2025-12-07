@@ -8,6 +8,8 @@ import {
   DialogHeader,
   DialogTitle,
   DialogFooter,
+  DialogPortal,
+  DialogOverlay,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Clock, Dumbbell, CheckCircle2, Repeat, Weight, ChevronRight } from "lucide-react";
@@ -159,7 +161,9 @@ const WorkoutSummaryModal: React.FC<WorkoutSummaryModalProps> = ({
 
   return (
     <Dialog open={open} onOpenChange={(isOpen) => !isOpen && onClose()}>
-      <DialogContent className="sm:max-w-md z-[100000] p-0 overflow-hidden bg-background/95 backdrop-blur-xl border-border/50">
+      <DialogPortal>
+        <DialogOverlay className="fixed inset-0 z-[99999] bg-black/70 backdrop-blur-md" />
+        <DialogContent className="sm:max-w-md z-[100000] p-0 overflow-hidden bg-background/95 backdrop-blur-xl border-border/50">
         {/* Header */}
         <div className="relative bg-gradient-to-br from-primary/20 via-primary/10 to-transparent px-6 pt-6 pb-4">
           <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-primary/20 via-transparent to-transparent" />
@@ -268,6 +272,7 @@ const WorkoutSummaryModal: React.FC<WorkoutSummaryModalProps> = ({
           </motion.div>
         </DialogFooter>
       </DialogContent>
+      </DialogPortal>
     </Dialog>
   );
 };
