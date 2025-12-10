@@ -271,8 +271,8 @@ const Dashboard = () => {
   }, []);
 
   // Robust workout logging with timezone handling and toggle functionality
-  const toggleDayComplete = async (weekKey: string, dayIndex: number) => {
-    if (!user || !liveWorkoutPlan || completingWorkout === dayIndex) return;
+  const toggleDayComplete = useCallback(async (weekKey: string, dayIndex: number) => {
+    if (!user || !liveWorkoutPlan || completingWorkout) return;
 
     // Calculate the workout date using Berlin timezone
     const weekNumber = parseInt(weekKey.replace(/\D/g, '')) - 1;
@@ -289,33 +289,38 @@ const Dashboard = () => {
       return;
     }
 
-    const isCompleted = isDayCompleted(weekKey, dayIndex);
+    // Check completion status efficiently
+    // Inlined logical check to avoid dependency on isDayCompleted being in dependency array if not needed, 
+    // but better to keep isDayCompleted stable and use it.
+    // For now we will rely on workoutLogs directly to avoid circular dependency issues if isDayCompleted changes.
+    const dateString = getWorkoutDateString(liveWorkoutPlan.created_at, weekKey, dayIndex);
+    const isCompleted = workoutLogs?.some(log => log.workout_day === dateString && log.completed) ?? false;
 
     toggleDay({ workoutDateStr, completed: !isCompleted });
-  };
+  }, [user, liveWorkoutPlan, completingWorkout, workoutLogs, toggleDay, t]);
 
   // Check if a specific day in a specific week is completed (timezone-aware)
-  const isDayCompleted = (weekKey: string, dayIndex: number) => {
+  const isDayCompleted = useCallback((weekKey: string, dayIndex: number) => {
     if (!liveWorkoutPlan?.created_at) return false;
 
     const dateString = getWorkoutDateString(liveWorkoutPlan.created_at, weekKey, dayIndex);
     return workoutLogs?.some(log => log.workout_day === dateString && log.completed) ?? false;
-  };
+  }, [liveWorkoutPlan, workoutLogs]);
 
   // Check if today matches a specific week and day (Berlin timezone)
   // Centralized function from workoutDateUtils
-  const isTodayInWeekDay = (weekKey: string, dayIndex: number) => {
+  const isTodayInWeekDay = useCallback((weekKey: string, dayIndex: number) => {
     if (!liveWorkoutPlan?.created_at) return false;
     return isBerlinTodayForWeekDay(liveWorkoutPlan.created_at, weekKey, dayIndex);
-  };
+  }, [liveWorkoutPlan]);
 
   // Check if a day is in the future (Berlin timezone)
-  const isDayInFuture = (weekKey: string, dayIndex: number) => {
+  const isDayInFuture = useCallback((weekKey: string, dayIndex: number) => {
     if (!liveWorkoutPlan?.created_at) return false;
 
     const targetDateStr = getWorkoutDateString(liveWorkoutPlan.created_at, weekKey, dayIndex);
     return isBerlinFuture(targetDateStr);
-  };
+  }, [liveWorkoutPlan]);
 
   // Get current week based on selected date
   const getCurrentWeek = () => {
@@ -324,11 +329,11 @@ const Dashboard = () => {
   };
 
   // Get week key for a specific date using plan-based mapping
-  const getWeekKeyForDate = (date: Date): string => {
+  const getWeekKeyForDate = useCallback((date: Date): string => {
     if (!liveWorkoutPlan?.created_at) return 'Week 1';
     const { weekKey } = getWorkoutWeekDay(liveWorkoutPlan.created_at, date);
     return weekKey;
-  };
+  }, [liveWorkoutPlan]);
 
   // Use consolidated workout helpers hook (not currently used in Dashboard but available)
   const { getWeekContentWithFallback } = useWorkoutHelpers(liveWorkoutPlan);
@@ -348,10 +353,10 @@ const Dashboard = () => {
   };
 
   // Format week title for display
-  const getWeekTitle = (weekKey: string) => {
+  const getWeekTitle = useCallback((weekKey: string) => {
     const weekNumber = weekKey.replace(/([A-Z])/g, ' $1').trim();
     return weekNumber.charAt(0).toUpperCase() + weekNumber.slice(1);
-  };
+  }, []);
 
   // Returns the workout object for a given (weekKey, dayIndex) or null
   const getWorkoutAt = (weekKey: string, dayIndex: number) => {
@@ -363,10 +368,10 @@ const Dashboard = () => {
   };
 
   // Get calendar date for a given weekKey and dayIndex using plan-based mapping
-  const getDateFor = (weekKey: string, dayIndex: number): Date | null => {
+  const getDateFor = useCallback((weekKey: string, dayIndex: number): Date | null => {
     if (!liveWorkoutPlan?.created_at) return null;
     return getWorkoutDate(liveWorkoutPlan.created_at, weekKey, dayIndex);
-  };
+  }, [liveWorkoutPlan]);
 
   // Get ordered week keys (week1..week4)
   const getOrderedWeekKeys = () => {
@@ -386,21 +391,32 @@ const Dashboard = () => {
 
 
   // Get today's workout data
-  const getTodayWorkout = () => {
+  const getTodayWorkout = useCallback(() => {
     if (!liveWorkoutPlan || !liveWorkoutPlan.content) return null;
 
     for (const [weekKey, days] of Object.entries(liveWorkoutPlan.content)) {
       const weekData = days as any[];
       // Check full week (0..6) not just weekData.length
       for (let dayIndex = 0; dayIndex < 7; dayIndex++) {
-        if (isTodayInWeekDay(weekKey, dayIndex)) {
-          const workoutData = getWorkoutAt(weekKey, dayIndex);
+        // Function inside callback is okay if it relies on stable scope or is passed in.
+        // But here we rely on isTodayInWeekDay which is now a useCallback.
+        // Re-implement logic slightly to avoid dependency issues or add it to deps.
+        if (isBerlinTodayForWeekDay(liveWorkoutPlan.created_at, weekKey, dayIndex)) {
+          // Re-implementing isDayCompleted logic inline or using the callback if we add it to deps.
+          // Inline is safer for useCallback deps sometimes.
+          const dateString = getWorkoutDateString(liveWorkoutPlan.created_at, weekKey, dayIndex);
+          const isCompleted = workoutLogs?.some(log => log.workout_day === dateString && log.completed) ?? false;
+
+          // Helper to get workout safely
+          const day = weekData[dayIndex];
+          const workoutData = (day && Array.isArray(day.exercises) && day.exercises.length > 0) ? day : null;
+
           if (workoutData) {
             return {
               weekKey,
               dayIndex,
               dayData: workoutData,
-              isCompleted: isDayCompleted(weekKey, dayIndex)
+              isCompleted: isCompleted,
             };
           } else {
             // Rest day sentinel
@@ -415,7 +431,7 @@ const Dashboard = () => {
       }
     }
     return null;
-  };
+  }, [liveWorkoutPlan, workoutLogs]);
 
   // Set initial active week and today's day on load, sync with date changes
   useEffect(() => {
@@ -427,7 +443,7 @@ const Dashboard = () => {
   }, [liveWorkoutPlan, selectedDate]); // Depend on selectedDate changes
 
   // Handle date changes from calendar - update selected date and active week
-  const handleDateChange = (date: Date) => {
+  const handleDateChange = useCallback((date: Date) => {
     setSelectedDate(date);
 
     if (!liveWorkoutPlan?.created_at) return;
@@ -440,14 +456,16 @@ const Dashboard = () => {
     }
 
     // Update active week based on the new date
-    if (weekKey !== activeWeek) {
-      setActiveWeek(weekKey);
-    }
-  };
+    // We need to use valid dependency for activeWeek
+    // But since we are inside a callback, and we can't easily access previous state if it's not in deps
+    // We will just set it. The check `if (weekKey !== activeWeek)` is an optimization that requires activeWeek in deps.
+    // To keep it stable, we can use the functional update or just always set it, React bails out if value is same.
+    setActiveWeek(weekKey);
+  }, [liveWorkoutPlan]);
 
 
   // Accurate weekly progress calculation using Berlin timezone
-  const getWeeklyProgress = () => {
+  const getWeeklyProgress = useCallback(() => {
     if (!liveWorkoutPlan || !workoutLogs) return { completed: 0, total: 0 };
 
     const { startStr, endStr } = getBerlinCurrentWeek();
@@ -474,7 +492,7 @@ const Dashboard = () => {
       completed: Math.min(weeklyLogs.length, totalPlannedDays), // Cap at total planned
       total: totalPlannedDays
     };
-  };
+  }, [liveWorkoutPlan, workoutLogs]);
 
 
   const formatWorkoutDate = (startDate: Date, dayIndex: number) => {

@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from "react";
+import React, { useState, useMemo, useEffect, useCallback } from "react";
 import confetti from "canvas-confetti";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -93,12 +93,12 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
   const { showToast } = useThrottledToast();
   const { isFocusMode, setFocusMode } = useFocusMode();
   const { todayWorkouts } = useTraining();
-  
+
   const DEFAULT_DURATION = 10;
-  
+
   // Format selected date for storage key
   const selectedDateStr = format(selectedDate, 'yyyy-MM-dd');
-  
+
   // Hero "started" state - initialized from localStorage
   const [isStarted, setIsStarted] = useState(() => {
     try {
@@ -107,7 +107,7 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
       return false;
     }
   });
-  
+
   // Sync isStarted state to localStorage when it changes
   useEffect(() => {
     try {
@@ -120,7 +120,7 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
       // Ignore localStorage errors
     }
   }, [isStarted, selectedDateStr]);
-  
+
   // Reset isStarted when selected date changes (read from new date's storage)
   useEffect(() => {
     try {
@@ -130,16 +130,16 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
       setIsStarted(false);
     }
   }, [selectedDateStr]);
-  
+
   // Summary dialog state
   const [showSummary, setShowSummary] = useState(false);
-  
+
   // Session timer state (live counter)
   const [duration, setDuration] = useState(0);
-  
+
   // Frozen duration for summary modal (captured when finish is clicked)
   const [frozenDuration, setFrozenDuration] = useState(0);
-  
+
   // Set-based tracking hook
   const {
     isSetCompleted,
@@ -148,22 +148,22 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
     isTogglingSet,
     isLoadingSets,
   } = useSetTracking(workoutPlan?.id, weekKey, dayIndex);
-  
+
   // Rest timer hook
   const {
     timerState,
     startTimer,
     skipTimer,
   } = useRestTimer();
-  
+
   // Timer effect - tracks workout duration while started
   useEffect(() => {
     if (!isStarted) {
       return;
     }
-    
+
     const timerKey = getTimerStorageKey(selectedDateStr);
-    
+
     // Get or set start time
     let startTime: number;
     try {
@@ -177,18 +177,18 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
     } catch {
       startTime = Date.now();
     }
-    
+
     // Update duration immediately
     setDuration(Math.floor((Date.now() - startTime) / 1000));
-    
+
     // Update every second
     const interval = setInterval(() => {
       setDuration(Math.floor((Date.now() - startTime) / 1000));
     }, 1000);
-    
+
     return () => clearInterval(interval);
   }, [isStarted, selectedDateStr]);
-  
+
   // Reactive Berlin "today" - updates automatically at midnight
   const berlinToday = useBerlinToday();
 
@@ -200,7 +200,7 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
   const isRestDay = !exercises.length;
 
   // Handle toggling a set
-  const handleToggleSet = (params: {
+  const handleToggleSet = useCallback((params: {
     exerciseIndex: number;
     setNumber: number;
     repsCompleted: number;
@@ -232,7 +232,7 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
     if (params.completed) {
       showToast(t('todayWorkout.setCompleted', { set: params.setNumber }));
     }
-  };
+  }, [user, workoutPlan, weekKey, dayIndex, exercises, toggleSet, showToast, t]);
 
   // Calculate total sets and completed sets for progress
   const progressStats = useMemo(() => {
@@ -240,15 +240,15 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
     let completedSets = 0;
 
     exercises.forEach((exercise, index) => {
-      const numSets = typeof exercise.sets === 'number' 
-        ? exercise.sets 
+      const numSets = typeof exercise.sets === 'number'
+        ? exercise.sets
         : parseInt(String(exercise.sets), 10) || 3;
       totalSets += numSets;
       completedSets += getCompletedSetsCount(index);
     });
 
-    const progressPercent = totalSets > 0 
-      ? Math.round((completedSets / totalSets) * 100) 
+    const progressPercent = totalSets > 0
+      ? Math.round((completedSets / totalSets) * 100)
       : 0;
     const isComplete = progressPercent === 100;
 
@@ -262,9 +262,9 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
 
   // Check if data is from offline cache
   const isOfflineData = !isOnline && isCached;
-  
+
   // Calculate cache age in hours
-  const cacheAgeHours = dataUpdatedAt 
+  const cacheAgeHours = dataUpdatedAt
     ? Math.floor((Date.now() - dataUpdatedAt) / (1000 * 60 * 60))
     : 0;
 
@@ -293,10 +293,10 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
     const cardTitle = getCardTitle();
     return <TodayWorkoutSkeleton title={cardTitle.text} titleClassName={cardTitle.className} />;
   }
-  
+
   // Calculate estimated total duration
   const estimatedTotalMinutes = exercises.length * DEFAULT_DURATION;
-  
+
   // Get workout name from plan or use default
   const workoutName = workoutPlan?.content?.name || t('todayWorkout.dailyWorkout');
 
@@ -305,9 +305,9 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
       <Card className="border-border overflow-hidden">
         {/* Hero header for rest day */}
         <div className="relative h-40">
-          <img 
-            src={workoutHeroBg} 
-            alt="" 
+          <img
+            src={workoutHeroBg}
+            alt=""
             className="absolute inset-0 w-full h-full object-cover opacity-40"
           />
           <div className="absolute inset-0 bg-gradient-to-t from-background via-background/80 to-transparent" />
@@ -329,10 +329,10 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
     );
   }
 
-  const handleFinishTraining = () => {
+  const handleFinishTraining = useCallback(() => {
     // Freeze the duration at this moment
     setFrozenDuration(duration);
-    
+
     // Trigger confetti celebration (emerald colors) with high z-index
     confetti({
       particleCount: 100,
@@ -341,7 +341,7 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
       colors: ['#10b981', '#34d399', '#059669'],
       zIndex: 100001
     });
-    
+
     // Double confetti for 100% completion
     if (progressStats.isComplete) {
       setTimeout(() => {
@@ -354,11 +354,11 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
         });
       }, 500);
     }
-    
+
     // Show summary modal
     setShowSummary(true);
-  };
-  
+  }, [duration, progressStats.isComplete]);
+
   const handleCloseSummary = () => {
     setShowSummary(false);
     setIsStarted(false);
@@ -372,18 +372,18 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
     }
     showToast(t('todayWorkout.finishMessage'));
   };
-  
+
   // Handle starting training - also enables fullscreen
-  const handleStartTraining = () => {
+  const handleStartTraining = useCallback(() => {
     setIsStarted(true);
     setFocusMode(true);
-  };
+  }, [setFocusMode]);
 
   // Toggle fullscreen mode
   const toggleFullScreen = () => {
     setFocusMode(!isFocusMode);
   };
-  
+
   return (
     <WorkoutErrorBoundary>
       <div
@@ -401,14 +401,14 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
         }>
           {/* Hero Header Section */}
           <div className={isFocusMode ? "relative h-32 sm:h-40" : "relative h-48 sm:h-56"}>
-            <img 
-              src={workoutHeroBg} 
-              alt="" 
+            <img
+              src={workoutHeroBg}
+              alt=""
               className="absolute inset-0 w-full h-full object-cover"
             />
             {/* Dark gradient overlay */}
             <div className="absolute inset-0 bg-gradient-to-t from-background via-background/70 to-black/40" />
-            
+
             {/* Fullscreen toggle button - top right */}
             <button
               onClick={toggleFullScreen}
@@ -421,15 +421,15 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
                 <Maximize2 className="w-5 h-5" />
               )}
             </button>
-            
+
             {/* Offline badge - positioned below fullscreen toggle */}
             {isOfflineData && (
               <div className="absolute top-14 right-3 z-20">
                 <TooltipProvider>
                   <Tooltip>
                     <TooltipTrigger asChild>
-                      <Badge 
-                        variant="outline" 
+                      <Badge
+                        variant="outline"
                         className="text-xs bg-black/50 border-white/20 text-white/90 backdrop-blur-sm cursor-help"
                         aria-label="Offline gespeicherte Daten"
                       >
@@ -439,7 +439,7 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
                     </TooltipTrigger>
                     <TooltipContent side="bottom" className="max-w-xs">
                       <p className="text-sm">
-                        Diese Daten wurden vor {cacheAgeHours > 0 ? `${cacheAgeHours} Stunden` : 'weniger als 1 Stunde'} 
+                        Diese Daten wurden vor {cacheAgeHours > 0 ? `${cacheAgeHours} Stunden` : 'weniger als 1 Stunde'}
                         {' '}zwischengespeichert und sind offline verfügbar.
                       </p>
                     </TooltipContent>
@@ -447,22 +447,22 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
                 </TooltipProvider>
               </div>
             )}
-            
+
             {/* Hero content */}
             <div className="relative z-10 p-6 h-full flex flex-col justify-end">
               {/* Date badge */}
-              <Badge 
-                variant="secondary" 
+              <Badge
+                variant="secondary"
                 className="w-fit mb-2 bg-primary/20 text-primary-foreground border-none backdrop-blur-sm"
               >
                 {format(selectedDate, 'EEEE', { locale: de })}
               </Badge>
-              
+
               {/* Workout title */}
               <h2 className="text-2xl sm:text-3xl font-bold text-white drop-shadow-lg">
                 {workoutName}
               </h2>
-              
+
               {/* Metadata row */}
               <div className="flex items-center gap-4 mt-2 text-white/80 text-sm">
                 <div className="flex items-center gap-1.5">
@@ -476,7 +476,7 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
               </div>
             </div>
           </div>
-          
+
           {/* Content Section */}
           <CardContent className={`pt-4 ${isFocusMode ? 'px-4 pb-safe' : ''}`}>
             <AnimatePresence mode="wait">
@@ -493,7 +493,7 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
                   <div className="relative">
                     <div className="space-y-2 blur-[2px] opacity-50 pointer-events-none select-none max-h-32 overflow-hidden">
                       {exercises.slice(0, 3).map((exercise: Exercise, index: number) => (
-                        <div 
+                        <div
                           key={index}
                           className="flex items-center gap-3 p-3 bg-muted/30 rounded-lg"
                         >
@@ -507,9 +507,9 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
                     </div>
                     <div className="absolute inset-0 bg-gradient-to-t from-background via-background/50 to-transparent" />
                   </div>
-                  
+
                   {/* Start Training Button */}
-                  <Button 
+                  <Button
                     onClick={handleStartTraining}
                     className="w-full mt-4 h-14 text-lg font-semibold gap-2"
                     size="lg"
@@ -539,14 +539,14 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
                         {progressStats.completedSets}/{progressStats.totalSets} Sätze
                       </span>
                     </div>
-                    
+
                     {/* Progress bar */}
-                    <Progress 
-                      value={progressStats.progressPercent} 
+                    <Progress
+                      value={progressStats.progressPercent}
                       className="h-2 bg-muted/50"
                     />
                   </div>
-                  
+
                   {/* Set-based exercise list */}
                   <div className="space-y-3">
                     {exercises.map((exercise: Exercise, index: number) => (
@@ -565,19 +565,18 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
                       />
                     ))}
                   </div>
-                  
+
                   {/* Finish Training Button */}
                   <Button
                     onClick={handleFinishTraining}
                     variant={progressStats.isComplete ? "default" : "outline"}
-                    className={`w-full mt-4 h-12 text-base font-semibold gap-2 ${
-                      progressStats.isComplete ? "animate-pulse" : ""
-                    }`}
+                    className={`w-full mt-4 h-12 text-base font-semibold gap-2 ${progressStats.isComplete ? "animate-pulse" : ""
+                      }`}
                   >
                     {progressStats.isComplete && <Check className="w-5 h-5" />}
                     {t('todayWorkout.finishTraining')}
                   </Button>
-                  
+
                   {/* Summary Modal */}
                   <WorkoutSummaryModal
                     open={showSummary}

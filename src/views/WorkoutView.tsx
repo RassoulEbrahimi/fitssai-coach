@@ -40,7 +40,7 @@ const ExerciseList = React.lazy(() => import("@/views/ExerciseList"));
 interface WorkoutViewProps {
   workoutPlan: any;
   workoutLogs: any[];
-  completingWorkout: number | null;
+  completingWorkout: boolean;
   selectedDate: Date;
 
   // Helper functions
@@ -124,7 +124,7 @@ const WorkoutView: React.FC<WorkoutViewProps> = ({
   const dayRefs = useRef<{
     [key: number]: HTMLDivElement | null;
   }>({});
-  
+
   // Scroll container ref for scroll stabilization
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
 
@@ -213,10 +213,10 @@ const WorkoutView: React.FC<WorkoutViewProps> = ({
   // Refetch all 4 weeks on mount to ensure fresh progress data
   useEffect(() => {
     if (!livePlan?.id || !user) return;
-    
+
     // Invalidate all week completion queries to trigger immediate refetch
     ['Week 1', 'Week 2', 'Week 3', 'Week 4'].forEach(weekKey => {
-      queryClient.invalidateQueries({ 
+      queryClient.invalidateQueries({
         queryKey: ['week-completion', livePlan.id, weekKey],
         refetchType: 'active'
       });
@@ -231,26 +231,26 @@ const WorkoutView: React.FC<WorkoutViewProps> = ({
   // Handle week navigation
   const handlePrevWeek = useCallback(() => {
     if (!livePlan?.created_at) return;
-    
+
     const currentWeekNum = Number(wk.match(/\d+/)?.[0] ?? 1);
     const newWeekNum = Math.max(1, currentWeekNum - 1);
     const newWeekKey = `Week ${newWeekNum}`;
     const newDate = getDateFor(newWeekKey, activeDayIndex);
-    
+
     if (newDate) {
       logEvent('week_navigation', { direction: 'prev', fromWeek: wk, toWeek: newWeekKey });
       handleDateChange(newDate);
     }
   }, [livePlan?.created_at, wk, activeDayIndex, getDateFor, handleDateChange]);
-  
+
   const handleNextWeek = useCallback(() => {
     if (!livePlan?.created_at) return;
-    
+
     const currentWeekNum = Number(wk.match(/\d+/)?.[0] ?? 1);
     const newWeekNum = Math.min(4, currentWeekNum + 1);
     const newWeekKey = `Week ${newWeekNum}`;
     const newDate = getDateFor(newWeekKey, activeDayIndex);
-    
+
     if (newDate) {
       logEvent('week_navigation', { direction: 'next', fromWeek: wk, toWeek: newWeekKey });
       handleDateChange(newDate);
@@ -329,7 +329,7 @@ const WorkoutView: React.FC<WorkoutViewProps> = ({
     const rect = element.getBoundingClientRect();
     const windowHeight = window.innerHeight || document.documentElement.clientHeight;
     const windowWidth = window.innerWidth || document.documentElement.clientWidth;
-    
+
     return (
       rect.top >= 0 &&
       rect.left >= 0 &&
@@ -427,17 +427,17 @@ const WorkoutView: React.FC<WorkoutViewProps> = ({
           onSuccess: () => {
             // Invalidate all week completions to refresh progress rings
             ['Week 1', 'Week 2', 'Week 3', 'Week 4'].forEach(wk => {
-              queryClient.invalidateQueries({ 
-                queryKey: ['week-completion', livePlan.id, wk] 
+              queryClient.invalidateQueries({
+                queryKey: ['week-completion', livePlan.id, wk]
               });
             });
-            
+
             // Sync updated exercises to TrainingContext for instant UI update
             const weekData = getWeekContentWithFallback(weekKey);
             const dayData = weekData[dayIndex];
             const updatedExercises = dayData?.exercises || [];
             syncFromPlan(updatedExercises, weekKey, dayIndex);
-            
+
             resolve();
           },
           onError: () => {
@@ -482,8 +482,8 @@ const WorkoutView: React.FC<WorkoutViewProps> = ({
         onSuccess: () => {
           // Invalidate all week completions to refresh progress rings
           ['Week 1', 'Week 2', 'Week 3', 'Week 4'].forEach(weekKey => {
-            queryClient.invalidateQueries({ 
-              queryKey: ['week-completion', livePlan.id, weekKey] 
+            queryClient.invalidateQueries({
+              queryKey: ['week-completion', livePlan.id, weekKey]
             });
           });
 
@@ -627,6 +627,23 @@ const WorkoutView: React.FC<WorkoutViewProps> = ({
   };
 
   // Show loading skeleton while plan is being fetched
+  // Memoize week data to prevent recalculation - Moved up for Hook Rules
+  const weekData = useMemo(() => getWeekContentWithFallback(wk), [wk, getWeekContentWithFallback]);
+
+  // Get mirror info for the current week - Moved up for Hook Rules
+  const mirrorInfo = useMemo(() => getWeekMirrorInfo(wk), [wk, getWeekMirrorInfo]);
+
+  // Sync exercises to TrainingContext whenever selected date/week/day changes - Moved up for Hook Rules
+  useEffect(() => {
+    // Only sync if we have a plan and data
+    if (!livePlan) return;
+
+    const dayData = weekData[activeDayIndex];
+    const exercises = dayData?.exercises || [];
+    syncFromPlan(exercises, wk, activeDayIndex);
+  }, [wk, activeDayIndex, weekData, syncFromPlan, livePlan]);
+
+  // Show loading skeleton while plan is being fetched
   if (isLoadingPlan) {
     return <ExerciseListSkeleton />;
   }
@@ -642,50 +659,37 @@ const WorkoutView: React.FC<WorkoutViewProps> = ({
       duration: 0.4,
       delay: 0.1
     }}>
-        <Card className="border-primary/20">
-          <CardContent className="py-8 text-center">
-            <p className="text-muted-foreground">
-              {t('dashboard.workoutPlan.comingSoon')}
-            </p>
-          </CardContent>
-        </Card>
-      </motion.div>;
+      <Card className="border-primary/20">
+        <CardContent className="py-8 text-center">
+          <p className="text-muted-foreground">
+            {t('dashboard.workoutPlan.comingSoon')}
+          </p>
+        </CardContent>
+      </Card>
+    </motion.div>;
   }
-
-  // Memoize week data to prevent recalculation
-  const weekData = useMemo(() => getWeekContentWithFallback(wk), [wk, getWeekContentWithFallback]);
-
-  // Get mirror info for the current week
-  const mirrorInfo = useMemo(() => getWeekMirrorInfo(wk), [wk, getWeekMirrorInfo]);
-
-  // Sync exercises to TrainingContext whenever selected date/week/day changes
-  useEffect(() => {
-    const dayData = weekData[activeDayIndex];
-    const exercises = dayData?.exercises || [];
-    syncFromPlan(exercises, wk, activeDayIndex);
-  }, [wk, activeDayIndex, weekData, syncFromPlan]);
 
   // Compute header date from active day or fallback to day 0
   const headerDate = getDateFor(wk, activeDayIndex ?? 0) ?? getDateFor(wk, 0);
   const monthYear = headerDate ? format(headerDate, 'MMM yyyy', {
     locale: de
   }) : '';
-  
+
   return (
     <WorkoutErrorBoundary>
-      <motion.div 
+      <motion.div
         key={wk}
-        initial={{ opacity: 0, x: -10 }} 
-        animate={{ opacity: 1, x: 0 }} 
+        initial={{ opacity: 0, x: -10 }}
+        animate={{ opacity: 1, x: 0 }}
         exit={{ opacity: 0, x: 10 }}
-        transition={{ duration: 0.3, ease: "easeOut" }} 
+        transition={{ duration: 0.3, ease: "easeOut" }}
         className="space-y-3"
       >
         {/* Screen reader announcement for week changes */}
-        <div 
-          role="status" 
-          aria-live="polite" 
-          aria-atomic="true" 
+        <div
+          role="status"
+          aria-live="polite"
+          aria-atomic="true"
           className="sr-only"
         >
           Woche {currentWeekNum} geladen. {weekProgress.completed} von {weekProgress.total} Trainingseinheiten abgeschlossen.
@@ -750,99 +754,99 @@ const WorkoutView: React.FC<WorkoutViewProps> = ({
         </AnimatePresence>
 
         {/* Weekly Calendar */}
-      <Card className="border-primary/20">
-        <CardContent className="p-4">
-          <div className="flex items-center justify-between mb-4">
-            <Button variant="ghost" size="sm" onClick={handlePrevWeek} aria-label={t('workout.calendar.prev')} className="min-h-[44px] min-w-[44px] h-11 w-11 p-0 rounded-xl hover:bg-muted/80 active:bg-muted touch-manipulation focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2">
-              <ChevronLeft className="h-4 w-4" />
-            </Button>
-            
-            <h3 className="mt-0 text-lg font-semibold text-foreground">
-              {monthYear}
-            </h3>
-            
-            <Button variant="ghost" size="sm" onClick={handleNextWeek} aria-label={t('workout.calendar.next')} className="min-h-[44px] min-w-[44px] h-11 w-11 p-0 rounded-xl hover:bg-muted/80 active:bg-muted touch-manipulation focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2">
-              <ChevronRight className="h-4 w-4" />
-            </Button>
-          </div>
-          
-          <div className="grid grid-cols-7 gap-3">
-            {Array.from({
-            length: 7
-          }, (_, i) => {
-            const date = getDateFor(wk, i);
-            const dayName = date ? formatDateForDisplay(date, 'E') : '';
-            const dayNumber = date ? formatDateForDisplay(date, 'd') : '';
-            const isActive = activeDayIndex === i;
-            const isCompleted = isDayCompleted(wk, i);
-            const isToday = isTodayInWeekDay(wk, i);
-            return <button key={i} onClick={() => handleDayClick(i)} className={["flex min-h-[44px] min-w-[44px] h-12 w-full flex-col items-center justify-center rounded-xl text-xs transition-all duration-200 touch-manipulation active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2", isToday ? "ring-2 ring-primary ring-offset-2" : "", isCompleted ? "bg-primary/10 text-primary" : "bg-muted/50", activeDayIndex === i ? "outline outline-2 outline-primary/60" : ""].join(" ")} aria-pressed={activeDayIndex === i} aria-label={`${dayName} ${dayNumber}${isCompleted ? ' - abgeschlossen' : ''}${isToday ? ' - heute' : ''}`} type="button">
+        <Card className="border-primary/20">
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between mb-4">
+              <Button variant="ghost" size="sm" onClick={handlePrevWeek} aria-label={t('workout.calendar.prev')} className="min-h-[44px] min-w-[44px] h-11 w-11 p-0 rounded-xl hover:bg-muted/80 active:bg-muted touch-manipulation focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2">
+                <ChevronLeft className="h-4 w-4" />
+              </Button>
+
+              <h3 className="mt-0 text-lg font-semibold text-foreground">
+                {monthYear}
+              </h3>
+
+              <Button variant="ghost" size="sm" onClick={handleNextWeek} aria-label={t('workout.calendar.next')} className="min-h-[44px] min-w-[44px] h-11 w-11 p-0 rounded-xl hover:bg-muted/80 active:bg-muted touch-manipulation focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2">
+                <ChevronRight className="h-4 w-4" />
+              </Button>
+            </div>
+
+            <div className="grid grid-cols-7 gap-3">
+              {Array.from({
+                length: 7
+              }, (_, i) => {
+                const date = getDateFor(wk, i);
+                const dayName = date ? formatDateForDisplay(date, 'E') : '';
+                const dayNumber = date ? formatDateForDisplay(date, 'd') : '';
+                const isActive = activeDayIndex === i;
+                const isCompleted = isDayCompleted(wk, i);
+                const isToday = isTodayInWeekDay(wk, i);
+                return <button key={i} onClick={() => handleDayClick(i)} className={["flex min-h-[44px] min-w-[44px] h-12 w-full flex-col items-center justify-center rounded-xl text-xs transition-all duration-200 touch-manipulation active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2", isToday ? "ring-2 ring-primary ring-offset-2" : "", isCompleted ? "bg-primary/10 text-primary" : "bg-muted/50", activeDayIndex === i ? "outline outline-2 outline-primary/60" : ""].join(" ")} aria-pressed={activeDayIndex === i} aria-label={`${dayName} ${dayNumber}${isCompleted ? ' - abgeschlossen' : ''}${isToday ? ' - heute' : ''}`} type="button">
                   <span className="leading-3">{dayName}</span>
                   <span className="text-sm font-medium">{dayNumber}</span>
                 </button>;
-          })}
-          </div>
-        </CardContent>
-      </Card>
+              })}
+            </div>
+          </CardContent>
+        </Card>
 
-      {/* Today's Workout Card */}
-      <TodayWorkoutCard 
-        selectedDate={selectedDate} 
-        weekKey={wk} 
-        dayIndex={activeDayIndex} 
-        workoutPlan={livePlan} 
-        mirrorInfo={mirrorInfo}
-        completionMap={completionMap}
-        isLoading={isLoadingCompletion}
-        toggleExercise={toggleExercise}
-        isToggling={isToggling}
-        isOnline={isOnline}
-        isCached={isCached}
-        dataUpdatedAt={dataUpdatedAt}
-      />
+        {/* Today's Workout Card */}
+        <TodayWorkoutCard
+          selectedDate={selectedDate}
+          weekKey={wk}
+          dayIndex={activeDayIndex}
+          workoutPlan={livePlan}
+          mirrorInfo={mirrorInfo}
+          completionMap={completionMap}
+          isLoading={isLoadingCompletion}
+          toggleExercise={toggleExercise}
+          isToggling={isToggling}
+          isOnline={isOnline}
+          isCached={isCached}
+          dataUpdatedAt={dataUpdatedAt}
+        />
 
-      {/* Plan Progress Stepper */}
-      <Card className="border-border">
-        <CardHeader className="pb-4">
-          <CardTitle className="text-lg">
-            {t('workout.planProgress.title')}
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <TooltipProvider>
-            <div className="flex items-center justify-between">
-              {[1, 2, 3, 4].map((weekNum, index, arr) => {
-              const weekKey = `Week ${weekNum}`;
-              const isActive = currentWeekNum === weekNum;
-              const isPast = currentWeekNum > weekNum;
-              const isFuture = currentWeekNum < weekNum;
-              const isFocused = focusedWeek === weekNum;
+        {/* Plan Progress Stepper */}
+        <Card className="border-border">
+          <CardHeader className="pb-4">
+            <CardTitle className="text-lg">
+              {t('workout.planProgress.title')}
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <TooltipProvider>
+              <div className="flex items-center justify-between">
+                {[1, 2, 3, 4].map((weekNum, index, arr) => {
+                  const weekKey = `Week ${weekNum}`;
+                  const isActive = currentWeekNum === weekNum;
+                  const isPast = currentWeekNum > weekNum;
+                  const isFuture = currentWeekNum < weekNum;
+                  const isFocused = focusedWeek === weekNum;
 
-              // Get completion data from subscribed queries
-              const weekCompletionData = weekNum === 1 ? week1Completion :
-                                         weekNum === 2 ? week2Completion :
-                                         weekNum === 3 ? week3Completion :
-                                         week4Completion;
-              const stats = calcWeekStats(weekKey, weekCompletionData);
-              const progressColor = getProgressColor(stats.percent, isFuture);
+                  // Get completion data from subscribed queries
+                  const weekCompletionData = weekNum === 1 ? week1Completion :
+                    weekNum === 2 ? week2Completion :
+                      weekNum === 3 ? week3Completion :
+                        week4Completion;
+                  const stats = calcWeekStats(weekKey, weekCompletionData);
+                  const progressColor = getProgressColor(stats.percent, isFuture);
 
-              // Get aria-label with completion stats
-              const ariaLabel = `Week ${weekNum}: ${stats.completed}/${stats.total} sessions done, ${stats.percent}% complete`;
-              
-              return <React.Fragment key={weekKey}>
+                  // Get aria-label with completion stats
+                  const ariaLabel = `Week ${weekNum}: ${stats.completed}/${stats.total} sessions done, ${stats.percent}% complete`;
+
+                  return <React.Fragment key={weekKey}>
                     <div className="flex flex-col items-center gap-2">
                       <Tooltip>
                         <TooltipTrigger asChild>
-                          <motion.button 
-                            type="button" 
-                            aria-label={ariaLabel} 
-                            aria-current={isActive ? "page" : undefined} 
-                            tabIndex={isFocused ? 0 : -1} 
-                            onClick={() => handleWeekActivation(weekNum)} 
-                            onKeyDown={e => handleStepperKeyDown(e, weekNum)} 
-                            onFocus={() => setFocusedWeek(weekNum)} 
-                            whileTap={!window.matchMedia('(prefers-reduced-motion: reduce)').matches ? { scale: 0.95 } : {}} 
-                            transition={{ duration: 0.15, ease: 'easeOut' }} 
+                          <motion.button
+                            type="button"
+                            aria-label={ariaLabel}
+                            aria-current={isActive ? "page" : undefined}
+                            tabIndex={isFocused ? 0 : -1}
+                            onClick={() => handleWeekActivation(weekNum)}
+                            onKeyDown={e => handleStepperKeyDown(e, weekNum)}
+                            onFocus={() => setFocusedWeek(weekNum)}
+                            whileTap={!window.matchMedia('(prefers-reduced-motion: reduce)').matches ? { scale: 0.95 } : {}}
+                            transition={{ duration: 0.15, ease: 'easeOut' }}
                             className="relative outline-none ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
                           >
                             <ProgressRing
@@ -868,7 +872,7 @@ const WorkoutView: React.FC<WorkoutViewProps> = ({
                           </div>
                         </TooltipContent>
                       </Tooltip>
-                      
+
                       <span className={['text-xs transition-colors duration-200', isActive ? 'font-semibold text-foreground' : 'text-muted-foreground'].join(' ')}>
                         {t('workout.weekLabel', { num: weekNum })}
                       </span>
@@ -877,215 +881,215 @@ const WorkoutView: React.FC<WorkoutViewProps> = ({
                     {/* Connector line except after the last item */}
                     {index < arr.length - 1 && (
                       <div className="flex-1 flex items-center px-2" style={{ alignItems: 'center', height: '44px' }}>
-                        <div 
-                          aria-hidden="true" 
-                          className={['h-0.5 w-full rounded-full transition-colors duration-300', isPast || (isActive && index < arr.length - 1) ? 'bg-primary' : 'bg-border'].join(' ')} 
-                          style={{ marginTop: '-22px' }} 
+                        <div
+                          aria-hidden="true"
+                          className={['h-0.5 w-full rounded-full transition-colors duration-300', isPast || (isActive && index < arr.length - 1) ? 'bg-primary' : 'bg-border'].join(' ')}
+                          style={{ marginTop: '-22px' }}
                         />
                       </div>
                     )}
                   </React.Fragment>;
-            })}
+                })}
+              </div>
+            </TooltipProvider>
+
+            {/* Screen reader navigation instructions */}
+            <div className="sr-only">
+              Verwenden Sie die Pfeiltasten links und rechts, um zwischen den Wochen zu navigieren.
+              Drücken Sie Enter oder Leertaste, um eine Woche auszuwählen.
             </div>
-          </TooltipProvider>
+          </CardContent>
+        </Card>
 
-          {/* Screen reader navigation instructions */}
-          <div className="sr-only">
-            Verwenden Sie die Pfeiltasten links und rechts, um zwischen den Wochen zu navigieren. 
-            Drücken Sie Enter oder Leertaste, um eine Woche auszuwählen.
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Week Section */}
-      <Card className="border-border" id="weekCard">
-        <CardHeader className="px-4 py-2">
-          <div className="flex items-baseline justify-between gap-2">
-            <CardTitle className="text-lg font-bold flex items-center gap-2">
-              {t('workout.week', {
-              num: currentWeekNum
-            })}
-            </CardTitle>
-            <p className="text-sm text-muted-foreground tabular-nums shrink-0">
-              {weekProgress.completed} / {weekProgress.total} Tage abgeschlossen
-            </p>
-          </div>
-        </CardHeader>
-        <CardContent ref={scrollContainerRef} className="p-4 space-y-4">
-          {Array.from({ length: 7 }, (_, dayIndex) => {
-          // Get day data from weekData array, or null if not present
-          const day = weekData[dayIndex] || null;
-          const date = getDateFor(wk, dayIndex);
-          const dayName = date ? formatDateForDisplay(date, 'EEEE') : `Tag ${dayIndex + 1}`;
-          const isCompleted = isDayCompleted(wk, dayIndex);
-          const isFutureDay = isDayInFuture(wk, dayIndex);
-          const isExpanded = expandedDay === dayIndex;
-          const isToday = isTodayInWeekDay(wk, dayIndex);
-          const exercises = day?.exercises || [];
-          const isRestDay = !exercises.length;
-          return <motion.div key={dayIndex} ref={el => dayRefs.current[dayIndex] = el} className="relative border rounded-lg shadow-sm mb-2 last:mb-0" initial={false}>
+        {/* Week Section */}
+        <Card className="border-border" id="weekCard">
+          <CardHeader className="px-4 py-2">
+            <div className="flex items-baseline justify-between gap-2">
+              <CardTitle className="text-lg font-bold flex items-center gap-2">
+                {t('workout.week', {
+                  num: currentWeekNum
+                })}
+              </CardTitle>
+              <p className="text-sm text-muted-foreground tabular-nums shrink-0">
+                {weekProgress.completed} / {weekProgress.total} Tage abgeschlossen
+              </p>
+            </div>
+          </CardHeader>
+          <CardContent ref={scrollContainerRef} className="p-4 space-y-4">
+            {Array.from({ length: 7 }, (_, dayIndex) => {
+              // Get day data from weekData array, or null if not present
+              const day = weekData[dayIndex] || null;
+              const date = getDateFor(wk, dayIndex);
+              const dayName = date ? formatDateForDisplay(date, 'EEEE') : `Tag ${dayIndex + 1}`;
+              const isCompleted = isDayCompleted(wk, dayIndex);
+              const isFutureDay = isDayInFuture(wk, dayIndex);
+              const isExpanded = expandedDay === dayIndex;
+              const isToday = isTodayInWeekDay(wk, dayIndex);
+              const exercises = day?.exercises || [];
+              const isRestDay = !exercises.length;
+              return <motion.div key={dayIndex} ref={el => dayRefs.current[dayIndex] = el} className="relative border rounded-lg shadow-sm mb-2 last:mb-0" initial={false}>
                 <Collapsible open={isExpanded} onOpenChange={open => {
-              if (open) {
-                // Update selected date - this will automatically sync expandedDay
-                const newDate = getDateFor(wk, dayIndex);
-                if (newDate) {
-                  handleDateChange(newDate);
-                }
+                  if (open) {
+                    // Update selected date - this will automatically sync expandedDay
+                    const newDate = getDateFor(wk, dayIndex);
+                    if (newDate) {
+                      handleDateChange(newDate);
+                    }
 
-                // Only scroll if element is not already visible
-                const dayElement = dayRefs.current[dayIndex];
-                if (dayElement && !isElementVisible(dayElement)) {
-                  dayElement.scrollIntoView({
-                    behavior: 'smooth',
-                    block: 'nearest'
-                  });
-                }
-              }
-            }}>
+                    // Only scroll if element is not already visible
+                    const dayElement = dayRefs.current[dayIndex];
+                    if (dayElement && !isElementVisible(dayElement)) {
+                      dayElement.scrollIntoView({
+                        behavior: 'smooth',
+                        block: 'nearest'
+                      });
+                    }
+                  }
+                }}>
                   <CollapsibleTrigger asChild>
-                    <Button 
-                      variant="ghost" 
-                      className="w-full px-3 py-2 h-14 justify-between text-left hover:bg-muted/50 rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2" 
+                    <Button
+                      variant="ghost"
+                      className="w-full px-3 py-2 h-14 justify-between text-left hover:bg-muted/50 rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
                       aria-expanded={isExpanded}
                       aria-label={`${dayName}${isToday ? ' - Heute' : ''}${isRestDay ? ' - Ruhetag' : ` - ${exercises.length} Übungen`}${isCompleted ? ' - abgeschlossen' : ''}`}
                     >
-                       <div className="flex items-center justify-between w-full">
-                       <div className="flex items-center gap-2">
-                         <div className="font-medium">{dayName}</div>
-                         {isToday && <Badge variant="secondary" className="text-xs px-2 py-0.5 h-5">
-                             Heute
-                           </Badge>}
-                       </div>
+                      <div className="flex items-center justify-between w-full">
+                        <div className="flex items-center gap-2">
+                          <div className="font-medium">{dayName}</div>
+                          {isToday && <Badge variant="secondary" className="text-xs px-2 py-0.5 h-5">
+                            Heute
+                          </Badge>}
+                        </div>
                         <div className="flex items-baseline gap-2">
                           <span className="text-sm text-muted-foreground">
                             {isRestDay ? 'Ruhetag — kein Training geplant' : `${exercises.length} Übungen`}
                           </span>
-                           {!isRestDay && isCompleted && <div className="w-4 h-4 rounded-full bg-green-600 flex-shrink-0" style={{
-                        alignSelf: 'center'
-                      }} aria-label="Tag abgeschlossen"></div>}
-                           {isRestDay && <div className="w-4 h-4 rounded-full bg-muted-foreground/30 flex-shrink-0" style={{
-                        alignSelf: 'center'
-                      }} aria-label="Ruhetag"></div>}
-                           {isExpanded ? <ChevronUp className="h-4 w-4 text-muted-foreground" style={{
-                        alignSelf: 'center'
-                      }} /> : <ChevronRight className="h-4 w-4 text-muted-foreground" style={{
-                        alignSelf: 'center'
-                      }} />}
-                         </div>
+                          {!isRestDay && isCompleted && <div className="w-4 h-4 rounded-full bg-green-600 flex-shrink-0" style={{
+                            alignSelf: 'center'
+                          }} aria-label="Tag abgeschlossen"></div>}
+                          {isRestDay && <div className="w-4 h-4 rounded-full bg-muted-foreground/30 flex-shrink-0" style={{
+                            alignSelf: 'center'
+                          }} aria-label="Ruhetag"></div>}
+                          {isExpanded ? <ChevronUp className="h-4 w-4 text-muted-foreground" style={{
+                            alignSelf: 'center'
+                          }} /> : <ChevronRight className="h-4 w-4 text-muted-foreground" style={{
+                            alignSelf: 'center'
+                          }} />}
+                        </div>
                       </div>
                     </Button>
                   </CollapsibleTrigger>
-                  
-                     <CollapsibleContent>
-                       {isExpanded && (
-                         <motion.div initial={{
-                           opacity: 0,
-                           height: 0
-                         }} animate={{
-                           opacity: 1,
-                           height: "auto"
-                         }} exit={{
-                           opacity: 0,
-                           height: 0
-                         }} transition={{
-                           duration: 0.15,
-                           ease: "easeOut"
-                         }} className="border-t bg-muted/20">
-                           {!isRestDay && <div className="px-3 py-1.5 border-b border-border/50">
-                               <div className="grid grid-cols-[1fr_48px_64px] gap-2 text-xs text-muted-foreground font-medium items-baseline">
-                                 <span>Übung</span>
-                                 <span className="text-center tabular-nums">Sätze</span>
-                                 <span className="text-right tabular-nums">Reps</span>
-                               </div>
-                             </div>}
-                         
-                             {/* Exercise content */}
-                            <div className="relative p-2.5 pt-1.5 px-[8px] py-[7px]">
-                              {isRestDay ? (
-                                <div className="flex items-center justify-between p-3 bg-muted/30 rounded-lg">
-                                  <div className="text-sm text-muted-foreground">
-                                    {t('workout.rest.note')}
-                                  </div>
-                                  <Button
-                                    variant="ghost"
-                                    size="icon"
-                                    onClick={() => handleOpenAddExercise(wk, dayIndex)}
-                                    className="h-8 w-8 shrink-0"
-                                    aria-label="Übung hinzufügen"
-                                  >
-                                    <Plus className="h-4 w-4" />
-                                  </Button>
-                                </div>
-                              ) : (
-                                   <Suspense fallback={<ExerciseListSkeleton />}>
-                                   <ExerciseList
-                                     exercises={exercises}
-                                     onUpdateExercise={(exerciseIndex, updatedExercise) =>
-                                       handleUpdateExercise(wk, dayIndex, exerciseIndex, updatedExercise)
-                                     }
-                                     onDeleteExercise={(exerciseIndex) =>
-                                       handleDeleteExercise(wk, dayIndex, exerciseIndex)
-                                     }
-                                     isUpdating={isUpdating}
-                                   />
-                                  </Suspense>
-                                )}
-                            
-                                {/* AI Feedback Card - shown after completed AI-generated workouts */}
-                                {!isRestDay && day?.isAIGenerated && isCompleted && (
-                                  <div className="mt-3 px-1">
-                                    <WorkoutFeedbackCard
-                                      suggestionId={`${wk}-day${dayIndex}`}
-                                      onSubmitted={() => {
-                                        logEvent('ai_feedback_submitted', { weekKey: wk, dayIndex });
-                                      }}
-                                    />
-                                  </div>
-                                )}
-                            
-              {/* Speed Dial FAB (for days with exercises) */}
-              {!isRestDay && (
-                <SpeedDial
-                  onAddExercise={() => handleOpenAddExercise(wk, dayIndex)}
-                  onAutoFill={() => handleAutoFill(wk, dayIndex)}
-                />
-              )}
 
-                              {!isRestDay && !isFutureDay && <div className="mt-2 pt-1.5 border-t border-border/50">
-                               </div>}
+                  <CollapsibleContent>
+                    {isExpanded && (
+                      <motion.div initial={{
+                        opacity: 0,
+                        height: 0
+                      }} animate={{
+                        opacity: 1,
+                        height: "auto"
+                      }} exit={{
+                        opacity: 0,
+                        height: 0
+                      }} transition={{
+                        duration: 0.15,
+                        ease: "easeOut"
+                      }} className="border-t bg-muted/20">
+                        {!isRestDay && <div className="px-3 py-1.5 border-b border-border/50">
+                          <div className="grid grid-cols-[1fr_48px_64px] gap-2 text-xs text-muted-foreground font-medium items-baseline">
+                            <span>Übung</span>
+                            <span className="text-center tabular-nums">Sätze</span>
+                            <span className="text-right tabular-nums">Reps</span>
                           </div>
-                        </motion.div>
-                       )}
-                     </CollapsibleContent>
+                        </div>}
+
+                        {/* Exercise content */}
+                        <div className="relative p-2.5 pt-1.5 px-[8px] py-[7px]">
+                          {isRestDay ? (
+                            <div className="flex items-center justify-between p-3 bg-muted/30 rounded-lg">
+                              <div className="text-sm text-muted-foreground">
+                                {t('workout.rest.note')}
+                              </div>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => handleOpenAddExercise(wk, dayIndex)}
+                                className="h-8 w-8 shrink-0"
+                                aria-label="Übung hinzufügen"
+                              >
+                                <Plus className="h-4 w-4" />
+                              </Button>
+                            </div>
+                          ) : (
+                            <Suspense fallback={<ExerciseListSkeleton />}>
+                              <ExerciseList
+                                exercises={exercises}
+                                onUpdateExercise={(exerciseIndex, updatedExercise) =>
+                                  handleUpdateExercise(wk, dayIndex, exerciseIndex, updatedExercise)
+                                }
+                                onDeleteExercise={(exerciseIndex) =>
+                                  handleDeleteExercise(wk, dayIndex, exerciseIndex)
+                                }
+                                isUpdating={isUpdating}
+                              />
+                            </Suspense>
+                          )}
+
+                          {/* AI Feedback Card - shown after completed AI-generated workouts */}
+                          {!isRestDay && day?.isAIGenerated && isCompleted && (
+                            <div className="mt-3 px-1">
+                              <WorkoutFeedbackCard
+                                suggestionId={`${wk}-day${dayIndex}`}
+                                onSubmitted={() => {
+                                  logEvent('ai_feedback_submitted', { weekKey: wk, dayIndex });
+                                }}
+                              />
+                            </div>
+                          )}
+
+                          {/* Speed Dial FAB (for days with exercises) */}
+                          {!isRestDay && (
+                            <SpeedDial
+                              onAddExercise={() => handleOpenAddExercise(wk, dayIndex)}
+                              onAutoFill={() => handleAutoFill(wk, dayIndex)}
+                            />
+                          )}
+
+                          {!isRestDay && !isFutureDay && <div className="mt-2 pt-1.5 border-t border-border/50">
+                          </div>}
+                        </div>
+                      </motion.div>
+                    )}
+                  </CollapsibleContent>
                 </Collapsible>
               </motion.div>;
-        })}
-        </CardContent>
-      </Card>
+            })}
+          </CardContent>
+        </Card>
 
-      {/* Add Workout Modal */}
-      <AddWorkoutModal
-        isOpen={addExerciseDialog.open}
-        onClose={() => 
-          setAddExerciseDialog({ open: false, weekKey: null, dayIndex: null, mode: 'manual' })
-        }
-        mode={addExerciseDialog.mode}
-        dayContext={
-          addExerciseDialog.weekKey && addExerciseDialog.dayIndex !== null
-            ? { weekKey: addExerciseDialog.weekKey, dayIndex: addExerciseDialog.dayIndex }
-            : undefined
-        }
-        onWorkoutAdded={() => {
-          // Invalidate queries to refresh the view
-          queryClient.invalidateQueries({ queryKey: ['workout-plan', planId] });
-          ['Week 1', 'Week 2', 'Week 3', 'Week 4'].forEach(weekKey => {
-            queryClient.invalidateQueries({ 
-              queryKey: ['week-completion', livePlan.id, weekKey] 
+        {/* Add Workout Modal */}
+        <AddWorkoutModal
+          isOpen={addExerciseDialog.open}
+          onClose={() =>
+            setAddExerciseDialog({ open: false, weekKey: null, dayIndex: null, mode: 'manual' })
+          }
+          mode={addExerciseDialog.mode}
+          dayContext={
+            addExerciseDialog.weekKey && addExerciseDialog.dayIndex !== null
+              ? { weekKey: addExerciseDialog.weekKey, dayIndex: addExerciseDialog.dayIndex }
+              : undefined
+          }
+          onWorkoutAdded={() => {
+            // Invalidate queries to refresh the view
+            queryClient.invalidateQueries({ queryKey: ['workout-plan', planId] });
+            ['Week 1', 'Week 2', 'Week 3', 'Week 4'].forEach(weekKey => {
+              queryClient.invalidateQueries({
+                queryKey: ['week-completion', livePlan.id, weekKey]
+              });
             });
-          });
-        }}
-      />
-    </motion.div>
+          }}
+        />
+      </motion.div>
     </WorkoutErrorBoundary>
   );
 };
