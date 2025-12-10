@@ -60,10 +60,10 @@ export const saveQueue = (queue: OfflineMutationEntry[]): void => {
 };
 
 export const enqueue = <T extends OfflineMutationType>(
-    queue: OfflineMutationEntry[],
     type: T,
     payload: OfflineMutationPayloads[T]
 ): { queue: OfflineMutationEntry[]; entry: OfflineMutationEntry<T> } => {
+    const queue = loadQueue();
     const entry: OfflineMutationEntry<T> = {
         id: crypto.randomUUID(),
         type,
@@ -75,14 +75,19 @@ export const enqueue = <T extends OfflineMutationType>(
 
     const newQueue = [...queue, entry];
     saveQueue(newQueue);
+
+    if (import.meta.env.DEV) {
+        console.log(`[OfflineQueue] Enqueued: ${type}`, payload);
+    }
+
     return { queue: newQueue, entry };
 };
 
 export const updateEntry = (
-    queue: OfflineMutationEntry[],
     id: string,
     patch: Partial<OfflineMutationEntry>
 ): OfflineMutationEntry[] => {
+    const queue = loadQueue();
     const newQueue = queue.map((entry) =>
         entry.id === id ? { ...entry, ...patch } : entry
     );
@@ -91,9 +96,9 @@ export const updateEntry = (
 };
 
 export const removeEntry = (
-    queue: OfflineMutationEntry[],
     id: string
 ): OfflineMutationEntry[] => {
+    const queue = loadQueue();
     const newQueue = queue.filter((entry) => entry.id !== id);
     saveQueue(newQueue);
     return newQueue;

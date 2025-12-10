@@ -93,30 +93,24 @@ export function useSetTracking(planId: string | undefined, weekKey: string, dayI
       // Check if offline
       if (!isOnline) {
         enqueue('TOGGLE_SET', params);
-        return { success: true };
+        return { success: true, queued: true };
       }
 
       try {
-        const { data: sessionData } = await supabase.auth.getSession();
-        const token = sessionData.session?.access_token;
+        const { data, error } = await supabase.functions.invoke('toggle-set', {
+          body: params,
+        });
 
-        const response = await fetch(
-          `https://zkamhncwbgieifloosqn.supabase.co/functions/v1/toggle-set`,
-          {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${token}`,
-            },
-            body: JSON.stringify(params),
-          }
-        );
-
-        const result = await response.json();
-        if (!result.success) {
-          throw new Error(result.error || 'Failed to toggle set');
+        if (error) {
+          console.error('Error toggling set:', error);
+          throw new Error(error.message || 'Failed to toggle set');
         }
-        return result;
+
+        if (!data?.success) {
+          throw new Error('Invalid response from server');
+        }
+
+        return data;
       } catch (error: any) {
         console.error('Error toggling set:', error);
 
@@ -127,7 +121,7 @@ export function useSetTracking(planId: string | undefined, weekKey: string, dayI
 
         if (isNetworkError) {
           enqueue('TOGGLE_SET', params);
-          return { success: true };
+          return { success: true, queued: true };
         }
         throw error;
       }
@@ -184,9 +178,9 @@ export function useSetTracking(planId: string | undefined, weekKey: string, dayI
       }
       console.error('Error toggling set:', err);
     },
-    onSettled: () => {
-      // Refetch to ensure consistency
-      if (navigator.onLine) {
+    onSettled: (data: any) => {
+      // Refetch to ensure consistency, but only if online and not queued
+      if (navigator.onLine && !data?.queued) {
         queryClient.invalidateQueries({ queryKey: ['workout-sets', planId, weekKey, dayIndex] });
       }
     },

@@ -12,7 +12,10 @@ import {
 } from '@/lib/offlineQueue';
 import { handlers } from '@/lib/offlineHandlers';
 
+import { useQueryClient } from '@tanstack/react-query';
+
 export const useOfflineQueue = () => {
+  const queryClient = useQueryClient();
   const [queue, setQueue] = useState<OfflineMutationEntry[]>([]);
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [isFlushing, setIsFlushing] = useState(false);
@@ -76,14 +79,22 @@ export const useOfflineQueue = () => {
     let successCount = 0;
     let failedCount = 0;
 
-    for (const entry of currentQueue) {
-      // Skip items that exhausted retries or already failed definitively
-      if (entry.status === 'failed' && entry.attempts >= 3) continue;
+    // Iterate over a snapshot, but verify freshness
+    const snapshot = [...currentQueue]; // copy to safely iterate
+
+    for (const snapshotEntry of snapshot) {
+      // 1. Verify entry still exists and is pending (fresh read)
+      const freshQueue = loadQueue();
+      const entry = freshQueue.find(e => e.id === snapshotEntry.id);
+
+      if (!entry) continue; // Already removed by another tab/process
+      if (entry.status !== 'pending' && entry.status !== 'failed') continue; // Being processed or done
+      if (entry.status === 'failed' && entry.attempts >= 3) continue; // Max attempts
 
       try {
-        // Mark as syncing
-        currentQueue = updateEntry(currentQueue, entry.id, { status: 'syncing' });
-        setQueue(currentQueue);
+        // Mark as syncing (atomic), returns new queue
+        const syncingQueue = updateEntry(entry.id, { status: 'syncing' });
+        setQueue(syncingQueue);
 
         // Find handler
         const handler = handlers[entry.type];
@@ -93,12 +104,19 @@ export const useOfflineQueue = () => {
 
         // Execute handler
         // @ts-ignore - TS has trouble mapping the specific payload type here but it's safe by design
-        await handler(entry.payload);
+        const invalidationKeys = await handler(entry.payload);
 
-        // On success: remove from queue
-        currentQueue = removeEntry(currentQueue, entry.id);
-        setQueue(currentQueue);
+        // On success: remove from queue (atomic)
+        const reducedQueue = removeEntry(entry.id);
+        setQueue(reducedQueue);
         successCount++;
+
+        // Invalidate queries if handler returned keys
+        if (invalidationKeys && Array.isArray(invalidationKeys)) {
+          for (const key of invalidationKeys) {
+            queryClient.invalidateQueries({ queryKey: key });
+          }
+        }
 
         logEvent('queue_operation_success', {
           operationId: entry.id,
@@ -113,28 +131,29 @@ export const useOfflineQueue = () => {
           !navigator.onLine;
 
         if (isNetworkError) {
-          // Network error: Increment attempts and keep
-          currentQueue = updateEntry(currentQueue, entry.id, {
+          if (import.meta.env.DEV) {
+            console.log(`[OfflineQueue] Network error for ${entry.id}, scheduling retry.`);
+          }
+          // Network error: Increment attempts and keep (atomic)
+          const retriedQueue = updateEntry(entry.id, {
             status: 'pending',
             attempts: entry.attempts + 1,
             lastError: error.message
           });
+          setQueue(retriedQueue);
         } else {
-          // Non-network error (4xx/5xx handling logic): 
-          // For now, we also retry up to maxAttempts unless it's clearly a validation error?
-          // The prompt says: "on non-network / 4xx error -> mark as failed and stop retrying"
-
-          // Ideally we'd distinguish 4xx, but error objects can be vague. 
-          // Assuming typical fetch/supabase errors.
-
-          currentQueue = updateEntry(currentQueue, entry.id, {
+          if (import.meta.env.DEV) {
+            console.error(`[OfflineQueue] Permanent error for ${entry.id}:`, error);
+          }
+          // Non-network error (atomic)
+          const failedQueue = updateEntry(entry.id, {
             status: 'failed',
             lastError: error.message
           });
+          setQueue(failedQueue);
           failedCount++;
         }
 
-        setQueue(currentQueue);
         logEvent('queue_operation_failed', {
           operationId: entry.id,
           error: error.message
@@ -176,8 +195,8 @@ export const useOfflineQueue = () => {
     payload: OfflineMutationPayloads[T]
   ) => {
     // Reload queue to ensure consistency
-    const currentQueue = loadQueue();
-    const { queue: newQueue, entry } = enqueueToLib(currentQueue, type, payload);
+    // const currentQueue = loadQueue(); // No longer needed for enqueue
+    const { queue: newQueue, entry } = enqueueToLib(type, payload);
     setQueue(newQueue);
 
     // User feedback

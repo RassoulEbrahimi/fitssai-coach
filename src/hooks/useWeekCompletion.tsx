@@ -169,7 +169,7 @@ export const useWeekCompletion = ({ planId, weekKey, enabled = true }: UseWeekCo
         enqueue('TOGGLE_DAY_COMPLETION', params);
 
         // Return success for optimistic update
-        return { success: true };
+        return { success: true, queued: true };
       }
 
       // Online: retry with exponential backoff
@@ -222,7 +222,7 @@ export const useWeekCompletion = ({ planId, weekKey, enabled = true }: UseWeekCo
             'Verbindungsproblem. Wir synchronisieren das später.',
             3000
           );
-          return { success: true };
+          return { success: true, queued: true };
         }
 
         logError(error, `toggle_exercise_failed: ${JSON.stringify(params)}`);
@@ -278,9 +278,11 @@ export const useWeekCompletion = ({ planId, weekKey, enabled = true }: UseWeekCo
 
       console.error('Error toggling exercise:', error);
     },
-    onSuccess: (data, params) => {
-      // Refetch to ensure sync
-      queryClient.invalidateQueries({ queryKey: ['week-completion', params.planId, params.weekKey] });
+    onSuccess: (data: any, params) => {
+      // Only refetch if not queued (queued items will trigger invalidation on flush)
+      if (!data?.queued) {
+        queryClient.invalidateQueries({ queryKey: ['week-completion', params.planId, params.weekKey] });
+      }
     },
   });
 
