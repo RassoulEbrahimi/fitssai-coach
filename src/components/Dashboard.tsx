@@ -532,22 +532,26 @@ const Dashboard = () => {
                     <div className="space-y-6">
                       <Suspense fallback={<HomeSkeleton />}>
                         <div ref={(el) => setViewRef('dashboard', el)}>
-                          <HomeView
-                            generatingPlans={generatingPlans}
-                            workoutPlan={liveWorkoutPlan}
-                            nutritionPlan={nutritionPlan}
-                            onGeneratePlans={generatePlan}
-                            profile={profile}
-                            workoutProgress={getWeeklyProgress()}
-                            getTodayWorkout={getTodayWorkout}
-                            isDayCompleted={isDayCompleted}
-                            getWeeklyProgress={getWeeklyProgress}
-                            selectedDate={selectedDate}
-                            isLoadingPlans={isLoadingPlans}
-                            onProgressUpdate={() => {
-                              // No-op: logs update automatically via hooks query invalidation
-                            }}
-                          />
+                          {(isLoadingProfile || isLoadingPlans) && (!profile || !liveWorkoutPlan) ? (
+                            <HomeSkeleton />
+                          ) : (
+                            <HomeView
+                              generatingPlans={generatingPlans}
+                              workoutPlan={liveWorkoutPlan}
+                              nutritionPlan={nutritionPlan}
+                              onGeneratePlans={generatePlan}
+                              profile={profile}
+                              workoutProgress={getWeeklyProgress()}
+                              getTodayWorkout={getTodayWorkout}
+                              isDayCompleted={isDayCompleted}
+                              getWeeklyProgress={getWeeklyProgress}
+                              selectedDate={selectedDate}
+                              isLoadingPlans={isLoadingPlans}
+                              onProgressUpdate={() => {
+                                // No-op: logs update automatically via hooks query invalidation
+                              }}
+                            />
+                          )}
                         </div>
                       </Suspense>
                     </div>
@@ -557,21 +561,25 @@ const Dashboard = () => {
                     <div className="space-y-6">
                       <Suspense fallback={<WorkoutSkeleton />}>
                         <div ref={(el) => setViewRef('workout', el)}>
-                          <WorkoutView
-                            workoutPlan={liveWorkoutPlan}
-                            workoutLogs={workoutLogs}
-                            completingWorkout={completingWorkout}
-                            selectedDate={selectedDate}
-                            isDayCompleted={isDayCompleted}
-                            isDayInFuture={isDayInFuture}
-                            isTodayInWeekDay={isTodayInWeekDay}
-                            getDateFor={getDateFor}
-                            getWeekTitle={getWeekTitle}
-                            getWeeklyProgress={getWeeklyProgress}
-                            getWeekKeyForDate={getWeekKeyForDate}
-                            toggleDayComplete={toggleDayComplete}
-                            handleDateChange={handleDateChange}
-                          />
+                          {isLoadingPlans && !liveWorkoutPlan ? (
+                            <WorkoutSkeleton />
+                          ) : (
+                            <WorkoutView
+                              workoutPlan={liveWorkoutPlan}
+                              workoutLogs={workoutLogs}
+                              completingWorkout={completingWorkout}
+                              selectedDate={selectedDate}
+                              isDayCompleted={isDayCompleted}
+                              isDayInFuture={isDayInFuture}
+                              isTodayInWeekDay={isTodayInWeekDay}
+                              getDateFor={getDateFor}
+                              getWeekTitle={getWeekTitle}
+                              getWeeklyProgress={getWeeklyProgress}
+                              getWeekKeyForDate={getWeekKeyForDate}
+                              toggleDayComplete={toggleDayComplete}
+                              handleDateChange={handleDateChange}
+                            />
+                          )}
                         </div>
                       </Suspense>
                     </div>
@@ -581,11 +589,15 @@ const Dashboard = () => {
                     <div className="space-y-6">
                       <Suspense fallback={<NutritionSkeleton />}>
                         <div ref={(el) => setViewRef('nutrition', el)}>
-                          <NutritionView
-                            nutritionPlan={nutritionPlan}
-                            onGeneratePlans={generatePlan}
-                            isGenerating={generatingPlans}
-                          />
+                          {isLoadingPlans && !nutritionPlan ? (
+                            <NutritionSkeleton />
+                          ) : (
+                            <NutritionView
+                              nutritionPlan={nutritionPlan}
+                              onGeneratePlans={generatePlan}
+                              isGenerating={generatingPlans}
+                            />
+                          )}
                         </div>
                       </Suspense>
                     </div>
@@ -595,15 +607,19 @@ const Dashboard = () => {
                     <div className="space-y-6">
                       <Suspense fallback={<ProfileSkeleton />}>
                         <div ref={(el) => setViewRef('profile', el)}>
-                          <ProfileView
-                            profile={profile}
-                            onProfileUpdate={refetchProfile}
-                            workoutProgress={getWeeklyProgress()}
-                            generatingPlans={generatingPlans}
-                            workoutPlan={liveWorkoutPlan}
-                            nutritionPlan={nutritionPlan}
-                            onGeneratePlans={generatePlan}
-                          />
+                          {isLoadingProfile && !profile ? (
+                            <ProfileSkeleton />
+                          ) : (
+                            <ProfileView
+                              profile={profile}
+                              onProfileUpdate={refetchProfile}
+                              workoutProgress={getWeeklyProgress()}
+                              generatingPlans={generatingPlans}
+                              workoutPlan={liveWorkoutPlan}
+                              nutritionPlan={nutritionPlan}
+                              onGeneratePlans={generatePlan}
+                            />
+                          )}
                         </div>
                       </Suspense>
                     </div>

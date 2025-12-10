@@ -15,6 +15,7 @@ const queryClient = new QueryClient({
 
 const persister = createSyncStoragePersister({
     storage: window.localStorage,
+    key: 'REACT_QUERY_OFFLINE_CACHE',
 });
 
 export function QueryProvider({ children }: { children: React.ReactNode }) {
@@ -23,7 +24,10 @@ export function QueryProvider({ children }: { children: React.ReactNode }) {
             client={queryClient}
             persistOptions={{ persister }}
             onSuccess={() => {
-                console.log('Query cache restored successfully');
+                if (import.meta.env.DEV) {
+                    const cache = queryClient.getQueryCache().getAll();
+                    console.log(`[QueryProvider] Cache restored. Queries: ${cache.length}`, cache.map(q => q.queryKey));
+                }
             }}
         >
             {children}
