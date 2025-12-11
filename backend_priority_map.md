@@ -22,13 +22,14 @@ This document outlines the current state of the backend (Supabase Edge Functions
 **Goal:** Replace the 4-step DB chatter in `toggle-set` with a single fast RPC.
 **Status:** **Completed.** RPC `rpc_toggle_set_and_count` implemented. Edge function refactored to use it and strict auth.
 
-### Mission 2: Refactor `generate-plans` for Robustness
-**Why:** Plan generation is the core "Magic" value prop. It's fragile with mixed mock logic and weak error reporting.
+### Mission 2: Refactor `generate-plans` for Robustness (Completed)
+**Why:** Plan generation is the core "Magic" value prop. Improved stability was critical.
 **Goal:** Clean up the function, split mock logic, and improve error observability.
+**Status:** **Completed.** Refactored with proper auth, error codes, typed shared mocks, and Zod validation.
 **Tasks:**
-- Extract mock generation to `_shared/mockUtils.ts`.
-- Standardize HTTP error codes (400 for input, 500 for AI/DB).
-- Ensure strict type safety (remove `any` usage seen in lint).
+- [x] Extract mock generation to `_shared/mockUtils.ts`.
+- [x] Standardize HTTP error codes (400 for input, 500 for AI/DB).
+- [x] Ensure strict type safety.
 
 ### Mission 3: Dashboard Load Performance (`get-week-completion`)
 **Why:** The dashboard is the landing page. Fetching all raw logs just to show checkmarks is inefficient.
