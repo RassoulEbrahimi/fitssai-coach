@@ -7,7 +7,7 @@ This document outlines the current state of the backend (Supabase Edge Functions
 | Rank | Title | Area | Impact | Effort | Description | Suggested Fix |
 |------|-------|------|--------|--------|-------------|---------------|
 | 1 | **Fix Auth Checks in Edge Functions** | Edge Function | **High** | S | `generate-plans` and others manually check auth or rely on passed-in user IDs in body without strict verification against the auth token in some paths. Admin check via `is_current_user_admin` is risky if not robust. | Ensure all functions strictly use `getUser()` from the auth token to derive `userId`. Remove reliance on `body.user_id` unless strictly admin-scoped and verified. |
-| 2 | **Optimize `toggle-set` Round Trips** | Edge Function | **High** | M | `toggle-set` performs ~4 separate DB calls (fetch plan, upsert log, upsert/delete set, count sets). This is slow for a high-frequency action. | Refactor into a single Postgres RPC `toggle_set_and_count` that handles the logic transactionally. Reduces latency significantly. |
+| 2 | **Optimize `toggle-set` Round Trips** | Edge Function | **High** | M | **[DONE]** `toggle-set` now uses `rpc_toggle_set_and_count`. | Refactor into a single Postgres RPC `toggle_set_and_count`. (Completed in Mission 1) |
 | 3 | **Harden `generate-plans` Error Handling** | Edge Function | **Medium** | S | Currently retuns 200 OK with `success: false` for logic errors, masking observability. Mock data fallback logic is complex and mixed with business logic. | Return proper 4xx/5xx status codes. Extract mock data generation into a separate utility or table. Ensure errors are logged to a monitoring table (like `ai_logs`). |
 | 4 | **Fix `get-week-completion` Full Scan** | Edge Function | **Medium** | M | Fetches *all* logs for a week to build a completion map. As logs grow, this will slow down the dashboard load. | Use a specialized SQL query or RPC to group and aggregate completion status by day/exercise, returning only necessary booleans, not full log rows. |
 | 5 | **Strict RLS for Deletion** | Database | **High** | S | `delete-account` manually deletes from multiple tables. If a new table is added (e.g. `audit_logs`) and not added here, we get orphaned data. | Ensure all tables with `user_id` have `ON DELETE CASCADE` foreign keys. Verify RLS policies are `DELETE USING (auth.uid() = user_id)`. |
@@ -17,13 +17,10 @@ This document outlines the current state of the backend (Supabase Edge Functions
 
 ## Next Missions (Top 3)
 
-### Mission 1: Optimize & Harden `toggle-set`
+### Mission 1: Optimize & Harden `toggle-set` (Completed)
 **Why:** This is the most frequent user action during a workout. Latency here feels sluggish.
 **Goal:** Replace the 4-step DB chatter in `toggle-set` with a single fast RPC.
-**Tasks:**
-- Create `rpc_toggle_set` in Postgres.
-- Update `toggle-set` edge function to call this RPC.
-- Ensure strict auth verification within the RPC or Function.
+**Status:** **Completed.** RPC `rpc_toggle_set_and_count` implemented. Edge function refactored to use it and strict auth.
 
 ### Mission 2: Refactor `generate-plans` for Robustness
 **Why:** Plan generation is the core "Magic" value prop. It's fragile with mixed mock logic and weak error reporting.

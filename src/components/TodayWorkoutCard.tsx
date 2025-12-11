@@ -92,13 +92,28 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
   const { user } = useAuth();
   const { showToast } = useThrottledToast();
   const { isFocusMode, setFocusMode } = useFocusMode();
+<<<<<<< HEAD
   const { todayWorkouts } = useTraining();
 
   const DEFAULT_DURATION = 10;
+=======
+  const {
+    todayWorkouts,
+    isStarted,
+    duration,
+    startSession,
+    endSession
+  } = useTraining();
+
+  const DEFAULT_DURATION = 10;
+  // Use current live duration unless we need to freeze it (handled by modal now)
+  const currentDuration = duration;
+>>>>>>> 520b049208695a93f6941a5a5699757dc0b4f356
 
   // Format selected date for storage key
   const selectedDateStr = format(selectedDate, 'yyyy-MM-dd');
 
+<<<<<<< HEAD
   // Hero "started" state - initialized from localStorage
   const [isStarted, setIsStarted] = useState(() => {
     try {
@@ -130,16 +145,22 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
       setIsStarted(false);
     }
   }, [selectedDateStr]);
+=======
+  // NOTE: isStarted state is now managed globally in TrainingContext
+>>>>>>> 520b049208695a93f6941a5a5699757dc0b4f356
 
   // Summary dialog state
   const [showSummary, setShowSummary] = useState(false);
 
+<<<<<<< HEAD
   // Session timer state (live counter)
   const [duration, setDuration] = useState(0);
 
   // Frozen duration for summary modal (captured when finish is clicked)
   const [frozenDuration, setFrozenDuration] = useState(0);
 
+=======
+>>>>>>> 520b049208695a93f6941a5a5699757dc0b4f356
   // Set-based tracking hook
   const {
     isSetCompleted,
@@ -156,6 +177,7 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
     skipTimer,
   } = useRestTimer();
 
+<<<<<<< HEAD
   // Timer effect - tracks workout duration while started
   useEffect(() => {
     if (!isStarted) {
@@ -189,6 +211,8 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
     return () => clearInterval(interval);
   }, [isStarted, selectedDateStr]);
 
+=======
+>>>>>>> 520b049208695a93f6941a5a5699757dc0b4f356
   // Reactive Berlin "today" - updates automatically at midnight
   const berlinToday = useBerlinToday();
 
@@ -329,6 +353,7 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
     );
   }
 
+<<<<<<< HEAD
   const handleFinishTraining = useCallback(() => {
     // Freeze the duration at this moment
     setFrozenDuration(duration);
@@ -369,13 +394,43 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
       localStorage.removeItem(getTimerStorageKey(selectedDateStr));
     } catch {
       // Ignore localStorage errors
+=======
+  const handleFinishTraining = () => {
+    // Show summary modal - timer continues running!
+    setShowSummary(true);
+
+    // Trigger confetti if complete
+    if (progressStats.isComplete) {
+      confetti({
+        particleCount: 100,
+        spread: 70,
+        origin: { y: 0.6 },
+        colors: ['#10b981', '#34d399', '#059669'],
+        zIndex: 100001
+      });
+>>>>>>> 520b049208695a93f6941a5a5699757dc0b4f356
     }
-    showToast(t('todayWorkout.finishMessage'));
   };
 
+<<<<<<< HEAD
   // Handle starting training - also enables fullscreen
   const handleStartTraining = useCallback(() => {
     setIsStarted(true);
+=======
+  const handleCloseSummary = (shouldEndSession: boolean = false) => {
+    setShowSummary(false);
+
+    if (shouldEndSession) {
+      endSession();
+      setFocusMode(false);
+      showToast(t('todayWorkout.finishMessage'));
+    }
+  };
+
+  // Handle starting training - also enables fullscreen
+  const handleStartTraining = () => {
+    startSession();
+>>>>>>> 520b049208695a93f6941a5a5699757dc0b4f356
     setFocusMode(true);
   }, [setFocusMode]);
 
@@ -533,7 +588,7 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
                       <div className="flex items-center gap-2 text-primary">
                         <Flame className="w-4 h-4 animate-pulse" />
                         <span className="font-medium">{t('todayWorkout.trainingInProgress')}</span>
-                        <span className="text-xs text-muted-foreground ml-1">⏱️ {formatDuration(duration)}</span>
+                        <span className="text-xs text-muted-foreground ml-1">⏱️ {formatDuration(currentDuration)}</span>
                       </div>
                       <span className="text-muted-foreground text-xs">
                         {progressStats.completedSets}/{progressStats.totalSets} Sätze
@@ -580,9 +635,10 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
                   {/* Summary Modal */}
                   <WorkoutSummaryModal
                     open={showSummary}
-                    onClose={handleCloseSummary}
+                    onClose={() => handleCloseSummary(false)} // User dismissed without finishing
+                    onFinish={() => handleCloseSummary(true)} // User clicked "Terminate/Save" in modal
                     exercises={exercises}
-                    frozenDuration={frozenDuration}
+                    duration={currentDuration}
                     workoutName={workoutName}
                     selectedDate={selectedDate}
                     getCompletedSetsCount={getCompletedSetsCount}
