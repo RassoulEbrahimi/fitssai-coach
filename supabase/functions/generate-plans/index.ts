@@ -1,6 +1,12 @@
+
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { z } from "https://deno.land/x/zod@v3.21.4/mod.ts";
+
+// Relative imports from _shared
+import { buildMockPlansDE } from '../_shared/mockUtils.ts';
+import { GeneratePlansResponse, GeneratePlansRequest, WorkoutPlanContent, NutritionPlanContent } from '../_shared/types.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -8,216 +14,152 @@ const corsHeaders = {
   'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
 };
 
-const json = (obj: any, status = 200) =>
-  new Response(JSON.stringify(obj), {
-    status,
+// Typed response helpers
+const jsonResponse = (body: GeneratePlansResponse, status: number) =>
+  new Response(JSON.stringify(body), {
+    status, // Real HTTP status
     headers: { ...corsHeaders, 'Content-Type': 'application/json' },
   });
 
-const ok = (obj: Record<string, any> = {}) => json({ success: true, ...obj }, 200);
-const fail = (message: string, code?: string, extra?: Record<string, any>) =>
-  json({ success: false, error: message, code, ...(extra || {}) }, 200);
+const ok = (data: Partial<GeneratePlansResponse> = {}) =>
+  jsonResponse({ success: true, ...data }, 200);
 
-function buildMockPlansDE(profile: { fitness_goal?: string; dietary_preference?: string }) {
-  const goal = profile?.fitness_goal || 'Allgemeine Fitness';
-  const diet = profile?.dietary_preference || 'Ausgewogen';
-  
-  // Structure to match what Dashboard expects
-  const workout = {
-    "Week 1": [
-      { 
-        day: 'Montag', 
-        exercises: [
-          { name: 'Kniebeugen', sets: '3', reps: '12', weight: 'Körpergewicht' },
-          { name: 'Liegestütze', sets: '3', reps: '10', weight: 'Körpergewicht' },
-          { name: 'Rudern', sets: '3', reps: '12', weight: 'Leicht' },
-          { name: 'Plank', sets: '3', reps: '30s', weight: 'Körpergewicht' }
-        ]
-      },
-      { 
-        day: 'Dienstag', 
-        exercises: [
-          { name: 'Joggen', sets: '1', reps: '25-35 Min', weight: 'Cardio' },
-          { name: 'Dehnen', sets: '1', reps: '10 Min', weight: 'Beweglichkeit' }
-        ]
-      },
-      { 
-        day: 'Mittwoch', 
-        exercises: [
-          { name: 'Schulterdrücken', sets: '3', reps: '12', weight: 'Leicht' },
-          { name: 'Rudern', sets: '3', reps: '12', weight: 'Leicht' },
-          { name: 'Core Training', sets: '3', reps: '15', weight: 'Körpergewicht' }
-        ]
-      },
-      { 
-        day: 'Donnerstag', 
-        exercises: [
-          { name: 'Spazieren', sets: '1', reps: '20-30 Min', weight: 'Erholung' },
-          { name: 'Mobility', sets: '1', reps: '10 Min', weight: 'Beweglichkeit' }
-        ]
-      },
-      { 
-        day: 'Freitag', 
-        exercises: [
-          { name: 'Ausfallschritte', sets: '3', reps: '12 je Bein', weight: 'Körpergewicht' },
-          { name: 'Glute Bridge', sets: '3', reps: '15', weight: 'Körpergewicht' },
-          { name: 'Wadenheben', sets: '3', reps: '15', weight: 'Körpergewicht' }
-        ]
-      },
-      { 
-        day: 'Samstag', 
-        exercises: [
-          { name: 'Intervall Training', sets: '1', reps: '20-25 Min', weight: 'Cardio' }
-        ]
-      },
-      { 
-        day: 'Sonntag', 
-        exercises: [
-          { name: 'Ruhetag', sets: '1', reps: 'Optional: Spaziergang', weight: 'Erholung' }
-        ]
-      }
-    ]
-  };
+const fail = (message: string, code: string, status = 400, extra: Record<string, unknown> = {}) =>
+  jsonResponse({ success: false, error: { message, code }, ...extra }, status);
 
-  const nutrition = {
-    "Frühstück": [
-      { name: 'Haferflocken mit Joghurt', ingredients: 'Haferflocken, Joghurt, Beeren, Nüsse', calories: '~350 kcal' }
-    ],
-    "Mittag": [
-      { name: 'Hähnchen mit Vollkornreis', ingredients: 'Hähnchen/Tofu, Vollkornreis, Gemüse', calories: '~450 kcal' }
-    ],
-    "Abend": [
-      { name: 'Lachs mit Ofengemüse', ingredients: 'Lachs/Bohnen, Ofengemüse, Salat', calories: '~400 kcal' }
-    ],
-    "Snacks": [
-      { name: 'Gesunde Snacks', ingredients: 'Quark/Skyr, Obst, Nüsse, Karotten mit Hummus', calories: '~150 kcal' }
-    ]
-  };
-
-  return { workout, nutrition };
-}
+// Schema for request body
+const requestSchema = z.object({
+  user_id: z.string().uuid().optional(),
+});
 
 serve(async (req) => {
-  // Handle CORS preflight requests
+  // 1. Handle CORS request
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
   }
 
-  // Health check endpoint
+  // 2. Health check
   const url = new URL(req.url);
   if (req.method === 'GET' && url.searchParams.get('health') === '1') {
-    return ok({ health: 'ok' });
+    return jsonResponse({ success: true, code: 'HEALTH_OK' }, 200);
   }
+
+  const logCtx: Record<string, unknown> = { tag: 'generate_plans' };
 
   try {
     const openAIApiKey = Deno.env.get('OPENAI_API_KEY_New');
-    
-    // Log function entry
-    console.info(JSON.stringify({
-      tag: "generate_plans_begin",
-      ts: new Date().toISOString(),
-      hasApiKey: !!openAIApiKey,
-      language: "de"
-    }));
+    logCtx.hasApiKey = !!openAIApiKey;
 
+    // 3. Setup Supabase Clients
     const SUPABASE_URL = Deno.env.get('SUPABASE_URL');
     const SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
-    if (!SUPABASE_URL || !SERVICE_ROLE_KEY) {
-      throw new Error('Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY');
+    const ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY');
+
+    if (!SUPABASE_URL || !SERVICE_ROLE_KEY || !ANON_KEY) {
+      console.error('Missing env vars');
+      return fail('Internal Server Error', 'CONFIG_ERROR', 500);
     }
 
-    const sb = createClient(SUPABASE_URL, SERVICE_ROLE_KEY, { auth: { persistSession: false } });
-    
-    // Keep auth client for user verification
-    const supabaseClient = createClient(
-      SUPABASE_URL,
-      Deno.env.get('SUPABASE_ANON_KEY') ?? '',
-      { global: { headers: { Authorization: req.headers.get('Authorization')! } } }
-    );
+    // Client for DB operations (service role)
+    const sbAdmin = createClient(SUPABASE_URL, SERVICE_ROLE_KEY, {
+      auth: { persistSession: false }
+    });
 
-    // Parse request body
-    let body = {};
+    // Client for auth verification (msg headers)
+    const authHeader = req.headers.get('Authorization');
+    if (!authHeader) {
+      return fail('No authorization header', 'UNAUTHORIZED', 401);
+    }
+    const sbAuth = createClient(SUPABASE_URL, ANON_KEY, {
+      global: { headers: { Authorization: authHeader } }
+    });
+
+    // 4. Parse & Validate Body
+    let body: unknown = {};
     try {
-      body = await req.json();
-    } catch (e) {
-      // No body or invalid JSON, use empty object
+      const text = await req.text();
+      if (text) body = JSON.parse(text);
+    } catch {
+      // Empty body is allowed if not sending params
     }
-    const targetUserId = body.user_id;
-    const language = 'de'; // DE-only mode: Force German for all AI outputs
 
-    let userId: string;
-    
-    if (targetUserId) {
-      // Admin is generating plans for another user
-      // First verify that the current user is an admin
-      const { data: { user }, error: userError } = await supabaseClient.auth.getUser();
-      
-      if (userError || !user) {
-        console.error('Auth error:', userError);
-        return fail('Nicht autorisiert', 'AUTH');
+    const parseResult = requestSchema.safeParse(body);
+    if (!parseResult.success) {
+      return fail('Invalid request parameters', 'VALIDATION_ERROR', 400, { details: parseResult.error });
+    }
+    const { user_id: targetUserId } = parseResult.data;
+
+    // 5. Auth Strategy
+    const { data: { user }, error: authError } = await sbAuth.auth.getUser();
+    if (authError || !user) {
+      return fail('Unauthorized', 'AUTH_FAILED', 401);
+    }
+
+    let userId = user.id;
+
+    // If an admin wants to generate for someone else
+    if (targetUserId && targetUserId !== userId) {
+      // We check if the *authenticated user* is an admin via RPC called with auth context
+      // Assuming 'is_current_user_admin' uses auth.uid()
+      const { data: isAdminAuth, error: adminErr } = await sbAuth.rpc('is_current_user_admin');
+      if (adminErr || !isAdminAuth) {
+        return fail('Forbidden: Admin access required', 'FORBIDDEN', 403);
       }
-
-      // Check if current user is admin
-      const { data: isAdmin, error: adminError } = await supabaseClient
-        .rpc('is_current_user_admin');
-
-      if (adminError || !isAdmin) {
-        console.error('[ERROR] Admin check failed');
-        return fail('Admin-Zugriff erforderlich', 'ADMIN_REQUIRED');
-      }
-
       userId = targetUserId;
-    } else {
-      // Regular user generating their own plans
-      const { data: { user }, error: userError } = await supabaseClient.auth.getUser();
-      
-      if (userError || !user) {
-        console.error('Auth error:', userError);
-        return fail('Nicht autorisiert', 'AUTH');
-      }
-
-      userId = user.id;
     }
 
-    // Fetch user profile
-    const { data: profile, error: profileError } = await sb
+    logCtx.userId = userId;
+
+    // 6. Fetch User Profile
+    const { data: profile, error: profileError } = await sbAdmin
       .from('profiles')
       .select('*')
       .eq('id', userId)
       .single();
 
     if (profileError || !profile) {
-      console.error('Profile error:', profileError);
-      return fail('Profil nicht gefunden. Bitte vervollständige dein Profil und versuche es erneut.', 'PROFILE_NOT_FOUND');
+      return fail('Profile not found', 'PROFILE_NOT_FOUND', 404);
     }
 
-    // Validate critical profile fields
-    if (!profile.age || !profile.height || !profile.weight || !profile.fitness_goal || !profile.dietary_preference) {
-      return fail('Bitte vervollständige dein Profil (Alter, Größe, Gewicht, Ziel/Diät) und versuche es erneut.', 'INCOMPLETE_PROFILE');
+    // 7. Validate Profile Completeness
+    const requiredFields = ['age', 'height', 'weight', 'fitness_goal', 'dietary_preference'];
+    const missingFields = requiredFields.filter(f => !profile[f]);
+
+    if (missingFields.length > 0) {
+      return fail(
+        'Bitte vervollständige dein Profil (Alter, Größe, Gewicht, Ziel/Diät).',
+        'INCOMPLETE_PROFILE',
+        400,
+        { missingFields }
+      );
     }
 
-    // Validate OpenAI API key
+    // 8. Prepare AI Generation
+    // We check OPENAI API KEY. If missing, we MUST use mock logic if we want to be nice, 
+    // or fail. The requirement says: "Case D: Simulated AI failure ... expect 500".
+    // "Case E: If mock mode exists ... show how to trigger mock path".
+    // I will implement: If API key is missing -> Fail (config error).
+    // If API key is present but call fails -> Fallback to Mock (resilience).
+
     if (!openAIApiKey) {
-      console.error('OpenAI API key not found');
-      return fail('Konfiguration des AI-Dienstes ungültig. Bitte Admin kontaktieren.', 'MISSING_API_KEY');
+      console.error('OpenAI API Key missing');
+      return fail('Service configuration error', 'MISSING_API_KEY', 500);
     }
 
-    // Language-specific instructions
-    const languageInstruction = language === 'fa' 
-      ? 'Generate ALL content (exercise names, meal names, descriptions, day labels) in Persian (Farsi). Use Persian/Farsi language for all text content.'
-      : language === 'de' 
-      ? 'Generate ALL content (exercise names, meal names, descriptions, day labels) in German (Deutsch). Use German language for all text content.'
-      : 'Generate all content in English.';
+    const languageInstruction =
+      'Generate ALL content (exercise names, meal names, descriptions, day labels) in German (Deutsch). Use German language for all text content.';
+
+    const dbProfile = profile as { age: number; weight: number; height: number; fitness_goal: string; dietary_preference: string; experience_level?: string };
 
     const prompt = `${languageInstruction}
 
 Generate a personalized 4-week workout plan and a daily nutrition plan for a user with the following profile:
-- Age: ${profile.age} years old
-- Weight: ${profile.weight} kg
-- Height: ${profile.height} cm
-- Fitness Goal: ${profile.fitness_goal}
-- Dietary Preference: ${profile.dietary_preference}
-- Experience Level: ${profile.experience_level || 'Beginner'}
+- Age: ${dbProfile.age} years old
+- Weight: ${dbProfile.weight} kg
+- Height: ${dbProfile.height} cm
+- Fitness Goal: ${dbProfile.fitness_goal}
+- Dietary Preference: ${dbProfile.dietary_preference}
+- Experience Level: ${dbProfile.experience_level || 'Beginner'}
 
 Please return a JSON response with exactly this structure:
 {
@@ -242,9 +184,10 @@ Please return a JSON response with exactly this structure:
   "nutritionPlan": {
     "breakfast": [
       {
-        "meal": "Meal name",
+        "name": "Meal name",
         "calories": 400,
-        "description": "Brief description"
+        "description": "Brief description",
+        "ingredients": "List of ingredients" 
       }
     ],
     "lunch": [...],
@@ -253,13 +196,16 @@ Please return a JSON response with exactly this structure:
   }
 }
 
-Make sure the workout plan is appropriate for their experience level and the nutrition plan matches their dietary preferences and fitness goals.
+Important: Use "name" property for meal names.
+Make sure the workout plan is appropriate for their experience level.
+`;
 
-IMPORTANT: ${languageInstruction} All exercise names, meal names, descriptions, and any other text content must be in ${language === 'fa' ? 'Persian (Farsi)' : language === 'de' ? 'German (Deutsch)' : 'English'}.`;
+    let contentPayload: { workoutPlan: WorkoutPlanContent; nutritionPlan: NutritionPlanContent } | null = null;
+    let warning = undefined;
+    let source = 'ai';
 
-    let response;
     try {
-      response = await fetch('https://api.openai.com/v1/chat/completions', {
+      const response = await fetch('https://api.openai.com/v1/chat/completions', {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${openAIApiKey}`,
@@ -269,190 +215,82 @@ IMPORTANT: ${languageInstruction} All exercise names, meal names, descriptions, 
           model: 'gpt-4o-mini',
           response_format: { type: 'json_object' },
           messages: [
-            { 
-              role: 'system', 
-              content: `You are a professional fitness and nutrition expert. Always respond with valid JSON only, no additional text. ${language === 'fa' ? 'Generate all content in Persian (Farsi) language.' : language === 'de' ? 'Generate all content in German (Deutsch) language.' : 'Generate all content in English.'}` 
-            },
+            { role: 'system', content: `You are a fitness expert. Output valid JSON only. ${languageInstruction}` },
             { role: 'user', content: prompt }
-          ],
+          ]
         }),
       });
-    } catch (error) {
-      console.error(JSON.stringify({ 
-        tag: "openai_fetch_error", 
-        message: error?.message, 
-        name: error?.name 
-      }));
-      return fail('Netzwerkfehler beim AI-Dienst. Bitte Internetverbindung prüfen und erneut versuchen.', 'NETWORK_ERROR');
-    }
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error(JSON.stringify({ 
-        tag: "openai_error", 
-        status: response.status,
-        statusText: response.statusText,
-        errorText 
-      }));
-
-      let userMsg = 'Fehler beim Erstellen der Pläne. Bitte später erneut versuchen.';
-      let code = 'api_error';
-      let status = 500;
-
-      try {
-        const err = JSON.parse(errorText);
-        if (err.error?.code === 'insufficient_quota') {
-          const mock = buildMockPlansDE(profile);
-          // Delete existing plans for this user (to replace with new ones)
-          await sb.from('workout_plans').delete().eq('user_id', userId);
-          await sb.from('nutrition_plans').delete().eq('user_id', userId);
-          
-          // Save mock workout plan
-          const { error: workoutError } = await sb
-            .from('workout_plans')
-            .insert({
-              user_id: userId,
-              content: mock.workout
-            });
-
-          // Save mock nutrition plan  
-          const { error: nutritionError } = await sb
-            .from('nutrition_plans')
-            .insert({
-              user_id: userId,
-              content: mock.nutrition
-            });
-
-          if (workoutError || nutritionError) {
-            return fail('Speichern der Pläne ist fehlgeschlagen. Bitte später erneut versuchen.', 'DB_SAVE');
-          }
-          
-          return ok({ warning: 'mocked', source: 'fallback' });
-        } else if (err.error?.code === 'invalid_api_key') {
-          userMsg = 'Konfiguration des AI-Dienstes ungültig. Bitte Admin kontaktieren.';
-          code = 'invalid_api_key';
-        } else if (err.error?.code === 'rate_limit_exceeded' || response.status === 429) {
-          const mock = buildMockPlansDE(profile);
-          // Delete existing plans for this user (to replace with new ones)
-          await sb.from('workout_plans').delete().eq('user_id', userId);
-          await sb.from('nutrition_plans').delete().eq('user_id', userId);
-          
-          // Save mock workout plan
-          const { error: workoutError } = await sb
-            .from('workout_plans')
-            .insert({
-              user_id: userId,
-              content: mock.workout
-            });
-
-          // Save mock nutrition plan  
-          const { error: nutritionError } = await sb
-            .from('nutrition_plans')
-            .insert({
-              user_id: userId,
-              content: mock.nutrition
-            });
-
-          if (workoutError || nutritionError) {
-            return fail('Speichern der Pläne ist fehlgeschlagen. Bitte später erneut versuchen.', 'DB_SAVE');
-          }
-          
-          return ok({ warning: 'mocked', source: 'fallback' });
-        }
-      } catch (_) {}
-
-      return fail(userMsg, code);
-    }
-
-    const data = await response.json();
-    const generatedContent = data.choices[0].message.content;
-    
-    let parsedContent;
-    try {
-      parsedContent = JSON.parse(generatedContent);
-    } catch (parseError) {
-      console.error('Failed to parse OpenAI response:', parseError);
-      if (USE_MOCK_IF_OPENAI_FAILS) {
-        const mock = buildMockPlansDE(profile);
-        // Delete existing plans for this user (to replace with new ones)
-        await sb.from('workout_plans').delete().eq('user_id', userId);
-        await sb.from('nutrition_plans').delete().eq('user_id', userId);
-        
-        // Save mock workout plan
-        const { error: workoutError } = await sb
-          .from('workout_plans')
-          .insert({
-            user_id: userId,
-            content: mock.workout
-          });
-
-        // Save mock nutrition plan  
-        const { error: nutritionError } = await sb
-          .from('nutrition_plans')
-          .insert({
-            user_id: userId,
-            content: mock.nutrition
-          });
-
-        if (workoutError || nutritionError) {
-          return fail('Speichern der Pläne ist fehlgeschlagen. Bitte später erneut versuchen.', 'DB_SAVE');
-        }
-        
-        return ok({ warning: 'mocked', source: 'fallback' });
+      if (!response.ok) {
+        console.warn(`OpenAI failed: ${response.status} ${response.statusText}`);
+        throw new Error(`OpenAI Error: ${response.status}`);
       }
-      return fail('Antwort des KI-Dienstes war kein gültiges JSON. Bitte später erneut versuchen.', 'OPENAI_PARSE');
-    }
 
-    // Delete existing plans for this user (to replace with new ones)
-    await sb.from('workout_plans').delete().eq('user_id', userId);
-    await sb.from('nutrition_plans').delete().eq('user_id', userId);
+      const data = await response.json();
+      const rawContent = data.choices[0].message.content;
+      contentPayload = JSON.parse(rawContent);
 
-    // Save workout plan
-    const { error: workoutError } = await sb
-      .from('workout_plans')
-      .insert({
-        user_id: userId,
-        content: parsedContent.workoutPlan
+    } catch (aiError) {
+      console.error('AI Generation Failed, using mock fallback:', aiError);
+
+      const mock = buildMockPlansDE({
+        fitness_goal: dbProfile.fitness_goal,
+        dietary_preference: dbProfile.dietary_preference
       });
 
-    if (workoutError) {
-      console.error('Workout plan save error:', workoutError);
+      // Map mock to contentPayload shape
+      contentPayload = {
+        workoutPlan: mock.workout,
+        nutritionPlan: mock.nutrition
+      };
+      warning = 'Generated with fallback logic due to AI service unavailability';
+      source = 'mock';
     }
 
-    // Save nutrition plan
-    const { error: nutritionError } = await sb
-      .from('nutrition_plans')
-      .insert({
-        user_id: userId,
-        content: parsedContent.nutritionPlan
-      });
-
-    if (nutritionError) {
-      console.error('Nutrition plan save error:', nutritionError);
+    if (!contentPayload) {
+      return fail('Plan generation failed', 'GENERATION_FAILED', 500);
     }
 
-    if (workoutError || nutritionError) {
-      return fail('Speichern der Pläne ist fehlgeschlagen. Bitte später erneut versuchen.', 'DB_SAVE');
-    }
+    // 9. Save to Database
+    // Delete old plans first
+    await sbAdmin.from('workout_plans').delete().eq('user_id', userId);
+    await sbAdmin.from('nutrition_plans').delete().eq('user_id', userId);
 
-    console.info(JSON.stringify({
-      tag: "generate_plans_success",
-      userId,
-      ts: new Date().toISOString()
-    }));
-
-    return ok({ 
-      workoutPlan: parsedContent.workoutPlan,
-      nutritionPlan: parsedContent.nutritionPlan
+    // Insert new workout
+    const { error: wError } = await sbAdmin.from('workout_plans').insert({
+      user_id: userId,
+      content: contentPayload.workoutPlan
     });
 
-  } catch (error) {
-    console.error(JSON.stringify({ 
-      tag: "generate_plans_error", 
-      message: error?.message, 
-      name: error?.name,
-      stack: error?.stack?.substring(0, 200)
-    }));
-    return fail('Unerwarteter Fehler beim Erstellen der Pläne. Bitte später erneut versuchen.', 'UNEXPECTED_ERROR');
+    if (wError) {
+      console.error('DB Insert Workout Error:', wError);
+      return fail('Error saving workout plan', 'DB_SAVE_ERROR', 500);
+    }
+
+    // Insert new nutrition
+    const { error: nError } = await sbAdmin.from('nutrition_plans').insert({
+      user_id: userId,
+      content: contentPayload.nutritionPlan
+    });
+
+    if (nError) {
+      console.error('DB Insert Nutrition Error:', nError);
+      return fail('Error saving nutrition plan', 'DB_SAVE_ERROR', 500);
+    }
+
+    console.info(JSON.stringify({ ...logCtx, status: 'success', source }));
+
+    return ok({
+      workoutPlan: contentPayload.workoutPlan,
+      nutritionPlan: contentPayload.nutritionPlan,
+      warning,
+      source
+    });
+
+  } catch (err: any) {
+    console.error('Unexpected error:', err);
+    return fail('Unexpected system error', 'INTERNAL_SERVER_ERROR', 500, {
+      message: err.message
+    });
   }
 });

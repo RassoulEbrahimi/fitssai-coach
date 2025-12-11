@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from "react";
+import React, { useState, useMemo, useEffect, useCallback } from "react";
 import confetti from "canvas-confetti";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -44,6 +44,7 @@ interface TodayWorkoutCardProps {
   selectedDate: Date;
   weekKey: string;
   dayIndex: number;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   workoutPlan: any;
   mirrorInfo?: {
     isMirrored: boolean;
@@ -128,6 +129,7 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
     skipTimer,
   } = useRestTimer();
 
+
   // Reactive Berlin "today" - updates automatically at midnight
   const berlinToday = useBerlinToday();
 
@@ -139,7 +141,7 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
   const isRestDay = !exercises.length;
 
   // Handle toggling a set
-  const handleToggleSet = (params: {
+  const handleToggleSet = useCallback((params: {
     exerciseIndex: number;
     setNumber: number;
     repsCompleted: number;
@@ -171,7 +173,7 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
     if (params.completed) {
       showToast(t('todayWorkout.setCompleted', { set: params.setNumber }));
     }
-  };
+  }, [user, workoutPlan, weekKey, dayIndex, exercises, toggleSet, showToast, t]);
 
   // Calculate total sets and completed sets for progress
   const progressStats = useMemo(() => {

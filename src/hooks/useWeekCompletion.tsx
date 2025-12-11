@@ -3,7 +3,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from './useAuth';
 import { useOfflineQueue } from './useOfflineQueue';
 import { logEvent, logError, logRetry } from '@/lib/telemetryClient';
-import { toastError } from '@/lib/toastWithIcon';
+import { toastError, toastOffline } from '@/lib/toastWithIcon';
 import { useEffect, useMemo } from 'react';
 import { CompletionState, setExerciseCompletion } from '@/lib/completionUtils';
 
@@ -22,13 +22,13 @@ const retryWithBackoff = async <T,>(
   initialDelay = 1000
 ): Promise<T> => {
   let lastError: any;
-  
+
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     try {
       return await fn();
     } catch (error) {
       lastError = error;
-      
+
       if (attempt < maxRetries) {
         const delay = initialDelay * Math.pow(2, attempt);
         console.log(`Retry attempt ${attempt + 1}/${maxRetries} after ${delay}ms`);
@@ -37,7 +37,7 @@ const retryWithBackoff = async <T,>(
       }
     }
   }
-  
+
   throw lastError;
 };
 
@@ -62,12 +62,12 @@ interface ToggleExerciseParams {
 export const useWeekCompletion = ({ planId, weekKey, enabled = true }: UseWeekCompletionParams) => {
   const { user } = useAuth();
   const queryClient = useQueryClient();
-  const { isOnline, addToQueue } = useOfflineQueue();
+  const { isOnline, enqueue } = useOfflineQueue();
 
   // Prefetch helper function
   const prefetchWeekCompletion = async (targetPlanId: string, targetWeekKey: string) => {
     logEvent('prefetch_week', { planId: targetPlanId, weekKey: targetWeekKey });
-    
+
     await queryClient.prefetchQuery({
       queryKey: ['week-completion', targetPlanId, targetWeekKey],
       queryFn: async () => {
@@ -119,20 +119,20 @@ export const useWeekCompletion = ({ planId, weekKey, enabled = true }: UseWeekCo
         }, 3, 1000);
 
         logEvent('fetch_week_completion_success', { planId, weekKey });
-        
+
         // Edge function already returns flat structure, no normalization needed
         return data.completionMap;
       } catch (error: any) {
         console.error('Failed to fetch week completion after retries:', error);
         logError(error, `fetch_week_completion_failed: ${planId} ${weekKey}`);
         logEvent('aria_announcement_triggered', { context: 'fetch_error' });
-        
+
         toastError(
           'Fehler beim Laden',
           'Trainingsplan konnte nicht geladen werden. Bitte versuche es erneut.',
           3000
         );
-        
+
         throw error;
       }
     },
@@ -146,18 +146,18 @@ export const useWeekCompletion = ({ planId, weekKey, enabled = true }: UseWeekCo
   // Log offline fallback usage
   useEffect(() => {
     if (!isOnline && query.data && !query.isFetching) {
-      logEvent('offline_fallback', { 
-        planId, 
-        weekKey, 
-        cacheAge: query.dataUpdatedAt ? Date.now() - query.dataUpdatedAt : 0 
+      logEvent('offline_fallback', {
+        planId,
+        weekKey,
+        cacheAge: query.dataUpdatedAt ? Date.now() - query.dataUpdatedAt : 0
       });
     }
   }, [isOnline, query.data, query.isFetching, planId, weekKey, query.dataUpdatedAt]);
 
   const toggleMutation = useMutation({
     mutationFn: async (params: ToggleExerciseParams) => {
-      logEvent('toggle_exercise_start', { 
-        ...params, 
+      logEvent('toggle_exercise_start', {
+        ...params,
         isOnline,
         completionKey: `${params.weekKey}_${params.dayIndex}_${params.exerciseIndex}`
       });
@@ -166,23 +166,10 @@ export const useWeekCompletion = ({ planId, weekKey, enabled = true }: UseWeekCo
       if (!isOnline) {
         logEvent('toggle_exercise_queued', params);
         // Queue for later
-        addToQueue(
-          async () => {
-            const { data, error } = await supabase.functions.invoke('toggle-exercise', {
-              body: params,
-            });
-            
-            if (error || !data?.success) {
-              throw error || new Error('Failed to toggle exercise');
-            }
-            
-            return data;
-          },
-          params
-        );
-        
+        enqueue('TOGGLE_DAY_COMPLETION', params);
+
         // Return success for optimistic update
-        return { success: true };
+        return { success: true, queued: true };
       }
 
       // Online: retry with exponential backoff
@@ -219,15 +206,34 @@ export const useWeekCompletion = ({ planId, weekKey, enabled = true }: UseWeekCo
         return data;
       } catch (error: any) {
         console.error('Failed to toggle exercise after retries:', error);
+
+        // If it's a network error, queue it even if we thought we were online
+        const isNetworkError =
+          error.message?.includes('Failed to fetch') ||
+          error.message?.includes('Network request failed');
+
+        if (isNetworkError) {
+          logEvent('toggle_exercise_queued_error', params);
+          enqueue('TOGGLE_DAY_COMPLETION', params);
+
+          // Show offline toast manually since we are "online" but request failed
+          toastOffline(
+            'Offline gespeichert',
+            'Verbindungsproblem. Wir synchronisieren das später.',
+            3000
+          );
+          return { success: true, queued: true };
+        }
+
         logError(error, `toggle_exercise_failed: ${JSON.stringify(params)}`);
         logEvent('aria_announcement_triggered', { context: 'toggle_error' });
-        
+
         toastError(
           'Fehler',
           'Änderung konnte nicht gespeichert werden. Bitte versuche es erneut.',
           3000
         );
-        
+
         throw error;
       }
     },
@@ -247,7 +253,7 @@ export const useWeekCompletion = ({ planId, weekKey, enabled = true }: UseWeekCo
         ['week-completion', params.planId, params.weekKey],
         (old) => {
           if (!old) return old;
-          
+
           // Use helper to set completion in flat structure
           return setExerciseCompletion(
             old,
@@ -269,12 +275,14 @@ export const useWeekCompletion = ({ planId, weekKey, enabled = true }: UseWeekCo
           context.previousData
         );
       }
-      
+
       console.error('Error toggling exercise:', error);
     },
-    onSuccess: (data, params) => {
-      // Refetch to ensure sync
-      queryClient.invalidateQueries({ queryKey: ['week-completion', params.planId, params.weekKey] });
+    onSuccess: (data: any, params) => {
+      // Only refetch if not queued (queued items will trigger invalidation on flush)
+      if (!data?.queued) {
+        queryClient.invalidateQueries({ queryKey: ['week-completion', params.planId, params.weekKey] });
+      }
     },
   });
 

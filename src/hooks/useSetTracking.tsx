@@ -28,9 +28,12 @@ interface WorkoutLogWithSets {
   workout_set_logs: SetLog[];
 }
 
+import { useOfflineQueue } from "./useOfflineQueue";
+
 export function useSetTracking(planId: string | undefined, weekKey: string, dayIndex: number) {
   const { user } = useAuth();
   const queryClient = useQueryClient();
+  const { isOnline, enqueue } = useOfflineQueue();
 
   // Query to fetch completed sets for exercises on a specific day
   const {
@@ -68,7 +71,7 @@ export function useSetTracking(planId: string | undefined, weekKey: string, dayI
 
       // Transform to a map: exerciseIndex -> { setNumber -> SetLog }
       const setsMap: Record<number, Record<number, SetLog>> = {};
-      
+
       (data as unknown as WorkoutLogWithSets[])?.forEach((log) => {
         if (!setsMap[log.exercise_index]) {
           setsMap[log.exercise_index] = {};
@@ -87,26 +90,41 @@ export function useSetTracking(planId: string | undefined, weekKey: string, dayI
   // Mutation to toggle a set's completion
   const toggleSetMutation = useMutation({
     mutationFn: async (params: ToggleSetParams) => {
-      const { data: sessionData } = await supabase.auth.getSession();
-      const token = sessionData.session?.access_token;
-
-      const response = await fetch(
-        `https://zkamhncwbgieifloosqn.supabase.co/functions/v1/toggle-set`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`,
-          },
-          body: JSON.stringify(params),
-        }
-      );
-
-      const result = await response.json();
-      if (!result.success) {
-        throw new Error(result.error || 'Failed to toggle set');
+      // Check if offline
+      if (!isOnline) {
+        enqueue('TOGGLE_SET', params);
+        return { success: true, queued: true };
       }
-      return result;
+
+      try {
+        const { data, error } = await supabase.functions.invoke('toggle-set', {
+          body: params,
+        });
+
+        if (error) {
+          console.error('Error toggling set:', error);
+          throw new Error(error.message || 'Failed to toggle set');
+        }
+
+        if (!data?.success) {
+          throw new Error('Invalid response from server');
+        }
+
+        return data;
+      } catch (error: any) {
+        console.error('Error toggling set:', error);
+
+        // Network error handling
+        const isNetworkError =
+          error.message?.includes('Failed to fetch') ||
+          error.message?.includes('Network request failed');
+
+        if (isNetworkError) {
+          enqueue('TOGGLE_SET', params);
+          return { success: true, queued: true };
+        }
+        throw error;
+      }
     },
     onMutate: async (params) => {
       // Cancel any outgoing queries
@@ -123,7 +141,7 @@ export function useSetTracking(planId: string | undefined, weekKey: string, dayI
           if (!newData[params.exerciseIndex]) {
             newData[params.exerciseIndex] = {};
           }
-          
+
           if (params.completed) {
             newData[params.exerciseIndex][params.setNumber] = {
               id: 'optimistic',
@@ -138,16 +156,21 @@ export function useSetTracking(planId: string | undefined, weekKey: string, dayI
             delete exerciseSets[params.setNumber];
             newData[params.exerciseIndex] = exerciseSets;
           }
-          
+
           return newData;
         }
       );
+
+      // Handle offline queueing in onMutate or mutationFn?
+      // mutationFn is better for control flow, but we need access to `enqueue`.
+      // We can access `enqueue` from the hook scope.
 
       return { previousSets };
     },
     onError: (err, params, context) => {
       // Rollback on error
-      if (context?.previousSets) {
+      if (context?.previousSets && navigator.onLine) {
+        // Only rollback if online. If offline, we keep optimistic update.
         queryClient.setQueryData(
           ['workout-sets', planId, weekKey, dayIndex],
           context.previousSets
@@ -155,9 +178,11 @@ export function useSetTracking(planId: string | undefined, weekKey: string, dayI
       }
       console.error('Error toggling set:', err);
     },
-    onSettled: () => {
-      // Refetch to ensure consistency
-      queryClient.invalidateQueries({ queryKey: ['workout-sets', planId, weekKey, dayIndex] });
+    onSettled: (data: any) => {
+      // Refetch to ensure consistency, but only if online and not queued
+      if (navigator.onLine && !data?.queued) {
+        queryClient.invalidateQueries({ queryKey: ['workout-sets', planId, weekKey, dayIndex] });
+      }
     },
   });
 
