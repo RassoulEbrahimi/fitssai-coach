@@ -44,6 +44,7 @@ interface TodayWorkoutCardProps {
   selectedDate: Date;
   weekKey: string;
   dayIndex: number;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   workoutPlan: any;
   mirrorInfo?: {
     isMirrored: boolean;
@@ -92,11 +93,6 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
   const { user } = useAuth();
   const { showToast } = useThrottledToast();
   const { isFocusMode, setFocusMode } = useFocusMode();
-<<<<<<< HEAD
-  const { todayWorkouts } = useTraining();
-
-  const DEFAULT_DURATION = 10;
-=======
   const {
     todayWorkouts,
     isStarted,
@@ -108,59 +104,15 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
   const DEFAULT_DURATION = 10;
   // Use current live duration unless we need to freeze it (handled by modal now)
   const currentDuration = duration;
->>>>>>> 520b049208695a93f6941a5a5699757dc0b4f356
 
   // Format selected date for storage key
   const selectedDateStr = format(selectedDate, 'yyyy-MM-dd');
 
-<<<<<<< HEAD
-  // Hero "started" state - initialized from localStorage
-  const [isStarted, setIsStarted] = useState(() => {
-    try {
-      return localStorage.getItem(getStartedStorageKey(selectedDateStr)) === 'true';
-    } catch {
-      return false;
-    }
-  });
-
-  // Sync isStarted state to localStorage when it changes
-  useEffect(() => {
-    try {
-      if (isStarted) {
-        localStorage.setItem(getStartedStorageKey(selectedDateStr), 'true');
-      } else {
-        localStorage.removeItem(getStartedStorageKey(selectedDateStr));
-      }
-    } catch {
-      // Ignore localStorage errors
-    }
-  }, [isStarted, selectedDateStr]);
-
-  // Reset isStarted when selected date changes (read from new date's storage)
-  useEffect(() => {
-    try {
-      const stored = localStorage.getItem(getStartedStorageKey(selectedDateStr)) === 'true';
-      setIsStarted(stored);
-    } catch {
-      setIsStarted(false);
-    }
-  }, [selectedDateStr]);
-=======
   // NOTE: isStarted state is now managed globally in TrainingContext
->>>>>>> 520b049208695a93f6941a5a5699757dc0b4f356
 
   // Summary dialog state
   const [showSummary, setShowSummary] = useState(false);
 
-<<<<<<< HEAD
-  // Session timer state (live counter)
-  const [duration, setDuration] = useState(0);
-
-  // Frozen duration for summary modal (captured when finish is clicked)
-  const [frozenDuration, setFrozenDuration] = useState(0);
-
-=======
->>>>>>> 520b049208695a93f6941a5a5699757dc0b4f356
   // Set-based tracking hook
   const {
     isSetCompleted,
@@ -177,42 +129,7 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
     skipTimer,
   } = useRestTimer();
 
-<<<<<<< HEAD
-  // Timer effect - tracks workout duration while started
-  useEffect(() => {
-    if (!isStarted) {
-      return;
-    }
 
-    const timerKey = getTimerStorageKey(selectedDateStr);
-
-    // Get or set start time
-    let startTime: number;
-    try {
-      const stored = localStorage.getItem(timerKey);
-      if (stored) {
-        startTime = parseInt(stored, 10);
-      } else {
-        startTime = Date.now();
-        localStorage.setItem(timerKey, startTime.toString());
-      }
-    } catch {
-      startTime = Date.now();
-    }
-
-    // Update duration immediately
-    setDuration(Math.floor((Date.now() - startTime) / 1000));
-
-    // Update every second
-    const interval = setInterval(() => {
-      setDuration(Math.floor((Date.now() - startTime) / 1000));
-    }, 1000);
-
-    return () => clearInterval(interval);
-  }, [isStarted, selectedDateStr]);
-
-=======
->>>>>>> 520b049208695a93f6941a5a5699757dc0b4f356
   // Reactive Berlin "today" - updates automatically at midnight
   const berlinToday = useBerlinToday();
 
@@ -353,48 +270,6 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
     );
   }
 
-<<<<<<< HEAD
-  const handleFinishTraining = useCallback(() => {
-    // Freeze the duration at this moment
-    setFrozenDuration(duration);
-
-    // Trigger confetti celebration (emerald colors) with high z-index
-    confetti({
-      particleCount: 100,
-      spread: 70,
-      origin: { y: 0.6 },
-      colors: ['#10b981', '#34d399', '#059669'],
-      zIndex: 100001
-    });
-
-    // Double confetti for 100% completion
-    if (progressStats.isComplete) {
-      setTimeout(() => {
-        confetti({
-          particleCount: 150,
-          spread: 100,
-          origin: { y: 0.6 },
-          colors: ['#FFD700', '#FFA500', '#FF4500'],
-          zIndex: 100001
-        });
-      }, 500);
-    }
-
-    // Show summary modal
-    setShowSummary(true);
-  }, [duration, progressStats.isComplete]);
-
-  const handleCloseSummary = () => {
-    setShowSummary(false);
-    setIsStarted(false);
-    setFocusMode(false);
-    setDuration(0);
-    try {
-      localStorage.removeItem(getStartedStorageKey(selectedDateStr));
-      localStorage.removeItem(getTimerStorageKey(selectedDateStr));
-    } catch {
-      // Ignore localStorage errors
-=======
   const handleFinishTraining = () => {
     // Show summary modal - timer continues running!
     setShowSummary(true);
@@ -408,15 +283,9 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
         colors: ['#10b981', '#34d399', '#059669'],
         zIndex: 100001
       });
->>>>>>> 520b049208695a93f6941a5a5699757dc0b4f356
     }
   };
 
-<<<<<<< HEAD
-  // Handle starting training - also enables fullscreen
-  const handleStartTraining = useCallback(() => {
-    setIsStarted(true);
-=======
   const handleCloseSummary = (shouldEndSession: boolean = false) => {
     setShowSummary(false);
 
@@ -430,9 +299,8 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
   // Handle starting training - also enables fullscreen
   const handleStartTraining = () => {
     startSession();
->>>>>>> 520b049208695a93f6941a5a5699757dc0b4f356
     setFocusMode(true);
-  }, [setFocusMode]);
+  };
 
   // Toggle fullscreen mode
   const toggleFullScreen = () => {
