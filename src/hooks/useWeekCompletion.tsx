@@ -22,6 +22,7 @@ interface UseWeekCompletionParams {
   planId: string | undefined;
   weekKey: string;
   enabled?: boolean;
+  availableWeeks?: string[]; // New: List of valid weeks in the plan
 }
 
 interface ToggleExerciseParams {
@@ -36,7 +37,7 @@ interface ToggleExerciseParams {
   caloriesBurned?: number;
 }
 
-export const useWeekCompletion = ({ planId, weekKey, enabled = true }: UseWeekCompletionParams) => {
+export const useWeekCompletion = ({ planId, weekKey, enabled = true, availableWeeks }: UseWeekCompletionParams) => {
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const { isOnline, enqueue } = useOfflineQueue();
@@ -64,6 +65,18 @@ export const useWeekCompletion = ({ planId, weekKey, enabled = true }: UseWeekCo
       staleTime: 30000, // 30 seconds
     });
   };
+
+  // Determine if the requested week is invalid (not in the plan)
+  // We only check this if availableWeeks is provided and populated
+  const isInvalidWeek = useMemo(() => {
+    if (!availableWeeks || availableWeeks.length === 0) return false;
+
+    // Normalize for case-insensitivity
+    const normalizedWeekKey = weekKey.replace(/\s+/g, '').toLowerCase();
+    const hasWeek = availableWeeks.some(w => w.replace(/\s+/g, '').toLowerCase() === normalizedWeekKey);
+
+    return !hasWeek;
+  }, [availableWeeks, weekKey]);
 
   const query = useQuery<CompletionState>({
     queryKey: ['week-completion', planId, weekKey],
@@ -106,14 +119,15 @@ export const useWeekCompletion = ({ planId, weekKey, enabled = true }: UseWeekCo
 
         toastError(
           'Fehler beim Laden',
-          'Trainingsplan konnte nicht geladen werden. Bitte versuche es erneut.',
-          3000
+          'Trainingsplan konnte nicht geladen werden. Bitte versuche es erneut.'
         );
 
         throw error;
       }
     },
-    enabled: enabled && !!user && !!planId, // Allow queries even when offline to use cache
+    // IMPORTANT: Disable query if week is invalid to prevent errors
+    // Also keep standard checks (user, planId)
+    enabled: enabled && !!user && !!planId && !isInvalidWeek,
     staleTime: 30000, // 30 seconds
     gcTime: 5 * 60 * 1000, // 5 minutes
     retry: false, // We handle retries manually with exponential backoff
@@ -193,6 +207,24 @@ export const useWeekCompletion = ({ planId, weekKey, enabled = true }: UseWeekCo
       }
     }
   });
+
+  // If week is invalid, return empty mock state immediately
+  // This bypasses the loading/error state of the query
+  if (isInvalidWeek) {
+    return {
+      completionMap: {},
+      isLoading: false,
+      isError: false,
+      error: null,
+      toggleExercise: () => { }, // No-op for invalid weeks
+      isToggling: false,
+      isOnline,
+      refetch: async () => ({ data: {}, isError: false }),
+      prefetchWeekCompletion,
+      isCached: false,
+      dataUpdatedAt: Date.now(),
+    };
+  }
 
   const completionMap = useMemo(() => query.data || {}, [query.data]);
 

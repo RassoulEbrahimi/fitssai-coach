@@ -175,7 +175,8 @@ const WorkoutView: React.FC<WorkoutViewProps> = ({
   } = useWeekCompletion({
     planId: livePlan?.id,
     weekKey: wk,
-    enabled: !!user && !!livePlan
+    enabled: !!user && !!livePlan,
+    availableWeeks: livePlan?.content ? Object.keys(livePlan.content) : []
   });
 
   // Helper function to fetch week completion
@@ -258,7 +259,7 @@ const WorkoutView: React.FC<WorkoutViewProps> = ({
     if (!livePlan?.created_at) return;
 
     const currentWeekNum = Number(wk.match(/\d+/)?.[0] ?? 1);
-    const newWeekNum = Math.min(4, currentWeekNum + 1);
+    const newWeekNum = Math.min(52, currentWeekNum + 1);
     const newWeekKey = `Week ${newWeekNum}`;
     const newDate = getDateFor(newWeekKey, activeDayIndex);
 
@@ -302,7 +303,7 @@ const WorkoutView: React.FC<WorkoutViewProps> = ({
     const w = params.get('w');
     const d = params.get('d');
     return {
-      w: w && /^[1-4]$/.test(w) ? parseInt(w) : null,
+      w: w && /^[1-9][0-9]*$/.test(w) ? parseInt(w) : null,
       d: d && /^[0-6]$/.test(d) ? parseInt(d) : null
     };
   };
@@ -313,20 +314,21 @@ const WorkoutView: React.FC<WorkoutViewProps> = ({
     }
   };
 
-  // Parse URL on mount and sync with selected date
-  useEffect(() => {
-    const {
-      w,
-      d
-    } = parseHashQuery();
-    if (w !== null && w >= 1 && w <= 4 && d !== null && d >= 0 && d <= 6) {
-      const weekKey = normalizeWeekKey(`Week ${w}`);
-      const dateForWeek = getDateFor(weekKey, d);
-      if (dateForWeek) {
-        handleDateChange(dateForWeek);
-      }
-    }
-  }, []); // Only run on mount
+  // Parse URL on mount and sync with selected date - DISABLED to ensure "Today" is always focused
+  // This was causing the calendar to get stuck on the last visited week stored in the URL
+  // useEffect(() => {
+  //   const {
+  //     w,
+  //     d
+  //   } = parseHashQuery();
+  //   if (w !== null && w >= 1 && d !== null && d >= 0 && d <= 6) {
+  //     const weekKey = normalizeWeekKey(`Week ${w}`);
+  //     const dateForWeek = getDateFor(weekKey, d);
+  //     if (dateForWeek) {
+  //       handleDateChange(dateForWeek);
+  //     }
+  //   }
+  // }, []); // Only run on mount
 
   // Update hash whenever activeWeek or activeDayIndex changes
   useEffect(() => {
@@ -383,9 +385,10 @@ const WorkoutView: React.FC<WorkoutViewProps> = ({
     }
   };
 
-  // Handle keyboard navigation in stepper
   const handleStepperKeyDown = (e: React.KeyboardEvent, weekNum: number) => {
-    const weeks = [1, 2, 3, 4];
+    // Dynamic weeks array based on current week to allow navigation
+    const maxWeek = Math.max(4, weekNum + 1);
+    const weeks = Array.from({ length: maxWeek }, (_, i) => i + 1);
     const currentIndex = weeks.indexOf(weekNum);
     switch (e.key) {
       case 'ArrowLeft':

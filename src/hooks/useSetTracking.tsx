@@ -1,6 +1,8 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
+import { useSupabaseAction } from "@/hooks/useSupabaseAction";
+import { useOfflineQueue } from "./useOfflineQueue";
 
 interface ToggleSetParams {
   planId: string;
@@ -28,12 +30,22 @@ interface WorkoutLogWithSets {
   workout_set_logs: SetLog[];
 }
 
-import { useOfflineQueue } from "./useOfflineQueue";
+// Standalone action function for clean separation
+const toggleSetAction = async (params: ToggleSetParams) => {
+  const { data, error } = await supabase.functions.invoke('toggle-set', {
+    body: params,
+  });
+
+  if (error) throw error;
+  if (!data?.success) throw new Error('Invalid response from server');
+
+  return data;
+};
 
 export function useSetTracking(planId: string | undefined, weekKey: string, dayIndex: number) {
   const { user } = useAuth();
   const queryClient = useQueryClient();
-  const { isOnline, enqueue } = useOfflineQueue();
+  const { isOnline } = useOfflineQueue();
 
   // Query to fetch completed sets for exercises on a specific day
   const {
@@ -87,46 +99,15 @@ export function useSetTracking(planId: string | undefined, weekKey: string, dayI
     staleTime: 30_000,
   });
 
-  // Mutation to toggle a set's completion
-  const toggleSetMutation = useMutation({
-    mutationFn: async (params: ToggleSetParams) => {
-      // Check if offline
-      if (!isOnline) {
-        enqueue('TOGGLE_SET', params);
-        return { success: true, queued: true };
-      }
-
-      try {
-        const { data, error } = await supabase.functions.invoke('toggle-set', {
-          body: params,
-        });
-
-        if (error) {
-          console.error('Error toggling set:', error);
-          throw new Error(error.message || 'Failed to toggle set');
-        }
-
-        if (!data?.success) {
-          throw new Error('Invalid response from server');
-        }
-
-        return data;
-      } catch (error: any) {
-        console.error('Error toggling set:', error);
-
-        // Network error handling
-        const isNetworkError =
-          error.message?.includes('Failed to fetch') ||
-          error.message?.includes('Network request failed');
-
-        if (isNetworkError) {
-          enqueue('TOGGLE_SET', params);
-          return { success: true, queued: true };
-        }
-        throw error;
-      }
+  // Replaces custom mutation with standardized action
+  const toggleSetMutation = useSupabaseAction({
+    action: toggleSetAction,
+    offlineActionType: 'TOGGLE_SET',
+    queryKey: ['workout-sets', planId, weekKey, dayIndex],
+    messages: {
+      error: 'Fehler beim Speichern des Satzes',
     },
-    onMutate: async (params) => {
+    onMutate: async (params: ToggleSetParams) => {
       // Cancel any outgoing queries
       await queryClient.cancelQueries({ queryKey: ['workout-sets', planId, weekKey, dayIndex] });
 
@@ -161,27 +142,17 @@ export function useSetTracking(planId: string | undefined, weekKey: string, dayI
         }
       );
 
-      // Handle offline queueing in onMutate or mutationFn?
-      // mutationFn is better for control flow, but we need access to `enqueue`.
-      // We can access `enqueue` from the hook scope.
-
       return { previousSets };
     },
-    onError: (err, params, context) => {
+    onError: (err, params, context: any) => {
       // Rollback on error
-      if (context?.previousSets && navigator.onLine) {
-        // Only rollback if online. If offline, we keep optimistic update.
+      if (context?.previousSets && isOnline) {
+        // Only rollback if online. If offline, the queue handles it eventually, 
+        // and we want to keep the optimistic state to show the user it "worked".
         queryClient.setQueryData(
           ['workout-sets', planId, weekKey, dayIndex],
           context.previousSets
         );
-      }
-      console.error('Error toggling set:', err);
-    },
-    onSettled: (data: any) => {
-      // Refetch to ensure consistency, but only if online and not queued
-      if (navigator.onLine && !data?.queued) {
-        queryClient.invalidateQueries({ queryKey: ['workout-sets', planId, weekKey, dayIndex] });
       }
     },
   });

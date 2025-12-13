@@ -20,32 +20,39 @@ export const useWorkoutHelpers = (workoutPlan: any) => {
    */
   const getWeekContentWithFallback = useCallback((weekKey: string) => {
     if (!workoutPlan?.content) return [];
-    
+
     // If week exists in plan (even with empty/partial days), return it directly - no mirroring
     const existing = workoutPlan.content[weekKey] || workoutPlan.content[weekKey.toLowerCase().replace(' ', '')];
     if (existing) return existing;
-    
+
     const weekNumber = parseInt(weekKey.replace(/\D/g, ''));
-    
+
     // Special fallback logic: if only Week 2 exists, keep Week 1 empty, mirror Week 2 to Weeks 3-4
     const week2 = workoutPlan.content['Week 2'] || workoutPlan.content['week2'];
     const week1 = workoutPlan.content['Week 1'] || workoutPlan.content['week1'];
-    
+
     if (weekNumber === 1 && !week1 && week2) {
       // Keep Week 1 empty (return empty array) - UI only
       return [];
     }
-    
+
     if ((weekNumber === 3 || weekNumber === 4) && !existing && week2) {
       // Mirror Week 2 into Weeks 3-4 - UI display only, backend still uses actual weekKey
       return week2;
     }
-    
+
     // Default fallback to Week 1 - UI display only, backend still uses actual weekKey
     if (weekNumber > 1 && weekNumber <= 4 && week1) {
       return week1;
     }
-    
+
+    // New fallback: If weekNumber > 4, try to use Week 4, then Week 2, then Week 1
+    if (weekNumber > 4) {
+      const week4 = workoutPlan.content['Week 4'] || workoutPlan.content['week4'];
+      const week3 = workoutPlan.content['Week 3'] || workoutPlan.content['week3'];
+      return week4 || week3 || week2 || week1 || [];
+    }
+
     return [];
   }, [workoutPlan?.content]);
 
@@ -103,6 +110,18 @@ export const useWorkoutHelpers = (workoutPlan: any) => {
 
     // Check if Week 2 exists and is being used as mirror source
     const week2 = workoutPlan.content['Week 2'] || workoutPlan.content['week2'];
+    const week1 = workoutPlan.content['Week 1'] || workoutPlan.content['week1'];
+
+    if (weekNumber > 4) {
+      const week4 = workoutPlan.content['Week 4'] || workoutPlan.content['week4'];
+      const week3 = workoutPlan.content['Week 3'] || workoutPlan.content['week3'];
+
+      if (week4) return { isMirrored: true, sourceWeek: 4 };
+      if (week3) return { isMirrored: true, sourceWeek: 3 };
+      if (week2) return { isMirrored: true, sourceWeek: 2 };
+      if (week1) return { isMirrored: true, sourceWeek: 1 };
+    }
+
     if ((weekNumber === 3 || weekNumber === 4) && week2) {
       return {
         isMirrored: true,
@@ -111,7 +130,6 @@ export const useWorkoutHelpers = (workoutPlan: any) => {
     }
 
     // Check if Week 1 is being used as fallback
-    const week1 = workoutPlan.content['Week 1'] || workoutPlan.content['week1'];
     if (weekNumber > 1 && week1) {
       return {
         isMirrored: true,
@@ -125,10 +143,10 @@ export const useWorkoutHelpers = (workoutPlan: any) => {
     };
   }, [workoutPlan?.content]);
 
-  return { 
-    getWeekContentWithFallback, 
-    calcWeekStats, 
-    getProgressColor, 
-    getWeekMirrorInfo 
+  return {
+    getWeekContentWithFallback,
+    calcWeekStats,
+    getProgressColor,
+    getWeekMirrorInfo
   };
 };
