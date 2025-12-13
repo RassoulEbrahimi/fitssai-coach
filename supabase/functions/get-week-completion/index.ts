@@ -85,34 +85,23 @@ Deno.serve(async (req) => {
 
     console.log(`[get-week-completion] Week date range (Berlin): ${weekStartStr} to ${weekEndStr}`);
 
-    // Fetch all logs for this week in ONE query
-    const { data: logs, error: logsError } = await sb
-      .from("workout_logs")
-      .select("plan_id, week_key, day_index, exercise_index, completed, workout_day")
-      .eq("plan_id", planId)
-      .eq("week_key", weekKey)
-      .gte("workout_day", weekStartStr)
-      .lte("workout_day", weekEndStr);
+    // Call RPC to get lightweight completion map
+    const { data: completionMap, error: rpcError } = await sb.rpc('get_weekly_completion_map', {
+      p_user_id: user.id,
+      p_plan_id: planId,
+      p_week_key: weekKey,
+      p_start_date: weekStartStr,
+      p_end_date: weekEndStr
+    });
 
-    if (logsError) {
-      console.error("Logs fetch error:", logsError);
+    if (rpcError) {
+      console.error("RPC Error:", rpcError);
       return new Response(
-        JSON.stringify({ error: "Failed to fetch logs" }),
+        JSON.stringify({ error: "Failed to fetch completion data" }),
         { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    console.log(`[get-week-completion] Found ${logs?.length || 0} logs`);
-
-    // Build flat completion map: { "Week 1_0_0": true, "Week 1_0_1": false, ... }
-    const completionMap: Record<string, boolean> = {};
-
-    if (logs && logs.length > 0) {
-      for (const log of logs) {
-        const completionKey = `${weekKey}_${log.day_index}_${log.exercise_index}`;
-        completionMap[completionKey] = log.completed;
-      }
-    }
 
     console.log(`[get-week-completion] Returning flat completion map with ${Object.keys(completionMap).length} entries`);
 

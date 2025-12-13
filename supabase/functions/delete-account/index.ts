@@ -30,10 +30,10 @@ Deno.serve(async (req) => {
 
     const authHeader = req.headers.get('Authorization')!;
     const token = authHeader.replace('Bearer ', '');
-    
+
     // Verify the user's JWT token
     const { data: { user }, error: userError } = await supabaseClient.auth.getUser(token);
-    
+
     if (userError || !user) {
       return new Response(
         JSON.stringify({ error: 'Nicht autorisiert' }),
@@ -73,7 +73,7 @@ Deno.serve(async (req) => {
 
       if (existing) {
         return new Response(
-          JSON.stringify({ 
+          JSON.stringify({
             error: 'Löschung bereits angefordert',
             deletion_date: existing.deletion_date
           }),
@@ -84,7 +84,7 @@ Deno.serve(async (req) => {
       // Create deletion request with 14-day grace period
       const deletionDate = new Date();
       deletionDate.setDate(deletionDate.getDate() + 14);
-      
+
       const confirmationToken = crypto.randomUUID();
 
       const { error: insertError } = await supabaseClient
@@ -104,7 +104,7 @@ Deno.serve(async (req) => {
       }
 
       return new Response(
-        JSON.stringify({ 
+        JSON.stringify({
           success: true,
           message: 'Löschung geplant',
           deletion_date: deletionDate.toISOString(),
@@ -130,9 +130,9 @@ Deno.serve(async (req) => {
       }
 
       return new Response(
-        JSON.stringify({ 
+        JSON.stringify({
           success: true,
-          message: 'Löschung abgebrochen' 
+          message: 'Löschung abgebrochen'
         }),
         { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
@@ -167,7 +167,7 @@ Deno.serve(async (req) => {
 
       if (now < deletionDate) {
         return new Response(
-          JSON.stringify({ 
+          JSON.stringify({
             error: 'Wartezeit noch nicht abgelaufen',
             deletion_date: deletionDate.toISOString()
           }),
@@ -176,15 +176,16 @@ Deno.serve(async (req) => {
       }
 
       // Proceed with actual deletion
-      await supabaseClient.from('workout_logs').delete().eq('user_id', userId);
-      await supabaseClient.from('workout_plans').delete().eq('user_id', userId);
-      await supabaseClient.from('nutrition_plans').delete().eq('user_id', userId);
-      await supabaseClient.from('ai_feedback').delete().eq('user_id', userId);
-      await supabaseClient.from('deletion_requests').delete().eq('user_id', userId);
-      await supabaseClient.from('profiles').delete().eq('id', userId);
-      
+      // Database constraints are set to ON DELETE CASCADE for all user-owned tables.
+      // Deleting the user from auth.users will automatically clean up:
+      // - profiles
+      // - workout_plans
+      // - nutrition_plans
+      // - workout_logs
+      // - ai_feedback
+      // - deletion_requests
       const { error: authDeleteError } = await supabaseClient.auth.admin.deleteUser(userId);
-      
+
       if (authDeleteError) {
         console.error('[ERROR] Failed to delete auth user');
         return new Response(
@@ -194,9 +195,9 @@ Deno.serve(async (req) => {
       }
 
       return new Response(
-        JSON.stringify({ 
+        JSON.stringify({
           success: true,
-          message: 'Konto erfolgreich gelöscht' 
+          message: 'Konto erfolgreich gelöscht'
         }),
         { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
@@ -209,7 +210,7 @@ Deno.serve(async (req) => {
 
   } catch (error) {
     console.error('[ERROR] Unhandled exception:', error.message);
-    
+
     return new Response(
       JSON.stringify({ error: 'Ein unerwarteter Fehler ist aufgetreten' }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }

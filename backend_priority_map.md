@@ -31,13 +31,19 @@ This document outlines the current state of the backend (Supabase Edge Functions
 - [x] Standardize HTTP error codes (400 for input, 500 for AI/DB).
 - [x] Ensure strict type safety.
 
-### Mission 3: Dashboard Load Performance (`get-week-completion`)
+### Mission 3: Dashboard Load Performance (`get-week-completion`) (Completed)
 **Why:** The dashboard is the landing page. Fetching all raw logs just to show checkmarks is inefficient.
 **Goal:** Optimize `get-week-completion` to return a lightweight bitmap or simplified JSON.
-**Tasks:**
-- Write an optimized SQL query to return `day_index, exercise_index` pairs only.
-- Minimize payload size.
-- Ensure `getWeekDateRange` handles timezone edge cases correctly (Berlin time noted in code).
+**Status:** **Completed.** Implemented `get_weekly_completion_map` RPC and refactored Edge Function.
+
+## Future Roadmap (Refactoring Candidates)
+The following hooks should be refactored to use `useSupabaseAction` for consistent error handling and offline support:
+- `src/hooks/useSetTracking.tsx` (Critical - Workout usage)
+- `src/hooks/queries/useWorkoutLogs.ts` (Critical - Dashboard usage)
+- `src/hooks/useAddExercise.tsx`
+- `src/hooks/useDeleteExercise.tsx`
+- `src/hooks/useExerciseEditor.tsx`
+- `src/hooks/useRestoreExercise.tsx`
 
 ## Build/Test Notes
 - **Lint:** `npm run lint` failed with 161 problems. Most are `no-explicit-any` in Edge Functions (`update-exercise`, `generate-plans`).

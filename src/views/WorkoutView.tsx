@@ -98,9 +98,20 @@ const WorkoutView: React.FC<WorkoutViewProps> = ({
   const planId = workoutPlan?.id;
   const { data: livePlan, isLoading: isLoadingPlan } = useQuery({
     queryKey: ['workout-plan', planId],
+    queryFn: async () => {
+      if (!planId) return null;
+      const { data, error } = await supabase
+        .from('workout_plans')
+        .select('*')
+        .eq('id', planId)
+        .single();
+
+      if (error) throw error;
+      return data;
+    },
     enabled: !!planId,
     initialData: workoutPlan,
-    staleTime: 0,
+    staleTime: 1000 * 60 * 5, // 5 minutes (increased from 0 to prevent immediate refetch loop if initialData is provided)
   });
 
   // Use consolidated workout helpers hook
