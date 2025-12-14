@@ -16,6 +16,7 @@ import "./lib/i18n";
 import { QueryProvider } from "@/components/providers/QueryProvider";
 import { Suspense, lazy } from "react";
 import PageSkeleton from "@/components/skeletons/PageSkeleton"; // Assuming this exists or using a generic loader
+import { PWAInstallPrompt } from "@/components/PWAInstallPrompt";
 
 // Lazy load pages
 const AuthPage = lazy(() => import('./pages/AuthPage'));
@@ -57,6 +58,7 @@ const App = () => {
                   </div>
                   <Toaster />
                   <Sonner />
+                  <PWAInstallPrompt />
                   <BrowserRouter>
                     <Suspense fallback={<div className="h-screen w-full flex items-center justify-center bg-background"><div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div></div>}>
                       <Routes>
