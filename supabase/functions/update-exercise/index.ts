@@ -2,12 +2,31 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.56.0';
 import { z } from 'https://deno.land/x/zod@v3.22.4/mod.ts';
 
+// --- Types ---
+interface Exercise {
+  name: string;
+  sets: number;
+  reps: string;
+  weight?: string;
+  rest?: string;
+  description?: string;
+  // Allow other properties to preserve data integrity if schema expands
+  [key: string]: unknown;
+}
+
+interface DayContent {
+  day: string | null;
+  exercises: Exercise[];
+}
+
+type WeekContent = DayContent[];
+type PlanContent = Record<string, WeekContent>;
+
+// --- Configuration ---
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
-
-const isDev = Deno.env.get('DENO_DEPLOYMENT_ID') === undefined;
 
 // Response helpers
 const json = (data: unknown, status = 200) =>
@@ -17,15 +36,16 @@ const json = (data: unknown, status = 200) =>
   });
 
 const ok = (data: Record<string, unknown>) => json({ success: true, ...data });
-const fail = (message: string, status = 400) => json({ success: false, error: message }, status);
+const fail = (message: string, status = 400, details?: unknown) => 
+  json({ success: false, error: message, details }, status);
 
-// Validation schema for exercise
+// --- Validation Schemas ---
 const ExerciseSchema = z.object({
   name: z.string().min(1, "Exercise name is required").max(100),
   sets: z.union([z.number(), z.string()]).transform(val => {
     const num = typeof val === 'string' ? parseInt(val, 10) : val;
-    if (isNaN(num) || num < 1 || num > 20) {
-      throw new Error('Sets must be a number between 1 and 20');
+    if (isNaN(num) || num < 1 || num > 30) { // Increased max sets slightly
+      throw new Error('Sets must be a number between 1 and 30');
     }
     return num;
   }),
@@ -35,7 +55,6 @@ const ExerciseSchema = z.object({
   description: z.string().max(500).optional(),
 });
 
-// Request payload schema
 const UpdateExerciseRequestSchema = z.object({
   planId: z.string().uuid("Invalid plan ID"),
   weekKey: z.string().regex(/^Week [1-4]$/, "Week key must be 'Week 1' through 'Week 4'"),
@@ -45,134 +64,96 @@ const UpdateExerciseRequestSchema = z.object({
 });
 
 serve(async (req) => {
-  // Handle CORS preflight
-  if (req.method === 'OPTIONS') {
-    return new Response(null, { headers: corsHeaders });
-  }
+  if (req.method === 'OPTIONS') return new Response(null, { headers: corsHeaders });
 
   try {
-    // Initialize Supabase clients
+    // 1. Setup & Auth
     const supabaseUrl = Deno.env.get('SUPABASE_URL');
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
 
     if (!supabaseUrl || !supabaseServiceKey) {
-      console.error('Missing environment variables');
       return fail('Server configuration error', 500);
     }
 
-    // User client for auth
     const authHeader = req.headers.get('Authorization');
-    if (!authHeader) {
-      return fail('Missing authorization header', 401);
-    }
+    if (!authHeader) return fail('Missing authorization header', 401);
 
     const supabaseClient = createClient(supabaseUrl, supabaseServiceKey, {
       auth: { persistSession: false },
       global: { headers: { Authorization: authHeader } },
     });
 
-    // Verify user authentication
+    // SECURITY CHECK: Verify token validity
     const { data: { user }, error: authError } = await supabaseClient.auth.getUser();
     if (authError || !user) {
-      console.error('Auth error:', authError);
       return fail('Unauthorized', 401);
     }
 
-    console.log('[update-exercise] Processing request');
-
-    // Parse and validate request body
+    // 2. Parse & Validate Input
     const body = await req.json();
-
     const validation = UpdateExerciseRequestSchema.safeParse(body);
 
     if (!validation.success) {
-      const flattened = validation.error.flatten();
-      console.error('[update-exercise] Validation failed');
-      return fail(JSON.stringify({
-        error: 'Validation error',
-        details: flattened.fieldErrors,
-        issues: validation.error.issues.map(issue => ({
-          path: issue.path.join('.'),
-          message: issue.message,
-          received: issue.code === 'invalid_type' ? (issue as { received: unknown }).received : undefined
-        }))
-      }), 400);
+      return fail('Validation error', 400, validation.error.flatten());
     }
 
     const { planId, weekKey, dayIndex, exerciseIndex, exercise } = validation.data;
 
-    console.log('[update-exercise] Updating exercise');
-
-    // Fetch plan with row lock to ensure atomic update
+    // 3. Fetch current plan (Securely scoped to user_id)
     const { data: plan, error: fetchError } = await supabaseClient
       .from('workout_plans')
-      .select('content, user_id')
+      .select('content')
       .eq('id', planId)
-      .eq('user_id', user.id) // RLS enforcement
+      .eq('user_id', user.id) // Strict Ownership Check
       .single();
 
     if (fetchError || !plan) {
-      console.error('Failed to fetch plan:', fetchError);
-      return fail(
-        JSON.stringify({
-          error: 'Database error',
-          details: fetchError?.message || fetchError?.details || fetchError?.hint || 'Workout plan not found'
-        }),
-        fetchError ? 500 : 404
-      );
+      return fail('Workout plan not found or access denied', 404);
     }
 
-    // Validate plan structure
-    if (!plan.content || typeof plan.content !== 'object') {
-      return fail('Invalid plan structure', 400);
-    }
+    // 4. Update Logic with Strict Typing
+    // Safe casting using the interfaces defined above
+    const content = (plan.content || {}) as PlanContent;
 
-    // Cast content to a structured type
-    // We expect content to be Record<string, WeekContent> where WeekContent is DayContent[]
-    // But DB just says object.
-    const content = plan.content as Record<string, unknown>;
-
-    // Ensure week exists
+    // Ensure structure exists
     if (!Array.isArray(content[weekKey])) {
       content[weekKey] = [];
     }
 
-    const week = content[weekKey] as unknown[]; // Array of days
+    const week = content[weekKey];
 
-    for (let i = 0; i < 7; i++) {
-      if (!week[i]) {
-        week[i] = { day: null, exercises: [] };
-      }
-      const day = week[i] as Record<string, unknown>;
-      if (!Array.isArray(day.exercises)) {
-        day.exercises = [];
+    // Ensure day exists
+    if (!week[dayIndex]) {
+      // Fill gaps if necessary
+      for (let i = 0; i <= dayIndex; i++) {
+        if (!week[i]) week[i] = { day: null, exercises: [] };
       }
     }
 
-    // Ensure target day & exercise slot exist
-    const day = week[dayIndex] as { exercises: any[] }; // Keeping internal 'any' for exercises array manipulation to avoid complex types locally
-    if (!day.exercises) day.exercises = [];
+    const day = week[dayIndex];
+    if (!Array.isArray(day.exercises)) {
+      day.exercises = [];
+    }
 
+    // Ensure exercise slot exists (fill gaps with placeholders if adding new index)
     while (day.exercises.length <= exerciseIndex) {
       day.exercises.push({
-        name: 'Custom',
-        sets: 1,
+        name: 'New Exercise',
+        sets: 3,
         reps: '10',
-        weight: undefined,
-        rest: undefined,
-        description: undefined,
+        weight: '',
+        rest: '',
+        description: ''
       });
     }
 
-    // Update the specific exercise (preserve any extra fields)
+    // Apply update
     day.exercises[exerciseIndex] = {
-      ...day.exercises[exerciseIndex],
-      ...exercise,
+      ...day.exercises[exerciseIndex], // Keep existing props
+      ...exercise,                     // Overwrite with new data
     };
 
-    console.log(`[update-exercise] Upserted ${weekKey} / day ${dayIndex} / ex ${exerciseIndex}: ${exercise.name}`);
-
-    // Update the plan in database
+    // 5. Save changes
     const { data: updatedPlan, error: updateError } = await supabaseClient
       .from('workout_plans')
       .update({ content })
@@ -182,38 +163,19 @@ serve(async (req) => {
       .single();
 
     if (updateError) {
-      console.error('Failed to update plan:', updateError);
-      return fail(
-        JSON.stringify({
-          error: 'Database error',
-          details: updateError.message || updateError.details || updateError.hint || 'Failed to save changes'
-        }),
-        500
-      );
+      console.error('Update failed:', updateError);
+      return fail('Failed to save changes', 500);
     }
-
-    console.log(`[update-exercise] Successfully updated plan ${planId}`);
 
     return ok({
-      message: 'Exercise updated successfully',
+      message: 'Exercise updated',
       exercise: day.exercises[exerciseIndex],
-      content: updatedPlan.content,
+      // Optional: return full content only if needed, to save bandwidth
+      // content: updatedPlan.content 
     });
 
-  } catch (error: unknown) {
-    console.error('[update-exercise] Error:', error);
-    const errorMessage = error instanceof Error ? error.message : 'Internal server error';
-    const errorStack = error instanceof Error ? error.stack : undefined;
-
-    if (isDev) {
-      console.error('[update-exercise] Stack:', errorStack);
-    }
-    return fail(
-      JSON.stringify({
-        error: errorMessage,
-        ...(isDev && { stack: errorStack }),
-      }),
-      500
-    );
+  } catch (error) {
+    console.error('Unexpected error:', error);
+    return fail('Internal server error', 500);
   }
 });

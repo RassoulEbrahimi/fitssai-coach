@@ -1,107 +1,91 @@
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.56.0';
 import { z } from "https://deno.land/x/zod@v3.22.4/mod.ts";
 
+// --- Types ---
+interface AIParsedResponse {
+  suggestions: Array<{
+    name: string;
+    sets: number | string;
+    reps: number | string;
+    duration: number | string;
+    description: string;
+  }>;
+}
+
+// --- Helpers ---
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-// Validation schema
+const json = (data: unknown, status = 200) =>
+  new Response(JSON.stringify(data), {
+    status,
+    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+  });
+
+const ok = (data: Record<string, unknown>) => json({ success: true, ...data });
+const fail = (message: string, code: string, status = 400) => 
+  json({ success: false, error: message, code }, status);
+
+// --- Validation ---
 const GenerateSuggestionsSchema = z.object({
-  day_of_week: z.string().min(1).max(50, 'Day of week must be less than 50 characters'),
-  available_time: z.number().int().min(5, 'Available time must be at least 5 minutes').max(300, 'Available time must be less than 300 minutes'),
-  custom_prompt: z.string().max(1000, 'Custom prompt must be less than 1000 characters').optional(),
-  focus_type: z.enum(['auto', 'strength', 'cardio', 'flexibility', 'mobility']).default('auto'),
+  day_of_week: z.string().min(1).max(50),
+  available_time: z.number().int().min(5).max(300),
+  custom_prompt: z.string().max(1000).optional(),
+  focus_type: z.enum(['auto', 'strength', 'cardio', 'flexibility', 'mobility', 'kraft', 'weniger', 'mehr', 'gelenk_knie', 'gelenk_hand']).default('auto'),
 });
 
-// Sanitize custom prompt to prevent injection attacks
 const sanitizePrompt = (prompt: string | undefined): string | undefined => {
   if (!prompt) return undefined;
-  // Remove control characters and trim
   return prompt.replace(/[\x00-\x1F\x7F]/g, '').trim();
 };
 
 serve(async (req) => {
-  // Handle CORS preflight requests
-  if (req.method === 'OPTIONS') {
-    return new Response(null, { headers: corsHeaders });
-  }
+  if (req.method === 'OPTIONS') return new Response(null, { headers: corsHeaders });
 
   try {
-    const openAIApiKey = Deno.env.get('OPENAI_API_KEY_New');
-    const SUPABASE_URL = Deno.env.get('SUPABASE_URL');
-    const SUPABASE_ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY');
+    // 1. Setup
+    const openAIApiKey = Deno.env.get('OPENAI_API_KEY_New'); // Keeping your specific var name
+    const supabaseUrl = Deno.env.get('SUPABASE_URL');
+    const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY');
 
-    if (!openAIApiKey) {
-      console.error('[ERROR] Missing OpenAI configuration');
-      return new Response(
-        JSON.stringify({ error: 'AI-Dienst nicht konfiguriert', code: 'OPENAI_KEY_MISSING' }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
+    if (!openAIApiKey) return fail('AI-Dienst nicht konfiguriert', 'OPENAI_KEY_MISSING', 500);
+    if (!supabaseUrl || !supabaseAnonKey) return fail('Server-Konfigurationsfehler', 'CONFIG_MISSING', 500);
 
-    if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
-      console.error('[ERROR] Missing Supabase configuration');
-      return new Response(
-        JSON.stringify({ error: 'Server-Konfigurationsfehler', code: 'SUPABASE_CONFIG_MISSING' }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
+    const authHeader = req.headers.get('Authorization');
+    if (!authHeader) return fail('Nicht autorisiert', 'UNAUTHORIZED', 401);
 
-    // Create authenticated client
-    const supabaseClient = createClient(
-      SUPABASE_URL,
-      SUPABASE_ANON_KEY,
-      { global: { headers: { Authorization: req.headers.get('Authorization')! } } }
-    );
+    const supabaseClient = createClient(supabaseUrl, supabaseAnonKey, {
+      global: { headers: { Authorization: authHeader } },
+    });
 
-    // Get current user
+    // 2. Auth Check
     const { data: { user }, error: userError } = await supabaseClient.auth.getUser();
+    if (userError || !user) return fail('Nicht autorisiert', 'UNAUTHORIZED', 401);
 
-    if (userError || !user) {
-      console.error('[ERROR] Authentication failed');
-      return new Response(
-        JSON.stringify({ error: 'Nicht autorisiert', code: 'UNAUTHORIZED' }),
-        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    // Parse and validate request body
+    // 3. Validation
     const body = await req.json();
     const validation = GenerateSuggestionsSchema.safeParse(body);
 
     if (!validation.success) {
-      console.error('[ERROR] Input validation failed');
-      return new Response(
-        JSON.stringify({ error: 'Ungültige Eingabedaten', code: 'VALIDATION_ERROR' }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+      return fail('Ungültige Eingabedaten', 'VALIDATION_ERROR', 400);
     }
 
     const { day_of_week, available_time, focus_type } = validation.data;
     const custom_prompt = sanitizePrompt(validation.data.custom_prompt);
 
-    // Fetch user profile
+    // 4. Fetch Context (Profile & Feedback)
     const { data: profile, error: profileError } = await supabaseClient
       .from('profiles')
       .select('*')
       .eq('id', user.id)
       .single();
 
-    if (profileError || !profile) {
-      console.error('[ERROR] Profile fetch failed');
-      return new Response(
-        JSON.stringify({
-          error: 'Profil nicht gefunden',
-          code: 'PROFILE_NOT_FOUND'
-        }),
-        { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
+    if (profileError || !profile) return fail('Profil nicht gefunden', 'PROFILE_NOT_FOUND', 404);
 
-    // Fetch user feedback for adaptive prompting
     const { data: feedbackData } = await supabaseClient
       .from('ai_feedback')
       .select('reason, accepted')
@@ -109,26 +93,28 @@ serve(async (req) => {
       .order('created_at', { ascending: false })
       .limit(20);
 
-    // Initialize feedback counts at function scope
-    const feedbackCounts = {
-      super: 0,
-      hard: 0,
-      light: 0,
-      notstyle: 0
-    };
+    // 5. Build Prompt
+    const feedbackCounts = { super: 0, hard: 0, light: 0, notstyle: 0 };
+    
+    // Analyze feedback
+    if (feedbackData && feedbackData.length > 0 && !custom_prompt) {
+      for (const item of feedbackData) {
+        const reason = (item.reason || "").toLowerCase();
+        if (reason.includes("good") || reason === "good" || item.accepted) feedbackCounts.super++;
+        if (reason.includes("hard") || reason === "hard") feedbackCounts.hard++;
+        if (reason.includes("light") || reason === "light") feedbackCounts.light++;
+        if (reason.includes("notstyle") || reason === "notstyle") feedbackCounts.notstyle++;
+      }
+    }
 
-    // Build AI prompt with optional adaptive adjustments
     let basePrompt = custom_prompt || `Generate 3-5 personalized workout exercises in German for:
-- Day: ${day_of_week || 'Wochentag'}
-- Fitness Goal: ${profile.fitness_goal}
-- Experience Level: ${profile.experience_level || 'Beginner'}
-- Available Time: ${available_time || 45} minutes
-- Age: ${profile.age}, Weight: ${profile.weight}kg, Height: ${profile.height}cm
+- Day: ${day_of_week}
+- Goal: ${profile.fitness_goal}
+- Level: ${profile.experience_level || 'Beginner'}
+- Time: ${available_time} min
+- Stats: ${profile.age}y, ${profile.weight}kg, ${profile.height}cm`;
 
-Make exercises specific, realistic, and suitable for their level. Include rest periods in duration.`;
-
-    // ALWAYS append JSON format requirement, even for custom prompts
-    let prompt = basePrompt + `\n\nReturn ONLY valid JSON in this EXACT format (no other text):
+    let prompt = basePrompt + `\n\nReturn ONLY valid JSON in this EXACT format:
 {
   "suggestions": [
     {
@@ -136,75 +122,39 @@ Make exercises specific, realistic, and suitable for their level. Include rest p
       "sets": 4,
       "reps": 8,
       "duration": 15,
-      "description": "Brief reason why this exercise fits"
+      "description": "Brief reason"
     }
   ]
 }`;
 
-    // Apply adaptive adjustments based on feedback if available
-    if (feedbackData && feedbackData.length > 0 && !custom_prompt) {
-
-      for (const item of feedbackData) {
-        const reason = item.reason?.toLowerCase() || "";
-        if (reason.includes("good") || reason === "good" || item.accepted) feedbackCounts.super++;
-        if (reason.includes("hard") || reason === "hard") feedbackCounts.hard++;
-        if (reason.includes("light") || reason === "light") feedbackCounts.light++;
-        if (reason.includes("notstyle") || reason === "notstyle") feedbackCounts.notstyle++;
-      }
-
-      // Adjust prompt based on patterns
-      if (feedbackCounts.hard > feedbackCounts.light * 1.5) {
-        prompt += "\n\nWICHTIG: Der Nutzer fand vorherige Workouts oft zu anstrengend. Passe die Intensität leicht nach unten an, reduziere Gewichte um 10-15% und füge mehr Pausenzeit ein.";
-      } else if (feedbackCounts.light > feedbackCounts.hard * 1.5) {
-        prompt += "\n\nWICHTIG: Der Nutzer sucht mehr Herausforderung. Erhöhe die Intensität leicht, füge progressive Überlastung hinzu und reduziere Pausenzeiten.";
-      }
-
-      if (feedbackCounts.notstyle > 3 && feedbackCounts.notstyle > feedbackCounts.super) {
-        prompt += "\n\nWICHTIG: Der Nutzer wünscht sich mehr Variation. Wechsle den Trainingsstil, probiere neue Übungsvarianten aus und bringe mehr Abwechslung rein.";
-      }
-
-      if (feedbackCounts.super > feedbackData.length * 0.7) {
-        prompt += "\n\nHINWEIS: Der Nutzer ist sehr zufrieden mit dem aktuellen Stil. Behalte die aktuelle Intensität und Struktur bei.";
-      }
+    // Adaptive Logic
+    if (!custom_prompt) {
+      if (feedbackCounts.hard > feedbackCounts.light * 1.5) prompt += "\n\nADJUST: Less intensity, -10% weights, more rest.";
+      else if (feedbackCounts.light > feedbackCounts.hard * 1.5) prompt += "\n\nADJUST: More intensity, progressive overload.";
+      
+      if (feedbackCounts.notstyle > 3 && feedbackCounts.notstyle > feedbackCounts.super) prompt += "\n\nADJUST: Change training style, more variety.";
     }
 
-    // Apply focus_type adjustments
-    switch (focus_type) {
-      case 'cardio':
-        prompt += "\n\nFOKUS: Cardio. Bevorzuge Ausdauer-/HIIT-/Intervall-Elemente. Geringe bis mittlere Last, höhere Herzfrequenz.";
-        break;
-      case 'kraft':
-        prompt += "\n\nFOKUS: Kraft. Bevorzuge mehr Sätze/geringere Wdh., längere Pausen, progressive Überlastung.";
-        break;
-      case 'weniger':
-        prompt += "\n\nFOKUS: Geringere Intensität. Leichtere Varianten, 10–15% weniger Last, längere Pausen, sichere Technik.";
-        break;
-      case 'mehr':
-        prompt += "\n\nFOKUS: Höhere Intensität. Anspruchsvollere Varianten, kürzere Pausen, behalte Sicherheitshinweise.";
-        break;
-      case 'mobilitaet':
-        prompt += "\n\nFOKUS: Mobilität/Beweglichkeit. Integriere Mobility- und Stretch-Blöcke (Aufwärmen+Cooldown).";
-        break;
-      case 'gelenk_knie':
-        prompt += "\n\nFOKUS: Knie-schonend. Vermeide tiefe Kniebelastungen; nutze Alternativen (z. B. Step-ups, Hip Hinge, Box Squats).";
-        break;
-      case 'gelenk_hand':
-        prompt += "\n\nFOKUS: Handgelenk-schonend. Vermeide stützlastige Übungen; nutze Fäuste/Griffe/Unterarme oder Maschinen-Alternativen.";
-        break;
-      default:
-      // auto → no extra line
-    }
+    // Focus Logic
+    const focusMap: Record<string, string> = {
+      'cardio': "\n\nFOKUS: Cardio/HIIT. High heart rate.",
+      'kraft': "\n\nFOKUS: Strength. Low reps, high load.",
+      'weniger': "\n\nFOKUS: Low intensity. Safety first.",
+      'mehr': "\n\nFOKUS: High intensity. Push limits.",
+      'mobilitaet': "\n\nFOKUS: Mobility & Stretching.",
+      'gelenk_knie': "\n\nFOKUS: Knee-friendly. No deep squats/jumps.",
+      'gelenk_hand': "\n\nFOKUS: Wrist-friendly. No heavy support on hands.",
+    };
+    if (focusMap[focus_type]) prompt += focusMap[focus_type];
 
-    // Validate prompt before sending to OpenAI
-    if (!prompt || prompt.trim().length < 10) {
-      prompt = "Erstelle ein 30-minütiges Ganzkörper-Workout mit Fokus auf Kraft, Core und Ausdauer.";
-    }
+    if (!prompt || prompt.trim().length < 10) prompt = "Erstelle ein 30-minütiges Ganzkörper-Workout.";
 
-    // Start performance tracking
+    // 6. Call OpenAI
     const startTime = performance.now();
     let aiSuccess = false;
     let aiStatusCode = 0;
     let aiErrorMessage: string | null = null;
+    let suggestions = [];
 
     try {
       const response = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -217,10 +167,7 @@ Make exercises specific, realistic, and suitable for their level. Include rest p
           model: 'gpt-4o-mini',
           response_format: { type: 'json_object' },
           messages: [
-            {
-              role: 'system',
-              content: 'You are a professional fitness trainer. You MUST respond with valid JSON only in the exact format specified. Use German for all exercise names and descriptions. Never add explanatory text outside the JSON structure.'
-            },
+            { role: 'system', content: 'You are a fitness trainer. Respond with valid JSON only. German language.' },
             { role: 'user', content: prompt }
           ],
           temperature: 0.7,
@@ -231,96 +178,44 @@ Make exercises specific, realistic, and suitable for their level. Include rest p
       aiSuccess = response.ok;
 
       if (!response.ok) {
-        const errorText = await response.text();
-        aiErrorMessage = errorText;
-
-        // Handle rate limit / quota exhaustion specifically
-        if (response.status === 429 || errorText.includes('insufficient_quota')) {
-          console.error('[ERROR] OpenAI rate limit exceeded');
-          return new Response(
-            JSON.stringify({
-              error: 'AI-Dienst überlastet oder Kontingent erschöpft.',
-              code: 'RATE_LIMIT_OR_QUOTA_EXCEEDED'
-            }),
-            { status: 429, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-          );
-        }
-
-        console.error('[ERROR] OpenAI API request failed');
-        return new Response(
-          JSON.stringify({
-            error: 'Fehler beim Generieren der Vorschläge',
-            code: 'GENERATION_FAILED'
-          }),
-          { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
+        const errText = await response.text();
+        aiErrorMessage = errText;
+        if (response.status === 429) return fail('AI-Dienst überlastet', 'RATE_LIMIT', 429);
+        throw new Error(`OpenAI Error: ${errText}`);
       }
 
       const data = await response.json();
-      const generatedContent = data.choices[0].message.content;
+      const content = data.choices[0]?.message?.content;
+      
+      if (!content) throw new Error('Empty response from AI');
 
-      let parsedContent;
-      try {
-        parsedContent = JSON.parse(generatedContent);
-      } catch (parseError: any) {
-        console.error('[ERROR] Failed to parse AI response');
-        return new Response(
-          JSON.stringify({
-            error: 'KI-Antwort konnte nicht verarbeitet werden',
-            code: 'GENERATION_FAILED'
-          }),
-          { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
+      const parsed = JSON.parse(content) as AIParsedResponse;
+      if (!parsed.suggestions || !Array.isArray(parsed.suggestions)) {
+        throw new Error('Invalid JSON structure');
       }
+      suggestions = parsed.suggestions;
 
-      // Validate that we have actual suggestions
-      if (!parsedContent || !parsedContent.suggestions || parsedContent.suggestions.length === 0) {
-        console.error('[ERROR] No suggestions generated');
-        return new Response(
-          JSON.stringify({
-            error: 'Keine Vorschläge erhalten',
-            code: 'NO_SUGGESTIONS'
-          }),
-          { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
-      }
-
-      return new Response(
-        JSON.stringify(parsedContent),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-
-    } catch (aiError: any) {
-      aiSuccess = false;
-      aiErrorMessage = aiError.message || aiError.toString();
-      throw aiError;
+    } catch (err) {
+      aiErrorMessage = err instanceof Error ? err.message : String(err);
+      console.error('AI Error:', aiErrorMessage);
+      return fail('Fehler beim Generieren', 'GENERATION_FAILED', 500);
     } finally {
-      // Calculate latency
+      // 7. Log to DB
       const latency = Math.round(performance.now() - startTime);
-
-      // Log AI request to database
-      try {
-        await supabaseClient.from('ai_logs').insert({
-          user_id: user.id,
-          model: 'gpt-4o-mini',
-          latency_ms: latency,
-          success: aiSuccess,
-          status_code: aiStatusCode || null,
-          error_message: aiErrorMessage
-        });
-      } catch (logError: unknown) {
-        // Don't fail the request if logging fails
-      }
+      await supabaseClient.from('ai_logs').insert({
+        user_id: user.id,
+        model: 'gpt-4o-mini',
+        latency_ms: latency,
+        success: aiSuccess,
+        status_code: aiStatusCode,
+        error_message: aiErrorMessage
+      });
     }
 
-  } catch (error: unknown) {
-    console.error('[ERROR] Unhandled exception:', error instanceof Error ? error.message : String(error));
-    return new Response(
-      JSON.stringify({
-        error: 'Ein unerwarteter Fehler ist aufgetreten',
-        code: 'INTERNAL_ERROR'
-      }),
-      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
+    return ok({ suggestions });
+
+  } catch (error) {
+    console.error('Unhandled:', error);
+    return fail('Interner Serverfehler', 'INTERNAL_ERROR', 500);
   }
 });

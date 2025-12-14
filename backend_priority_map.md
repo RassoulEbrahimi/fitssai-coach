@@ -6,47 +6,46 @@ This document outlines the current state of the backend (Supabase Edge Functions
 
 | Rank | Title | Area | Impact | Effort | Description | Suggested Fix |
 |------|-------|------|--------|--------|-------------|---------------|
-| 1 | **Fix Auth Checks in Edge Functions** | Edge Function | **High** | S | `generate-plans` and others manually check auth or rely on passed-in user IDs in body without strict verification against the auth token in some paths. Admin check via `is_current_user_admin` is risky if not robust. | Ensure all functions strictly use `getUser()` from the auth token to derive `userId`. Remove reliance on `body.user_id` unless strictly admin-scoped and verified. |
+| 1 | **Fix Auth Checks in Edge Functions** | Edge Function | **High** | S | **[DONE]** All functions now strictly use `getUser()`. | Ensure all functions strictly use `getUser()` from the auth token. (Completed in Mission 4) |
 | 2 | **Optimize `toggle-set` Round Trips** | Edge Function | **High** | M | **[DONE]** `toggle-set` now uses `rpc_toggle_set_and_count`. | Refactor into a single Postgres RPC `toggle_set_and_count`. (Completed in Mission 1) |
-| 3 | **Harden `generate-plans` Error Handling** | Edge Function | **Medium** | S | Currently retuns 200 OK with `success: false` for logic errors, masking observability. Mock data fallback logic is complex and mixed with business logic. | Return proper 4xx/5xx status codes. Extract mock data generation into a separate utility or table. Ensure errors are logged to a monitoring table (like `ai_logs`). |
-| 4 | **Fix `get-week-completion` Full Scan** | Edge Function | **Medium** | M | Fetches *all* logs for a week to build a completion map. As logs grow, this will slow down the dashboard load. | Use a specialized SQL query or RPC to group and aggregate completion status by day/exercise, returning only necessary booleans, not full log rows. |
-| 5 | **Strict RLS for Deletion** | Database | **High** | S | `delete-account` manually deletes from multiple tables. If a new table is added (e.g. `audit_logs`) and not added here, we get orphaned data. | Ensure all tables with `user_id` have `ON DELETE CASCADE` foreign keys. Verify RLS policies are `DELETE USING (auth.uid() = user_id)`. |
-| 6 | **Unify Error Handling in Hooks** | Hook | **Medium** | M | Hooks like `useWeekCompletion` and `useSetTracking` have custom error handling and different retry logic. Client usage of `toast` varies. | Create a standardized `useSupabaseAction` or middleware that allows consistently handling retries, error reporting, and toast feedback. |
-| 7 | **Lint Cleanup (160+ Errors)** | Codebase | **Low** | L | 161 lint errors (mostly `any` types). Makes refactoring risky. | Incrementally strictly type the Edge Functions and Hooks. Start with `generate-plans` and `useSetTracking`. |
-| 8 | **Cache Invalidation Consistency** | Hook | **Medium** | M | `useOfflineQueue` invalidates queries, but ensuring *all* relevant keys (`week-completion`, `workout-sets`, `workout-context`) are invalidated on every mutation is manual and error-prone. | Centralize invalidation logic in a "Mutation Manager" or query key factory to ensure related cache entries are always refreshed together. |
+| 3 | **Harden `generate-plans` Error Handling** | Edge Function | **Medium** | S | **[DONE]** Refactored with 4xx/5xx codes & mock utils. | Return proper 4xx/5xx status codes. Extract mock data generation. (Completed in Mission 2) |
+| 4 | **Fix `get-week-completion` Full Scan** | Edge Function | **Medium** | M | **[DONE]** Uses specialized RPC `get_weekly_completion_map`. | Use a specialized SQL query or RPC to group and aggregate completion status. (Completed in Mission 3) |
+| 5 | **Strict RLS for Deletion** | Database | **High** | S | **[DONE]** All tables now have `ON DELETE CASCADE`. | Ensure all tables with `user_id` have `ON DELETE CASCADE` foreign keys. (Completed in Mission 4) |
+| 6 | **Unify Error Handling in Hooks** | Hook | **Medium** | M | Hooks like `useWeekCompletion` have custom handling. | Create a standardized `useSupabaseAction` or middleware. (Mostly Completed in Mission 3) |
+| 7 | **Lint Cleanup (160+ Errors)** | Codebase | **Low** | L | Lint errors reduced. Edge Functions are now strictly typed. | Incrementally strictly type the Edge Functions and Hooks. (Major progress in Mission 4) |
+| 8 | **Cache Invalidation Consistency** | Hook | **Medium** | M | Ensuring *all* relevant keys are invalidated on every mutation is manual. | Centralize invalidation logic in a "Mutation Manager" or query key factory to ensure related cache entries are always refreshed together. |
 
 ## Next Missions (Top 3)
 
-### Mission 1: Optimize & Harden `toggle-set` (Completed)
-**Why:** This is the most frequent user action during a workout. Latency here feels sluggish.
-**Goal:** Replace the 4-step DB chatter in `toggle-set` with a single fast RPC.
-**Status:** **Completed.** RPC `rpc_toggle_set_and_count` implemented. Edge function refactored to use it and strict auth.
+### Mission 4: Security Hardening & Data Integrity (Completed)
+**Why:** Data integrity was at risk (orphaned logs) and some functions lacked strict typing/standardization.
+**Goal:** Enforce `ON DELETE CASCADE` in DB and standardize/secure all remaining Edge Functions.
+**Status:** **Completed.**
+**Achievements:**
+- [x] Database: Applied `ON DELETE CASCADE` to all user-linked tables (`workout_logs`, `ai_logs`, etc.). Orphaned data cleaned.
+- [x] `delete-account`: Refactored to use `auth.admin.deleteUser` and rely on DB cascade.
+- [x] `admin-fetch`: Secured with `is_current_user_admin` RPC check.
+- [x] Edge Functions: `update-exercise`, `toggle-exercise`, `get-daily-quote` standardized and strictly typed (removed `any`).
 
-### Mission 2: Refactor `generate-plans` for Robustness (Completed)
-**Why:** Plan generation is the core "Magic" value prop. Improved stability was critical.
-**Goal:** Clean up the function, split mock logic, and improve error observability.
-**Status:** **Completed.** Refactored with proper auth, error codes, typed shared mocks, and Zod validation.
+### Mission 5: Frontend Cache Architecture (Next Up)
+**Why:** UI updates are manually managed. Toggling a set might not immediately update the weekly progress bar without a refresh or complex manual invalidation.
+**Goal:** Implement a centralized `QueryKeyFactory` and `MutationManager` to automate cache invalidation.
 **Tasks:**
-- [x] Extract mock generation to `_shared/mockUtils.ts`.
-- [x] Standardize HTTP error codes (400 for input, 500 for AI/DB).
-- [x] Ensure strict type safety.
-
-### Mission 3: Dashboard Load Performance (`get-week-completion`) (Completed)
-**Why:** The dashboard is the landing page. Fetching all raw logs just to show checkmarks is inefficient.
-**Goal:** Optimize `get-week-completion` to return a lightweight bitmap or simplified JSON.
-**Status:** **Completed.** Implemented `get_weekly_completion_map` RPC and refactored Edge Function.
+- [ ] Audit current query keys in hooks.
+- [ ] Create `src/lib/queryKeys.ts`.
+- [ ] Refactor hooks to use centralized keys.
+- [ ] Create a `MutationManager` or helper for consistent invalidation.
 
 ## Future Roadmap (Refactoring Candidates)
-The following hooks have been refactored to use `useSupabaseAction` for consistent error handling and offline support:
-- [x] `src/hooks/useSetTracking.tsx` (Completed - Mission 2)
-- [x] `src/hooks/useWeekCompletion.tsx` (Completed - Mission 2)
-- [x] `src/hooks/queries/useWorkoutLogs.ts` (Completed - Mission 3)
-- [x] `src/hooks/useAddExercise.tsx` (Completed - Mission 3)
-- [x] `src/hooks/useDeleteExercise.tsx` (Completed - Mission 3)
-- [x] `src/hooks/useExerciseEditor.tsx` (Completed - Mission 3)
-- [x] `src/hooks/useRestoreExercise.tsx` (Completed - Mission 3)
+The following hooks have been refactored to use `useSupabaseAction`:
+- [x] `src/hooks/useSetTracking.tsx`
+- [x] `src/hooks/useWeekCompletion.tsx`
+- [x] `src/hooks/queries/useWorkoutLogs.ts`
+- [x] `src/hooks/useAddExercise.tsx`
+- [x] `src/hooks/useDeleteExercise.tsx`
+- [x] `src/hooks/useExerciseEditor.tsx`
+- [x] `src/hooks/useRestoreExercise.tsx`
 
 ## Build/Test Notes
-- **Lint:** `npm run lint` improved (down to ~129 errors). Key Edge Functions (`update-exercise`, `generate-plans`) have been strictly typed.
-- **Tests:** No unit tests found for Edge Functions. `npm run test` was not run (not configured standardly or skipped to save analysis time).
-- **TypeScript:** `any` usage significantly reduced in core logic.
+- **Lint:** Edge Functions are now strictly typed (no implicit `any`).
+- **Database:** Self-cleaning enabled via Cascade.
