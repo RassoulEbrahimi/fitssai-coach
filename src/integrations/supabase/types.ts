@@ -342,6 +342,16 @@ export type Database = {
     }
     Functions: {
       get_user_stats: { Args: never; Returns: Json }
+      get_weekly_completion_map: {
+        Args: {
+          p_end_date: string
+          p_plan_id: string
+          p_start_date: string
+          p_user_id: string
+          p_week_key: string
+        }
+        Returns: Json
+      }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]
@@ -350,6 +360,21 @@ export type Database = {
         Returns: boolean
       }
       is_current_user_admin: { Args: never; Returns: boolean }
+      rpc_toggle_set_and_count: {
+        Args: {
+          p_completed: boolean
+          p_day_index: number
+          p_exercise_index: number
+          p_plan_id: string
+          p_reps_completed: number
+          p_set_number: number
+          p_user_id: string
+          p_week_key: string
+          p_weight_used: number
+          p_workout_day: string
+        }
+        Returns: Json
+      }
     }
     Enums: {
       app_role: "admin" | "user"
