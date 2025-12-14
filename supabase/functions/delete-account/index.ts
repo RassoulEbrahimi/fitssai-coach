@@ -1,69 +1,78 @@
+import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.56.0';
 import { z } from "https://deno.land/x/zod@v3.22.4/mod.ts";
 
+// --- Helpers ---
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+const json = (data: unknown, status = 200) =>
+  new Response(JSON.stringify(data), {
+    status,
+    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+  });
+
+const ok = (data: Record<string, unknown>) => json({ success: true, ...data });
+const fail = (message: string, status = 400, details?: unknown) => 
+  json({ success: false, error: message, details }, status);
+
+// --- Validation ---
 const RequestSchema = z.object({
   action: z.enum(['request', 'confirm', 'cancel']),
   token: z.string().optional(),
 });
 
-Deno.serve(async (req) => {
-  if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders });
-  }
+serve(async (req) => {
+  if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
 
   try {
-    const supabaseClient = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
-      {
-        auth: {
-          autoRefreshToken: false,
-          persistSession: false,
-        },
-      }
-    );
+    // 1. Init Supabase
+    const supabaseUrl = Deno.env.get('SUPABASE_URL');
+    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
 
-    const authHeader = req.headers.get('Authorization')!;
+    if (!supabaseUrl || !supabaseServiceKey) {
+      console.error('Missing env vars');
+      return fail('Server configuration error', 500);
+    }
+
+    const supabaseClient = createClient(supabaseUrl, supabaseServiceKey, {
+      auth: { autoRefreshToken: false, persistSession: false },
+    });
+
+    // 2. Auth Check
+    const authHeader = req.headers.get('Authorization');
+    if (!authHeader) return fail('Nicht autorisiert', 401);
+
     const token = authHeader.replace('Bearer ', '');
-    
-    // Verify the user's JWT token
     const { data: { user }, error: userError } = await supabaseClient.auth.getUser(token);
-    
+
     if (userError || !user) {
-      return new Response(
-        JSON.stringify({ error: 'Nicht autorisiert' }),
-        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+      return fail('Nicht autorisiert', 401);
     }
 
     const userId = user.id;
 
-    // Parse and validate request
-    let body = { action: 'request' as const }; // Default action
+    // 3. Parse Body
+    let body;
     try {
       body = await req.json();
     } catch {
-      // Use default if no body provided
+      body = { action: 'request' };
     }
 
     const validation = RequestSchema.safeParse(body);
     if (!validation.success) {
-      return new Response(
-        JSON.stringify({ error: 'Ungültige Anfrage' }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+      return fail('Ungültige Anfrage', 400, validation.error.flatten());
     }
 
     const { action, token: confirmToken } = validation.data;
 
-    // Handle different actions
+    // 4. Handle Actions
+    
+    // --- REQUEST DELETION ---
     if (action === 'request') {
-      // Check if deletion already requested
       const { data: existing } = await supabaseClient
         .from('deletion_requests')
         .select('*')
@@ -72,19 +81,12 @@ Deno.serve(async (req) => {
         .single();
 
       if (existing) {
-        return new Response(
-          JSON.stringify({ 
-            error: 'Löschung bereits angefordert',
-            deletion_date: existing.deletion_date
-          }),
-          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
+        return fail('Löschung bereits angefordert', 400, { deletion_date: existing.deletion_date });
       }
 
-      // Create deletion request with 14-day grace period
+      // 14-day grace period
       const deletionDate = new Date();
       deletionDate.setDate(deletionDate.getDate() + 14);
-      
       const confirmationToken = crypto.randomUUID();
 
       const { error: insertError } = await supabaseClient
@@ -96,24 +98,18 @@ Deno.serve(async (req) => {
         });
 
       if (insertError) {
-        console.error('[ERROR] Failed to create deletion request');
-        return new Response(
-          JSON.stringify({ error: 'Anfrage konnte nicht erstellt werden' }),
-          { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
+        console.error('Insert Error:', insertError);
+        return fail('Anfrage konnte nicht erstellt werden', 500);
       }
 
-      return new Response(
-        JSON.stringify({ 
-          success: true,
-          message: 'Löschung geplant',
-          deletion_date: deletionDate.toISOString(),
-          grace_period_days: 14
-        }),
-        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+      return ok({
+        message: 'Löschung geplant',
+        deletion_date: deletionDate.toISOString(),
+        grace_period_days: 14
+      });
     }
 
+    // --- CANCEL DELETION ---
     if (action === 'cancel') {
       const { error: cancelError } = await supabaseClient
         .from('deletion_requests')
@@ -122,31 +118,16 @@ Deno.serve(async (req) => {
         .eq('cancelled', false);
 
       if (cancelError) {
-        console.error('[ERROR] Failed to cancel deletion');
-        return new Response(
-          JSON.stringify({ error: 'Abbruch fehlgeschlagen' }),
-          { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
+        return fail('Abbruch fehlgeschlagen', 500);
       }
 
-      return new Response(
-        JSON.stringify({ 
-          success: true,
-          message: 'Löschung abgebrochen' 
-        }),
-        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+      return ok({ message: 'Löschung abgebrochen' });
     }
 
+    // --- CONFIRM DELETION ---
     if (action === 'confirm') {
-      if (!confirmToken) {
-        return new Response(
-          JSON.stringify({ error: 'Bestätigungstoken erforderlich' }),
-          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
-      }
+      if (!confirmToken) return fail('Bestätigungstoken erforderlich');
 
-      // Verify token and check if deletion date has passed
       const { data: deletionReq, error: fetchError } = await supabaseClient
         .from('deletion_requests')
         .select('*')
@@ -156,63 +137,31 @@ Deno.serve(async (req) => {
         .single();
 
       if (fetchError || !deletionReq) {
-        return new Response(
-          JSON.stringify({ error: 'Ungültige Anfrage' }),
-          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
+        return fail('Ungültige Anfrage');
       }
 
       const deletionDate = new Date(deletionReq.deletion_date);
       const now = new Date();
 
       if (now < deletionDate) {
-        return new Response(
-          JSON.stringify({ 
-            error: 'Wartezeit noch nicht abgelaufen',
-            deletion_date: deletionDate.toISOString()
-          }),
-          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
+        return fail('Wartezeit noch nicht abgelaufen', 400, { deletion_date: deletionDate.toISOString() });
       }
 
-      // Proceed with actual deletion
-      await supabaseClient.from('workout_logs').delete().eq('user_id', userId);
-      await supabaseClient.from('workout_plans').delete().eq('user_id', userId);
-      await supabaseClient.from('nutrition_plans').delete().eq('user_id', userId);
-      await supabaseClient.from('ai_feedback').delete().eq('user_id', userId);
-      await supabaseClient.from('deletion_requests').delete().eq('user_id', userId);
-      await supabaseClient.from('profiles').delete().eq('id', userId);
-      
+      // THE MAGIC MOMENT: Cascading delete via Admin API
       const { error: authDeleteError } = await supabaseClient.auth.admin.deleteUser(userId);
-      
+
       if (authDeleteError) {
-        console.error('[ERROR] Failed to delete auth user');
-        return new Response(
-          JSON.stringify({ error: 'Kontolöschung fehlgeschlagen' }),
-          { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
+        console.error('Delete User Error:', authDeleteError);
+        return fail('Kontolöschung fehlgeschlagen', 500);
       }
 
-      return new Response(
-        JSON.stringify({ 
-          success: true,
-          message: 'Konto erfolgreich gelöscht' 
-        }),
-        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+      return ok({ message: 'Konto erfolgreich gelöscht' });
     }
 
-    return new Response(
-      JSON.stringify({ error: 'Unbekannte Aktion' }),
-      { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
+    return fail('Unbekannte Aktion');
 
   } catch (error) {
-    console.error('[ERROR] Unhandled exception:', error.message);
-    
-    return new Response(
-      JSON.stringify({ error: 'Ein unerwarteter Fehler ist aufgetreten' }),
-      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
+    console.error('Unhandled:', error);
+    return fail('Ein unerwarteter Fehler ist aufgetreten', 500);
   }
 });

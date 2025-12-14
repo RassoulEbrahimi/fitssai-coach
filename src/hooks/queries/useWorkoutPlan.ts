@@ -2,13 +2,17 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { toast } from 'sonner';
+import { queryKeys } from '@/lib/queryKeys';
+
+import { WorkoutPlan } from '@/lib/types';
 
 export const useWorkoutPlan = () => {
     const { user } = useAuth();
     const queryClient = useQueryClient();
 
     const query = useQuery({
-        queryKey: ['workout-plan', user?.id],
+        // ✅ NEW: Centralized Key
+        queryKey: queryKeys.plans.byUser(user?.id),
         queryFn: async () => {
             if (!user) return null;
 
@@ -21,7 +25,7 @@ export const useWorkoutPlan = () => {
                 .maybeSingle();
 
             if (error) throw error;
-            return data;
+            return data as unknown as WorkoutPlan;
         },
         enabled: !!user,
         staleTime: 1000 * 60 * 60, // 1 hour
@@ -52,7 +56,9 @@ export const useWorkoutPlan = () => {
             } else {
                 toast.success('Pläne erfolgreich erstellt!');
             }
-            queryClient.invalidateQueries({ queryKey: ['workout-plan'] });
+
+            // ✅ NEW: Invalidate using factory (Refresh all plans)
+            queryClient.invalidateQueries({ queryKey: queryKeys.plans.all });
         },
         onError: (error: any) => {
             toast.error(error.message || 'Fehler beim Erstellen der Pläne');

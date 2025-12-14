@@ -1,0 +1,60 @@
+
+export interface Exercise {
+    name: string;
+    sets: number;
+    reps: string;
+    weight?: string;
+    rest?: string;
+    description?: string;
+    completed?: boolean;
+    notes?: string;
+    id?: string;
+    duration?: number; // Added for some views
+}
+
+export interface DayContent {
+    day: string;
+    exercises: Exercise[];
+    [key: string]: unknown;
+}
+
+export type WeekContent = DayContent[];
+
+export interface WorkoutPlanContent {
+    [weekKey: string]: WeekContent;
+}
+
+export interface WorkoutPlan {
+    id: string;
+    created_at: string;
+    user_id: string;
+    content: WorkoutPlanContent;
+    name?: string;
+    status?: string;
+    updated_at?: string;
+}
+
+export interface NutritionMeal {
+    meal: string;
+    description: string;
+    calories: string | number;
+}
+
+export interface NutritionPlan {
+    content: Record<string, NutritionMeal[]>;
+}
+
+export interface TodayWorkout {
+    isCompleted?: boolean;
+    __restDay?: boolean;
+    [key: string]: unknown;
+}
+
+export interface WorkoutLog {
+    id: string;
+    workout_day: string;
+    completed: boolean;
+    plan_id: string;
+    user_id: string;
+    [key: string]: unknown;
+}

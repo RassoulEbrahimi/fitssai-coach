@@ -25,6 +25,7 @@ import {
 import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 import { useTranslation } from "react-i18next";
 import { useAuth } from "@/hooks/useAuth";
+import { WorkoutLog, WeekContent } from "@/lib/types";
 // Removed direct useQuery and supabase import for data fetching
 import { ProfileCard } from "@/components/ProfileCard";
 import VideoBackground from '@/components/VideoBackground';
@@ -34,6 +35,7 @@ import { toast } from "sonner";
 import { format, addDays, isSameDay, startOfWeek, differenceInCalendarDays, startOfDay, parseISO } from "date-fns";
 import { toZonedTime } from 'date-fns-tz';
 import { FitssNavBar } from './FitssNavBar';
+import { OfflineBanner } from '@/components/OfflineBanner';
 import BottomNavPortal from './BottomNavPortal';
 import { default as SectionSkeleton, WorkoutSkeleton, NutritionSkeleton, ProfileSkeleton } from "@/components/skeletons/SectionSkeleton";
 import HomeSkeleton from "@/components/skeletons/HomeSkeleton";
@@ -91,7 +93,7 @@ const useFocusManagement = (activeTab: string) => {
       const heading = activeElement.querySelector('h1, h2, [role="heading"]') as HTMLElement;
       if (heading) {
         heading.tabIndex = -1;
-        heading.focus({ preventScroll: true } as any);
+        heading.focus({ preventScroll: true } as FocusOptions);
         // Remove tabIndex after focus to avoid affecting tab order
         setTimeout(() => { heading.tabIndex = 0; }, 100);
       }
@@ -300,33 +302,27 @@ const Dashboard = () => {
   }, [user, liveWorkoutPlan, completingWorkout, workoutLogs, toggleDay, t]);
 
   // Check if a specific day in a specific week is completed (timezone-aware)
-  const isDayCompleted = useCallback((weekKey: string, dayIndex: number) => {
+  const isDayCompleted = useCallback((weekKey: string, dayIndex: number): boolean => {
     if (!liveWorkoutPlan?.created_at) return false;
 
     const dateString = getWorkoutDateString(liveWorkoutPlan.created_at, weekKey, dayIndex);
-    return workoutLogs?.some(log => log.workout_day === dateString && log.completed) ?? false;
+    return workoutLogs?.some((log: WorkoutLog) => log.workout_day === dateString && log.completed) ?? false;
   }, [liveWorkoutPlan, workoutLogs]);
 
   // Check if today matches a specific week and day (Berlin timezone)
   // Centralized function from workoutDateUtils
-  const isTodayInWeekDay = useCallback((weekKey: string, dayIndex: number) => {
+  const isTodayInWeekDay = useCallback((weekKey: string, dayIndex: number): boolean => {
     if (!liveWorkoutPlan?.created_at) return false;
     return isBerlinTodayForWeekDay(liveWorkoutPlan.created_at, weekKey, dayIndex);
   }, [liveWorkoutPlan]);
 
   // Check if a day is in the future (Berlin timezone)
-  const isDayInFuture = useCallback((weekKey: string, dayIndex: number) => {
+  const isDayInFuture = useCallback((weekKey: string, dayIndex: number): boolean => {
     if (!liveWorkoutPlan?.created_at) return false;
 
     const targetDateStr = getWorkoutDateString(liveWorkoutPlan.created_at, weekKey, dayIndex);
     return isBerlinFuture(targetDateStr);
   }, [liveWorkoutPlan]);
-
-  // Get current week based on selected date
-  const getCurrentWeek = () => {
-    if (!liveWorkoutPlan?.created_at) return null;
-    return getWeekKeyForDate(selectedDate);
-  };
 
   // Get week key for a specific date using plan-based mapping
   const getWeekKeyForDate = useCallback((date: Date): string => {
@@ -334,6 +330,12 @@ const Dashboard = () => {
     const { weekKey } = getWorkoutWeekDay(liveWorkoutPlan.created_at, date);
     return weekKey;
   }, [liveWorkoutPlan]);
+
+  // Get current week based on selected date
+  const getCurrentWeek = useCallback(() => {
+    if (!liveWorkoutPlan?.created_at) return null;
+    return getWeekKeyForDate(selectedDate);
+  }, [liveWorkoutPlan, selectedDate, getWeekKeyForDate]);
 
   // Use consolidated workout helpers hook (not currently used in Dashboard but available)
   const { getWeekContentWithFallback } = useWorkoutHelpers(liveWorkoutPlan);
@@ -382,12 +384,12 @@ const Dashboard = () => {
   };
 
   // Get current week key based on days since plan start
-  const getCurrentWeekKey = () => {
+  const getCurrentWeekKey = useCallback(() => {
     if (!liveWorkoutPlan?.created_at) return null;
     const today = getBerlinNow();
     const { weekKey } = getWorkoutWeekDay(liveWorkoutPlan.created_at, today);
     return weekKey;
-  };
+  }, [liveWorkoutPlan]);
 
 
   // Get today's workout data
@@ -395,7 +397,7 @@ const Dashboard = () => {
     if (!liveWorkoutPlan || !liveWorkoutPlan.content) return null;
 
     for (const [weekKey, days] of Object.entries(liveWorkoutPlan.content)) {
-      const weekData = days as any[];
+      const weekData = days as WeekContent;
       // Check full week (0..6) not just weekData.length
       for (let dayIndex = 0; dayIndex < 7; dayIndex++) {
         // Function inside callback is okay if it relies on stable scope or is passed in.
@@ -440,7 +442,7 @@ const Dashboard = () => {
       setActiveWeek(currentWeek);
       // Removed auto-expand activeDays logic relying on dead state
     }
-  }, [liveWorkoutPlan, selectedDate]); // Depend on selectedDate changes
+  }, [liveWorkoutPlan, selectedDate, getCurrentWeek]); // Depend on selectedDate changes
 
   // Handle date changes from calendar - update selected date and active week
   const handleDateChange = useCallback((date: Date) => {
@@ -482,10 +484,12 @@ const Dashboard = () => {
     let totalPlannedDays = 0;
     if (liveWorkoutPlan.content) {
       // For demo, use first week's structure. In production, calculate based on current week
-      const firstWeek = Object.values(liveWorkoutPlan.content)[0] as any[];
-      totalPlannedDays = Array.isArray(firstWeek)
-        ? firstWeek.filter((day: any) => day.exercises && day.exercises.length > 0).length
-        : 0;
+      const content = liveWorkoutPlan.content;
+      const firstWeek = Object.values(content)[0];
+
+      if (Array.isArray(firstWeek)) {
+        totalPlannedDays = firstWeek.filter((day) => day && day.exercises && day.exercises.length > 0).length;
+      }
     }
 
     return {
@@ -510,8 +514,8 @@ const Dashboard = () => {
         className={`relative max-w-7xl mx-auto ${isFocusMode ? 'px-0 pt-0 pb-0' : 'z-10 px-4 md:px-6 pt-4 pb-[calc(64px+env(safe-area-inset-bottom))] md:pb-6'}`}
         initial={isFocusMode ? false : { opacity: 0, y: 20 }}
         animate={isFocusMode ? false : { opacity: 1, y: 0 }}
-        transition={{ duration: 0.4, ease: "easeOut" }}
       >
+        <OfflineBanner className="mb-4" />
 
         {/* Main Content */}
         <motion.div
@@ -519,6 +523,8 @@ const Dashboard = () => {
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.4, delay: 0.3 }}
         >
+
+
           <div className="space-y-6">
             {/* View stack: one child mounted at a time with slide animations */}
             <div className="relative">
@@ -662,11 +668,13 @@ const Dashboard = () => {
             // Optional haptic feedback for supported devices
             try {
               if (navigator.vibrate) navigator.vibrate(8); // very subtle
-            } catch { }
+            } catch (e) {
+              // no-op
+            }
           }}
         />
       </BottomNavPortal>
-    </div>
+    </div >
   );
 };
 

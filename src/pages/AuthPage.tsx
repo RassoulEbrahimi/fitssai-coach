@@ -42,7 +42,7 @@ const AuthPage = () => {
 
   const handleSignUp = async (data: z.infer<typeof authSchema>) => {
     setLoading(true);
-    
+
     try {
       const { error } = await supabase.auth.signUp({
         email: data.email,
@@ -51,12 +51,16 @@ const AuthPage = () => {
           emailRedirectTo: `${window.location.origin}/dashboard`
         }
       });
-      
+
       if (error) throw error;
-      
+
       toast.success("Check your email for verification link!");
-    } catch (error: any) {
-      toast.error(error.message);
+    } catch (error: unknown) {
+      if (error instanceof Error) {
+        toast.error(error.message);
+      } else {
+        toast.error("An unknown error occurred");
+      }
     } finally {
       setLoading(false);
     }
@@ -64,18 +68,22 @@ const AuthPage = () => {
 
   const handleSignIn = async (data: z.infer<typeof authSchema>) => {
     setLoading(true);
-    
+
     try {
       const { error } = await supabase.auth.signInWithPassword({
         email: data.email,
         password: data.password,
       });
-      
+
       if (error) throw error;
-      
+
       navigate('/dashboard');
-    } catch (error: any) {
-      toast.error(error.message);
+    } catch (error: unknown) {
+      if (error instanceof Error) {
+        toast.error(error.message);
+      } else {
+        toast.error("An unknown error occurred");
+      }
     } finally {
       setLoading(false);
     }
@@ -106,7 +114,7 @@ const AuthPage = () => {
               {isSignUp ? t('auth.signUpSubtitle') : t('auth.signInSubtitle')}
             </p>
           </CardHeader>
-          
+
           <CardContent>
             <form onSubmit={handleSubmit(isSignUp ? handleSignUp : handleSignIn)} className="space-y-4">
               <div>
@@ -121,7 +129,7 @@ const AuthPage = () => {
                   <p className="text-sm text-destructive mt-1">{errors.email.message}</p>
                 )}
               </div>
-              
+
               <div>
                 <Label htmlFor="password">{t('auth.password')}</Label>
                 <Input
@@ -134,13 +142,13 @@ const AuthPage = () => {
                   <p className="text-sm text-destructive mt-1">{errors.password.message}</p>
                 )}
               </div>
-              
-              <Button 
-                type="submit" 
+
+              <Button
+                type="submit"
                 className="w-full gradient-primary text-primary-foreground shadow-glow"
                 disabled={loading}
               >
-                {loading 
+                {loading
                   ? (isSignUp ? t('auth.signingUp') : t('auth.signingIn'))
                   : (isSignUp ? t('auth.signUp') : t('auth.signIn'))
                 }
@@ -150,8 +158,8 @@ const AuthPage = () => {
             <div className="mt-6 text-center">
               <p className="text-sm text-muted-foreground">
                 {isSignUp ? t('auth.alreadyHaveAccount') : t('auth.dontHaveAccount')}{' '}
-                <Link 
-                  to={isSignUp ? '/auth/sign-in' : '/auth/sign-up'} 
+                <Link
+                  to={isSignUp ? '/auth/sign-in' : '/auth/sign-up'}
                   className="text-primary hover:underline"
                 >
                   {isSignUp ? t('auth.signIn') : t('auth.signUp')}

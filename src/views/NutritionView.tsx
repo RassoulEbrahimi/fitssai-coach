@@ -5,17 +5,20 @@ import { Button } from "@/components/ui/button";
 import { Apple, Sparkles } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useTranslation } from "react-i18next";
+import { NutritionPlan, NutritionMeal } from "@/lib/types";
+
+
 
 interface NutritionViewProps {
-  nutritionPlan: any;
+  nutritionPlan: NutritionPlan | null;
   onGeneratePlans?: () => void;
   isGenerating?: boolean;
 }
 
-const NutritionView: React.FC<NutritionViewProps> = React.memo(({ 
-  nutritionPlan, 
+const NutritionView: React.FC<NutritionViewProps> = React.memo(({
+  nutritionPlan,
   onGeneratePlans,
-  isGenerating = false 
+  isGenerating = false
 }) => {
   const { t } = useTranslation();
 
@@ -44,11 +47,11 @@ const NutritionView: React.FC<NutritionViewProps> = React.memo(({
             <CardContent>
               {nutritionPlan ? (
                 <div className="space-y-6">
-                  {Object.entries(nutritionPlan.content).map(([mealType, meals]: [string, any]) => (
+                  {Object.entries(nutritionPlan.content).map(([mealType, meals]) => (
                     <div key={mealType} className="space-y-3">
                       <h3 className="text-lg font-semibold capitalize text-primary">{mealType}</h3>
                       <div className="grid gap-3">
-                        {(Array.isArray(meals) ? meals : []).map((meal: any, mealIndex: number) => (
+                        {(Array.isArray(meals) ? meals : []).map((meal: NutritionMeal, mealIndex: number) => (
                           <motion.div
                             key={mealIndex}
                             initial={{ opacity: 0, y: 10 }}
@@ -81,7 +84,7 @@ const NutritionView: React.FC<NutritionViewProps> = React.memo(({
                   ))}
                 </div>
               ) : (
-                <motion.div 
+                <motion.div
                   className="text-center py-12 space-y-6"
                   initial={{ opacity: 0, scale: 0.95 }}
                   animate={{ opacity: 1, scale: 1 }}
@@ -97,7 +100,7 @@ const NutritionView: React.FC<NutritionViewProps> = React.memo(({
                   >
                     <Apple className="h-16 w-16 text-muted-foreground/40" aria-hidden="true" />
                   </motion.div>
-                  
+
                   <div className="space-y-3">
                     <h2 className="text-xl font-semibold text-foreground" role="heading" aria-level={2}>
                       {t('dashboard.nutritionPlan.emptyState.title')}
@@ -113,7 +116,7 @@ const NutritionView: React.FC<NutritionViewProps> = React.memo(({
                       animate={{ opacity: 1 }}
                       transition={{ delay: 0.2 }}
                     >
-                      <Button 
+                      <Button
                         onClick={onGeneratePlans}
                         disabled={isGenerating}
                         className="gap-2"

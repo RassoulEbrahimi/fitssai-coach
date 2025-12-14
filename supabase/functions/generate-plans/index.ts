@@ -287,10 +287,11 @@ Make sure the workout plan is appropriate for their experience level.
       source
     });
 
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.error('Unexpected error:', err);
+    const message = err instanceof Error ? err.message : 'Unknown error';
     return fail('Unexpected system error', 'INTERNAL_SERVER_ERROR', 500, {
-      message: err.message
+      message
     });
   }
 });

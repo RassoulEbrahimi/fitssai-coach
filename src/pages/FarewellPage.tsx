@@ -8,7 +8,14 @@ export const FarewellPage: React.FC = () => {
   const [showContent, setShowContent] = useState(true);
   const navigate = useNavigate();
   const { user } = useAuth();
-  
+
+  const handleRestart = React.useCallback(() => {
+    setShowContent(false);
+    setTimeout(() => {
+      navigate("/auth/sign-up");
+    }, 600);
+  }, [navigate]);
+
   // Optional: Auto-redirect after 20 seconds if user doesn't click
   useEffect(() => {
     const autoRedirect = setTimeout(() => {
@@ -16,7 +23,7 @@ export const FarewellPage: React.FC = () => {
     }, 20000);
 
     return () => clearTimeout(autoRedirect);
-  }, []);
+  }, [handleRestart]);
 
   // Play optional farewell chime
   useEffect(() => {
@@ -31,12 +38,7 @@ export const FarewellPage: React.FC = () => {
     }
   }, []);
 
-  const handleRestart = () => {
-    setShowContent(false);
-    setTimeout(() => {
-      navigate("/auth/sign-up");
-    }, 600);
-  };
+
 
   return (
     <AnimatePresence>
@@ -50,7 +52,7 @@ export const FarewellPage: React.FC = () => {
         >
           {/* Blurred Glass Background */}
           <div className="absolute inset-0 bg-background/95 backdrop-blur-xl" />
-          
+
           {/* Animated Gradient Overlay */}
           <motion.div
             animate={{
@@ -113,7 +115,7 @@ export const FarewellPage: React.FC = () => {
               transition={{ delay: 1.2, duration: 0.6 }}
               onClick={handleRestart}
               className="group relative px-8 py-4 rounded-full bg-gradient-to-r from-emerald-600/30 via-rose-500/25 to-emerald-700/30 backdrop-blur-xl border border-emerald-500/40 text-emerald-300 font-semibold text-lg flex items-center justify-center gap-3 mx-auto overflow-hidden"
-              whileHover={{ 
+              whileHover={{
                 scale: 1.05,
                 boxShadow: "0 0 30px rgba(16, 185, 129, 0.5)"
               }}
@@ -135,7 +137,7 @@ export const FarewellPage: React.FC = () => {
                   ease: "linear"
                 }}
               />
-              
+
               {/* Button content */}
               <span className="relative z-10">Neu anfangen</span>
               <ArrowRight className="relative z-10 w-5 h-5 group-hover:translate-x-1 transition-transform" />

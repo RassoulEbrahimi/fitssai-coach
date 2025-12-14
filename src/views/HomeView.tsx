@@ -15,20 +15,61 @@ import HomeSkeleton from "@/components/skeletons/HomeSkeleton";
 import WorkoutErrorBoundary from "@/components/WorkoutErrorBoundary";
 import { NotificationPopover } from "@/components/NotificationPopover";
 
+import { Profile } from "@/hooks/queries/useProfile";
+import { WorkoutPlan, NutritionPlan, TodayWorkout } from "@/lib/types";
+
 interface HomeViewProps {
   generatingPlans: boolean;
-  workoutPlan: any;
-  nutritionPlan: any;
+  workoutPlan?: WorkoutPlan;
+  nutritionPlan?: NutritionPlan;
   onGeneratePlans: () => void;
-  profile?: any;
+  profile?: Profile | null;
   workoutProgress?: { completed: number; total: number };
-  getTodayWorkout?: () => any;
+  getTodayWorkout?: () => TodayWorkout | null; // Returns TodayWorkout object
   isDayCompleted?: (weekKey: string, dayIndex: number) => boolean;
   getWeeklyProgress?: () => { completed: number; total: number };
   selectedDate: Date;
   onProgressUpdate?: (weeklyProgress: { completed: number; total: number }) => void;
   isLoadingPlans?: boolean;
 }
+
+// David Goggins quotes moved outside to be stable
+const gogginsQuotes = [
+  "Stay hard!",
+  "Nobody cares, work harder.",
+  "You are in danger of living a life so comfortable and soft, that you will die without ever realizing your true potential.",
+  "Don't stop when you're tired. Stop when you're done.",
+  "Suffering is the true test of life.",
+  "You are in charge of your mind. Stop being a victim.",
+  "It's so easy to be great nowadays, because everyone else is weak.",
+  "The most important conversations you'll ever have are the ones you'll have with yourself.",
+  "We live in an external world. Everything, you have to see it, touch it. If you can for the rest of your life live inside of yourself — to find greatness — you have to go inside.",
+  "You have to build calluses on your brain just like how you build calluses on your hands. Callus your mind through pain and suffering.",
+  "The only person who was going to turn my life around was me.",
+  "You are stopping you. You are giving up instead of getting hard.",
+  "Life is one big tug-of-war between mediocrity and trying to find your best self.",
+  "Don't count on motivation. Count on discipline.",
+  "Pain unlocks a secret doorway in the mind, one that leads to both peak performance and beautiful silence.",
+  "Be uncommon amongst uncommon people.",
+  "You are in control. You decide what you want your life to be.",
+  "Greatness pulls mediocrity into the mud. Get out there and get after it.",
+  "The most important thing is to stay in the fight.",
+  "There is no shortcut. There is no hack. There's only one way: So, get after it.",
+  "Don't stop when you feel pain. Stop when you're finished.",
+  "Every day is an opportunity to learn, adapt, and grow.",
+  "Most of us live in our own little cocoons. Break free.",
+  "You may lose the battle of the morning, but don't lose the war of the day.",
+  "When you think you're done, you're only at 40% of your potential.",
+  "The most powerful weapon is your mind.",
+  "You can't hurt me.",
+  "Be the hardest worker in the room.",
+  "Don't stop when you fail. Stop when you succeed.",
+  "It's not about winning. It's about not quitting."
+];
+
+const getRandomQuote = () => {
+  return gogginsQuotes[Math.floor(Math.random() * gogginsQuotes.length)];
+};
 
 const HomeView: React.FC<HomeViewProps> = ({
   generatingPlans,
@@ -49,43 +90,7 @@ const HomeView: React.FC<HomeViewProps> = ({
   const [isLoadingQuote, setIsLoadingQuote] = useState(true);
   const [quoteKey, setQuoteKey] = useState(0);
 
-  // David Goggins quotes
-  const gogginsQuotes = [
-    "Stay hard!",
-    "Nobody cares, work harder.",
-    "You are in danger of living a life so comfortable and soft, that you will die without ever realizing your true potential.",
-    "Don't stop when you're tired. Stop when you're done.",
-    "Suffering is the true test of life.",
-    "You are in charge of your mind. Stop being a victim.",
-    "It's so easy to be great nowadays, because everyone else is weak.",
-    "The most important conversations you'll ever have are the ones you'll have with yourself.",
-    "We live in an external world. Everything, you have to see it, touch it. If you can for the rest of your life live inside of yourself — to find greatness — you have to go inside.",
-    "You have to build calluses on your brain just like how you build calluses on your hands. Callus your mind through pain and suffering.",
-    "The only person who was going to turn my life around was me.",
-    "You are stopping you. You are giving up instead of getting hard.",
-    "Life is one big tug-of-war between mediocrity and trying to find your best self.",
-    "Don't count on motivation. Count on discipline.",
-    "Pain unlocks a secret doorway in the mind, one that leads to both peak performance and beautiful silence.",
-    "Be uncommon amongst uncommon people.",
-    "You are in control. You decide what you want your life to be.",
-    "Greatness pulls mediocrity into the mud. Get out there and get after it.",
-    "The most important thing is to stay in the fight.",
-    "There is no shortcut. There is no hack. There's only one way: So, get after it.",
-    "Don't stop when you feel pain. Stop when you're finished.",
-    "Every day is an opportunity to learn, adapt, and grow.",
-    "Most of us live in our own little cocoons. Break free.",
-    "You may lose the battle of the morning, but don't lose the war of the day.",
-    "When you think you're done, you're only at 40% of your potential.",
-    "The most powerful weapon is your mind.",
-    "You can't hurt me.",
-    "Be the hardest worker in the room.",
-    "Don't stop when you fail. Stop when you succeed.",
-    "It's not about winning. It's about not quitting."
-  ];
 
-  const getRandomQuote = () => {
-    return gogginsQuotes[Math.floor(Math.random() * gogginsQuotes.length)];
-  };
 
   const refreshQuote = () => {
     setQuoteKey(prev => prev + 1);
@@ -148,7 +153,7 @@ const HomeView: React.FC<HomeViewProps> = ({
                     </div>
                   </div>
                 </motion.div>
-                
+
                 <div className="space-y-3">
                   <h2 className="text-2xl font-bold text-foreground">
                     {t('home.emptyState.title')}
@@ -164,7 +169,7 @@ const HomeView: React.FC<HomeViewProps> = ({
                   transition={{ delay: 0.2 }}
                   className="pt-2"
                 >
-                  <Button 
+                  <Button
                     onClick={onGeneratePlans}
                     size="lg"
                     className="gap-2"
@@ -191,182 +196,182 @@ const HomeView: React.FC<HomeViewProps> = ({
     }
     return "";
   })();
-  
+
   // Dynamic time-based greeting
   const getGreeting = () => {
     const hour = new Date().getHours();
-    
+
     if (!firstName) {
       return "Willkommen zurück! 💪";
     }
-    
+
     if (hour >= 5 && hour < 12) return `Guten Morgen, ${firstName}! ☀️`;
     if (hour >= 12 && hour < 18) return `Hallo, ${firstName}! 🌤`;
     if (hour >= 18 && hour < 22) return `Guten Abend, ${firstName}! 🌙`;
     return `Gute Nacht, ${firstName}! 🌌`;
   };
-  
+
   const avatarUrl = getAvatarUrl(profile?.avatar_path);
-  const progressPercentage = workoutProgress.total > 0 
-    ? (workoutProgress.completed / workoutProgress.total) * 100 
+  const progressPercentage = workoutProgress.total > 0
+    ? (workoutProgress.completed / workoutProgress.total) * 100
     : 0;
 
   return (
     <WorkoutErrorBoundary>
       <div id="main-content" className="space-y-6">
-      {/* Welcome Header */}
-      <motion.div 
-        className="flex items-center justify-between"
-        initial={{ opacity: 0, y: -20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.4, delay: 0.1 }}
-      >
-        <div className="flex items-center gap-3">
-          <motion.h1 
-            className="text-2xl font-bold bg-gradient-to-r from-emerald-400 via-green-500 to-emerald-600 text-transparent bg-clip-text"
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.5, delay: 0.2 }}
-          >
-            {getGreeting()}
-          </motion.h1>
-          <NotificationPopover />
-        </div>
-        
-        {/* Profile Avatar with Progress Ring */}
-        <div className="relative">
-          <div className="relative w-12 h-12">
-            {/* Progress Ring */}
-            <svg className="w-12 h-12 -rotate-90" viewBox="0 0 48 48">
-              <circle
-                cx="24"
-                cy="24"
-                r="20"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="3"
-                className="text-muted/30"
-              />
-              <circle
-                cx="24"
-                cy="24"
-                r="20"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="3"
-                strokeLinecap="round"
-                className="text-primary transition-all duration-500"
-                style={{
-                  strokeDasharray: 125.6,
-                  strokeDashoffset: 125.6 - (progressPercentage / 100) * 125.6,
-                }}
-              />
-            </svg>
-            
-            {/* Avatar */}
-            <div className="absolute inset-1">
-              <AnimatedAvatar 
-                src={avatarUrl || undefined} 
-                alt="Profilbild"
-                fallback={firstName.charAt(0).toUpperCase()}
-                className="w-10 h-10"
-                fallbackClassName="bg-primary/20 text-primary text-sm font-medium"
-              />
-            </div>
-          </div>
-        </div>
-      </motion.div>
-
-      {/* Motivation Quote Card */}
-      {isLoadingQuote ? (
-        <MotivationSkeleton />
-      ) : (
-        <div className="relative">
-          <GradientCard>
-            <motion.blockquote 
-              key={quoteKey}
+        {/* Welcome Header */}
+        <motion.div
+          className="flex items-center justify-between"
+          initial={{ opacity: 0, y: -20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.4, delay: 0.1 }}
+        >
+          <div className="flex items-center gap-3">
+            <motion.h1
+              className="text-2xl font-bold bg-gradient-to-r from-emerald-400 via-green-500 to-emerald-600 text-transparent bg-clip-text"
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -10 }}
-              transition={{ duration: 0.3 }}
-              className="text-lg font-medium text-foreground leading-relaxed"
+              transition={{ duration: 0.5, delay: 0.2 }}
             >
-              "{quote}"
-            </motion.blockquote>
-            <cite className="text-xs text-muted-foreground not-italic mt-2 block">
-              — David Goggins
-            </cite>
-          </GradientCard>
-          
-          {/* Refresh Button */}
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={refreshQuote}
-            className="absolute top-3 right-3 h-8 w-8 rounded-full hover:bg-background/80 transition-colors"
-            aria-label="Neues Zitat laden"
-          >
-            <motion.div
-              whileTap={{ rotate: 180 }}
-              transition={{ duration: 0.3 }}
+              {getGreeting()}
+            </motion.h1>
+            <NotificationPopover />
+          </div>
+
+          {/* Profile Avatar with Progress Ring */}
+          <div className="relative">
+            <div className="relative w-12 h-12">
+              {/* Progress Ring */}
+              <svg className="w-12 h-12 -rotate-90" viewBox="0 0 48 48">
+                <circle
+                  cx="24"
+                  cy="24"
+                  r="20"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="3"
+                  className="text-muted/30"
+                />
+                <circle
+                  cx="24"
+                  cy="24"
+                  r="20"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="3"
+                  strokeLinecap="round"
+                  className="text-primary transition-all duration-500"
+                  style={{
+                    strokeDasharray: 125.6,
+                    strokeDashoffset: 125.6 - (progressPercentage / 100) * 125.6,
+                  }}
+                />
+              </svg>
+
+              {/* Avatar */}
+              <div className="absolute inset-1">
+                <AnimatedAvatar
+                  src={avatarUrl || undefined}
+                  alt="Profilbild"
+                  fallback={firstName.charAt(0).toUpperCase()}
+                  className="w-10 h-10"
+                  fallbackClassName="bg-primary/20 text-primary text-sm font-medium"
+                />
+              </div>
+            </div>
+          </div>
+        </motion.div>
+
+        {/* Motivation Quote Card */}
+        {isLoadingQuote ? (
+          <MotivationSkeleton />
+        ) : (
+          <div className="relative">
+            <GradientCard>
+              <motion.blockquote
+                key={quoteKey}
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -10 }}
+                transition={{ duration: 0.3 }}
+                className="text-lg font-medium text-foreground leading-relaxed"
+              >
+                "{quote}"
+              </motion.blockquote>
+              <cite className="text-xs text-muted-foreground not-italic mt-2 block">
+                — David Goggins
+              </cite>
+            </GradientCard>
+
+            {/* Refresh Button */}
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={refreshQuote}
+              className="absolute top-3 right-3 h-8 w-8 rounded-full hover:bg-background/80 transition-colors"
+              aria-label="Neues Zitat laden"
             >
-              ↻
-            </motion.div>
-          </Button>
+              <motion.div
+                whileTap={{ rotate: 180 }}
+                transition={{ duration: 0.3 }}
+              >
+                ↻
+              </motion.div>
+            </Button>
+          </div>
+        )}
+
+        {/* Progress Rows */}
+        <motion.ul
+          className="space-y-3 list-none"
+          role="list"
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.4, delay: 0.2 }}
+        >
+          {/* Today's Training Progress */}
+          <li className="flex items-center justify-between p-4 bg-card/70 backdrop-blur rounded-2xl ring-1 ring-border/50">
+            <div className="flex items-center gap-3">
+              <div className="p-2 rounded-lg bg-primary/20">
+                <Dumbbell className="h-4 w-4 text-primary" aria-hidden="true" />
+              </div>
+              <div>
+                <h2 className="font-medium text-foreground text-base">Heutiges Training</h2>
+                <p className="text-xs text-muted-foreground">
+                  {todayTrainingProgress.label}
+                </p>
+              </div>
+            </div>
+            <ProgressPill
+              value={todayTrainingProgress.value}
+              aria-label={`Training Fortschritt: ${todayTrainingProgress.value} Prozent`}
+            />
+          </li>
+
+          {/* Nutrition Progress */}
+          <li className="flex items-center justify-between p-4 bg-card/70 backdrop-blur rounded-2xl ring-1 ring-border/50">
+            <div className="flex items-center gap-3">
+              <div className="p-2 rounded-lg bg-success/20">
+                <Utensils className="h-4 w-4 text-success" aria-hidden="true" />
+              </div>
+              <div>
+                <h2 className="font-medium text-foreground text-base">Ernährung</h2>
+                <p className="text-xs text-muted-foreground">
+                  {nutritionProgress > 0 ? "Plan verfügbar" : "Kein Plan"}
+                </p>
+              </div>
+            </div>
+            <ProgressPill
+              value={nutritionProgress}
+              aria-label={`Ernährungs-Fortschritt: ${nutritionProgress} Prozent`}
+            />
+          </li>
+        </motion.ul>
+
+        {/* Weekly Activity Chart */}
+        <div role="region" aria-label="Wöchentliche Aktivitätsübersicht">
+          <WeeklyActivity />
         </div>
-      )}
-
-      {/* Progress Rows */}
-      <motion.ul
-        className="space-y-3 list-none"
-        role="list"
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.4, delay: 0.2 }}
-      >
-        {/* Today's Training Progress */}
-        <li className="flex items-center justify-between p-4 bg-card/70 backdrop-blur rounded-2xl ring-1 ring-border/50">
-          <div className="flex items-center gap-3">
-            <div className="p-2 rounded-lg bg-primary/20">
-              <Dumbbell className="h-4 w-4 text-primary" aria-hidden="true" />
-            </div>
-            <div>
-              <h2 className="font-medium text-foreground text-base">Heutiges Training</h2>
-              <p className="text-xs text-muted-foreground">
-                {todayTrainingProgress.label}
-              </p>
-            </div>
-          </div>
-          <ProgressPill 
-            value={todayTrainingProgress.value} 
-            aria-label={`Training Fortschritt: ${todayTrainingProgress.value} Prozent`}
-          />
-        </li>
-
-        {/* Nutrition Progress */}
-        <li className="flex items-center justify-between p-4 bg-card/70 backdrop-blur rounded-2xl ring-1 ring-border/50">
-          <div className="flex items-center gap-3">
-            <div className="p-2 rounded-lg bg-success/20">
-              <Utensils className="h-4 w-4 text-success" aria-hidden="true" />
-            </div>
-            <div>
-              <h2 className="font-medium text-foreground text-base">Ernährung</h2>
-              <p className="text-xs text-muted-foreground">
-                {nutritionProgress > 0 ? "Plan verfügbar" : "Kein Plan"}
-              </p>
-            </div>
-          </div>
-          <ProgressPill 
-            value={nutritionProgress} 
-            aria-label={`Ernährungs-Fortschritt: ${nutritionProgress} Prozent`}
-          />
-        </li>
-      </motion.ul>
-
-      {/* Weekly Activity Chart */}
-      <div role="region" aria-label="Wöchentliche Aktivitätsübersicht">
-        <WeeklyActivity />
-      </div>
       </div>
     </WorkoutErrorBoundary>
   );

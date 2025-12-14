@@ -1,61 +1,76 @@
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.56.0";
 
-const openAIApiKey = Deno.env.get('OPENAI_API_KEY');
+// --- Types ---
+interface QuoteResponse {
+  quote: string;
+  author: string;
+  language: string;
+  timestamp: string;
+  source: 'openai' | 'zenquotes' | 'fallback';
+}
 
+interface ZenQuote {
+  q: string; // quote
+  a: string; // author
+  h?: string;
+}
+
+// --- Helpers ---
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+const json = (data: unknown, status = 200) =>
+  new Response(JSON.stringify(data), {
+    status,
+    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+  });
+
+const ok = (data: Record<string, unknown>) => json({ success: true, ...data });
+const fail = (message: string, code: string, status = 400, details?: unknown) => 
+  json({ success: false, error: message, code, details }, status);
+
 serve(async (req) => {
-  // Handle CORS preflight requests
-  if (req.method === 'OPTIONS') {
-    return new Response(null, { headers: corsHeaders });
-  }
+  if (req.method === 'OPTIONS') return new Response(null, { headers: corsHeaders });
 
   try {
-    // Verify user authentication
-    const authHeader = req.headers.get('Authorization');
-    if (!authHeader) {
-      console.log('Missing authorization header');
-      return new Response(
-        JSON.stringify({ error: 'Unauthorized' }),
-        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+    // 1. Setup
+    const openAIApiKey = Deno.env.get('OPENAI_API_KEY');
+    const supabaseUrl = Deno.env.get('SUPABASE_URL');
+    const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY');
+
+    if (!supabaseUrl || !supabaseAnonKey) {
+      return fail('Server config error', 'CONFIG_ERROR', 500);
     }
 
-    const supabaseClient = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_ANON_KEY') ?? '',
-      { global: { headers: { Authorization: authHeader } } }
-    );
+    const authHeader = req.headers.get('Authorization');
+    if (!authHeader) return fail('Unauthorized', 'AUTH_MISSING', 401);
 
+    const supabaseClient = createClient(supabaseUrl, supabaseAnonKey, {
+      global: { headers: { Authorization: authHeader } },
+    });
+
+    // 2. Auth Check
     const { data: { user }, error: authError } = await supabaseClient.auth.getUser();
     if (authError || !user) {
-      console.log('Auth error:', authError?.message || 'No user found');
-      return new Response(
-        JSON.stringify({ error: 'Unauthorized' }),
-        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+      return fail('Unauthorized', 'AUTH_INVALID', 401);
     }
 
-    const { language = 'de', forceRefresh = false } = await req.json();
-    const finalLanguage = 'de'; // DE-only mode: Force German for all quotes
-    
-    console.log(`User ${user.id} fetching quote, forceRefresh: ${forceRefresh}`);
+    // 3. Logic
+    // const { forceRefresh = false } = await req.json().catch(() => ({})); 
+    // (Optional: Implement caching logic with forceRefresh later if needed)
 
     let quote = '';
     let author = '';
+    let source: QuoteResponse['source'] = 'fallback';
 
-    // Try OpenAI first
+    // A) Try OpenAI
     if (openAIApiKey) {
       try {
-        const prompt = 'Gib mir ein kurzes motivierendes Fitness-Zitat auf Deutsch. Gib nur den Zitat-Text ohne Anführungszeichen zurück.';
-
-        console.log('Calling OpenAI API...');
-        const openAIResponse = await fetch('https://api.openai.com/v1/chat/completions', {
+        const res = await fetch('https://api.openai.com/v1/chat/completions', {
           method: 'POST',
           headers: {
             'Authorization': `Bearer ${openAIApiKey}`,
@@ -64,110 +79,96 @@ serve(async (req) => {
           body: JSON.stringify({
             model: 'gpt-4o-mini',
             messages: [
-              { 
-                role: 'system', 
-                content: 'You are a fitness motivation expert. Generate inspiring, positive quotes about fitness, health, and personal growth. Keep quotes short and impactful.' 
-              },
-              { role: 'user', content: prompt }
+              { role: 'system', content: 'You are a fitness motivation expert. Generate inspiring, positive quotes about fitness, health, and personal growth. Keep quotes short and impactful.' },
+              { role: 'user', content: 'Gib mir ein kurzes motivierendes Fitness-Zitat auf Deutsch. Gib nur den Zitat-Text ohne Anführungszeichen zurück.' }
             ],
             max_tokens: 100,
             temperature: 0.7,
           }),
         });
 
-        if (openAIResponse.ok) {
-          const openAIData = await openAIResponse.json();
-          quote = openAIData.choices[0].message.content.trim();
-          author = 'AI Generated';
-          console.log('OpenAI quote generated successfully');
-        } else {
-          console.error('OpenAI API error:', await openAIResponse.text());
-          throw new Error('OpenAI API failed');
-        }
-      } catch (error) {
-        console.error('OpenAI error:', error);
-        // Fall through to backup API
-      }
-    }
-
-    // Fallback to ZenQuotes API if OpenAI failed or not available
-    if (!quote) {
-      console.log('Using fallback ZenQuotes API...');
-      try {
-        const zenResponse = await fetch('https://zenquotes.io/api/today');
-        const zenData = await zenResponse.json();
-        
-        if (zenData && zenData[0]) {
-          quote = zenData[0].q;
-          author = zenData[0].a;
-
-          // Translate to German if needed from English fallback
-          if (openAIApiKey) {
-            try {
-              const translateResponse = await fetch('https://api.openai.com/v1/chat/completions', {
-                method: 'POST',
-                headers: {
-                  'Authorization': `Bearer ${openAIApiKey}`,
-                  'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                  model: 'gpt-4o-mini',
-                  messages: [
-                    { 
-                      role: 'system', 
-                      content: 'Du bist ein professioneller Übersetzer. Übersetze das angegebene Zitat ins Deutsche und behalte dabei seine motivierende Wirkung und Bedeutung bei.' 
-                    },
-                    { role: 'user', content: `Übersetze dieses Zitat ins Deutsche: \"${quote}\"` }
-                  ],
-                  max_tokens: 150,
-                  temperature: 0.3,
-                }),
-              });
-
-              if (translateResponse.ok) {
-                const translateData = await translateResponse.json();
-                quote = translateData.choices[0].message.content.trim();
-                console.log('Quote translated to German');
-              }
-            } catch (translateError) {
-              console.error('Translation error:', translateError);
-              // Keep original English quote if translation fails
-            }
+        if (res.ok) {
+          const data = await res.json();
+          const content = data.choices?.[0]?.message?.content?.trim();
+          if (content) {
+            quote = content.replace(/^["']|["']$/g, '');
+            author = 'AI Coach';
+            source = 'openai';
           }
         }
-      } catch (error) {
-        console.error('ZenQuotes API error:', error);
-        // Final fallback - German quote
-        quote = 'Jeder Tag ist eine neue Gelegenheit, besser zu werden.';
-        author = 'FitssAI';
+      } catch (e) {
+        console.error('OpenAI failed:', e);
       }
     }
 
-    return new Response(
-      JSON.stringify({ 
-        quote: quote.replace(/^[\"']|[\"']$/g, ''), // Remove quotes if present
-        author,
-        language: finalLanguage,
-        timestamp: new Date().toISOString()
-      }), 
-      {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    // B) Fallback to ZenQuotes (if OpenAI failed)
+    if (!quote) {
+      try {
+        const res = await fetch('https://zenquotes.io/api/today');
+        if (res.ok) {
+          const data = await res.json() as ZenQuote[];
+          if (data && data[0]) {
+            let rawQuote = data[0].q;
+            author = data[0].a;
+            
+            // Translate if possible
+            if (openAIApiKey) {
+              try {
+                const trRes = await fetch('https://api.openai.com/v1/chat/completions', {
+                  method: 'POST',
+                  headers: {
+                    'Authorization': `Bearer ${openAIApiKey}`,
+                    'Content-Type': 'application/json',
+                  },
+                  body: JSON.stringify({
+                    model: 'gpt-4o-mini',
+                    messages: [
+                      { role: 'system', content: 'Du bist ein professioneller Übersetzer.' },
+                      { role: 'user', content: `Übersetze dieses Zitat ins Deutsche: "${rawQuote}"` }
+                    ],
+                    max_tokens: 150,
+                  }),
+                });
+                if (trRes.ok) {
+                  const trData = await trRes.json();
+                  rawQuote = trData.choices[0].message.content.trim();
+                }
+              } catch (e) { console.error('Translation failed', e); }
+            }
+            
+            quote = rawQuote;
+            source = 'zenquotes';
+          }
+        }
+      } catch (e) {
+        console.error('ZenQuotes failed:', e);
       }
-    );
+    }
+
+    // C) Final Fallback
+    if (!quote) {
+      quote = 'Jeder Tag ist eine neue Gelegenheit, besser zu werden.';
+      author = 'FitssAI';
+      source = 'fallback';
+    }
+
+    return ok({
+      quote,
+      author,
+      language: 'de',
+      timestamp: new Date().toISOString(),
+      source
+    });
 
   } catch (error) {
-    console.error('Error in get-daily-quote function:', error);
-    return new Response(
-      JSON.stringify({ 
-        error: 'Failed to fetch quote',
-        quote: 'Bleib stark, bleib fokussiert, bleib positiv!',
-        author: 'FitssAI',
-        language: 'de'
-      }), 
-      {
-        status: 500,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      }
-    );
+    console.error('Unexpected error:', error);
+    // Even in error, try to return a quote so UI doesn't break
+    return json({
+      success: true, // Soft fail
+      quote: 'Bleib stark, bleib fokussiert, bleib positiv!',
+      author: 'FitssAI',
+      language: 'de',
+      source: 'fallback'
+    });
   }
 });

@@ -1,14 +1,19 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
-import { toast } from 'sonner';
+import { useSupabaseAction } from '@/hooks/useSupabaseAction';
+import { queryKeys } from '@/lib/queryKeys';
+import { WorkoutLog } from '@/lib/types';
 
 export const useWorkoutLogs = (planId?: string) => {
     const { user } = useAuth();
     const queryClient = useQueryClient();
-    const queryKey = ['workout-logs', user?.id, planId];
+
+    // ✅ NEW: Centralized Key Generation
+    const queryKey = queryKeys.logs.byPlan(planId, user?.id);
 
     const query = useQuery({
+        // ✅ NEW: Use centralized key
         queryKey,
         queryFn: async () => {
             if (!user || !planId) return [];
@@ -20,14 +25,14 @@ export const useWorkoutLogs = (planId?: string) => {
                 .eq('plan_id', planId);
 
             if (error) throw error;
-            return data || [];
+            return (data || []) as unknown as WorkoutLog[];
         },
         enabled: !!user && !!planId,
         staleTime: 1000 * 60 * 5, // 5 minutes
     });
 
-    const toggleDayMutation = useMutation({
-        mutationFn: async ({ workoutDateStr, completed }: { workoutDateStr: string; completed: boolean }) => {
+    const toggleDayMutation = useSupabaseAction({
+        action: async ({ workoutDateStr, completed }: { workoutDateStr: string; completed: boolean }) => {
             if (!user || !planId) throw new Error('Missing user or plan');
 
             // Check for existing log to update ID if exists (though upsert handles this, explicit update is safer for pure toggle if needed)
@@ -49,15 +54,24 @@ export const useWorkoutLogs = (planId?: string) => {
             if (error) throw error;
             return data;
         },
+
+        // ✅ NEW: Automatic invalidation uses centralized key
+        queryKey,
+
+        messages: {
+            error: 'Fehler beim Speichern'
+        },
+
         onMutate: async ({ workoutDateStr, completed }) => {
+            // ✅ NEW: Cancel using centralized key
             await queryClient.cancelQueries({ queryKey });
 
             const previousLogs = queryClient.getQueryData(queryKey);
 
             // Optimistic update
-            queryClient.setQueryData(queryKey, (old: any[] = []) => {
+            queryClient.setQueryData(queryKey, (old: WorkoutLog[] = []) => {
                 const existingIndex = old.findIndex(
-                    (log) => log.workout_day === workoutDateStr
+                    (log: WorkoutLog) => log.workout_day === workoutDateStr
                 );
 
                 if (existingIndex > -1) {
@@ -76,12 +90,12 @@ export const useWorkoutLogs = (planId?: string) => {
 
             return { previousLogs };
         },
+
         onError: (err, newTodo, context) => {
-            queryClient.setQueryData(queryKey, context?.previousLogs);
-            toast.error('Fehler beim Speichern');
-        },
-        onSettled: () => {
-            queryClient.invalidateQueries({ queryKey });
+            // ✅ NEW: Rollback using centralized key
+            if (context?.previousLogs) {
+                queryClient.setQueryData(queryKey, context.previousLogs);
+            }
         },
     });
 

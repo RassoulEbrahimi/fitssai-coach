@@ -16,14 +16,14 @@ const MemoizedInlineEditableExercise = React.memo(InlineEditableExercise, (prev,
 });
 
 interface ExerciseListProps {
-  exercises: any[];
+  exercises: (Exercise & { id?: string })[];
   // Inline editing support
   onUpdateExercise?: (exerciseIndex: number, exercise: Exercise) => Promise<void>;
   onDeleteExercise?: (exerciseIndex: number) => void;
   isUpdating?: boolean;
 }
 
-const ExerciseList: React.FC<ExerciseListProps> = ({ 
+const ExerciseList: React.FC<ExerciseListProps> = ({
   exercises,
   onUpdateExercise,
   onDeleteExercise,
@@ -43,32 +43,32 @@ const ExerciseList: React.FC<ExerciseListProps> = ({
   // Framer Motion variants for exercise cards
   const itemVariants = prefersReducedMotion
     ? {
-        hidden: { opacity: 0 },
-        visible: { opacity: 1 },
-        exit: { opacity: 0 },
-      }
+      hidden: { opacity: 0 },
+      visible: { opacity: 1 },
+      exit: { opacity: 0 },
+    }
     : {
-        hidden: {
-          opacity: 0,
-          scale: 0.95,
-          filter: "blur(2px)",
-        },
-        visible: {
-          opacity: 1,
-          scale: 1,
-          y: 0,
-          filter: [
-            "blur(0px) drop-shadow(0 0 0px rgba(16, 185, 129, 0))",
-            "blur(0px) drop-shadow(0 0 10px rgba(16, 185, 129, 0.3))",
-            "blur(0px) drop-shadow(0 0 0px rgba(16, 185, 129, 0))",
-          ],
-        },
-        exit: {
-          opacity: 0,
-          scale: 0.9,
-          filter: "blur(1px)",
-        },
-      };
+      hidden: {
+        opacity: 0,
+        scale: 0.95,
+        filter: "blur(2px)",
+      },
+      visible: {
+        opacity: 1,
+        scale: 1,
+        y: 0,
+        filter: [
+          "blur(0px) drop-shadow(0 0 0px rgba(16, 185, 129, 0))",
+          "blur(0px) drop-shadow(0 0 10px rgba(16, 185, 129, 0.3))",
+          "blur(0px) drop-shadow(0 0 0px rgba(16, 185, 129, 0))",
+        ],
+      },
+      exit: {
+        opacity: 0,
+        scale: 0.9,
+        filter: "blur(1px)",
+      },
+    };
 
   if (!exercises || exercises.length === 0) {
     return (
@@ -83,11 +83,11 @@ const ExerciseList: React.FC<ExerciseListProps> = ({
   return (
     <ul className="space-y-1.5 lg:space-y-3 list-none" role="list">
       <AnimatePresence initial={false} mode="popLayout">
-        {exercises.map((exercise: any, exerciseIndex: number) => {
+        {exercises.map((exercise, exerciseIndex: number) => {
           // Use inline editable component if update handler is provided
           if (onUpdateExercise) {
             return (
-              <motion.li 
+              <motion.li
                 key={exercise.id || `${exercise.name}-${exerciseIndex}`}
                 variants={itemVariants}
                 initial="hidden"
@@ -110,7 +110,7 @@ const ExerciseList: React.FC<ExerciseListProps> = ({
 
           // Fallback to read-only display
           return (
-            <motion.li 
+            <motion.li
               key={exercise.id || `${exercise.name}-${exerciseIndex}`}
               variants={itemVariants}
               initial="hidden"

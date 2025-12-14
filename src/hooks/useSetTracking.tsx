@@ -1,6 +1,9 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
+import { useSupabaseAction } from "@/hooks/useSupabaseAction";
+import { useOfflineQueue } from "./useOfflineQueue";
+import { queryKeys } from "@/lib/queryKeys";
 
 interface ToggleSetParams {
   planId: string;
@@ -28,24 +31,45 @@ interface WorkoutLogWithSets {
   workout_set_logs: SetLog[];
 }
 
-import { useOfflineQueue } from "./useOfflineQueue";
+interface ToggleSetResponse {
+  success: boolean;
+  data: unknown;
+}
+
+interface ToggleSetContext {
+  previousSets: Record<number, Record<number, SetLog>> | undefined;
+}
+
+// Standalone action function
+const toggleSetAction = async (params: ToggleSetParams): Promise<ToggleSetResponse> => {
+  const { data, error } = await supabase.functions.invoke('toggle-set', {
+    body: params,
+  });
+
+  if (error) throw error;
+  if (!data?.success) throw new Error('Invalid response from server');
+
+  return data as ToggleSetResponse;
+};
 
 export function useSetTracking(planId: string | undefined, weekKey: string, dayIndex: number) {
   const { user } = useAuth();
   const queryClient = useQueryClient();
-  const { isOnline, enqueue } = useOfflineQueue();
+  const { isOnline } = useOfflineQueue();
 
-  // Query to fetch completed sets for exercises on a specific day
+  // ✅ NEW: Centralized Key Generation
+  const queryKey = queryKeys.sets.byDay(planId, weekKey, dayIndex);
+
   const {
     data: completedSets,
     isLoading: isLoadingSets,
     refetch: refetchSets,
   } = useQuery({
-    queryKey: ['workout-sets', planId, weekKey, dayIndex],
+    // ✅ NEW: Use centralized key
+    queryKey,
     queryFn: async () => {
       if (!user || !planId) return {};
 
-      // Fetch workout logs with their set logs for this day
       const { data, error } = await supabase
         .from('workout_logs')
         .select(`
@@ -69,10 +93,10 @@ export function useSetTracking(planId: string | undefined, weekKey: string, dayI
         return {};
       }
 
-      // Transform to a map: exerciseIndex -> { setNumber -> SetLog }
       const setsMap: Record<number, Record<number, SetLog>> = {};
+      const logs = data as unknown as WorkoutLogWithSets[];
 
-      (data as unknown as WorkoutLogWithSets[])?.forEach((log) => {
+      logs?.forEach((log) => {
         if (!setsMap[log.exercise_index]) {
           setsMap[log.exercise_index] = {};
         }
@@ -87,57 +111,25 @@ export function useSetTracking(planId: string | undefined, weekKey: string, dayI
     staleTime: 30_000,
   });
 
-  // Mutation to toggle a set's completion
-  const toggleSetMutation = useMutation({
-    mutationFn: async (params: ToggleSetParams) => {
-      // Check if offline
-      if (!isOnline) {
-        enqueue('TOGGLE_SET', params);
-        return { success: true, queued: true };
-      }
-
-      try {
-        const { data, error } = await supabase.functions.invoke('toggle-set', {
-          body: params,
-        });
-
-        if (error) {
-          console.error('Error toggling set:', error);
-          throw new Error(error.message || 'Failed to toggle set');
-        }
-
-        if (!data?.success) {
-          throw new Error('Invalid response from server');
-        }
-
-        return data;
-      } catch (error: any) {
-        console.error('Error toggling set:', error);
-
-        // Network error handling
-        const isNetworkError =
-          error.message?.includes('Failed to fetch') ||
-          error.message?.includes('Network request failed');
-
-        if (isNetworkError) {
-          enqueue('TOGGLE_SET', params);
-          return { success: true, queued: true };
-        }
-        throw error;
-      }
+  const toggleSetMutation = useSupabaseAction<ToggleSetResponse, ToggleSetParams, ToggleSetContext>({
+    action: toggleSetAction,
+    offlineActionType: 'TOGGLE_SET',
+    // ✅ NEW: Use centralized key for auto-invalidation
+    queryKey, 
+    messages: {
+      error: 'Fehler beim Speichern des Satzes',
     },
-    onMutate: async (params) => {
-      // Cancel any outgoing queries
-      await queryClient.cancelQueries({ queryKey: ['workout-sets', planId, weekKey, dayIndex] });
+    onMutate: async (params: ToggleSetParams) => {
+      // ✅ NEW: Cancel using centralized key
+      await queryClient.cancelQueries({ queryKey });
 
-      // Snapshot previous value
-      const previousSets = queryClient.getQueryData(['workout-sets', planId, weekKey, dayIndex]);
+      const previousSets = queryClient.getQueryData<Record<number, Record<number, SetLog>>>(queryKey);
 
-      // Optimistically update
+      // Optimistic update
       queryClient.setQueryData(
-        ['workout-sets', planId, weekKey, dayIndex],
+        queryKey,
         (old: Record<number, Record<number, SetLog>> | undefined) => {
-          const newData = { ...old };
+          const newData = { ...(old || {}) };
           if (!newData[params.exerciseIndex]) {
             newData[params.exerciseIndex] = {};
           }
@@ -161,43 +153,33 @@ export function useSetTracking(planId: string | undefined, weekKey: string, dayI
         }
       );
 
-      // Handle offline queueing in onMutate or mutationFn?
-      // mutationFn is better for control flow, but we need access to `enqueue`.
-      // We can access `enqueue` from the hook scope.
-
       return { previousSets };
     },
-    onError: (err, params, context) => {
-      // Rollback on error
-      if (context?.previousSets && navigator.onLine) {
-        // Only rollback if online. If offline, we keep optimistic update.
-        queryClient.setQueryData(
-          ['workout-sets', planId, weekKey, dayIndex],
-          context.previousSets
-        );
-      }
-      console.error('Error toggling set:', err);
-    },
-    onSettled: (data: any) => {
-      // Refetch to ensure consistency, but only if online and not queued
-      if (navigator.onLine && !data?.queued) {
-        queryClient.invalidateQueries({ queryKey: ['workout-sets', planId, weekKey, dayIndex] });
+    onError: (err, params, context: ToggleSetContext | undefined) => {
+      if (context?.previousSets && isOnline) {
+        // ✅ NEW: Rollback using centralized key
+        queryClient.setQueryData(queryKey, context.previousSets);
       }
     },
+    // ✅ NEW: Consistency Fix!
+    // When a set is toggled, it might finish the exercise.
+    // So we must refresh the dashboard (week completion) to show the green checkmark.
+    onSettled: () => {
+       queryClient.invalidateQueries({ 
+         queryKey: queryKeys.completion.byWeek(planId, weekKey) 
+       });
+    }
   });
 
-  // Helper to check if a specific set is completed
   const isSetCompleted = (exerciseIndex: number, setNumber: number): boolean => {
     return !!completedSets?.[exerciseIndex]?.[setNumber];
   };
 
-  // Helper to get completed sets count for an exercise
   const getCompletedSetsCount = (exerciseIndex: number): number => {
     const exerciseSets = completedSets?.[exerciseIndex];
     return exerciseSets ? Object.keys(exerciseSets).length : 0;
   };
 
-  // Helper to get set details
   const getSetDetails = (exerciseIndex: number, setNumber: number): SetLog | undefined => {
     return completedSets?.[exerciseIndex]?.[setNumber];
   };

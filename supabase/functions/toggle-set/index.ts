@@ -9,13 +9,13 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-const json = (obj: any, status = 200) =>
+const json = (obj: unknown, status = 200) =>
   new Response(JSON.stringify(obj), {
-    status,
     headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    status,
   });
 
-const ok = (obj: Record<string, any> = {}) => json({ success: true, ...obj }, 200);
+const ok = (obj: Record<string, unknown> = {}) => json({ success: true, ...obj }, 200);
 const fail = (message: string, code?: string) =>
   json({ success: false, error: message, code }, 200);
 

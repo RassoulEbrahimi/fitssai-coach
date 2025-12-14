@@ -16,14 +16,17 @@ import { usePreferences } from "@/contexts/PreferencesContext";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { uploadAvatar, updateProfileAvatar, getAvatarUrl } from "@/lib/avatarUtils";
+import { WorkoutPlan, NutritionPlan } from "@/lib/types";
+
+import { Profile } from "@/hooks/queries/useProfile";
 
 interface ProfileViewProps {
-  profile: any;
+  profile: Profile | null;
   onProfileUpdate: () => void;
   workoutProgress: { completed: number; total: number };
   generatingPlans?: boolean;
-  workoutPlan?: any;
-  nutritionPlan?: any;
+  workoutPlan?: WorkoutPlan;
+  nutritionPlan?: NutritionPlan;
   onGeneratePlans?: () => void;
 }
 
@@ -86,7 +89,7 @@ const itemVariants = {
 
 // Glass card component
 const GlassCard: React.FC<{ children: React.ReactNode; className?: string; onClick?: () => void }> = ({ children, className = "", onClick }) => (
-  <div 
+  <div
     className={`relative overflow-hidden rounded-2xl border border-white/10 bg-white/5 backdrop-blur-md ${onClick ? "cursor-pointer hover:bg-white/10 transition-colors" : ""} ${className}`}
     onClick={onClick}
   >
@@ -150,7 +153,7 @@ const CircularProgress: React.FC<CircularProgressProps> = ({
           stroke="currentColor"
           strokeDasharray={circumference}
           strokeDashoffset={dashOffset}
-          style={{ 
+          style={{
             transition: 'stroke-dashoffset 0.8s cubic-bezier(0.4, 0, 0.2, 1)',
             filter: 'drop-shadow(0 0 6px hsl(var(--emerald-glow, 160 84% 50%) / 0.5))'
           }}
@@ -204,9 +207,9 @@ const StatCard: React.FC<{
   </GlassCard>
 );
 
-const ProfileView: React.FC<ProfileViewProps> = React.memo(({ 
-  profile, 
-  onProfileUpdate, 
+const ProfileView: React.FC<ProfileViewProps> = React.memo(({
+  profile,
+  onProfileUpdate,
   workoutProgress,
   generatingPlans = false,
   workoutPlan,
@@ -221,7 +224,7 @@ const ProfileView: React.FC<ProfileViewProps> = React.memo(({
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  
+
   const [formData, setFormData] = useState({
     full_name: "",
     weight: 0,
@@ -252,7 +255,7 @@ const ProfileView: React.FC<ProfileViewProps> = React.memo(({
   useEffect(() => {
     const applyTheme = (mode: ThemeMode) => {
       const root = document.documentElement;
-      
+
       if (mode === 'dark') {
         root.classList.add('dark');
       } else if (mode === 'light') {
@@ -382,10 +385,10 @@ const ProfileView: React.FC<ProfileViewProps> = React.memo(({
 
   const handleSave = async () => {
     if (!profile?.id) return;
-    
+
     // Client-side validation for data integrity
     const { weight, height, age } = formData;
-    
+
     if (weight !== 0 && (weight < 20 || weight > 500)) {
       toast.error("Gewicht muss zwischen 20 und 500 kg liegen");
       return;
@@ -398,7 +401,7 @@ const ProfileView: React.FC<ProfileViewProps> = React.memo(({
       toast.error("Alter muss zwischen 1 und 150 Jahren liegen");
       return;
     }
-    
+
     setIsSaving(true);
     try {
       // Upload avatar if selected
@@ -438,7 +441,7 @@ const ProfileView: React.FC<ProfileViewProps> = React.memo(({
 
   const handleSaveGoals = async () => {
     if (!profile?.id) return;
-    
+
     setIsSaving(true);
     try {
       const { error } = await supabase
@@ -486,7 +489,7 @@ const ProfileView: React.FC<ProfileViewProps> = React.memo(({
                 <Camera className="w-5 h-5 text-white" />
               </div>
             </div>
-            
+
             {/* User info */}
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2 flex-wrap">
@@ -501,10 +504,10 @@ const ProfileView: React.FC<ProfileViewProps> = React.memo(({
                 >
                   <Pencil className="h-3.5 w-3.5" />
                 </Button>
-                <Badge 
-                  variant="outline" 
-                  className={`shrink-0 ${isPro 
-                    ? "border-emerald-400/50 bg-emerald-500/10 text-emerald-400" 
+                <Badge
+                  variant="outline"
+                  className={`shrink-0 ${isPro
+                    ? "border-emerald-400/50 bg-emerald-500/10 text-emerald-400"
                     : "border-muted-foreground/30 bg-muted/10 text-muted-foreground"}`}
                 >
                   <Crown className="w-3 h-3 mr-1" />
@@ -570,34 +573,34 @@ const ProfileView: React.FC<ProfileViewProps> = React.memo(({
           <div className="flex items-center gap-6">
             {/* Left: Circular Progress */}
             <div className="flex flex-col items-center gap-2">
-              <CircularProgress 
-                value={workoutProgress.completed} 
+              <CircularProgress
+                value={workoutProgress.completed}
                 max={workoutProgress.total || 7}
                 size={90}
                 strokeWidth={8}
               >
                 <span className="text-lg font-bold text-foreground">
-                  {workoutProgress.total > 0 
+                  {workoutProgress.total > 0
                     ? `${workoutProgress.completed}/${workoutProgress.total}`
                     : "0/7"}
                 </span>
               </CircularProgress>
               <span className="text-xs text-muted-foreground font-medium">Wochenziel</span>
             </div>
-            
+
             {/* Right: Stats Grid */}
             <div className="flex-1 grid grid-cols-1 gap-3">
-              <MiniStat 
+              <MiniStat
                 icon={<Flame className="w-3.5 h-3.5 text-orange-400" />}
                 label="Streak"
                 value={`${userStats.streak} ${userStats.streak === 1 ? 'Tag' : 'Tage'}`}
               />
-              <MiniStat 
+              <MiniStat
                 icon={<Clock className="w-3.5 h-3.5 text-blue-400" />}
                 label="Gesamtzeit"
                 value={`${userStats.minutes} Min`}
               />
-              <MiniStat 
+              <MiniStat
                 icon={<Zap className="w-3.5 h-3.5 text-amber-400" />}
                 label="Kcal"
                 value={userStats.calories.toLocaleString('de-DE')}
@@ -677,11 +680,10 @@ const ProfileView: React.FC<ProfileViewProps> = React.memo(({
                 <button
                   key={value}
                   onClick={() => setThemeMode(value)}
-                  className={`flex-1 flex items-center justify-center gap-1.5 py-2 px-3 rounded-lg text-xs font-medium transition-all ${
-                    themeMode === value
-                      ? 'bg-emerald-500/20 text-emerald-400 shadow-sm'
-                      : 'text-muted-foreground hover:bg-white/5'
-                  }`}
+                  className={`flex-1 flex items-center justify-center gap-1.5 py-2 px-3 rounded-lg text-xs font-medium transition-all ${themeMode === value
+                    ? 'bg-emerald-500/20 text-emerald-400 shadow-sm'
+                    : 'text-muted-foreground hover:bg-white/5'
+                    }`}
                 >
                   <Icon className="w-3.5 h-3.5" />
                   {label}
@@ -718,12 +720,12 @@ const ProfileView: React.FC<ProfileViewProps> = React.memo(({
       <motion.section variants={itemVariants}>
         <AIAnalyticsCard />
       </motion.section>
-      
+
       {/* Generate Plans Button */}
       {onGeneratePlans && (
         <motion.section variants={itemVariants}>
-          <Button 
-            className="w-full py-6 text-lg rounded-2xl bg-gradient-to-r from-emerald-500 to-emerald-600 text-white font-semibold shadow-lg shadow-emerald-500/30 hover:shadow-xl hover:shadow-emerald-500/40 transition-all flex items-center justify-center gap-2" 
+          <Button
+            className="w-full py-6 text-lg rounded-2xl bg-gradient-to-r from-emerald-500 to-emerald-600 text-white font-semibold shadow-lg shadow-emerald-500/30 hover:shadow-xl hover:shadow-emerald-500/40 transition-all flex items-center justify-center gap-2"
             onClick={onGeneratePlans}
             disabled={generatingPlans}
           >
@@ -732,7 +734,7 @@ const ProfileView: React.FC<ProfileViewProps> = React.memo(({
           </Button>
         </motion.section>
       )}
-      
+
       {/* Logout & Delete Account */}
       <motion.section variants={itemVariants} className="space-y-3">
         <LogoutButton />
@@ -748,14 +750,14 @@ const ProfileView: React.FC<ProfileViewProps> = React.memo(({
           <div className="space-y-4 py-4">
             {/* Avatar Upload Area */}
             <div className="flex flex-col items-center gap-3">
-              <div 
+              <div
                 className="relative cursor-pointer group"
                 onClick={() => !isUploading && fileInputRef.current?.click()}
               >
                 <div className="absolute -inset-1 bg-gradient-to-br from-emerald-400 to-emerald-600 rounded-full blur-md opacity-40 group-hover:opacity-60 transition-opacity" />
                 <Avatar className="relative h-24 w-24 border-2 border-emerald-400/50 overflow-hidden">
-                  <AvatarImage 
-                    src={avatarPreview || avatarUrl || undefined} 
+                  <AvatarImage
+                    src={avatarPreview || avatarUrl || undefined}
                     alt={displayName}
                     className="object-cover"
                   />
@@ -763,7 +765,7 @@ const ProfileView: React.FC<ProfileViewProps> = React.memo(({
                     {getInitials(formData.full_name || profile?.full_name)}
                   </AvatarFallback>
                 </Avatar>
-                
+
                 {/* Upload Progress Overlay */}
                 {isUploading ? (
                   <div className="absolute inset-0 flex items-center justify-center bg-black/60 rounded-full">

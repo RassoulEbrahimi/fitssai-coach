@@ -1,139 +1,229 @@
-import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.56.0';
 
-const SUPABASE_URL = Deno.env.get("SUPABASE_URL");
-const SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+// --- Types ---
+interface UserProfile {
+  id: string;
+  age: number | null;
+  weight: number | null;
+  height: number | null;
+  fitness_goal: string | null;
+  dietary_preference: string | null;
+  created_at: string;
+  full_name?: string | null;
+}
 
+interface UserRole {
+  user_id: string;
+  role: string;
+}
+
+interface Plan {
+  id: string;
+  user_id: string;
+  content: unknown;
+  created_at: string;
+  type?: 'workout' | 'nutrition';
+  user_email?: string;
+}
+
+interface AuthUser {
+  id: string;
+  email?: string;
+}
+
+// --- Helpers ---
 const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-const json = (obj: any, status = 200) =>
-  new Response(JSON.stringify(obj), { status, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+const json = (data: unknown, status = 200) =>
+  new Response(JSON.stringify(data), {
+    status,
+    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+  });
+
+const ok = (data: Record<string, unknown>) => json({ success: true, ...data });
+const fail = (message: string, code: string, status = 400) => 
+  json({ success: false, error: message, code }, status);
 
 serve(async (req) => {
-  if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
+  // Handle CORS
+  if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
+  
+  // Health check
+  if (req.method === 'GET') return ok({ health: 'ok' });
 
-  // ✅ Health for GET
-  if (req.method === "GET") {
-    return json({ success: true, health: "ok" });
-  }
-
-  // ✅ Only POST is allowed for actions
-  if (req.method !== "POST") {
-    return json({ success: false, error: "Ungültige Methode.", code: "METHOD" });
-  }
-
-  // 0) Config sanity
-  if (!SUPABASE_URL || !SERVICE_ROLE_KEY) {
-    return json({ success: false, error: "Server-Konfiguration fehlt (URL/SERVICE_ROLE_KEY).", code: "CONFIG" });
-  }
+  if (req.method !== 'POST') return fail('Ungültige Methode.', 'METHOD', 405);
 
   try {
-    // 1) Single Supabase client — Service Role for DB/admin; forward end-user token for auth.getUser()
-    const sb = createClient(SUPABASE_URL, SERVICE_ROLE_KEY, {
+    // 1. Setup Supabase Client (Service Role for Admin capabilities)
+    const supabaseUrl = Deno.env.get('SUPABASE_URL');
+    const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+
+    if (!supabaseUrl || !serviceRoleKey) {
+      return fail('Server-Konfiguration fehlt.', 'CONFIG', 500);
+    }
+
+    const authHeader = req.headers.get('Authorization');
+    if (!authHeader) return fail('Nicht angemeldet.', 'AUTH', 401);
+
+    // Initialize client with Service Role but forward user auth context
+    const sb = createClient(supabaseUrl, serviceRoleKey, {
       auth: { persistSession: false },
-      global: { headers: { Authorization: req.headers.get("Authorization") ?? "" } },
+      global: { headers: { Authorization: authHeader } },
     });
 
-    // 2) AuthN — current user
-    const { data: { user }, error: userErr } = await sb.auth.getUser();
-    if (userErr || !user) return json({ success: false, error: "Nicht angemeldet.", code: "AUTH" });
-
-    // 3) AuthZ — must be admin
-    const { data: isAdmin, error: profErr } = await sb.rpc("is_current_user_admin");
-    if (profErr) return json({ success: false, error: "Profilprüfung fehlgeschlagen.", code: "DB" });
-    if (!isAdmin) return json({ success: false, error: "Keine Berechtigung.", code: "FORBIDDEN" });
-
-    // Parse `action` tolerantly: prefer JSON body; else query param; else default
-    let action: "users" | "plans" | undefined;
-
-    // Only attempt JSON if content-type hints JSON and body likely present
-    const ct = (req.headers.get("content-type") || "").toLowerCase();
-    const cl = parseInt(req.headers.get("content-length") || "0", 10);
-
-    if (ct.includes("application/json") && cl > 0) {
-      try {
-        const body = await req.json();
-        if (body && (body.action === "users" || body.action === "plans")) {
-          action = body.action;
-        }
-      } catch {
-        // swallow: we'll try query param next
-      }
+    // 2. Auth Check (Authentication)
+    const { data: { user }, error: userError } = await sb.auth.getUser();
+    if (userError || !user) {
+      return fail('Nicht angemeldet.', 'AUTH', 401);
     }
 
-    // Fallback: allow `?action=users|plans`
-    if (!action) {
+    // 3. Admin Check (Authorization)
+    // We check against the DB function to ensure role validity
+    const { data: isAdmin, error: rpcError } = await sb.rpc('is_current_user_admin');
+    
+    if (rpcError) {
+      console.error('RPC Error:', rpcError);
+      return fail('Profilprüfung fehlgeschlagen.', 'DB', 500);
+    }
+    
+    if (!isAdmin) {
+      return fail('Keine Berechtigung.', 'FORBIDDEN', 403);
+    }
+
+    // 4. Determine Action
+    let action: 'users' | 'plans' | 'dashboard' = 'users'; // Default
+    
+    try {
+      const body = await req.json();
+      if (body?.action) action = body.action;
+    } catch {
+      // If JSON parse fails, check query params as fallback
       const url = new URL(req.url);
-      const q = url.searchParams.get("action");
-      if (q === "users" || q === "plans") {
-        action = q;
+      const q = url.searchParams.get('action');
+      if (q === 'users' || q === 'plans' || q === 'dashboard') {
+        action = q as 'users' | 'plans' | 'dashboard';
       }
     }
 
-    // Final fallback: default to 'users' to avoid noisy BAD_REQUEST toasts on accidental POSTs
-    if (!action) {
-      // optional server log for diagnostics; keep response 200 to avoid SDK generic errors
-      console.warn("[admin-fetch] Missing action; defaulting to 'users'.");
-      action = "users";
-    }
+    // 5. Execute Action
+    
+    // --- ACTION: USERS ---
+    if (action === 'users') {
+      // Fetch DB Profiles
+      const { data: profiles, error: pErr } = await sb
+        .from('profiles')
+        .select('id, age, weight, height, fitness_goal, dietary_preference, created_at, full_name')
+        .order('created_at', { ascending: false })
+        .returns<UserProfile[]>();
 
-    // 5) Actions
-    if (action === "users") {
-      const { data: profilesData, error: pErr } = await sb
-        .from("profiles")
-        .select("id, age, weight, height, fitness_goal, dietary_preference, created_at")
-        .order("created_at", { ascending: false });
-      if (pErr) return json({ success: false, error: "Benutzer konnten nicht geladen werden.", code: "DB" });
+      if (pErr) return fail('Benutzer konnten nicht geladen werden.', 'DB', 500);
 
-      const { data: rolesData, error: rErr } = await sb
-        .from("user_roles")
-        .select("user_id, role")
-        .eq("role", "admin");
-      if (rErr) return json({ success: false, error: "Rollen konnten nicht geladen werden.", code: "DB" });
+      // Fetch Admin Roles
+      const { data: roles, error: rErr } = await sb
+        .from('user_roles')
+        .select('user_id, role')
+        .eq('role', 'admin')
+        .returns<UserRole[]>();
 
-      const adminUserIds = new Set((rolesData || []).map((r: any) => r.user_id));
+      if (rErr) return fail('Rollen konnten nicht geladen werden.', 'DB', 500);
 
-      const { data: authUsers, error: aErr } = await sb.auth.admin.listUsers();
-      if (aErr) return json({ success: false, error: "Benutzer konnten nicht geladen werden.", code: "AUTH_ADMIN" });
+      const adminUserIds = new Set(roles?.map(r => r.user_id));
 
-      const users = (profilesData || []).map((p: any) => ({
+      // Fetch Auth Emails (Requires Service Role)
+      const { data: authData, error: aErr } = await sb.auth.admin.listUsers();
+      if (aErr) return fail('Benutzerliste konnte nicht geladen werden.', 'AUTH_ADMIN', 500);
+
+      const authUsers = authData.users as AuthUser[];
+
+      // Merge Data
+      const users = (profiles || []).map(p => ({
         ...p,
         is_admin: adminUserIds.has(p.id),
-        email: (authUsers?.users || []).find((u: any) => u.id === p.id)?.email ?? "N/A",
+        email: authUsers.find(u => u.id === p.id)?.email ?? 'N/A',
       }));
-      return json({ success: true, users });
+
+      return ok({ users });
     }
 
-    if (action === "plans") {
-      const { data: workout, error: wErr } = await sb
-        .from("workout_plans")
-        .select("id, user_id, content, created_at")
-        .order("created_at", { ascending: false });
-      if (wErr) return json({ success: false, error: "Pläne konnten nicht geladen werden.", code: "DB" });
+    // --- ACTION: PLANS ---
+    if (action === 'plans') {
+      const [workoutRes, nutritionRes, authRes] = await Promise.all([
+        sb.from('workout_plans').select('id, user_id, content, created_at').order('created_at', { ascending: false }).returns<Plan[]>(),
+        sb.from('nutrition_plans').select('id, user_id, content, created_at').order('created_at', { ascending: false }).returns<Plan[]>(),
+        sb.auth.admin.listUsers()
+      ]);
 
-      const { data: nutrition, error: nErr } = await sb
-        .from("nutrition_plans")
-        .select("id, user_id, content, created_at")
-        .order("created_at", { ascending: false });
-      if (nErr) return json({ success: false, error: "Pläne konnten nicht geladen werden.", code: "DB" });
+      if (workoutRes.error || nutritionRes.error || authRes.error) {
+        return fail('Pläne konnten nicht geladen werden.', 'DB', 500);
+      }
 
-      const { data: authUsers, error: aErr } = await sb.auth.admin.listUsers();
-      if (aErr) return json({ success: false, error: "Pläne konnten nicht geladen werden.", code: "AUTH_ADMIN" });
+      const authUsers = authRes.data.users as AuthUser[];
 
       const plans = [
-        ...(workout || []).map((p: any) => ({ ...p, type: "workout" as const, user_email: (authUsers?.users || []).find((u: any) => u.id === p.user_id)?.email ?? "N/A" })),
-        ...(nutrition || []).map((p: any) => ({ ...p, type: "nutrition" as const, user_email: (authUsers?.users || []).find((u: any) => u.id === p.user_id)?.email ?? "N/A" })),
-      ].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+        ...(workoutRes.data || []).map(p => ({ ...p, type: 'workout' as const })),
+        ...(nutritionRes.data || []).map(p => ({ ...p, type: 'nutrition' as const }))
+      ].map(p => ({
+        ...p,
+        user_email: authUsers.find(u => u.id === p.user_id)?.email ?? 'N/A'
+      })).sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
 
-      return json({ success: true, plans });
+      return ok({ plans });
     }
 
-    return json({ success: false, error: "Unbekannte Aktion.", code: "BAD_REQUEST" });
-  } catch (e) {
-    console.error("Admin-fetch unexpected error:", e);
-    return json({ success: false, error: "Unerwarteter Fehler.", code: "ERROR" });
+    // --- ACTION: DASHBOARD ---
+    if (action === 'dashboard') {
+      const [profilesRes, rolesRes, workoutRes, nutritionRes, authRes] = await Promise.all([
+        sb.from('profiles').select('id, created_at, full_name').order('created_at', { ascending: false }).returns<UserProfile[]>(),
+        sb.from('user_roles').select('user_id, role').eq('role', 'admin').returns<UserRole[]>(),
+        sb.from('workout_plans').select('id, user_id, created_at').returns<Plan[]>(),
+        sb.from('nutrition_plans').select('id, user_id, created_at').returns<Plan[]>(),
+        sb.auth.admin.listUsers()
+      ]);
+
+      if (profilesRes.error || rolesRes.error || workoutRes.error || nutritionRes.error || authRes.error) {
+        return fail('Dashboard-Daten konnten nicht geladen werden.', 'DB', 500);
+      }
+
+      const adminUserIds = new Set(rolesRes.data?.map(r => r.user_id));
+      const authUsers = authRes.data.users as AuthUser[];
+
+      const users = (profilesRes.data || []).map(p => ({
+        id: p.id,
+        email: authUsers.find(u => u.id === p.id)?.email ?? 'N/A',
+        full_name: p.full_name,
+        role: adminUserIds.has(p.id) ? 'admin' : 'user',
+        created_at: p.created_at,
+      }));
+
+      // Recent Activity Feed
+      const activity = [
+        ...(workoutRes.data || []).map(p => ({ ...p, type: 'workout' as const })),
+        ...(nutritionRes.data || []).map(p => ({ ...p, type: 'nutrition' as const }))
+      ].map(p => ({
+        ...p,
+        user_email: authUsers.find(u => u.id === p.user_id)?.email ?? 'N/A'
+      }))
+      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+      .slice(0, 50);
+
+      return ok({
+        stats: {
+          users: users.length,
+          plans: (workoutRes.data?.length || 0) + (nutritionRes.data?.length || 0),
+        },
+        activity,
+        users
+      });
+    }
+
+    return fail('Unbekannte Aktion.', 'BAD_REQUEST');
+
+  } catch (error) {
+    console.error('Admin-fetch unexpected error:', error);
+    return fail('Ein unerwarteter Fehler ist aufgetreten.', 'ERROR', 500);
   }
 });

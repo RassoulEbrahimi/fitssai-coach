@@ -48,7 +48,7 @@ export const getWorkoutWeekDay = (
   const dayIndex = daysDiff % 7;
 
   return {
-    weekKey: `Week ${Math.max(1, Math.min(4, weekIndex + 1))}`,
+    weekKey: `Week ${Math.max(1, weekIndex + 1)}`,
     dayIndex: Math.max(0, Math.min(6, dayIndex)),
   };
 };

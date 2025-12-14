@@ -1,11 +1,13 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from './useAuth';
 import { useOfflineQueue } from './useOfflineQueue';
-import { logEvent, logError, logRetry } from '@/lib/telemetryClient';
-import { toastError, toastOffline } from '@/lib/toastWithIcon';
+import { logEvent, logError } from '@/lib/telemetryClient';
+import { toastError } from '@/lib/toastWithIcon';
 import { useEffect, useMemo } from 'react';
 import { CompletionState, setExerciseCompletion } from '@/lib/completionUtils';
+import { useSupabaseAction, retryWithBackoff } from './useSupabaseAction';
+import { queryKeys } from '@/lib/queryKeys';
 
 // Server response format (flat completion map)
 interface WeekCompletionResponse {
@@ -15,36 +17,11 @@ interface WeekCompletionResponse {
   planId: string;
 }
 
-// Exponential backoff retry utility
-const retryWithBackoff = async <T,>(
-  fn: () => Promise<T>,
-  maxRetries = 3,
-  initialDelay = 1000
-): Promise<T> => {
-  let lastError: any;
-
-  for (let attempt = 0; attempt <= maxRetries; attempt++) {
-    try {
-      return await fn();
-    } catch (error) {
-      lastError = error;
-
-      if (attempt < maxRetries) {
-        const delay = initialDelay * Math.pow(2, attempt);
-        console.log(`Retry attempt ${attempt + 1}/${maxRetries} after ${delay}ms`);
-        logRetry('retry_with_backoff', attempt + 1, delay);
-        await new Promise((resolve) => setTimeout(resolve, delay));
-      }
-    }
-  }
-
-  throw lastError;
-};
-
 interface UseWeekCompletionParams {
   planId: string | undefined;
   weekKey: string;
   enabled?: boolean;
+  availableWeeks?: string[];
 }
 
 interface ToggleExerciseParams {
@@ -53,23 +30,34 @@ interface ToggleExerciseParams {
   dayIndex: number;
   exerciseIndex: number;
   completed: boolean;
-  /** Duration in minutes (defaults to 10 if not provided) */
   durationMinutes?: number;
-  /** Calories burned (defaults to 50 if not provided) */
   caloriesBurned?: number;
 }
 
-export const useWeekCompletion = ({ planId, weekKey, enabled = true }: UseWeekCompletionParams) => {
+interface ToggleExerciseResponse {
+  success: boolean;
+  data: unknown;
+}
+
+interface ToggleExerciseContext {
+  previousData: CompletionState | undefined;
+}
+
+export const useWeekCompletion = ({ planId, weekKey, enabled = true, availableWeeks }: UseWeekCompletionParams) => {
   const { user } = useAuth();
   const queryClient = useQueryClient();
-  const { isOnline, enqueue } = useOfflineQueue();
+  const { isOnline } = useOfflineQueue();
+
+  // ✅ NEW: Centralized Key Generation
+  const queryKey = queryKeys.completion.byWeek(planId, weekKey);
 
   // Prefetch helper function
   const prefetchWeekCompletion = async (targetPlanId: string, targetWeekKey: string) => {
     logEvent('prefetch_week', { planId: targetPlanId, weekKey: targetWeekKey });
 
     await queryClient.prefetchQuery({
-      queryKey: ['week-completion', targetPlanId, targetWeekKey],
+      // ✅ NEW: Use factory for prefetch key
+      queryKey: queryKeys.completion.byWeek(targetPlanId, targetWeekKey),
       queryFn: async () => {
         if (!user) throw new Error('User not available');
 
@@ -81,15 +69,22 @@ export const useWeekCompletion = ({ planId, weekKey, enabled = true }: UseWeekCo
           throw new Error(error?.message || 'Prefetch failed');
         }
 
-        // Edge function already returns flat structure
         return data.completionMap;
       },
-      staleTime: 30000, // 30 seconds
+      staleTime: 30000,
     });
   };
 
+  const isInvalidWeek = useMemo(() => {
+    if (!availableWeeks || availableWeeks.length === 0) return false;
+    const normalizedWeekKey = weekKey.replace(/\s+/g, '').toLowerCase();
+    const hasWeek = availableWeeks.some(w => w.replace(/\s+/g, '').toLowerCase() === normalizedWeekKey);
+    return !hasWeek;
+  }, [availableWeeks, weekKey]);
+
   const query = useQuery<CompletionState>({
-    queryKey: ['week-completion', planId, weekKey],
+    // ✅ NEW: Use centralized key
+    queryKey,
     queryFn: async () => {
       if (!user || !planId) {
         throw new Error('User or planId not available');
@@ -100,10 +95,7 @@ export const useWeekCompletion = ({ planId, weekKey, enabled = true }: UseWeekCo
       try {
         const data = await retryWithBackoff(async () => {
           const { data, error } = await supabase.functions.invoke('get-week-completion', {
-            body: {
-              planId,
-              weekKey,
-            },
+            body: { planId, weekKey },
           });
 
           if (error) {
@@ -116,11 +108,9 @@ export const useWeekCompletion = ({ planId, weekKey, enabled = true }: UseWeekCo
           }
 
           return data;
-        }, 3, 1000);
+        }, { retries: 3, initialDelay: 1000 });
 
         logEvent('fetch_week_completion_success', { planId, weekKey });
-
-        // Edge function already returns flat structure, no normalization needed
         return data.completionMap;
       } catch (error: any) {
         console.error('Failed to fetch week completion after retries:', error);
@@ -129,21 +119,19 @@ export const useWeekCompletion = ({ planId, weekKey, enabled = true }: UseWeekCo
 
         toastError(
           'Fehler beim Laden',
-          'Trainingsplan konnte nicht geladen werden. Bitte versuche es erneut.',
-          3000
+          'Trainingsplan konnte nicht geladen werden. Bitte versuche es erneut.'
         );
 
         throw error;
       }
     },
-    enabled: enabled && !!user && !!planId, // Allow queries even when offline to use cache
-    staleTime: 30000, // 30 seconds
-    gcTime: 5 * 60 * 1000, // 5 minutes
-    retry: false, // We handle retries manually with exponential backoff
-    networkMode: 'offlineFirst', // Use cache when offline, fetch when online
+    enabled: enabled && !!user && !!planId && !isInvalidWeek,
+    staleTime: 30000,
+    gcTime: 5 * 60 * 1000,
+    retry: false,
+    networkMode: 'offlineFirst',
   });
 
-  // Log offline fallback usage
   useEffect(() => {
     if (!isOnline && query.data && !query.isFetching) {
       logEvent('offline_fallback', {
@@ -154,107 +142,41 @@ export const useWeekCompletion = ({ planId, weekKey, enabled = true }: UseWeekCo
     }
   }, [isOnline, query.data, query.isFetching, planId, weekKey, query.dataUpdatedAt]);
 
-  const toggleMutation = useMutation({
-    mutationFn: async (params: ToggleExerciseParams) => {
-      logEvent('toggle_exercise_start', {
-        ...params,
-        isOnline,
-        completionKey: `${params.weekKey}_${params.dayIndex}_${params.exerciseIndex}`
+  const { mutate: toggleExercise, isPending: isToggling } = useSupabaseAction<ToggleExerciseResponse, ToggleExerciseParams, ToggleExerciseContext>({
+    action: async (params) => {
+      const { data, error } = await supabase.functions.invoke('toggle-exercise', {
+        body: {
+          planId: params.planId,
+          weekKey: params.weekKey,
+          dayIndex: params.dayIndex,
+          exerciseIndex: params.exerciseIndex,
+          completed: params.completed,
+          durationMinutes: params.durationMinutes,
+          caloriesBurned: params.caloriesBurned,
+        },
       });
 
-      // Check if offline
-      if (!isOnline) {
-        logEvent('toggle_exercise_queued', params);
-        // Queue for later
-        enqueue('TOGGLE_DAY_COMPLETION', params);
-
-        // Return success for optimistic update
-        return { success: true, queued: true };
-      }
-
-      // Online: retry with exponential backoff
-      try {
-        const data = await retryWithBackoff(async () => {
-          const { data, error } = await supabase.functions.invoke('toggle-exercise', {
-            body: {
-              planId: params.planId,
-              weekKey: params.weekKey,
-              dayIndex: params.dayIndex,
-              exerciseIndex: params.exerciseIndex,
-              completed: params.completed,
-              durationMinutes: params.durationMinutes,
-              caloriesBurned: params.caloriesBurned,
-            },
-          });
-
-          if (error) {
-            console.error('Error toggling exercise:', error);
-            throw new Error(error.message || 'Failed to toggle exercise');
-          }
-
-          if (!data?.success) {
-            throw new Error('Invalid response from server');
-          }
-
-          return data;
-        }, 3, 1000);
-
-        logEvent('toggle_exercise_success', {
-          ...params,
-          completionKey: `${params.weekKey}_${params.dayIndex}_${params.exerciseIndex}`
-        });
-        return data;
-      } catch (error: any) {
-        console.error('Failed to toggle exercise after retries:', error);
-
-        // If it's a network error, queue it even if we thought we were online
-        const isNetworkError =
-          error.message?.includes('Failed to fetch') ||
-          error.message?.includes('Network request failed');
-
-        if (isNetworkError) {
-          logEvent('toggle_exercise_queued_error', params);
-          enqueue('TOGGLE_DAY_COMPLETION', params);
-
-          // Show offline toast manually since we are "online" but request failed
-          toastOffline(
-            'Offline gespeichert',
-            'Verbindungsproblem. Wir synchronisieren das später.',
-            3000
-          );
-          return { success: true, queued: true };
-        }
-
-        logError(error, `toggle_exercise_failed: ${JSON.stringify(params)}`);
-        logEvent('aria_announcement_triggered', { context: 'toggle_error' });
-
-        toastError(
-          'Fehler',
-          'Änderung konnte nicht gespeichert werden. Bitte versuche es erneut.',
-          3000
-        );
-
-        throw error;
-      }
+      if (error) throw new Error(error.message || 'Failed to toggle exercise');
+      if (!data?.success) throw new Error('Invalid response from server');
+      return data;
+    },
+    // ✅ NEW: Automatic invalidation uses centralized key
+    queryKey,
+    offlineActionType: 'TOGGLE_DAY_COMPLETION',
+    messages: {
+      error: 'Änderung konnte nicht gespeichert werden.',
     },
     onMutate: async (params) => {
-      // Cancel outgoing refetches
-      await queryClient.cancelQueries({ queryKey: ['week-completion', params.planId, params.weekKey] });
+      // ✅ NEW: Cancel using centralized key
+      await queryClient.cancelQueries({ queryKey });
 
-      // Snapshot previous value
-      const previousData = queryClient.getQueryData<CompletionState>([
-        'week-completion',
-        params.planId,
-        params.weekKey,
-      ]);
+      const previousData = queryClient.getQueryData<CompletionState>(queryKey);
 
-      // Optimistically update flat state
+      // ✅ NEW: Update using centralized key
       queryClient.setQueryData<CompletionState>(
-        ['week-completion', params.planId, params.weekKey],
+        queryKey,
         (old) => {
           if (!old) return old;
-
-          // Use helper to set completion in flat structure
           return setExerciseCompletion(
             old,
             params.weekKey,
@@ -268,23 +190,28 @@ export const useWeekCompletion = ({ planId, weekKey, enabled = true }: UseWeekCo
       return { previousData };
     },
     onError: (error, params, context) => {
-      // Only rollback if not offline (offline operations are queued)
       if (isOnline && context?.previousData) {
-        queryClient.setQueryData(
-          ['week-completion', params.planId, params.weekKey],
-          context.previousData
-        );
+        // ✅ NEW: Rollback using centralized key
+        queryClient.setQueryData(queryKey, context.previousData);
       }
-
-      console.error('Error toggling exercise:', error);
-    },
-    onSuccess: (data: any, params) => {
-      // Only refetch if not queued (queued items will trigger invalidation on flush)
-      if (!data?.queued) {
-        queryClient.invalidateQueries({ queryKey: ['week-completion', params.planId, params.weekKey] });
-      }
-    },
+    }
   });
+
+  if (isInvalidWeek) {
+    return {
+      completionMap: {},
+      isLoading: false,
+      isError: false,
+      error: null,
+      toggleExercise: () => { },
+      isToggling: false,
+      isOnline,
+      refetch: async () => ({ data: {}, isError: false }),
+      prefetchWeekCompletion,
+      isCached: false,
+      dataUpdatedAt: Date.now(),
+    };
+  }
 
   const completionMap = useMemo(() => query.data || {}, [query.data]);
 
@@ -293,12 +220,12 @@ export const useWeekCompletion = ({ planId, weekKey, enabled = true }: UseWeekCo
     isLoading: query.isLoading,
     isError: query.isError,
     error: query.error,
-    toggleExercise: toggleMutation.mutate,
-    isToggling: toggleMutation.isPending,
+    toggleExercise,
+    isToggling,
     isOnline,
     refetch: query.refetch,
-    prefetchWeekCompletion, // Expose prefetch function
-    isCached: !!query.data && query.isStale, // True if data exists but is stale
-    dataUpdatedAt: query.dataUpdatedAt, // Timestamp of last update
+    prefetchWeekCompletion,
+    isCached: !!query.data && query.isStale,
+    dataUpdatedAt: query.dataUpdatedAt,
   };
 };

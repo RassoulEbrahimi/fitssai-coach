@@ -31,15 +31,19 @@ import { useAddExercise } from "@/hooks/useAddExercise";
 import { Plus } from "lucide-react";
 import { SpeedDial } from "@/components/SpeedDial";
 import { WorkoutFeedbackCard } from "@/components/feedback/WorkoutFeedbackCard";
-import { useTraining } from "@/contexts/TrainingContext";
+import { useTrainingData } from "@/contexts/TrainingContext";
 import { useDeleteExercise } from "@/hooks/useDeleteExercise";
 import { useRestoreExercise } from "@/hooks/useRestoreExercise";
 import { Button as ToastButton } from "@/components/ui/button";
+import { WorkoutPlan } from "@/lib/types";
 
 const ExerciseList = React.lazy(() => import("@/views/ExerciseList"));
+// WorkoutLog imported from types
+import { WorkoutLog } from "@/lib/types";
+
 interface WorkoutViewProps {
-  workoutPlan: any;
-  workoutLogs: any[];
+  workoutPlan: WorkoutPlan;
+  workoutLogs: WorkoutLog[];
   completingWorkout: boolean;
   selectedDate: Date;
 
@@ -82,7 +86,8 @@ const WorkoutView: React.FC<WorkoutViewProps> = ({
   } = useToast();
   const { user } = useAuth();
   const queryClient = useQueryClient();
-  const { addWorkout, syncFromPlan, removeWorkout } = useTraining();
+  // Optimized: useTrainingData instead of useTraining to avoid 1s timer re-renders
+  const { addWorkout, syncFromPlan, removeWorkout } = useTrainingData();
   const { deleteExercise, isDeleting } = useDeleteExercise();
   const { restoreExercise, isRestoring } = useRestoreExercise();
 
@@ -98,9 +103,20 @@ const WorkoutView: React.FC<WorkoutViewProps> = ({
   const planId = workoutPlan?.id;
   const { data: livePlan, isLoading: isLoadingPlan } = useQuery({
     queryKey: ['workout-plan', planId],
+    queryFn: async () => {
+      if (!planId) return null;
+      const { data, error } = await supabase
+        .from('workout_plans')
+        .select('*')
+        .eq('id', planId)
+        .single();
+
+      if (error) throw error;
+      return data as unknown as WorkoutPlan;
+    },
     enabled: !!planId,
     initialData: workoutPlan,
-    staleTime: 0,
+    staleTime: 1000 * 60 * 5, // 5 minutes (increased from 0 to prevent immediate refetch loop if initialData is provided)
   });
 
   // Use consolidated workout helpers hook
@@ -128,16 +144,14 @@ const WorkoutView: React.FC<WorkoutViewProps> = ({
   // Scroll container ref for scroll stabilization
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
 
-  // Get day index from selectedDate (0 = Monday, 6 = Sunday) using plan-based calculation
-  const getDayIndexForDate = (date: Date): number => {
-    if (!livePlan?.created_at) return 0;
-    const { dayIndex } = getWorkoutWeekDay(livePlan.created_at, date);
-    return dayIndex;
-  };
-
   // Derive all state from selectedDate (single source of truth)
   const activeWeek = useMemo(() => getWeekKeyForDate(selectedDate), [selectedDate, getWeekKeyForDate]);
-  const activeDayIndex = useMemo(() => getDayIndexForDate(selectedDate), [selectedDate, livePlan?.created_at]);
+
+  const activeDayIndex = useMemo(() => {
+    if (!livePlan?.created_at) return 0;
+    const { dayIndex } = getWorkoutWeekDay(livePlan.created_at, selectedDate);
+    return dayIndex;
+  }, [selectedDate, livePlan?.created_at]);
 
   // Expanded day is always the currently selected day
   const expandedDay = activeDayIndex;
@@ -164,7 +178,8 @@ const WorkoutView: React.FC<WorkoutViewProps> = ({
   } = useWeekCompletion({
     planId: livePlan?.id,
     weekKey: wk,
-    enabled: !!user && !!livePlan
+    enabled: !!user && !!livePlan,
+    availableWeeks: livePlan?.content ? Object.keys(livePlan.content) : []
   });
 
   // Helper function to fetch week completion
@@ -247,7 +262,7 @@ const WorkoutView: React.FC<WorkoutViewProps> = ({
     if (!livePlan?.created_at) return;
 
     const currentWeekNum = Number(wk.match(/\d+/)?.[0] ?? 1);
-    const newWeekNum = Math.min(4, currentWeekNum + 1);
+    const newWeekNum = Math.min(52, currentWeekNum + 1);
     const newWeekKey = `Week ${newWeekNum}`;
     const newDate = getDateFor(newWeekKey, activeDayIndex);
 
@@ -291,7 +306,7 @@ const WorkoutView: React.FC<WorkoutViewProps> = ({
     const w = params.get('w');
     const d = params.get('d');
     return {
-      w: w && /^[1-4]$/.test(w) ? parseInt(w) : null,
+      w: w && /^[1-9][0-9]*$/.test(w) ? parseInt(w) : null,
       d: d && /^[0-6]$/.test(d) ? parseInt(d) : null
     };
   };
@@ -302,20 +317,21 @@ const WorkoutView: React.FC<WorkoutViewProps> = ({
     }
   };
 
-  // Parse URL on mount and sync with selected date
-  useEffect(() => {
-    const {
-      w,
-      d
-    } = parseHashQuery();
-    if (w !== null && w >= 1 && w <= 4 && d !== null && d >= 0 && d <= 6) {
-      const weekKey = normalizeWeekKey(`Week ${w}`);
-      const dateForWeek = getDateFor(weekKey, d);
-      if (dateForWeek) {
-        handleDateChange(dateForWeek);
-      }
-    }
-  }, []); // Only run on mount
+  // Parse URL on mount and sync with selected date - DISABLED to ensure "Today" is always focused
+  // This was causing the calendar to get stuck on the last visited week stored in the URL
+  // useEffect(() => {
+  //   const {
+  //     w,
+  //     d
+  //   } = parseHashQuery();
+  //   if (w !== null && w >= 1 && d !== null && d >= 0 && d <= 6) {
+  //     const weekKey = normalizeWeekKey(`Week ${w}`);
+  //     const dateForWeek = getDateFor(weekKey, d);
+  //     if (dateForWeek) {
+  //       handleDateChange(dateForWeek);
+  //     }
+  //   }
+  // }, []); // Only run on mount
 
   // Update hash whenever activeWeek or activeDayIndex changes
   useEffect(() => {
@@ -372,9 +388,10 @@ const WorkoutView: React.FC<WorkoutViewProps> = ({
     }
   };
 
-  // Handle keyboard navigation in stepper
   const handleStepperKeyDown = (e: React.KeyboardEvent, weekNum: number) => {
-    const weeks = [1, 2, 3, 4];
+    // Dynamic weeks array based on current week to allow navigation
+    const maxWeek = Math.max(4, weekNum + 1);
+    const weeks = Array.from({ length: maxWeek }, (_, i) => i + 1);
     const currentIndex = weeks.indexOf(weekNum);
     switch (e.key) {
       case 'ArrowLeft':
