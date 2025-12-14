@@ -38,7 +38,8 @@ This document outlines the current state of the backend (Supabase Edge Functions
 
 ## Future Roadmap (Refactoring Candidates)
 The following hooks should be refactored to use `useSupabaseAction` for consistent error handling and offline support:
-- `src/hooks/useSetTracking.tsx` (Critical - Workout usage)
+- `src/hooks/useSetTracking.tsx` (Completed - Mission 2)
+- `src/hooks/useWeekCompletion.tsx` (In Progress - Mission 2)
 - `src/hooks/queries/useWorkoutLogs.ts` (Critical - Dashboard usage)
 - `src/hooks/useAddExercise.tsx`
 - `src/hooks/useDeleteExercise.tsx`

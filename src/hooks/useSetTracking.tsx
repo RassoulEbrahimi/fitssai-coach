@@ -30,8 +30,19 @@ interface WorkoutLogWithSets {
   workout_set_logs: SetLog[];
 }
 
+// Response from the edge function
+interface ToggleSetResponse {
+  success: boolean;
+  data: unknown; // We can refine this if we know the exact shape, but usually success is enough
+}
+
+// Context for optimistic updates rollback
+interface ToggleSetContext {
+  previousSets: Record<number, Record<number, SetLog>> | undefined;
+}
+
 // Standalone action function for clean separation
-const toggleSetAction = async (params: ToggleSetParams) => {
+const toggleSetAction = async (params: ToggleSetParams): Promise<ToggleSetResponse> => {
   const { data, error } = await supabase.functions.invoke('toggle-set', {
     body: params,
   });
@@ -39,7 +50,7 @@ const toggleSetAction = async (params: ToggleSetParams) => {
   if (error) throw error;
   if (!data?.success) throw new Error('Invalid response from server');
 
-  return data;
+  return data as ToggleSetResponse;
 };
 
 export function useSetTracking(planId: string | undefined, weekKey: string, dayIndex: number) {
@@ -84,7 +95,10 @@ export function useSetTracking(planId: string | undefined, weekKey: string, dayI
       // Transform to a map: exerciseIndex -> { setNumber -> SetLog }
       const setsMap: Record<number, Record<number, SetLog>> = {};
 
-      (data as unknown as WorkoutLogWithSets[])?.forEach((log) => {
+      // Strictly type the data from Supabase
+      const logs = data as unknown as WorkoutLogWithSets[];
+
+      logs?.forEach((log) => {
         if (!setsMap[log.exercise_index]) {
           setsMap[log.exercise_index] = {};
         }
@@ -100,7 +114,7 @@ export function useSetTracking(planId: string | undefined, weekKey: string, dayI
   });
 
   // Replaces custom mutation with standardized action
-  const toggleSetMutation = useSupabaseAction({
+  const toggleSetMutation = useSupabaseAction<ToggleSetResponse, ToggleSetParams, ToggleSetContext>({
     action: toggleSetAction,
     offlineActionType: 'TOGGLE_SET',
     queryKey: ['workout-sets', planId, weekKey, dayIndex],
@@ -112,13 +126,13 @@ export function useSetTracking(planId: string | undefined, weekKey: string, dayI
       await queryClient.cancelQueries({ queryKey: ['workout-sets', planId, weekKey, dayIndex] });
 
       // Snapshot previous value
-      const previousSets = queryClient.getQueryData(['workout-sets', planId, weekKey, dayIndex]);
+      const previousSets = queryClient.getQueryData<Record<number, Record<number, SetLog>>>(['workout-sets', planId, weekKey, dayIndex]);
 
       // Optimistically update
       queryClient.setQueryData(
         ['workout-sets', planId, weekKey, dayIndex],
         (old: Record<number, Record<number, SetLog>> | undefined) => {
-          const newData = { ...old };
+          const newData = { ...(old || {}) };
           if (!newData[params.exerciseIndex]) {
             newData[params.exerciseIndex] = {};
           }
@@ -144,7 +158,7 @@ export function useSetTracking(planId: string | undefined, weekKey: string, dayI
 
       return { previousSets };
     },
-    onError: (err, params, context: any) => {
+    onError: (err, params, context: ToggleSetContext | undefined) => {
       // Rollback on error
       if (context?.previousSets && isOnline) {
         // Only rollback if online. If offline, the queue handles it eventually, 

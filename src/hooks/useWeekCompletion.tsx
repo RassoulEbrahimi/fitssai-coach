@@ -37,6 +37,15 @@ interface ToggleExerciseParams {
   caloriesBurned?: number;
 }
 
+interface ToggleExerciseResponse {
+  success: boolean;
+  data: unknown;
+}
+
+interface ToggleExerciseContext {
+  previousData: CompletionState | undefined;
+}
+
 export const useWeekCompletion = ({ planId, weekKey, enabled = true, availableWeeks }: UseWeekCompletionParams) => {
   const { user } = useAuth();
   const queryClient = useQueryClient();
@@ -106,7 +115,7 @@ export const useWeekCompletion = ({ planId, weekKey, enabled = true, availableWe
           }
 
           return data;
-        }, 3, 1000);
+        }, { retries: 3, initialDelay: 1000 });
 
         logEvent('fetch_week_completion_success', { planId, weekKey });
 
@@ -146,7 +155,7 @@ export const useWeekCompletion = ({ planId, weekKey, enabled = true, availableWe
   }, [isOnline, query.data, query.isFetching, planId, weekKey, query.dataUpdatedAt]);
 
   // Use the new standardized hook for toggling
-  const { mutate: toggleExercise, isPending: isToggling } = useSupabaseAction<any, ToggleExerciseParams>({
+  const { mutate: toggleExercise, isPending: isToggling } = useSupabaseAction<ToggleExerciseResponse, ToggleExerciseParams, ToggleExerciseContext>({
     action: async (params) => {
       const { data, error } = await supabase.functions.invoke('toggle-exercise', {
         body: {
@@ -197,7 +206,7 @@ export const useWeekCompletion = ({ planId, weekKey, enabled = true, availableWe
 
       return { previousData };
     },
-    onError: (error, params, context: any) => {
+    onError: (error, params, context) => {
       // Rollback if needed (handled by wrapper mostly, but we can do custom rollback if context exists)
       if (isOnline && context?.previousData) {
         queryClient.setQueryData(
