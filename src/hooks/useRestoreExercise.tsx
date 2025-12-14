@@ -1,7 +1,8 @@
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
-import { Exercise } from '@/hooks/useExerciseEditor';
+import { Exercise, WorkoutPlanContent } from '@/lib/types';
 import { logEvent, logError } from '@/lib/telemetryClient';
+import { useSupabaseAction } from './useSupabaseAction';
 
 export interface RestoreExerciseParams {
   planId: string;
@@ -14,22 +15,16 @@ export interface RestoreExerciseParams {
 interface RestoreExerciseResponse {
   success: boolean;
   message?: string;
-  content?: any;
+  content?: WorkoutPlanContent;
   error?: string;
+  queued?: boolean;
 }
 
 export function useRestoreExercise() {
   const queryClient = useQueryClient();
 
-  const restoreExerciseMutation = useMutation({
-    mutationFn: async (params: RestoreExerciseParams): Promise<RestoreExerciseResponse> => {
-      logEvent('exercise_restore_started', {
-        planId: params.planId,
-        weekKey: params.weekKey,
-        dayIndex: params.dayIndex,
-        exerciseIndex: params.exerciseIndex,
-      });
-
+  const restoreExerciseMutation = useSupabaseAction<RestoreExerciseResponse, RestoreExerciseParams>({
+    action: async (params: RestoreExerciseParams): Promise<RestoreExerciseResponse> => {
       // Get current plan
       const { data: plan, error: fetchError } = await supabase
         .from('workout_plans')
@@ -78,10 +73,22 @@ export function useRestoreExercise() {
       return { success: true, content: updatedContent };
     },
 
+    messages: {
+      success: 'Übung wiederhergestellt',
+      error: 'Fehler beim Wiederherstellen der Übung'
+    },
+
     onMutate: async (params) => {
+      logEvent('exercise_restore_started', {
+        planId: params.planId,
+        weekKey: params.weekKey,
+        dayIndex: params.dayIndex,
+        exerciseIndex: params.exerciseIndex,
+      });
+
       // Cancel outgoing refetches
-      await queryClient.cancelQueries({ 
-        queryKey: ['workout-plan', params.planId] 
+      await queryClient.cancelQueries({
+        queryKey: ['workout-plan', params.planId]
       });
 
       // Snapshot previous value for rollback
@@ -93,12 +100,12 @@ export function useRestoreExercise() {
 
         const newContent = { ...old.content };
         const week = [...(newContent[params.weekKey] || [])];
-        
+
         if (!week[params.dayIndex]) return old;
-        
+
         const day = { ...week[params.dayIndex] };
         const exercises = [...(day.exercises || [])];
-        
+
         // Insert exercise at original index
         exercises.splice(params.exerciseIndex, 0, params.exercise);
 
@@ -119,7 +126,7 @@ export function useRestoreExercise() {
       return { previousPlan };
     },
 
-    onError: (error: any, params, context) => {
+    onError: (error: any, params, context: { previousPlan?: any } | undefined) => {
       // Rollback on error
       if (context?.previousPlan) {
         queryClient.setQueryData(['workout-plan', params.planId], context.previousPlan);
@@ -130,7 +137,7 @@ export function useRestoreExercise() {
 
     onSuccess: (data, params) => {
       // Set query data with fresh content
-      if (data.content) {
+      if (data.content && !data.queued) {
         queryClient.setQueryData(['workout-plan', params.planId], (old: any) => {
           if (!old) return { content: data.content };
           return { ...old, content: data.content };
@@ -138,14 +145,14 @@ export function useRestoreExercise() {
       }
 
       // Invalidate queries to ensure fresh data
-      queryClient.invalidateQueries({ 
-        queryKey: ['workout-plan', params.planId] 
+      queryClient.invalidateQueries({
+        queryKey: ['workout-plan', params.planId]
       });
 
       // Invalidate all week completions
       ['Week 1', 'Week 2', 'Week 3', 'Week 4'].forEach(weekKey => {
-        queryClient.invalidateQueries({ 
-          queryKey: ['week-completion', params.planId, weekKey] 
+        queryClient.invalidateQueries({
+          queryKey: ['week-completion', params.planId, weekKey]
         });
       });
 

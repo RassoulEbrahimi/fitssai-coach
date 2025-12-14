@@ -71,7 +71,7 @@ serve(async (req) => {
     // Parse and validate request body
     const body = await req.json();
     const validation = GenerateSuggestionsSchema.safeParse(body);
-    
+
     if (!validation.success) {
       console.error('[ERROR] Input validation failed');
       return new Response(
@@ -79,7 +79,7 @@ serve(async (req) => {
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
-    
+
     const { day_of_week, available_time, focus_type } = validation.data;
     const custom_prompt = sanitizePrompt(validation.data.custom_prompt);
 
@@ -93,8 +93,8 @@ serve(async (req) => {
     if (profileError || !profile) {
       console.error('[ERROR] Profile fetch failed');
       return new Response(
-        JSON.stringify({ 
-          error: 'Profil nicht gefunden', 
+        JSON.stringify({
+          error: 'Profil nicht gefunden',
           code: 'PROFILE_NOT_FOUND'
         }),
         { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -169,7 +169,7 @@ Make exercises specific, realistic, and suitable for their level. Include rest p
     }
 
     // Apply focus_type adjustments
-    switch(focus_type) {
+    switch (focus_type) {
       case 'cardio':
         prompt += "\n\nFOKUS: Cardio. Bevorzuge Ausdauer-/HIIT-/Intervall-Elemente. Geringe bis mittlere Last, höhere Herzfrequenz.";
         break;
@@ -192,7 +192,7 @@ Make exercises specific, realistic, and suitable for their level. Include rest p
         prompt += "\n\nFOKUS: Handgelenk-schonend. Vermeide stützlastige Übungen; nutze Fäuste/Griffe/Unterarme oder Maschinen-Alternativen.";
         break;
       default:
-        // auto → no extra line
+      // auto → no extra line
     }
 
     // Validate prompt before sending to OpenAI
@@ -208,24 +208,24 @@ Make exercises specific, realistic, and suitable for their level. Include rest p
 
     try {
       const response = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${openAIApiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: 'gpt-4o-mini',
-        response_format: { type: 'json_object' },
-        messages: [
-          { 
-            role: 'system', 
-            content: 'You are a professional fitness trainer. You MUST respond with valid JSON only in the exact format specified. Use German for all exercise names and descriptions. Never add explanatory text outside the JSON structure.' 
-          },
-          { role: 'user', content: prompt }
-        ],
-        temperature: 0.7,
-      }),
-    });
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${openAIApiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model: 'gpt-4o-mini',
+          response_format: { type: 'json_object' },
+          messages: [
+            {
+              role: 'system',
+              content: 'You are a professional fitness trainer. You MUST respond with valid JSON only in the exact format specified. Use German for all exercise names and descriptions. Never add explanatory text outside the JSON structure.'
+            },
+            { role: 'user', content: prompt }
+          ],
+          temperature: 0.7,
+        }),
+      });
 
       aiStatusCode = response.status;
       aiSuccess = response.ok;
@@ -233,7 +233,7 @@ Make exercises specific, realistic, and suitable for their level. Include rest p
       if (!response.ok) {
         const errorText = await response.text();
         aiErrorMessage = errorText;
-        
+
         // Handle rate limit / quota exhaustion specifically
         if (response.status === 429 || errorText.includes('insufficient_quota')) {
           console.error('[ERROR] OpenAI rate limit exceeded');
@@ -248,8 +248,8 @@ Make exercises specific, realistic, and suitable for their level. Include rest p
 
         console.error('[ERROR] OpenAI API request failed');
         return new Response(
-          JSON.stringify({ 
-            error: 'Fehler beim Generieren der Vorschläge', 
+          JSON.stringify({
+            error: 'Fehler beim Generieren der Vorschläge',
             code: 'GENERATION_FAILED'
           }),
           { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
@@ -257,21 +257,21 @@ Make exercises specific, realistic, and suitable for their level. Include rest p
       }
 
       const data = await response.json();
-    const generatedContent = data.choices[0].message.content;
+      const generatedContent = data.choices[0].message.content;
 
-    let parsedContent;
-    try {
-      parsedContent = JSON.parse(generatedContent);
-    } catch (parseError: any) {
-      console.error('[ERROR] Failed to parse AI response');
-      return new Response(
-        JSON.stringify({ 
-          error: 'KI-Antwort konnte nicht verarbeitet werden', 
-          code: 'GENERATION_FAILED'
-        }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
+      let parsedContent;
+      try {
+        parsedContent = JSON.parse(generatedContent);
+      } catch (parseError: any) {
+        console.error('[ERROR] Failed to parse AI response');
+        return new Response(
+          JSON.stringify({
+            error: 'KI-Antwort konnte nicht verarbeitet werden',
+            code: 'GENERATION_FAILED'
+          }),
+          { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
 
       // Validate that we have actual suggestions
       if (!parsedContent || !parsedContent.suggestions || parsedContent.suggestions.length === 0) {
@@ -308,15 +308,15 @@ Make exercises specific, realistic, and suitable for their level. Include rest p
           status_code: aiStatusCode || null,
           error_message: aiErrorMessage
         });
-      } catch (logError: any) {
+      } catch (logError: unknown) {
         // Don't fail the request if logging fails
       }
     }
 
-  } catch (error: any) {
-    console.error('[ERROR] Unhandled exception:', error.message);
+  } catch (error: unknown) {
+    console.error('[ERROR] Unhandled exception:', error instanceof Error ? error.message : String(error));
     return new Response(
-      JSON.stringify({ 
+      JSON.stringify({
         error: 'Ein unerwarteter Fehler ist aufgetreten',
         code: 'INTERNAL_ERROR'
       }),

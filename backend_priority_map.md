@@ -37,16 +37,16 @@ This document outlines the current state of the backend (Supabase Edge Functions
 **Status:** **Completed.** Implemented `get_weekly_completion_map` RPC and refactored Edge Function.
 
 ## Future Roadmap (Refactoring Candidates)
-The following hooks should be refactored to use `useSupabaseAction` for consistent error handling and offline support:
-- `src/hooks/useSetTracking.tsx` (Completed - Mission 2)
-- `src/hooks/useWeekCompletion.tsx` (In Progress - Mission 2)
-- `src/hooks/queries/useWorkoutLogs.ts` (Critical - Dashboard usage)
-- `src/hooks/useAddExercise.tsx`
-- `src/hooks/useDeleteExercise.tsx`
-- `src/hooks/useExerciseEditor.tsx`
-- `src/hooks/useRestoreExercise.tsx`
+The following hooks have been refactored to use `useSupabaseAction` for consistent error handling and offline support:
+- [x] `src/hooks/useSetTracking.tsx` (Completed - Mission 2)
+- [x] `src/hooks/useWeekCompletion.tsx` (Completed - Mission 2)
+- [x] `src/hooks/queries/useWorkoutLogs.ts` (Completed - Mission 3)
+- [x] `src/hooks/useAddExercise.tsx` (Completed - Mission 3)
+- [x] `src/hooks/useDeleteExercise.tsx` (Completed - Mission 3)
+- [x] `src/hooks/useExerciseEditor.tsx` (Completed - Mission 3)
+- [x] `src/hooks/useRestoreExercise.tsx` (Completed - Mission 3)
 
 ## Build/Test Notes
-- **Lint:** `npm run lint` failed with 161 problems. Most are `no-explicit-any` in Edge Functions (`update-exercise`, `generate-plans`).
+- **Lint:** `npm run lint` improved (down to ~129 errors). Key Edge Functions (`update-exercise`, `generate-plans`) have been strictly typed.
 - **Tests:** No unit tests found for Edge Functions. `npm run test` was not run (not configured standardly or skipped to save analysis time).
-- **TypeScript:** High usage of `any` in older functions (`update-exercise`) makes them risky to touch without adding types first.
+- **TypeScript:** `any` usage significantly reduced in core logic.

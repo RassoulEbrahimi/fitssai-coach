@@ -9,10 +9,10 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-const json = (obj: any, status = 200) =>
+const json = (obj: unknown, status = 200) =>
   new Response(JSON.stringify(obj), {
-    status,
     headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    status,
   });
 
 const ok = (obj: Record<string, any> = {}) => json({ success: true, ...obj }, 200);
@@ -40,7 +40,7 @@ serve(async (req) => {
     }
 
     const sb = createClient(SUPABASE_URL, SERVICE_ROLE_KEY, { auth: { persistSession: false } });
-    
+
     // Client for user auth
     const supabaseClient = createClient(
       SUPABASE_URL,
@@ -56,14 +56,14 @@ serve(async (req) => {
 
     // Parse request body
     const body = await req.json();
-    
+
     // Validate input
     const validation = GetWorkoutSchema.safeParse(body);
     if (!validation.success) {
       const errors = validation.error.errors.map(e => `${e.path.join('.')}: ${e.message}`).join(', ');
       return fail(`Validation error: ${errors}`, 'VALIDATION_ERROR');
     }
-    
+
     const { weekKey, dayIndex, planId } = validation.data;
 
     console.log(`Loading completion map for user ${user.id}, plan ${planId}, ${weekKey} day ${dayIndex}`);

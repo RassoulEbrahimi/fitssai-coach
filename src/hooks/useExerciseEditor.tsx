@@ -1,17 +1,13 @@
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { useTranslation } from 'react-i18next';
 import { logEvent, logError } from '@/lib/telemetryClient';
+import { useSupabaseAction } from './useSupabaseAction';
 
-export interface Exercise {
-  name: string;
-  sets: number;
-  reps: string;
-  weight?: string;
-  rest?: string;
-  description?: string;
-}
+import { Exercise, WorkoutPlanContent } from '@/lib/types';
+
+export type { Exercise };
 
 export interface UpdateExerciseParams {
   planId: string;
@@ -25,8 +21,9 @@ interface UpdateExerciseResponse {
   success: boolean;
   message?: string;
   exercise?: Exercise;
-  content?: any;
+  content?: WorkoutPlanContent;
   error?: string;
+  queued?: boolean;
 }
 
 export function useExerciseEditor() {
@@ -34,15 +31,8 @@ export function useExerciseEditor() {
   const { toast } = useToast();
   const { t } = useTranslation();
 
-  const updateExerciseMutation = useMutation({
-    mutationFn: async (params: UpdateExerciseParams): Promise<UpdateExerciseResponse> => {
-      logEvent('exercise_update_started', {
-        planId: params.planId,
-        weekKey: params.weekKey,
-        dayIndex: params.dayIndex,
-        exerciseIndex: params.exerciseIndex,
-      });
-
+  const updateExerciseMutation = useSupabaseAction<UpdateExerciseResponse, UpdateExerciseParams>({
+    action: async (params: UpdateExerciseParams): Promise<UpdateExerciseResponse> => {
       // Call edge function (DB fallback disabled - edge function now autofills structures)
       const { data, error } = await supabase.functions.invoke('update-exercise', {
         body: params,
@@ -59,10 +49,23 @@ export function useExerciseEditor() {
       return data;
     },
 
+    // Note: We handle error messages manually in onError due to complex error parsing/parsing logic
+    // We only provide success message here if we wanted simple toast, but original code used custom success toast too.
+    // Actually, passing messages.success is fine if it matches.
+    // Original success toast: title: 'Exercise updated', description: `${params.exercise.name} has been saved`
+    // Since it's dynamic, we'll keep it in onSuccess and omit messages.success.
+
     onMutate: async (params) => {
+      logEvent('exercise_update_started', {
+        planId: params.planId,
+        weekKey: params.weekKey,
+        dayIndex: params.dayIndex,
+        exerciseIndex: params.exerciseIndex,
+      });
+
       // Cancel outgoing refetches
-      await queryClient.cancelQueries({ 
-        queryKey: ['workout-plan', params.planId] 
+      await queryClient.cancelQueries({
+        queryKey: ['workout-plan', params.planId]
       });
 
       // Snapshot previous value for rollback
@@ -74,12 +77,12 @@ export function useExerciseEditor() {
 
         const newContent = { ...old.content };
         const week = [...(newContent[params.weekKey] || [])];
-        
+
         if (!week[params.dayIndex]) return old;
-        
+
         const day = { ...week[params.dayIndex] };
         const exercises = [...(day.exercises || [])];
-        
+
         if (!exercises[params.exerciseIndex]) return old;
 
         // Apply optimistic update
@@ -106,7 +109,7 @@ export function useExerciseEditor() {
       return { previousPlan };
     },
 
-    onError: (error: any, params, context) => {
+    onError: (error: any, params, context: { previousPlan?: any } | undefined) => {
       // Rollback on error
       if (context?.previousPlan) {
         queryClient.setQueryData(['workout-plan', params.planId], context.previousPlan);
@@ -119,7 +122,7 @@ export function useExerciseEditor() {
       try {
         const parsed = JSON.parse(error.message);
         console.error('[useExerciseEditor] Parsed error:', parsed);
-        
+
         if (parsed.error === 'Database error' && parsed.details) {
           // Database error with details
           description = `${parsed.error}: ${parsed.details}`;
@@ -153,7 +156,7 @@ export function useExerciseEditor() {
 
     onSuccess: (data, params) => {
       // Set query data with fresh content from edge function
-      if (data.content) {
+      if (data.content && !data.queued) {
         queryClient.setQueriesData(
           { queryKey: ['workout-plan', params.planId] },
           (old: any) => {
@@ -164,8 +167,8 @@ export function useExerciseEditor() {
       }
 
       // Invalidate queries to ensure fresh data
-      queryClient.invalidateQueries({ 
-        queryKey: ['workout-plan', params.planId] 
+      queryClient.invalidateQueries({
+        queryKey: ['workout-plan', params.planId]
       });
 
       logEvent('exercise_update_success', {

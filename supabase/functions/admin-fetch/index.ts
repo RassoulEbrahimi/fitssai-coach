@@ -9,8 +9,11 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-const json = (obj: any, status = 200) =>
-  new Response(JSON.stringify(obj), { status, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+const json = (obj: unknown, status = 200) =>
+  new Response(JSON.stringify(obj), {
+    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    status,
+  });
 
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
@@ -124,11 +127,64 @@ serve(async (req) => {
       if (aErr) return json({ success: false, error: "Pläne konnten nicht geladen werden.", code: "AUTH_ADMIN" });
 
       const plans = [
-        ...(workout || []).map((p: any) => ({ ...p, type: "workout" as const, user_email: (authUsers?.users || []).find((u: any) => u.id === p.user_id)?.email ?? "N/A" })),
-        ...(nutrition || []).map((p: any) => ({ ...p, type: "nutrition" as const, user_email: (authUsers?.users || []).find((u: any) => u.id === p.user_id)?.email ?? "N/A" })),
-      ].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+        ...(workout || []).map((p: Record<string, unknown>) => ({ ...p, type: "workout" as const, user_email: (authUsers?.users || []).find((u: { id: string, email: string }) => u.id === p.user_id)?.email ?? "N/A" })),
+        ...(nutrition || []).map((p: Record<string, unknown>) => ({ ...p, type: "nutrition" as const, user_email: (authUsers?.users || []).find((u: { id: string, email: string }) => u.id === p.user_id)?.email ?? "N/A" })),
+      ].sort((a, b) => new Date(b.created_at as string).getTime() - new Date(a.created_at as string).getTime());
 
       return json({ success: true, plans });
+    }
+
+    if (action === "dashboard") {
+      const { data: profilesData, error: pErr } = await sb
+        .from("profiles")
+        .select("id, created_at, full_name")
+        .order("created_at", { ascending: false });
+      if (pErr) return json({ success: false, error: "Benutzer konnten nicht geladen werden.", code: "DB" });
+
+      const { data: rolesData, error: rErr } = await sb
+        .from("user_roles")
+        .select("user_id, role")
+        .eq("role", "admin");
+      if (rErr) return json({ success: false, error: "Rollen konnten nicht geladen werden.", code: "DB" });
+
+      const adminUserIds = new Set((rolesData || []).map((r: Record<string, unknown>) => r.user_id));
+
+      const { data: workout, error: wErr } = await sb
+        .from("workout_plans")
+        .select("id, user_id, content, created_at")
+        .order("created_at", { ascending: false });
+      if (wErr) return json({ success: false, error: "Pläne konnten nicht geladen werden.", code: "DB" });
+
+      const { data: nutrition, error: nErr } = await sb
+        .from("nutrition_plans")
+        .select("id, user_id, content, created_at")
+        .order("created_at", { ascending: false });
+      if (nErr) return json({ success: false, error: "Pläne konnten nicht geladen werden.", code: "DB" });
+
+      const { data: authUsers, error: aErr } = await sb.auth.admin.listUsers();
+      if (aErr) return json({ success: false, error: "Benutzer konnten nicht geladen werden.", code: "AUTH_ADMIN" });
+
+      // Combine data
+      const users = (profilesData || []).map((p: Record<string, unknown>) => ({
+        id: p.id,
+        email: (authUsers?.users || []).find((u: { id: string, email: string }) => u.id === p.id)?.email ?? "N/A",
+        full_name: p.full_name,
+        role: adminUserIds.has(p.id) ? "admin" : "user",
+        created_at: p.created_at,
+      }));
+
+      const stats = {
+        users: users.length,
+        plans: (workout || []).length + (nutrition || []).length,
+      };
+
+      const activity = [
+        ...(workout || []).map((p: Record<string, unknown>) => ({ ...p, type: "workout" as const, user_email: (authUsers?.users || []).find((u: { id: string, email: string }) => u.id === p.user_id)?.email ?? "N/A" })),
+        ...(nutrition || []).map((p: Record<string, unknown>) => ({ ...p, type: "nutrition" as const, user_email: (authUsers?.users || []).find((u: { id: string, email: string }) => u.id === p.user_id)?.email ?? "N/A" })),
+      ].sort((a, b) => new Date(b.created_at as string).getTime() - new Date(a.created_at as string).getTime())
+        .slice(0, 50);
+
+      return json({ success: true, stats, activity, users });
     }
 
     return json({ success: false, error: "Unbekannte Aktion.", code: "BAD_REQUEST" });

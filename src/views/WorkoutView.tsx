@@ -37,9 +37,16 @@ import { useRestoreExercise } from "@/hooks/useRestoreExercise";
 import { Button as ToastButton } from "@/components/ui/button";
 
 const ExerciseList = React.lazy(() => import("@/views/ExerciseList"));
+interface WorkoutLog {
+  id: string;
+  workout_day: string;
+  completed: boolean;
+  [key: string]: any;
+}
+
 interface WorkoutViewProps {
   workoutPlan: any;
-  workoutLogs: any[];
+  workoutLogs: WorkoutLog[];
   completingWorkout: boolean;
   selectedDate: Date;
 

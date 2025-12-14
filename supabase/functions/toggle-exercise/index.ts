@@ -9,7 +9,7 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-const json = (obj: any, status = 200) =>
+const json = (obj: unknown, status = 200) =>
   new Response(JSON.stringify(obj), {
     status,
     headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -48,7 +48,7 @@ serve(async (req) => {
     }
 
     const sb = createClient(SUPABASE_URL, SERVICE_ROLE_KEY, { auth: { persistSession: false } });
-    
+
     // Client for user auth
     const supabaseClient = createClient(
       SUPABASE_URL,
@@ -63,19 +63,19 @@ serve(async (req) => {
     }
 
     const body = await req.json();
-    
+
     // Validate input
     const validation = ToggleExerciseSchema.safeParse(body);
     if (!validation.success) {
       const errors = validation.error.errors.map(e => `${e.path.join('.')}: ${e.message}`).join(', ');
       return fail(`Validation error: ${errors}`, 'VALIDATION_ERROR');
     }
-    
-    const { 
-      planId, 
-      weekKey, 
-      dayIndex, 
-      exerciseIndex, 
+
+    const {
+      planId,
+      weekKey,
+      dayIndex,
+      exerciseIndex,
       completed,
       durationMinutes,
       caloriesBurned,

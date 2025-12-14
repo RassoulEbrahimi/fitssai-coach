@@ -1,7 +1,7 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
-import { toast } from 'sonner';
+import { useSupabaseAction } from '@/hooks/useSupabaseAction';
 
 export const useWorkoutLogs = (planId?: string) => {
     const { user } = useAuth();
@@ -26,8 +26,8 @@ export const useWorkoutLogs = (planId?: string) => {
         staleTime: 1000 * 60 * 5, // 5 minutes
     });
 
-    const toggleDayMutation = useMutation({
-        mutationFn: async ({ workoutDateStr, completed }: { workoutDateStr: string; completed: boolean }) => {
+    const toggleDayMutation = useSupabaseAction({
+        action: async ({ workoutDateStr, completed }: { workoutDateStr: string; completed: boolean }) => {
             if (!user || !planId) throw new Error('Missing user or plan');
 
             // Check for existing log to update ID if exists (though upsert handles this, explicit update is safer for pure toggle if needed)
@@ -49,6 +49,13 @@ export const useWorkoutLogs = (planId?: string) => {
             if (error) throw error;
             return data;
         },
+
+        queryKey, // Automatically handles invalidation on success
+
+        messages: {
+            error: 'Fehler beim Speichern'
+        },
+
         onMutate: async ({ workoutDateStr, completed }) => {
             await queryClient.cancelQueries({ queryKey });
 
@@ -57,7 +64,7 @@ export const useWorkoutLogs = (planId?: string) => {
             // Optimistic update
             queryClient.setQueryData(queryKey, (old: any[] = []) => {
                 const existingIndex = old.findIndex(
-                    (log) => log.workout_day === workoutDateStr
+                    (log: any) => log.workout_day === workoutDateStr
                 );
 
                 if (existingIndex > -1) {
@@ -76,12 +83,9 @@ export const useWorkoutLogs = (planId?: string) => {
 
             return { previousLogs };
         },
-        onError: (err, newTodo, context) => {
+
+        onError: (err, newTodo, context: any) => {
             queryClient.setQueryData(queryKey, context?.previousLogs);
-            toast.error('Fehler beim Speichern');
-        },
-        onSettled: () => {
-            queryClient.invalidateQueries({ queryKey });
         },
     });
 

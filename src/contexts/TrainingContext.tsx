@@ -21,7 +21,7 @@ interface TrainingContextValue {
   removeWorkout: (id: string) => void;
   updateWorkout: (id: string, updates: Partial<WorkoutItem>) => void;
   clearToday: () => void;
-  syncFromPlan: (exercises: any[], weekKey: string, dayIndex: number) => void;
+  syncFromPlan: (exercises: (Exercise & { completed?: boolean })[], weekKey: string, dayIndex: number) => void;
 
   // Session State
   isStarted: boolean;
@@ -143,7 +143,7 @@ export function TrainingProvider({ children }: { children: ReactNode }) {
     setTodayWorkouts([]);
   }, []);
 
-  const syncFromPlan = useCallback((exercises: any[], weekKey: string, dayIndex: number) => {
+  const syncFromPlan = useCallback((exercises: (Exercise & { completed?: boolean })[], weekKey: string, dayIndex: number) => {
     const workoutItems: WorkoutItem[] = exercises.map((ex, idx) => ({
       id: `${weekKey}_${dayIndex}_${idx}`,
       name: ex.name,

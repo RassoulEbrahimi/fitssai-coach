@@ -10,13 +10,13 @@ const corsHeaders = {
 const isDev = Deno.env.get('DENO_DEPLOYMENT_ID') === undefined;
 
 // Response helpers
-const json = (data: any, status = 200) =>
+const json = (data: unknown, status = 200) =>
   new Response(JSON.stringify(data), {
     status,
     headers: { ...corsHeaders, 'Content-Type': 'application/json' },
   });
 
-const ok = (data: any) => json({ success: true, ...data });
+const ok = (data: Record<string, unknown>) => json({ success: true, ...data });
 const fail = (message: string, status = 400) => json({ success: false, error: message }, status);
 
 // Validation schema for exercise
@@ -54,7 +54,7 @@ serve(async (req) => {
     // Initialize Supabase clients
     const supabaseUrl = Deno.env.get('SUPABASE_URL');
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
-    
+
     if (!supabaseUrl || !supabaseServiceKey) {
       console.error('Missing environment variables');
       return fail('Server configuration error', 500);
@@ -82,9 +82,9 @@ serve(async (req) => {
 
     // Parse and validate request body
     const body = await req.json();
-    
+
     const validation = UpdateExerciseRequestSchema.safeParse(body);
-    
+
     if (!validation.success) {
       const flattened = validation.error.flatten();
       console.error('[update-exercise] Validation failed');
@@ -94,7 +94,7 @@ serve(async (req) => {
         issues: validation.error.issues.map(issue => ({
           path: issue.path.join('.'),
           message: issue.message,
-          received: issue.code === 'invalid_type' ? (issue as any).received : undefined
+          received: issue.code === 'invalid_type' ? (issue as { received: unknown }).received : undefined
         }))
       }), 400);
     }
@@ -127,26 +127,32 @@ serve(async (req) => {
       return fail('Invalid plan structure', 400);
     }
 
-    const content = plan.content as Record<string, any>;
+    // Cast content to a structured type
+    // We expect content to be Record<string, WeekContent> where WeekContent is DayContent[]
+    // But DB just says object.
+    const content = plan.content as Record<string, unknown>;
 
-    // Ensure week exists and has 7 days with exercises arrays
+    // Ensure week exists
     if (!Array.isArray(content[weekKey])) {
       content[weekKey] = [];
     }
-    const week = content[weekKey];
+
+    const week = content[weekKey] as unknown[]; // Array of days
 
     for (let i = 0; i < 7; i++) {
       if (!week[i]) {
         week[i] = { day: null, exercises: [] };
       }
-      if (!Array.isArray(week[i].exercises)) {
-        week[i].exercises = [];
+      const day = week[i] as Record<string, unknown>;
+      if (!Array.isArray(day.exercises)) {
+        day.exercises = [];
       }
     }
 
     // Ensure target day & exercise slot exist
-    const day = week[dayIndex];
+    const day = week[dayIndex] as { exercises: any[] }; // Keeping internal 'any' for exercises array manipulation to avoid complex types locally
     if (!day.exercises) day.exercises = [];
+
     while (day.exercises.length <= exerciseIndex) {
       day.exercises.push({
         name: 'Custom',
@@ -194,16 +200,19 @@ serve(async (req) => {
       content: updatedPlan.content,
     });
 
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('[update-exercise] Error:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Internal server error';
+    const errorStack = error instanceof Error ? error.stack : undefined;
+
     if (isDev) {
-      console.error('[update-exercise] Stack:', error?.stack);
+      console.error('[update-exercise] Stack:', errorStack);
     }
     return fail(
       JSON.stringify({
-        error: error?.message || 'Internal server error',
-        ...(isDev && { stack: error?.stack }),
-      }), 
+        error: errorMessage,
+        ...(isDev && { stack: errorStack }),
+      }),
       500
     );
   }

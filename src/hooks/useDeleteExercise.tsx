@@ -1,8 +1,13 @@
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { logEvent, logError } from '@/lib/telemetryClient';
+import { useSupabaseAction } from './useSupabaseAction';
 
-export interface DeleteExerciseParams {
+import { WorkoutPlanContent } from '@/lib/types';
+
+export type { WorkoutPlanContent };
+
+interface DeleteExerciseParams {
   planId: string;
   weekKey: string;
   dayIndex: number;
@@ -12,22 +17,16 @@ export interface DeleteExerciseParams {
 interface DeleteExerciseResponse {
   success: boolean;
   message?: string;
-  content?: any;
+  content?: WorkoutPlanContent;
   error?: string;
+  queued?: boolean;
 }
 
 export function useDeleteExercise() {
   const queryClient = useQueryClient();
 
-  const deleteExerciseMutation = useMutation({
-    mutationFn: async (params: DeleteExerciseParams): Promise<DeleteExerciseResponse> => {
-      logEvent('exercise_delete_started', {
-        planId: params.planId,
-        weekKey: params.weekKey,
-        dayIndex: params.dayIndex,
-        exerciseIndex: params.exerciseIndex,
-      });
-
+  const deleteExerciseMutation = useSupabaseAction<DeleteExerciseResponse, DeleteExerciseParams>({
+    action: async (params: DeleteExerciseParams): Promise<DeleteExerciseResponse> => {
       // Get current plan
       const { data: plan, error: fetchError } = await supabase
         .from('workout_plans')
@@ -40,7 +39,7 @@ export function useDeleteExercise() {
       }
 
       // Remove exercise from content
-      const content = plan.content as any;
+      const content = plan.content as unknown as WorkoutPlanContent;
       const week = content[params.weekKey] || [];
       const day = week[params.dayIndex];
 
@@ -66,7 +65,7 @@ export function useDeleteExercise() {
       // Save to database
       const { error: updateError } = await supabase
         .from('workout_plans')
-        .update({ content: updatedContent })
+        .update({ content: updatedContent as any })
         .eq('id', params.planId);
 
       if (updateError) {
@@ -76,10 +75,22 @@ export function useDeleteExercise() {
       return { success: true, content: updatedContent };
     },
 
+    messages: {
+      success: 'Übung gelöscht',
+      error: 'Fehler beim Löschen der Übung'
+    },
+
     onMutate: async (params) => {
+      logEvent('exercise_delete_started', {
+        planId: params.planId,
+        weekKey: params.weekKey,
+        dayIndex: params.dayIndex,
+        exerciseIndex: params.exerciseIndex,
+      });
+
       // Cancel outgoing refetches
-      await queryClient.cancelQueries({ 
-        queryKey: ['workout-plan', params.planId] 
+      await queryClient.cancelQueries({
+        queryKey: ['workout-plan', params.planId]
       });
 
       // Snapshot previous value for rollback
@@ -91,12 +102,12 @@ export function useDeleteExercise() {
 
         const newContent = { ...old.content };
         const week = [...(newContent[params.weekKey] || [])];
-        
+
         if (!week[params.dayIndex]) return old;
-        
+
         const day = { ...week[params.dayIndex] };
         const exercises = [...(day.exercises || [])];
-        
+
         // Remove exercise at index
         exercises.splice(params.exerciseIndex, 1);
 
@@ -117,7 +128,7 @@ export function useDeleteExercise() {
       return { previousPlan };
     },
 
-    onError: (error: any, params, context) => {
+    onError: (error: any, params, context: { previousPlan?: any } | undefined) => {
       // Rollback on error
       if (context?.previousPlan) {
         queryClient.setQueryData(['workout-plan', params.planId], context.previousPlan);
@@ -128,7 +139,7 @@ export function useDeleteExercise() {
 
     onSuccess: (data, params) => {
       // Set query data with fresh content
-      if (data.content) {
+      if (data.content && !data.queued) {
         queryClient.setQueryData(['workout-plan', params.planId], (old: any) => {
           if (!old) return { content: data.content };
           return { ...old, content: data.content };
@@ -136,14 +147,14 @@ export function useDeleteExercise() {
       }
 
       // Invalidate queries to ensure fresh data
-      queryClient.invalidateQueries({ 
-        queryKey: ['workout-plan', params.planId] 
+      queryClient.invalidateQueries({
+        queryKey: ['workout-plan', params.planId]
       });
 
       // Invalidate all week completions
       ['Week 1', 'Week 2', 'Week 3', 'Week 4'].forEach(weekKey => {
-        queryClient.invalidateQueries({ 
-          queryKey: ['week-completion', params.planId, weekKey] 
+        queryClient.invalidateQueries({
+          queryKey: ['week-completion', params.planId, weekKey]
         });
       });
 

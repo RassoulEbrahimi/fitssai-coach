@@ -1,8 +1,7 @@
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
-import { useTranslation } from 'react-i18next';
-import { toastSuccess, toastError } from '@/lib/toastWithIcon';
-import type { Exercise } from './useExerciseEditor';
+import { useSupabaseAction } from './useSupabaseAction';
+import { Exercise, WorkoutPlan } from '@/lib/types';
 
 interface AddExerciseParams {
   planId: string;
@@ -13,20 +12,20 @@ interface AddExerciseParams {
 
 interface AddExerciseResponse {
   success: boolean;
-  updatedPlan?: any;
+  updatedPlan?: WorkoutPlan;
   error?: string;
+  queued?: boolean;
 }
 
 /**
  * Hook for adding new exercises to a workout day
- * Uses React Query mutation for optimistic updates and error handling
+ * Uses useSupabaseAction for standardized error handling and optimistic updates
  */
 export const useAddExercise = () => {
   const queryClient = useQueryClient();
-  const { t } = useTranslation();
 
-  const addExerciseMutation = useMutation<AddExerciseResponse, Error, AddExerciseParams>({
-    mutationFn: async ({ planId, weekKey, dayIndex, exercise }) => {
+  const addExerciseMutation = useSupabaseAction<AddExerciseResponse, AddExerciseParams>({
+    action: async ({ planId, weekKey, dayIndex, exercise }) => {
       console.log('[useAddExercise] Adding exercise:', { planId, weekKey, dayIndex, exercise });
 
       // Fetch current plan
@@ -36,7 +35,7 @@ export const useAddExercise = () => {
         .eq('id', planId)
         .single();
 
-      if (fetchError) throw new Error(`Failed to fetch plan: ${fetchError.message}`);
+      if (fetchError) throw new Error(`Failed to fetch plan: ${fetchError.message} `);
       if (!currentPlan) throw new Error('Plan not found');
 
       // Clone content to avoid mutations
@@ -48,8 +47,8 @@ export const useAddExercise = () => {
       }
 
       // Ensure day exists and is properly initialized (handle rest days)
-      if (!updatedContent[weekKey][dayIndex] || 
-          typeof updatedContent[weekKey][dayIndex] !== 'object') {
+      if (!updatedContent[weekKey][dayIndex] ||
+        typeof updatedContent[weekKey][dayIndex] !== 'object') {
         updatedContent[weekKey][dayIndex] = {
           day: ['Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag', 'Sonntag'][dayIndex],
           exercises: []
@@ -57,8 +56,8 @@ export const useAddExercise = () => {
       }
 
       // Ensure exercises array exists
-      if (!updatedContent[weekKey][dayIndex].exercises || 
-          !Array.isArray(updatedContent[weekKey][dayIndex].exercises)) {
+      if (!updatedContent[weekKey][dayIndex].exercises ||
+        !Array.isArray(updatedContent[weekKey][dayIndex].exercises)) {
         updatedContent[weekKey][dayIndex].exercises = [];
       }
 
@@ -73,12 +72,17 @@ export const useAddExercise = () => {
         .select()
         .single();
 
-      if (updateError) throw new Error(`Failed to update plan: ${updateError.message}`);
+      if (updateError) throw new Error(`Failed to update plan: ${updateError.message} `);
 
       return {
         success: true,
-        updatedPlan,
+        updatedPlan: updatedPlan as unknown as WorkoutPlan,
       };
+    },
+
+    messages: {
+      success: 'Die Übung wurde erfolgreich hinzugefügt',
+      error: 'Übung konnte nicht hinzugefügt werden'
     },
 
     onMutate: async ({ planId, weekKey, dayIndex, exercise }) => {
@@ -96,15 +100,15 @@ export const useAddExercise = () => {
 
         // Ensure structures exist
         if (!updatedContent[weekKey]) updatedContent[weekKey] = [];
-        if (!updatedContent[weekKey][dayIndex] || 
-            typeof updatedContent[weekKey][dayIndex] !== 'object') {
+        if (!updatedContent[weekKey][dayIndex] ||
+          typeof updatedContent[weekKey][dayIndex] !== 'object') {
           updatedContent[weekKey][dayIndex] = {
             day: ['Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag', 'Sonntag'][dayIndex],
             exercises: []
           };
         }
-        if (!updatedContent[weekKey][dayIndex].exercises || 
-            !Array.isArray(updatedContent[weekKey][dayIndex].exercises)) {
+        if (!updatedContent[weekKey][dayIndex].exercises ||
+          !Array.isArray(updatedContent[weekKey][dayIndex].exercises)) {
           updatedContent[weekKey][dayIndex].exercises = [];
         }
 
@@ -125,21 +129,19 @@ export const useAddExercise = () => {
       if (context?.previousPlan) {
         queryClient.setQueryData(['workout-plan', variables.planId], context.previousPlan);
       }
-
-      console.error('[useAddExercise] Error:', error);
-      toastError('Fehler', 'Übung konnte nicht hinzugefügt werden');
+      // Note: useSupabaseAction handles logging and displaying the toast error message
     },
 
     onSuccess: (data, variables) => {
       // Update cache with server response
-      if (data.updatedPlan) {
+      if (data.updatedPlan && !data.queued) {
         queryClient.setQueryData(['workout-plan', variables.planId], data.updatedPlan);
       }
 
       // Invalidate related queries to refetch fresh data
       queryClient.invalidateQueries({ queryKey: ['workout-plan', variables.planId] });
 
-      toastSuccess('Übung hinzugefügt', 'Die Übung wurde erfolgreich hinzugefügt');
+      // Note: useSupabaseAction handles the success toast
     },
   });
 

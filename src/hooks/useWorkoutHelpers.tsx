@@ -1,6 +1,7 @@
 import { useCallback } from 'react';
 import { isExerciseCompleted, CompletionState } from '@/lib/completionUtils';
 import { getProgressColor as getProgressColorUtil } from '@/lib/workoutPlanUtils';
+import { WorkoutPlan, WeekContent, DayContent, Exercise } from '@/lib/types';
 
 /**
  * Consolidated workout plan helper functions
@@ -11,25 +12,35 @@ import { getProgressColor as getProgressColorUtil } from '@/lib/workoutPlanUtils
  * @param workoutPlan - The workout plan object from the database
  * @returns Object containing all helper functions
  */
-export const useWorkoutHelpers = (workoutPlan: any) => {
+export const useWorkoutHelpers = (workoutPlan: Partial<WorkoutPlan> | null) => {
   /**
    * Get week content with fallback - mirror Week 2 to Weeks 3-4 if only Week 2 exists
    * IMPORTANT: This function only provides UI display data (exercise lists).
    * When users interact with exercises (mark complete, etc.), the actual weekKey 
    * passed to backend functions MUST be the real selected week, never the mirror source.
    */
-  const getWeekContentWithFallback = useCallback((weekKey: string) => {
+  const getWeekContentWithFallback = useCallback((weekKey: string): DayContent[] => {
     if (!workoutPlan?.content) return [];
 
+    const content = workoutPlan.content as Record<string, WeekContent | DayContent[]>;
+
     // If week exists in plan (even with empty/partial days), return it directly - no mirroring
-    const existing = workoutPlan.content[weekKey] || workoutPlan.content[weekKey.toLowerCase().replace(' ', '')];
-    if (existing) return existing;
+    const existing = content[weekKey] || content[weekKey.toLowerCase().replace(' ', '')];
+
+    // Helper to normalize content to DayContent[]
+    const normalize = (c: WeekContent | DayContent[]): DayContent[] => {
+      if (Array.isArray(c)) return c;
+      if (typeof c === 'object') return Object.values(c);
+      return [];
+    };
+
+    if (existing) return normalize(existing);
 
     const weekNumber = parseInt(weekKey.replace(/\D/g, ''));
 
     // Special fallback logic: if only Week 2 exists, keep Week 1 empty, mirror Week 2 to Weeks 3-4
-    const week2 = workoutPlan.content['Week 2'] || workoutPlan.content['week2'];
-    const week1 = workoutPlan.content['Week 1'] || workoutPlan.content['week1'];
+    const week2 = content['Week 2'] || content['week2'];
+    const week1 = content['Week 1'] || content['week1'];
 
     if (weekNumber === 1 && !week1 && week2) {
       // Keep Week 1 empty (return empty array) - UI only
@@ -38,19 +49,19 @@ export const useWorkoutHelpers = (workoutPlan: any) => {
 
     if ((weekNumber === 3 || weekNumber === 4) && !existing && week2) {
       // Mirror Week 2 into Weeks 3-4 - UI display only, backend still uses actual weekKey
-      return week2;
+      return normalize(week2);
     }
 
     // Default fallback to Week 1 - UI display only, backend still uses actual weekKey
     if (weekNumber > 1 && weekNumber <= 4 && week1) {
-      return week1;
+      return normalize(week1);
     }
 
     // New fallback: If weekNumber > 4, try to use Week 4, then Week 2, then Week 1
     if (weekNumber > 4) {
-      const week4 = workoutPlan.content['Week 4'] || workoutPlan.content['week4'];
-      const week3 = workoutPlan.content['Week 3'] || workoutPlan.content['week3'];
-      return week4 || week3 || week2 || week1 || [];
+      const week4 = content['Week 4'] || content['week4'];
+      const week3 = content['Week 3'] || content['week3'];
+      return normalize(week4 || week3 || week2 || week1 || []);
     }
 
     return [];
@@ -67,9 +78,9 @@ export const useWorkoutHelpers = (workoutPlan: any) => {
     const week = getWeekContentWithFallback(weekKey) || [];
     let total = 0, completed = 0;
 
-    week.forEach((day: any, dayIndex: number) => {
+    week.forEach((day: DayContent, dayIndex: number) => {
       const exercises = day?.exercises || [];
-      exercises.forEach((_ex: any, exerciseIndex: number) => {
+      exercises.forEach((_ex: Exercise, exerciseIndex: number) => {
         total++;
         if (isExerciseCompleted(completion || {}, weekKey, dayIndex, exerciseIndex)) {
           completed++;
