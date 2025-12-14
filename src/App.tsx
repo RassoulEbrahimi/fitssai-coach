@@ -12,15 +12,18 @@ import { PreferencesProvider } from "@/contexts/PreferencesContext";
 import { FocusModeProvider } from "@/contexts/FocusModeContext";
 import { TrainingProvider } from "@/contexts/TrainingContext";
 import RootRedirect from "@/components/RootRedirect";
-import AuthPage from './pages/AuthPage';
-import DashboardPage from './pages/DashboardPage';
-import OnboardingPage from './pages/OnboardingPage';
-import AdminPanel from './pages/AdminPanel';
-import NotFound from './pages/NotFound';
-import { FarewellPage } from './pages/FarewellPage';
 import "./lib/i18n";
-
 import { QueryProvider } from "@/components/providers/QueryProvider";
+import { Suspense, lazy } from "react";
+import PageSkeleton from "@/components/skeletons/PageSkeleton"; // Assuming this exists or using a generic loader
+
+// Lazy load pages
+const AuthPage = lazy(() => import('./pages/AuthPage'));
+const DashboardPage = lazy(() => import('./pages/DashboardPage'));
+const OnboardingPage = lazy(() => import('./pages/OnboardingPage'));
+const AdminPanel = lazy(() => import('./pages/AdminPanel'));
+const NotFound = lazy(() => import('./pages/NotFound'));
+const FarewellPage = lazy(() => import('./pages/FarewellPage').then(module => ({ default: module.FarewellPage })));
 
 const App = () => {
   const { i18n } = useTranslation();
@@ -55,16 +58,18 @@ const App = () => {
                   <Toaster />
                   <Sonner />
                   <BrowserRouter>
-                    <Routes>
-                      <Route path="/" element={<RootRedirect />} />
-                      <Route path="/auth/:mode" element={<AuthPage />} />
-                      <Route path="/dashboard" element={<DashboardPage />} />
-                      <Route path="/onboarding" element={<OnboardingPage />} />
-                      <Route path="/admin" element={<AdminPanel />} />
-                      <Route path="/farewell" element={<FarewellPage />} />
-                      {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
-                      <Route path="*" element={<NotFound />} />
-                    </Routes>
+                    <Suspense fallback={<div className="h-screen w-full flex items-center justify-center bg-background"><div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div></div>}>
+                      <Routes>
+                        <Route path="/" element={<RootRedirect />} />
+                        <Route path="/auth/:mode" element={<AuthPage />} />
+                        <Route path="/dashboard" element={<DashboardPage />} />
+                        <Route path="/onboarding" element={<OnboardingPage />} />
+                        <Route path="/admin" element={<AdminPanel />} />
+                        <Route path="/farewell" element={<FarewellPage />} />
+                        {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
+                        <Route path="*" element={<NotFound />} />
+                      </Routes>
+                    </Suspense>
                   </BrowserRouter>
                 </TooltipProvider>
               </AuthProvider>

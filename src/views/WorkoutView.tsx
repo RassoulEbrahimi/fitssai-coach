@@ -31,7 +31,7 @@ import { useAddExercise } from "@/hooks/useAddExercise";
 import { Plus } from "lucide-react";
 import { SpeedDial } from "@/components/SpeedDial";
 import { WorkoutFeedbackCard } from "@/components/feedback/WorkoutFeedbackCard";
-import { useTraining } from "@/contexts/TrainingContext";
+import { useTrainingData } from "@/contexts/TrainingContext";
 import { useDeleteExercise } from "@/hooks/useDeleteExercise";
 import { useRestoreExercise } from "@/hooks/useRestoreExercise";
 import { Button as ToastButton } from "@/components/ui/button";
@@ -86,7 +86,8 @@ const WorkoutView: React.FC<WorkoutViewProps> = ({
   } = useToast();
   const { user } = useAuth();
   const queryClient = useQueryClient();
-  const { addWorkout, syncFromPlan, removeWorkout } = useTraining();
+  // Optimized: useTrainingData instead of useTraining to avoid 1s timer re-renders
+  const { addWorkout, syncFromPlan, removeWorkout } = useTrainingData();
   const { deleteExercise, isDeleting } = useDeleteExercise();
   const { restoreExercise, isRestoring } = useRestoreExercise();
 
