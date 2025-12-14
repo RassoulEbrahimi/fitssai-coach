@@ -33,3 +33,28 @@ export interface WorkoutPlan {
     status?: string;
     updated_at?: string;
 }
+
+export interface NutritionMeal {
+    meal: string;
+    description: string;
+    calories: string | number;
+}
+
+export interface NutritionPlan {
+    content: Record<string, NutritionMeal[]>;
+}
+
+export interface TodayWorkout {
+    isCompleted?: boolean;
+    __restDay?: boolean;
+    [key: string]: unknown;
+}
+
+export interface WorkoutLog {
+    id: string;
+    workout_day: string;
+    completed: boolean;
+    plan_id: string;
+    user_id: string;
+    [key: string]: unknown;
+}

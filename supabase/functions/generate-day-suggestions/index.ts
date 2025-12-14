@@ -27,7 +27,7 @@ const json = (data: unknown, status = 200) =>
   });
 
 const ok = (data: Record<string, unknown>) => json({ success: true, ...data });
-const fail = (message: string, code: string, status = 400) => 
+const fail = (message: string, code: string, status = 400) =>
   json({ success: false, error: message, code }, status);
 
 // --- Validation ---
@@ -40,6 +40,7 @@ const GenerateSuggestionsSchema = z.object({
 
 const sanitizePrompt = (prompt: string | undefined): string | undefined => {
   if (!prompt) return undefined;
+  // eslint-disable-next-line no-control-regex
   return prompt.replace(/[\x00-\x1F\x7F]/g, '').trim();
 };
 
@@ -95,7 +96,7 @@ serve(async (req) => {
 
     // 5. Build Prompt
     const feedbackCounts = { super: 0, hard: 0, light: 0, notstyle: 0 };
-    
+
     // Analyze feedback
     if (feedbackData && feedbackData.length > 0 && !custom_prompt) {
       for (const item of feedbackData) {
@@ -107,7 +108,7 @@ serve(async (req) => {
       }
     }
 
-    let basePrompt = custom_prompt || `Generate 3-5 personalized workout exercises in German for:
+    const basePrompt = custom_prompt || `Generate 3-5 personalized workout exercises in German for:
 - Day: ${day_of_week}
 - Goal: ${profile.fitness_goal}
 - Level: ${profile.experience_level || 'Beginner'}
@@ -131,7 +132,7 @@ serve(async (req) => {
     if (!custom_prompt) {
       if (feedbackCounts.hard > feedbackCounts.light * 1.5) prompt += "\n\nADJUST: Less intensity, -10% weights, more rest.";
       else if (feedbackCounts.light > feedbackCounts.hard * 1.5) prompt += "\n\nADJUST: More intensity, progressive overload.";
-      
+
       if (feedbackCounts.notstyle > 3 && feedbackCounts.notstyle > feedbackCounts.super) prompt += "\n\nADJUST: Change training style, more variety.";
     }
 
@@ -186,7 +187,7 @@ serve(async (req) => {
 
       const data = await response.json();
       const content = data.choices[0]?.message?.content;
-      
+
       if (!content) throw new Error('Empty response from AI');
 
       const parsed = JSON.parse(content) as AIParsedResponse;

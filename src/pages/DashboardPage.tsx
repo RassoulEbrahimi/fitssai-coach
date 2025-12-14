@@ -13,30 +13,30 @@ const DashboardPage = () => {
   const [checkingProfile, setCheckingProfile] = useState(true);
 
   useEffect(() => {
+    const checkUserProfile = async () => {
+      if (!user) return;
+      try {
+        const { data, error } = await supabase
+          .from('profiles')
+          .select('id')
+          .eq('id', user.id)
+          .maybeSingle();
+        if (error) {
+          console.error('Error checking profile:', error);
+          return;
+        }
+        setHasProfile(!!data);
+      } catch (error) {
+        console.error('Error:', error);
+      } finally {
+        setCheckingProfile(false);
+      }
+    };
+
     if (user) {
       checkUserProfile();
     }
   }, [user]);
-
-  const checkUserProfile = async () => {
-    if (!user) return;
-    try {
-      const { data, error } = await supabase
-        .from('profiles')
-        .select('id')
-        .eq('id', user.id)
-        .maybeSingle();
-      if (error) {
-        console.error('Error checking profile:', error);
-        return;
-      }
-      setHasProfile(!!data);
-    } catch (error) {
-      console.error('Error:', error);
-    } finally {
-      setCheckingProfile(false);
-    }
-  };
 
   if (loading || checkingProfile) {
     return (

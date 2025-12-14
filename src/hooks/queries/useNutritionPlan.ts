@@ -2,6 +2,8 @@ import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 
+import { NutritionPlan } from '@/lib/types';
+
 export const useNutritionPlan = () => {
     const { user } = useAuth();
 
@@ -19,7 +21,7 @@ export const useNutritionPlan = () => {
                 .maybeSingle();
 
             if (error) throw error;
-            return data;
+            return data as unknown as NutritionPlan;
         },
         enabled: !!user,
         staleTime: 1000 * 60 * 60, // 1 hour

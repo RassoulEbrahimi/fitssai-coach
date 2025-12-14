@@ -36,13 +36,13 @@ const json = (data: unknown, status = 200) =>
   });
 
 const ok = (data: Record<string, unknown>) => json({ success: true, ...data });
-const fail = (message: string, status = 400, details?: unknown) => 
+const fail = (message: string, status = 400, details?: unknown) =>
   json({ success: false, error: message, details }, status);
 
 // --- Validation Schemas ---
 const ExerciseSchema = z.object({
   name: z.string().min(1, "Exercise name is required").max(100),
-  sets: z.union([z.number(), z.string()]).transform(val => {
+  sets: z.union([z.number(), z.string()]).transform((val: number | string) => {
     const num = typeof val === 'string' ? parseInt(val, 10) : val;
     if (isNaN(num) || num < 1 || num > 30) { // Increased max sets slightly
       throw new Error('Sets must be a number between 1 and 30');
@@ -63,7 +63,7 @@ const UpdateExerciseRequestSchema = z.object({
   exercise: ExerciseSchema,
 });
 
-serve(async (req) => {
+serve(async (req: Request) => {
   if (req.method === 'OPTIONS') return new Response(null, { headers: corsHeaders });
 
   try {
@@ -174,7 +174,7 @@ serve(async (req) => {
       // content: updatedPlan.content 
     });
 
-  } catch (error) {
+  } catch (error: unknown) {
     console.error('Unexpected error:', error);
     return fail('Internal server error', 500);
   }

@@ -15,7 +15,7 @@ const json = (obj: unknown, status = 200) =>
     status,
   });
 
-const ok = (obj: Record<string, any> = {}) => json({ success: true, ...obj }, 200);
+const ok = (obj: Record<string, unknown> = {}) => json({ success: true, ...obj }, 200);
 const fail = (message: string, code?: string) =>
   json({ success: false, error: message, code }, 200);
 

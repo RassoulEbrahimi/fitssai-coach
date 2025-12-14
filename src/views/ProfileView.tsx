@@ -16,6 +16,7 @@ import { usePreferences } from "@/contexts/PreferencesContext";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { uploadAvatar, updateProfileAvatar, getAvatarUrl } from "@/lib/avatarUtils";
+import { WorkoutPlan, NutritionPlan } from "@/lib/types";
 
 import { Profile } from "@/hooks/queries/useProfile";
 
@@ -24,8 +25,8 @@ interface ProfileViewProps {
   onProfileUpdate: () => void;
   workoutProgress: { completed: number; total: number };
   generatingPlans?: boolean;
-  workoutPlan?: any; // Keeping any for complex plan structure for now
-  nutritionPlan?: any;
+  workoutPlan?: WorkoutPlan;
+  nutritionPlan?: NutritionPlan;
   onGeneratePlans?: () => void;
 }
 
@@ -680,8 +681,8 @@ const ProfileView: React.FC<ProfileViewProps> = React.memo(({
                   key={value}
                   onClick={() => setThemeMode(value)}
                   className={`flex-1 flex items-center justify-center gap-1.5 py-2 px-3 rounded-lg text-xs font-medium transition-all ${themeMode === value
-                      ? 'bg-emerald-500/20 text-emerald-400 shadow-sm'
-                      : 'text-muted-foreground hover:bg-white/5'
+                    ? 'bg-emerald-500/20 text-emerald-400 shadow-sm'
+                    : 'text-muted-foreground hover:bg-white/5'
                     }`}
                 >
                   <Icon className="w-3.5 h-3.5" />

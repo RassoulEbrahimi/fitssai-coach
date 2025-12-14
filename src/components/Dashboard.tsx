@@ -300,22 +300,22 @@ const Dashboard = () => {
   }, [user, liveWorkoutPlan, completingWorkout, workoutLogs, toggleDay, t]);
 
   // Check if a specific day in a specific week is completed (timezone-aware)
-  const isDayCompleted = useCallback((weekKey: string, dayIndex: number) => {
+  const isDayCompleted = useCallback((weekKey: string, dayIndex: number): boolean => {
     if (!liveWorkoutPlan?.created_at) return false;
 
     const dateString = getWorkoutDateString(liveWorkoutPlan.created_at, weekKey, dayIndex);
-    return workoutLogs?.some(log => log.workout_day === dateString && log.completed) ?? false;
+    return workoutLogs?.some((log: any) => log.workout_day === dateString && log.completed) ?? false;
   }, [liveWorkoutPlan, workoutLogs]);
 
   // Check if today matches a specific week and day (Berlin timezone)
   // Centralized function from workoutDateUtils
-  const isTodayInWeekDay = useCallback((weekKey: string, dayIndex: number) => {
+  const isTodayInWeekDay = useCallback((weekKey: string, dayIndex: number): boolean => {
     if (!liveWorkoutPlan?.created_at) return false;
     return isBerlinTodayForWeekDay(liveWorkoutPlan.created_at, weekKey, dayIndex);
   }, [liveWorkoutPlan]);
 
   // Check if a day is in the future (Berlin timezone)
-  const isDayInFuture = useCallback((weekKey: string, dayIndex: number) => {
+  const isDayInFuture = useCallback((weekKey: string, dayIndex: number): boolean => {
     if (!liveWorkoutPlan?.created_at) return false;
 
     const targetDateStr = getWorkoutDateString(liveWorkoutPlan.created_at, weekKey, dayIndex);
@@ -482,10 +482,12 @@ const Dashboard = () => {
     let totalPlannedDays = 0;
     if (liveWorkoutPlan.content) {
       // For demo, use first week's structure. In production, calculate based on current week
-      const firstWeek = Object.values(liveWorkoutPlan.content)[0] as any[];
-      totalPlannedDays = Array.isArray(firstWeek)
-        ? firstWeek.filter((day: any) => day.exercises && day.exercises.length > 0).length
-        : 0;
+      const content = liveWorkoutPlan.content;
+      const firstWeek = Object.values(content)[0];
+
+      if (Array.isArray(firstWeek)) {
+        totalPlannedDays = firstWeek.filter((day) => day && day.exercises && day.exercises.length > 0).length;
+      }
     }
 
     return {

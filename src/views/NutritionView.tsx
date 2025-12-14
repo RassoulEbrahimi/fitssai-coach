@@ -5,16 +5,9 @@ import { Button } from "@/components/ui/button";
 import { Apple, Sparkles } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useTranslation } from "react-i18next";
+import { NutritionPlan, NutritionMeal } from "@/lib/types";
 
-interface NutritionMeal {
-  meal: string;
-  description: string;
-  calories: string | number;
-}
 
-interface NutritionPlan {
-  content: Record<string, NutritionMeal[]>;
-}
 
 interface NutritionViewProps {
   nutritionPlan: NutritionPlan | null;

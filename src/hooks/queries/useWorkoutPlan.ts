@@ -4,6 +4,8 @@ import { useAuth } from '@/hooks/useAuth';
 import { toast } from 'sonner';
 import { queryKeys } from '@/lib/queryKeys';
 
+import { WorkoutPlan } from '@/lib/types';
+
 export const useWorkoutPlan = () => {
     const { user } = useAuth();
     const queryClient = useQueryClient();
@@ -23,7 +25,7 @@ export const useWorkoutPlan = () => {
                 .maybeSingle();
 
             if (error) throw error;
-            return data;
+            return data as unknown as WorkoutPlan;
         },
         enabled: !!user,
         staleTime: 1000 * 60 * 60, // 1 hour
@@ -54,7 +56,7 @@ export const useWorkoutPlan = () => {
             } else {
                 toast.success('Pläne erfolgreich erstellt!');
             }
-            
+
             // ✅ NEW: Invalidate using factory (Refresh all plans)
             queryClient.invalidateQueries({ queryKey: queryKeys.plans.all });
         },

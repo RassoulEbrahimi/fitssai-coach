@@ -3,11 +3,12 @@ import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { useSupabaseAction } from '@/hooks/useSupabaseAction';
 import { queryKeys } from '@/lib/queryKeys';
+import { WorkoutLog } from '@/lib/types';
 
 export const useWorkoutLogs = (planId?: string) => {
     const { user } = useAuth();
     const queryClient = useQueryClient();
-    
+
     // ✅ NEW: Centralized Key Generation
     const queryKey = queryKeys.logs.byPlan(planId, user?.id);
 
@@ -24,7 +25,7 @@ export const useWorkoutLogs = (planId?: string) => {
                 .eq('plan_id', planId);
 
             if (error) throw error;
-            return data || [];
+            return (data || []) as unknown as WorkoutLog[];
         },
         enabled: !!user && !!planId,
         staleTime: 1000 * 60 * 5, // 5 minutes
@@ -55,7 +56,7 @@ export const useWorkoutLogs = (planId?: string) => {
         },
 
         // ✅ NEW: Automatic invalidation uses centralized key
-        queryKey, 
+        queryKey,
 
         messages: {
             error: 'Fehler beim Speichern'
@@ -68,9 +69,9 @@ export const useWorkoutLogs = (planId?: string) => {
             const previousLogs = queryClient.getQueryData(queryKey);
 
             // Optimistic update
-            queryClient.setQueryData(queryKey, (old: any[] = []) => {
+            queryClient.setQueryData(queryKey, (old: WorkoutLog[] = []) => {
                 const existingIndex = old.findIndex(
-                    (log: any) => log.workout_day === workoutDateStr
+                    (log: WorkoutLog) => log.workout_day === workoutDateStr
                 );
 
                 if (existingIndex > -1) {
@@ -90,9 +91,11 @@ export const useWorkoutLogs = (planId?: string) => {
             return { previousLogs };
         },
 
-        onError: (err, newTodo, context: any) => {
+        onError: (err, newTodo, context) => {
             // ✅ NEW: Rollback using centralized key
-            queryClient.setQueryData(queryKey, context?.previousLogs);
+            if (context?.previousLogs) {
+                queryClient.setQueryData(queryKey, context.previousLogs);
+            }
         },
     });
 

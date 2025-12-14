@@ -35,17 +35,14 @@ import { useTraining } from "@/contexts/TrainingContext";
 import { useDeleteExercise } from "@/hooks/useDeleteExercise";
 import { useRestoreExercise } from "@/hooks/useRestoreExercise";
 import { Button as ToastButton } from "@/components/ui/button";
+import { WorkoutPlan } from "@/lib/types";
 
 const ExerciseList = React.lazy(() => import("@/views/ExerciseList"));
-interface WorkoutLog {
-  id: string;
-  workout_day: string;
-  completed: boolean;
-  [key: string]: any;
-}
+// WorkoutLog imported from types
+import { WorkoutLog } from "@/lib/types";
 
 interface WorkoutViewProps {
-  workoutPlan: any;
+  workoutPlan: WorkoutPlan;
   workoutLogs: WorkoutLog[];
   completingWorkout: boolean;
   selectedDate: Date;
@@ -114,7 +111,7 @@ const WorkoutView: React.FC<WorkoutViewProps> = ({
         .single();
 
       if (error) throw error;
-      return data;
+      return data as unknown as WorkoutPlan;
     },
     enabled: !!planId,
     initialData: workoutPlan,
@@ -146,16 +143,14 @@ const WorkoutView: React.FC<WorkoutViewProps> = ({
   // Scroll container ref for scroll stabilization
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
 
-  // Get day index from selectedDate (0 = Monday, 6 = Sunday) using plan-based calculation
-  const getDayIndexForDate = (date: Date): number => {
-    if (!livePlan?.created_at) return 0;
-    const { dayIndex } = getWorkoutWeekDay(livePlan.created_at, date);
-    return dayIndex;
-  };
-
   // Derive all state from selectedDate (single source of truth)
   const activeWeek = useMemo(() => getWeekKeyForDate(selectedDate), [selectedDate, getWeekKeyForDate]);
-  const activeDayIndex = useMemo(() => getDayIndexForDate(selectedDate), [selectedDate, livePlan?.created_at]);
+
+  const activeDayIndex = useMemo(() => {
+    if (!livePlan?.created_at) return 0;
+    const { dayIndex } = getWorkoutWeekDay(livePlan.created_at, selectedDate);
+    return dayIndex;
+  }, [selectedDate, livePlan?.created_at]);
 
   // Expanded day is always the currently selected day
   const expandedDay = activeDayIndex;

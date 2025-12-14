@@ -16,22 +16,60 @@ import WorkoutErrorBoundary from "@/components/WorkoutErrorBoundary";
 import { NotificationPopover } from "@/components/NotificationPopover";
 
 import { Profile } from "@/hooks/queries/useProfile";
-import { WorkoutPlan } from "@/lib/types";
+import { WorkoutPlan, NutritionPlan, TodayWorkout } from "@/lib/types";
 
 interface HomeViewProps {
   generatingPlans: boolean;
-  workoutPlan: WorkoutPlan | any; // Allow fallback for now but prefer typed
-  nutritionPlan: any;
+  workoutPlan?: WorkoutPlan;
+  nutritionPlan?: NutritionPlan;
   onGeneratePlans: () => void;
   profile?: Profile | null;
   workoutProgress?: { completed: number; total: number };
-  getTodayWorkout?: () => any; // Returns TodayWorkout object
+  getTodayWorkout?: () => TodayWorkout | null; // Returns TodayWorkout object
   isDayCompleted?: (weekKey: string, dayIndex: number) => boolean;
   getWeeklyProgress?: () => { completed: number; total: number };
   selectedDate: Date;
   onProgressUpdate?: (weeklyProgress: { completed: number; total: number }) => void;
   isLoadingPlans?: boolean;
 }
+
+// David Goggins quotes moved outside to be stable
+const gogginsQuotes = [
+  "Stay hard!",
+  "Nobody cares, work harder.",
+  "You are in danger of living a life so comfortable and soft, that you will die without ever realizing your true potential.",
+  "Don't stop when you're tired. Stop when you're done.",
+  "Suffering is the true test of life.",
+  "You are in charge of your mind. Stop being a victim.",
+  "It's so easy to be great nowadays, because everyone else is weak.",
+  "The most important conversations you'll ever have are the ones you'll have with yourself.",
+  "We live in an external world. Everything, you have to see it, touch it. If you can for the rest of your life live inside of yourself — to find greatness — you have to go inside.",
+  "You have to build calluses on your brain just like how you build calluses on your hands. Callus your mind through pain and suffering.",
+  "The only person who was going to turn my life around was me.",
+  "You are stopping you. You are giving up instead of getting hard.",
+  "Life is one big tug-of-war between mediocrity and trying to find your best self.",
+  "Don't count on motivation. Count on discipline.",
+  "Pain unlocks a secret doorway in the mind, one that leads to both peak performance and beautiful silence.",
+  "Be uncommon amongst uncommon people.",
+  "You are in control. You decide what you want your life to be.",
+  "Greatness pulls mediocrity into the mud. Get out there and get after it.",
+  "The most important thing is to stay in the fight.",
+  "There is no shortcut. There is no hack. There's only one way: So, get after it.",
+  "Don't stop when you feel pain. Stop when you're finished.",
+  "Every day is an opportunity to learn, adapt, and grow.",
+  "Most of us live in our own little cocoons. Break free.",
+  "You may lose the battle of the morning, but don't lose the war of the day.",
+  "When you think you're done, you're only at 40% of your potential.",
+  "The most powerful weapon is your mind.",
+  "You can't hurt me.",
+  "Be the hardest worker in the room.",
+  "Don't stop when you fail. Stop when you succeed.",
+  "It's not about winning. It's about not quitting."
+];
+
+const getRandomQuote = () => {
+  return gogginsQuotes[Math.floor(Math.random() * gogginsQuotes.length)];
+};
 
 const HomeView: React.FC<HomeViewProps> = ({
   generatingPlans,
@@ -52,43 +90,7 @@ const HomeView: React.FC<HomeViewProps> = ({
   const [isLoadingQuote, setIsLoadingQuote] = useState(true);
   const [quoteKey, setQuoteKey] = useState(0);
 
-  // David Goggins quotes
-  const gogginsQuotes = [
-    "Stay hard!",
-    "Nobody cares, work harder.",
-    "You are in danger of living a life so comfortable and soft, that you will die without ever realizing your true potential.",
-    "Don't stop when you're tired. Stop when you're done.",
-    "Suffering is the true test of life.",
-    "You are in charge of your mind. Stop being a victim.",
-    "It's so easy to be great nowadays, because everyone else is weak.",
-    "The most important conversations you'll ever have are the ones you'll have with yourself.",
-    "We live in an external world. Everything, you have to see it, touch it. If you can for the rest of your life live inside of yourself — to find greatness — you have to go inside.",
-    "You have to build calluses on your brain just like how you build calluses on your hands. Callus your mind through pain and suffering.",
-    "The only person who was going to turn my life around was me.",
-    "You are stopping you. You are giving up instead of getting hard.",
-    "Life is one big tug-of-war between mediocrity and trying to find your best self.",
-    "Don't count on motivation. Count on discipline.",
-    "Pain unlocks a secret doorway in the mind, one that leads to both peak performance and beautiful silence.",
-    "Be uncommon amongst uncommon people.",
-    "You are in control. You decide what you want your life to be.",
-    "Greatness pulls mediocrity into the mud. Get out there and get after it.",
-    "The most important thing is to stay in the fight.",
-    "There is no shortcut. There is no hack. There's only one way: So, get after it.",
-    "Don't stop when you feel pain. Stop when you're finished.",
-    "Every day is an opportunity to learn, adapt, and grow.",
-    "Most of us live in our own little cocoons. Break free.",
-    "You may lose the battle of the morning, but don't lose the war of the day.",
-    "When you think you're done, you're only at 40% of your potential.",
-    "The most powerful weapon is your mind.",
-    "You can't hurt me.",
-    "Be the hardest worker in the room.",
-    "Don't stop when you fail. Stop when you succeed.",
-    "It's not about winning. It's about not quitting."
-  ];
 
-  const getRandomQuote = () => {
-    return gogginsQuotes[Math.floor(Math.random() * gogginsQuotes.length)];
-  };
 
   const refreshQuote = () => {
     setQuoteKey(prev => prev + 1);
