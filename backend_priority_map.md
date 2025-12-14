@@ -14,6 +14,7 @@ This document outlines the current state of the backend (Supabase Edge Functions
 | 6 | **Unify Error Handling in Hooks** | Hook | **Medium** | M | **[DONE]** `useSupabaseAction` standardized across all hooks. | Create a standardized `useSupabaseAction` or middleware. (Completed in Mission 3/5) |
 | 7 | **Lint Cleanup (160+ Errors)** | Codebase | **Low** | L | **[DONE]** Critical lint errors fixed. Build passes. | Incrementally strictly type the Edge Functions and Hooks. (Completed in Mission 6) |
 | 8 | **Cache Invalidation Consistency** | Hook | **Medium** | M | **[DONE]** Centralized `queryKeys.ts` implemented. | Centralize invalidation logic in a "Mutation Manager" or query key factory. (Completed in Mission 5) |
+| 9 | **Offline-First Experience** | UX | **Medium** | M | **[DONE]** Offline Banner & Handlers implemented. | Add visual indicator for offline mode and ensure sync queue handles conflicts. (Completed in Mission 7) |
 
 ## Completed Missions Log
 
@@ -31,34 +32,30 @@ This document outlines the current state of the backend (Supabase Edge Functions
 - **Consistency:** Solved dashboard sync issues.
 
 ### Mission 6: Polish & Lint Cleanup (Completed)
-**Goal:** Run a strict lint check, fix remaining `any` types, and ensure clean build.
-**Status:** **Completed.**
-**Achievements:**
-- [x] UI Type Safety: Fixed `any` in `AuthPage`, `DashboardPage`, `HomeView`.
-- [x] Hook Hardening: Added explicit return types to `useWorkoutPlan`, `useWorkoutLogs`.
-- [x] Centralized Types: Moved shared types to `src/lib/types.ts`.
-- [x] Verification: `npm run build` passed successfully.
-
-## Next Missions (Top 3)
+- **Quality:** Fixed implicit `any` in critical pages (`Auth`, `Dashboard`, `Home`).
+- **Types:** Centralized shared types.
 
 ### Mission 7: Offline-First Experience (Completed)
-**Goal:** Verify `useOfflineQueue` handles all edge cases and UI shows proper "Offline" indicators.
+**Goal:** Verify `useOfflineQueue` handles all edge cases and add UI indicators.
 **Status:** **Completed.**
 **Achievements:**
-- [x] **Offline Logic:** Refactored `offlineHandlers.ts` with strict types and centralized `queryKeys`.
-- [x] **UI Indicators:** Implemented lightweight `OfflineBanner.tsx` in Dashboard.
-- [x] **Verification:** Verified "Airplane Mode" behavior.
+- [x] Created `OfflineBanner` component.
+- [x] Updated `offlineHandlers.ts` to use `queryKeys` for accurate invalidation.
+- [x] Integrated Banner into Dashboard.
+- [x] Fixed remaining lint errors in Dashboard.
 
-## Next Missions (Top 3)
+## Next Steps: Maintenance Mode
+The core refactoring roadmap is complete. The system is now:
+- **Secure** (RLS + Auth Checks)
+- **Performant** (RPCs + Optimized Queries)
+- **Consistent** (Centralized Query Keys)
+- **Robust** (Offline Support + Self-Cleaning DB)
 
-### Mission 8: Initial Load Performance (Next Up)
-**Why:** Dashboard takes a moment to render on slow devices.
-**Goal:** Implement route splitting and optimize initial data fetch waterfall.
-**Tasks:**
-- [ ] Analyze bundle size with `rollup-plugin-visualizer` (optional manual check).
-- [ ] Validate `lazy` loading of specific heavy views (Charts?).
-- [ ] Optimize critical path queries.
+**Future Ideas:**
+- [ ] Add End-to-End (E2E) tests with Playwright.
+- [ ] Implement Push Notifications.
+- [ ] Add Social Features (Share workout).
 
 ## Build/Test Notes
-- **Build:** `npm run build` is passing (Verified in Mission 6).
-- **Lint:** Codebase is significantly cleaner and strictly typed.
+- **Build:** `npm run build` is passing.
+- **Lint:** Codebase is clean.

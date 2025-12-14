@@ -30,14 +30,11 @@ export const handlers = {
       body: payload
     });
 
-    if (error) throw error;
-    if (!data?.success) throw new Error('Server returned failure');
+    if (error || !data?.success) throw new Error('Sync failed');
 
     // Return keys to invalidate
     return [
-      // Refresh the specific sets for that day
       queryKeys.sets.byDay(payload.planId, payload.weekKey, payload.dayIndex),
-      // Also refresh the dashboard circles
       queryKeys.completion.byWeek(payload.planId, payload.weekKey)
     ];
   },
@@ -47,13 +44,10 @@ export const handlers = {
       body: payload
     });
 
-    if (error) throw error;
-    if (!data?.success) throw new Error('Server returned failure');
+    if (error || !data?.success) throw new Error('Sync failed');
 
     return [
-      // Refresh dashboard
       queryKeys.completion.byWeek(payload.planId, payload.weekKey),
-      // Refresh logs history
       queryKeys.logs.byPlan(payload.planId)
     ];
   },
