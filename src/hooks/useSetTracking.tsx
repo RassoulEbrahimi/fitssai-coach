@@ -3,6 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { useSupabaseAction } from "@/hooks/useSupabaseAction";
 import { useOfflineQueue } from "./useOfflineQueue";
+import { queryKeys } from "@/lib/queryKeys";
 
 interface ToggleSetParams {
   planId: string;
@@ -30,18 +31,16 @@ interface WorkoutLogWithSets {
   workout_set_logs: SetLog[];
 }
 
-// Response from the edge function
 interface ToggleSetResponse {
   success: boolean;
-  data: unknown; // We can refine this if we know the exact shape, but usually success is enough
+  data: unknown;
 }
 
-// Context for optimistic updates rollback
 interface ToggleSetContext {
   previousSets: Record<number, Record<number, SetLog>> | undefined;
 }
 
-// Standalone action function for clean separation
+// Standalone action function
 const toggleSetAction = async (params: ToggleSetParams): Promise<ToggleSetResponse> => {
   const { data, error } = await supabase.functions.invoke('toggle-set', {
     body: params,
@@ -58,17 +57,19 @@ export function useSetTracking(planId: string | undefined, weekKey: string, dayI
   const queryClient = useQueryClient();
   const { isOnline } = useOfflineQueue();
 
-  // Query to fetch completed sets for exercises on a specific day
+  // ✅ NEW: Centralized Key Generation
+  const queryKey = queryKeys.sets.byDay(planId, weekKey, dayIndex);
+
   const {
     data: completedSets,
     isLoading: isLoadingSets,
     refetch: refetchSets,
   } = useQuery({
-    queryKey: ['workout-sets', planId, weekKey, dayIndex],
+    // ✅ NEW: Use centralized key
+    queryKey,
     queryFn: async () => {
       if (!user || !planId) return {};
 
-      // Fetch workout logs with their set logs for this day
       const { data, error } = await supabase
         .from('workout_logs')
         .select(`
@@ -92,10 +93,7 @@ export function useSetTracking(planId: string | undefined, weekKey: string, dayI
         return {};
       }
 
-      // Transform to a map: exerciseIndex -> { setNumber -> SetLog }
       const setsMap: Record<number, Record<number, SetLog>> = {};
-
-      // Strictly type the data from Supabase
       const logs = data as unknown as WorkoutLogWithSets[];
 
       logs?.forEach((log) => {
@@ -113,24 +111,23 @@ export function useSetTracking(planId: string | undefined, weekKey: string, dayI
     staleTime: 30_000,
   });
 
-  // Replaces custom mutation with standardized action
   const toggleSetMutation = useSupabaseAction<ToggleSetResponse, ToggleSetParams, ToggleSetContext>({
     action: toggleSetAction,
     offlineActionType: 'TOGGLE_SET',
-    queryKey: ['workout-sets', planId, weekKey, dayIndex],
+    // ✅ NEW: Use centralized key for auto-invalidation
+    queryKey, 
     messages: {
       error: 'Fehler beim Speichern des Satzes',
     },
     onMutate: async (params: ToggleSetParams) => {
-      // Cancel any outgoing queries
-      await queryClient.cancelQueries({ queryKey: ['workout-sets', planId, weekKey, dayIndex] });
+      // ✅ NEW: Cancel using centralized key
+      await queryClient.cancelQueries({ queryKey });
 
-      // Snapshot previous value
-      const previousSets = queryClient.getQueryData<Record<number, Record<number, SetLog>>>(['workout-sets', planId, weekKey, dayIndex]);
+      const previousSets = queryClient.getQueryData<Record<number, Record<number, SetLog>>>(queryKey);
 
-      // Optimistically update
+      // Optimistic update
       queryClient.setQueryData(
-        ['workout-sets', planId, weekKey, dayIndex],
+        queryKey,
         (old: Record<number, Record<number, SetLog>> | undefined) => {
           const newData = { ...(old || {}) };
           if (!newData[params.exerciseIndex]) {
@@ -159,30 +156,30 @@ export function useSetTracking(planId: string | undefined, weekKey: string, dayI
       return { previousSets };
     },
     onError: (err, params, context: ToggleSetContext | undefined) => {
-      // Rollback on error
       if (context?.previousSets && isOnline) {
-        // Only rollback if online. If offline, the queue handles it eventually, 
-        // and we want to keep the optimistic state to show the user it "worked".
-        queryClient.setQueryData(
-          ['workout-sets', planId, weekKey, dayIndex],
-          context.previousSets
-        );
+        // ✅ NEW: Rollback using centralized key
+        queryClient.setQueryData(queryKey, context.previousSets);
       }
     },
+    // ✅ NEW: Consistency Fix!
+    // When a set is toggled, it might finish the exercise.
+    // So we must refresh the dashboard (week completion) to show the green checkmark.
+    onSettled: () => {
+       queryClient.invalidateQueries({ 
+         queryKey: queryKeys.completion.byWeek(planId, weekKey) 
+       });
+    }
   });
 
-  // Helper to check if a specific set is completed
   const isSetCompleted = (exerciseIndex: number, setNumber: number): boolean => {
     return !!completedSets?.[exerciseIndex]?.[setNumber];
   };
 
-  // Helper to get completed sets count for an exercise
   const getCompletedSetsCount = (exerciseIndex: number): number => {
     const exerciseSets = completedSets?.[exerciseIndex];
     return exerciseSets ? Object.keys(exerciseSets).length : 0;
   };
 
-  // Helper to get set details
   const getSetDetails = (exerciseIndex: number, setNumber: number): SetLog | undefined => {
     return completedSets?.[exerciseIndex]?.[setNumber];
   };

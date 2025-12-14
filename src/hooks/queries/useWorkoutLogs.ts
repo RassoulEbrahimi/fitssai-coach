@@ -2,13 +2,17 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { useSupabaseAction } from '@/hooks/useSupabaseAction';
+import { queryKeys } from '@/lib/queryKeys';
 
 export const useWorkoutLogs = (planId?: string) => {
     const { user } = useAuth();
     const queryClient = useQueryClient();
-    const queryKey = ['workout-logs', user?.id, planId];
+    
+    // ✅ NEW: Centralized Key Generation
+    const queryKey = queryKeys.logs.byPlan(planId, user?.id);
 
     const query = useQuery({
+        // ✅ NEW: Use centralized key
         queryKey,
         queryFn: async () => {
             if (!user || !planId) return [];
@@ -50,13 +54,15 @@ export const useWorkoutLogs = (planId?: string) => {
             return data;
         },
 
-        queryKey, // Automatically handles invalidation on success
+        // ✅ NEW: Automatic invalidation uses centralized key
+        queryKey, 
 
         messages: {
             error: 'Fehler beim Speichern'
         },
 
         onMutate: async ({ workoutDateStr, completed }) => {
+            // ✅ NEW: Cancel using centralized key
             await queryClient.cancelQueries({ queryKey });
 
             const previousLogs = queryClient.getQueryData(queryKey);
@@ -85,6 +91,7 @@ export const useWorkoutLogs = (planId?: string) => {
         },
 
         onError: (err, newTodo, context: any) => {
+            // ✅ NEW: Rollback using centralized key
             queryClient.setQueryData(queryKey, context?.previousLogs);
         },
     });

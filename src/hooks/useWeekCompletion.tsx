@@ -1,12 +1,13 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from './useAuth';
 import { useOfflineQueue } from './useOfflineQueue';
-import { logEvent, logError, logRetry } from '@/lib/telemetryClient';
-import { toastError, toastOffline } from '@/lib/toastWithIcon';
+import { logEvent, logError } from '@/lib/telemetryClient';
+import { toastError } from '@/lib/toastWithIcon';
 import { useEffect, useMemo } from 'react';
 import { CompletionState, setExerciseCompletion } from '@/lib/completionUtils';
 import { useSupabaseAction, retryWithBackoff } from './useSupabaseAction';
+import { queryKeys } from '@/lib/queryKeys';
 
 // Server response format (flat completion map)
 interface WeekCompletionResponse {
@@ -16,13 +17,11 @@ interface WeekCompletionResponse {
   planId: string;
 }
 
-// retryWithBackoff removed (using useSupabaseAction internal logic)
-
 interface UseWeekCompletionParams {
   planId: string | undefined;
   weekKey: string;
   enabled?: boolean;
-  availableWeeks?: string[]; // New: List of valid weeks in the plan
+  availableWeeks?: string[];
 }
 
 interface ToggleExerciseParams {
@@ -31,9 +30,7 @@ interface ToggleExerciseParams {
   dayIndex: number;
   exerciseIndex: number;
   completed: boolean;
-  /** Duration in minutes (defaults to 10 if not provided) */
   durationMinutes?: number;
-  /** Calories burned (defaults to 50 if not provided) */
   caloriesBurned?: number;
 }
 
@@ -49,14 +46,18 @@ interface ToggleExerciseContext {
 export const useWeekCompletion = ({ planId, weekKey, enabled = true, availableWeeks }: UseWeekCompletionParams) => {
   const { user } = useAuth();
   const queryClient = useQueryClient();
-  const { isOnline, enqueue } = useOfflineQueue();
+  const { isOnline } = useOfflineQueue();
+
+  // ✅ NEW: Centralized Key Generation
+  const queryKey = queryKeys.completion.byWeek(planId, weekKey);
 
   // Prefetch helper function
   const prefetchWeekCompletion = async (targetPlanId: string, targetWeekKey: string) => {
     logEvent('prefetch_week', { planId: targetPlanId, weekKey: targetWeekKey });
 
     await queryClient.prefetchQuery({
-      queryKey: ['week-completion', targetPlanId, targetWeekKey],
+      // ✅ NEW: Use factory for prefetch key
+      queryKey: queryKeys.completion.byWeek(targetPlanId, targetWeekKey),
       queryFn: async () => {
         if (!user) throw new Error('User not available');
 
@@ -68,27 +69,22 @@ export const useWeekCompletion = ({ planId, weekKey, enabled = true, availableWe
           throw new Error(error?.message || 'Prefetch failed');
         }
 
-        // Edge function already returns flat structure
         return data.completionMap;
       },
-      staleTime: 30000, // 30 seconds
+      staleTime: 30000,
     });
   };
 
-  // Determine if the requested week is invalid (not in the plan)
-  // We only check this if availableWeeks is provided and populated
   const isInvalidWeek = useMemo(() => {
     if (!availableWeeks || availableWeeks.length === 0) return false;
-
-    // Normalize for case-insensitivity
     const normalizedWeekKey = weekKey.replace(/\s+/g, '').toLowerCase();
     const hasWeek = availableWeeks.some(w => w.replace(/\s+/g, '').toLowerCase() === normalizedWeekKey);
-
     return !hasWeek;
   }, [availableWeeks, weekKey]);
 
   const query = useQuery<CompletionState>({
-    queryKey: ['week-completion', planId, weekKey],
+    // ✅ NEW: Use centralized key
+    queryKey,
     queryFn: async () => {
       if (!user || !planId) {
         throw new Error('User or planId not available');
@@ -99,10 +95,7 @@ export const useWeekCompletion = ({ planId, weekKey, enabled = true, availableWe
       try {
         const data = await retryWithBackoff(async () => {
           const { data, error } = await supabase.functions.invoke('get-week-completion', {
-            body: {
-              planId,
-              weekKey,
-            },
+            body: { planId, weekKey },
           });
 
           if (error) {
@@ -118,8 +111,6 @@ export const useWeekCompletion = ({ planId, weekKey, enabled = true, availableWe
         }, { retries: 3, initialDelay: 1000 });
 
         logEvent('fetch_week_completion_success', { planId, weekKey });
-
-        // Edge function already returns flat structure, no normalization needed
         return data.completionMap;
       } catch (error: any) {
         console.error('Failed to fetch week completion after retries:', error);
@@ -134,16 +125,13 @@ export const useWeekCompletion = ({ planId, weekKey, enabled = true, availableWe
         throw error;
       }
     },
-    // IMPORTANT: Disable query if week is invalid to prevent errors
-    // Also keep standard checks (user, planId)
     enabled: enabled && !!user && !!planId && !isInvalidWeek,
-    staleTime: 30000, // 30 seconds
-    gcTime: 5 * 60 * 1000, // 5 minutes
-    retry: false, // We handle retries manually with exponential backoff
-    networkMode: 'offlineFirst', // Use cache when offline, fetch when online
+    staleTime: 30000,
+    gcTime: 5 * 60 * 1000,
+    retry: false,
+    networkMode: 'offlineFirst',
   });
 
-  // Log offline fallback usage
   useEffect(() => {
     if (!isOnline && query.data && !query.isFetching) {
       logEvent('offline_fallback', {
@@ -154,7 +142,6 @@ export const useWeekCompletion = ({ planId, weekKey, enabled = true, availableWe
     }
   }, [isOnline, query.data, query.isFetching, planId, weekKey, query.dataUpdatedAt]);
 
-  // Use the new standardized hook for toggling
   const { mutate: toggleExercise, isPending: isToggling } = useSupabaseAction<ToggleExerciseResponse, ToggleExerciseParams, ToggleExerciseContext>({
     action: async (params) => {
       const { data, error } = await supabase.functions.invoke('toggle-exercise', {
@@ -173,25 +160,21 @@ export const useWeekCompletion = ({ planId, weekKey, enabled = true, availableWe
       if (!data?.success) throw new Error('Invalid response from server');
       return data;
     },
-    queryKey: ['week-completion', planId, weekKey],
+    // ✅ NEW: Automatic invalidation uses centralized key
+    queryKey,
     offlineActionType: 'TOGGLE_DAY_COMPLETION',
     messages: {
       error: 'Änderung konnte nicht gespeichert werden.',
     },
     onMutate: async (params) => {
-      // Cancel outgoing refetches
-      await queryClient.cancelQueries({ queryKey: ['week-completion', params.planId, params.weekKey] });
+      // ✅ NEW: Cancel using centralized key
+      await queryClient.cancelQueries({ queryKey });
 
-      // Snapshot previous value
-      const previousData = queryClient.getQueryData<CompletionState>([
-        'week-completion',
-        params.planId,
-        params.weekKey,
-      ]);
+      const previousData = queryClient.getQueryData<CompletionState>(queryKey);
 
-      // Optimistically update flat state
+      // ✅ NEW: Update using centralized key
       queryClient.setQueryData<CompletionState>(
-        ['week-completion', params.planId, params.weekKey],
+        queryKey,
         (old) => {
           if (!old) return old;
           return setExerciseCompletion(
@@ -207,25 +190,20 @@ export const useWeekCompletion = ({ planId, weekKey, enabled = true, availableWe
       return { previousData };
     },
     onError: (error, params, context) => {
-      // Rollback if needed (handled by wrapper mostly, but we can do custom rollback if context exists)
       if (isOnline && context?.previousData) {
-        queryClient.setQueryData(
-          ['week-completion', params.planId, params.weekKey],
-          context.previousData
-        );
+        // ✅ NEW: Rollback using centralized key
+        queryClient.setQueryData(queryKey, context.previousData);
       }
     }
   });
 
-  // If week is invalid, return empty mock state immediately
-  // This bypasses the loading/error state of the query
   if (isInvalidWeek) {
     return {
       completionMap: {},
       isLoading: false,
       isError: false,
       error: null,
-      toggleExercise: () => { }, // No-op for invalid weeks
+      toggleExercise: () => { },
       isToggling: false,
       isOnline,
       refetch: async () => ({ data: {}, isError: false }),
@@ -246,8 +224,8 @@ export const useWeekCompletion = ({ planId, weekKey, enabled = true, availableWe
     isToggling,
     isOnline,
     refetch: query.refetch,
-    prefetchWeekCompletion, // Expose prefetch function
-    isCached: !!query.data && query.isStale, // True if data exists but is stale
-    dataUpdatedAt: query.dataUpdatedAt, // Timestamp of last update
+    prefetchWeekCompletion,
+    isCached: !!query.data && query.isStale,
+    dataUpdatedAt: query.dataUpdatedAt,
   };
 };
