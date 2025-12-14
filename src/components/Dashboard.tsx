@@ -34,6 +34,7 @@ import { toast } from "sonner";
 import { format, addDays, isSameDay, startOfWeek, differenceInCalendarDays, startOfDay, parseISO } from "date-fns";
 import { toZonedTime } from 'date-fns-tz';
 import { FitssNavBar } from './FitssNavBar';
+import { OfflineBanner } from './OfflineBanner';
 import BottomNavPortal from './BottomNavPortal';
 import { default as SectionSkeleton, WorkoutSkeleton, NutritionSkeleton, ProfileSkeleton } from "@/components/skeletons/SectionSkeleton";
 import HomeSkeleton from "@/components/skeletons/HomeSkeleton";
@@ -512,7 +513,6 @@ const Dashboard = () => {
         className={`relative max-w-7xl mx-auto ${isFocusMode ? 'px-0 pt-0 pb-0' : 'z-10 px-4 md:px-6 pt-4 pb-[calc(64px+env(safe-area-inset-bottom))] md:pb-6'}`}
         initial={isFocusMode ? false : { opacity: 0, y: 20 }}
         animate={isFocusMode ? false : { opacity: 1, y: 0 }}
-        transition={{ duration: 0.4, ease: "easeOut" }}
       >
 
         {/* Main Content */}
@@ -521,6 +521,11 @@ const Dashboard = () => {
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.4, delay: 0.3 }}
         >
+          {/* Offline Status Banner */}
+          <div className="mb-6">
+            <OfflineBanner />
+          </div>
+
           <div className="space-y-6">
             {/* View stack: one child mounted at a time with slide animations */}
             <div className="relative">
@@ -668,7 +673,7 @@ const Dashboard = () => {
           }}
         />
       </BottomNavPortal>
-    </div>
+    </div >
   );
 };
 

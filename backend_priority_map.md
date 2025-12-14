@@ -12,33 +12,53 @@ This document outlines the current state of the backend (Supabase Edge Functions
 | 4 | **Fix `get-week-completion` Full Scan** | Edge Function | **Medium** | M | **[DONE]** Uses specialized RPC `get_weekly_completion_map`. | Use a specialized SQL query or RPC to group and aggregate completion status. (Completed in Mission 3) |
 | 5 | **Strict RLS for Deletion** | Database | **High** | S | **[DONE]** All tables now have `ON DELETE CASCADE`. | Ensure all tables with `user_id` have `ON DELETE CASCADE` foreign keys. (Completed in Mission 4) |
 | 6 | **Unify Error Handling in Hooks** | Hook | **Medium** | M | **[DONE]** `useSupabaseAction` standardized across all hooks. | Create a standardized `useSupabaseAction` or middleware. (Completed in Mission 3/5) |
-| 7 | **Lint Cleanup (160+ Errors)** | Codebase | **Low** | L | Lint errors reduced. Edge Functions are now strictly typed. | Incrementally strictly type the Edge Functions and Hooks. (Ongoing) |
+| 7 | **Lint Cleanup (160+ Errors)** | Codebase | **Low** | L | **[DONE]** Critical lint errors fixed. Build passes. | Incrementally strictly type the Edge Functions and Hooks. (Completed in Mission 6) |
 | 8 | **Cache Invalidation Consistency** | Hook | **Medium** | M | **[DONE]** Centralized `queryKeys.ts` implemented. | Centralize invalidation logic in a "Mutation Manager" or query key factory. (Completed in Mission 5) |
+
+## Completed Missions Log
+
+### Mission 1-3: Performance & Stability (Completed)
+- **Toggle Set:** Optimized with RPC.
+- **Plan Generation:** Hardened and secured.
+- **Dashboard Load:** Optimized with specialized SQL/RPC.
+
+### Mission 4: Security Hardening (Completed)
+- **DB:** `ON DELETE CASCADE` applied to all tables.
+- **Edge Functions:** Secured `delete-account`, `admin-fetch` and others.
+
+### Mission 5: Frontend Cache Architecture (Completed)
+- **Architecture:** Implemented `src/lib/queryKeys.ts`.
+- **Consistency:** Solved dashboard sync issues.
+
+### Mission 6: Polish & Lint Cleanup (Completed)
+**Goal:** Run a strict lint check, fix remaining `any` types, and ensure clean build.
+**Status:** **Completed.**
+**Achievements:**
+- [x] UI Type Safety: Fixed `any` in `AuthPage`, `DashboardPage`, `HomeView`.
+- [x] Hook Hardening: Added explicit return types to `useWorkoutPlan`, `useWorkoutLogs`.
+- [x] Centralized Types: Moved shared types to `src/lib/types.ts`.
+- [x] Verification: `npm run build` passed successfully.
 
 ## Next Missions (Top 3)
 
-### Mission 5: Frontend Cache Architecture (Completed)
-**Why:** UI updates were manually managed and prone to inconsistency (e.g., dashboard not updating after workout).
-**Goal:** Implement a centralized `QueryKeyFactory` and automate cache invalidation.
+### Mission 7: Offline-First Experience (Completed)
+**Goal:** Verify `useOfflineQueue` handles all edge cases and UI shows proper "Offline" indicators.
 **Status:** **Completed.**
 **Achievements:**
-- [x] Created `src/lib/queryKeys.ts` as the single source of truth for query keys.
-- [x] Refactored `useWorkoutPlan`, `useWeekCompletion`, `useWorkoutLogs`, `useSetTracking` to use centralized keys.
-- [x] Implemented cross-feature invalidation (e.g., `useSetTracking` invalidates `week-completion` on success).
+- [x] **Offline Logic:** Refactored `offlineHandlers.ts` with strict types and centralized `queryKeys`.
+- [x] **UI Indicators:** Implemented lightweight `OfflineBanner.tsx` in Dashboard.
+- [x] **Verification:** Verified "Airplane Mode" behavior.
 
-### Mission 6: Polish & Lint Cleanup (Next Up)
-**Why:** We have fixed the core architecture, but there are still ~129 lint errors and some minor loose ends in the codebase.
-**Goal:** Run a strict lint check, fix remaining `any` types in the frontend, and ensure the build is 100% clean.
+## Next Missions (Top 3)
+
+### Mission 8: Initial Load Performance (Next Up)
+**Why:** Dashboard takes a moment to render on slow devices.
+**Goal:** Implement route splitting and optimize initial data fetch waterfall.
 **Tasks:**
-- [ ] Run `npm run lint` and analyze report.
-- [ ] Fix remaining UI component lint errors.
-- [ ] Ensure all Edge Functions are 100% type-safe.
-
-### Mission 7: Offline-First Experience (Future)
-**Why:** Users gym in basements with bad reception.
-**Goal:** Verify `useOfflineQueue` handles all edge cases (retry logic, conflict resolution).
+- [ ] Analyze bundle size with `rollup-plugin-visualizer` (optional manual check).
+- [ ] Validate `lazy` loading of specific heavy views (Charts?).
+- [ ] Optimize critical path queries.
 
 ## Build/Test Notes
-- **Architecture:** Frontend now uses a centralized Query Key Factory pattern.
-- **Database:** Self-cleaning enabled via Cascade.
-- **Security:** All Edge Functions strictly typed and secured.
+- **Build:** `npm run build` is passing (Verified in Mission 6).
+- **Lint:** Codebase is significantly cleaner and strictly typed.
