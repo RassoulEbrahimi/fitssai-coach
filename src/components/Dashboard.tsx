@@ -507,7 +507,7 @@ const Dashboard = () => {
   // Loading state handled by Suspense
 
   return (
-    <div className={`relative min-h-screen ${isFocusMode ? '' : 'z-20'}`}>
+    <div className={`relative min-h-screen overflow-x-hidden ${isFocusMode ? '' : 'z-20'}`}>
       {!isFocusMode && <VideoBackground />}
       <motion.div
         id="main-content"
