@@ -178,6 +178,9 @@ const Dashboard = () => {
   const initialTab = hashToTab(location.hash) ?? 'dashboard'; // default to dashboard if null
   const [activeTab, setActiveTab] = useState<'dashboard' | 'workout' | 'nutrition' | 'profile'>(initialTab);
 
+  const activeTabRef = useRef(activeTab);
+  useEffect(() => { activeTabRef.current = activeTab; }, [activeTab]);
+
   // Scroll memory for per-tab scroll positions
   const scrollPosRef = useRef<Record<'dashboard' | 'workout' | 'nutrition' | 'profile', number>>({
     dashboard: 0,
@@ -235,10 +238,8 @@ const Dashboard = () => {
   useLayoutEffect(() => {
     const prevTab = previousTabRef.current;
 
-    // Store previous tab's scroll position
-    if (prevTab !== activeTab) {
-      scrollPosRef.current[prevTab] = window.scrollY;
-    }
+    // We now save scroll position manually before state updates in handlers (onChange, onHashChange)
+    // to ensure we capture it before the DOM updates/unmounts.
 
     // Update slide direction based on tab order
     const order = ['dashboard', 'workout', 'nutrition', 'profile'] as const;
@@ -257,7 +258,14 @@ const Dashboard = () => {
     };
     document.title = titles[activeTab];
 
-    // Note: Scroll restoration removed to prevent jump-to-bottom on back navigation
+    // Restore scroll position for the new tab
+    if (prev !== next) {
+      window.scrollTo({
+        top: scrollPosRef.current[activeTab] || 0,
+        left: 0,
+        behavior: 'auto'
+      });
+    }
 
     previousTabRef.current = activeTab;
   }, [activeTab]);
@@ -265,6 +273,11 @@ const Dashboard = () => {
   // Focus management for accessibility
   useEffect(() => {
     const onHashChange = () => {
+      // Save scroll for the current tab using ref to avoid stale closure
+      if (activeTabRef.current) {
+        scrollPosRef.current[activeTabRef.current] = window.scrollY;
+      }
+
       const next = hashToTab(location.hash) ?? 'dashboard';
       setActiveTab(next);
     };
@@ -535,6 +548,7 @@ const Dashboard = () => {
                   initial="enter"
                   animate="center"
                   exit="exit"
+                  className="w-full"
                   variants={{
                     enter: (dir: 1 | -1) => ({
                       x: prefersReducedMotion || !isMobile ? 0 : dir * 40,
@@ -662,6 +676,9 @@ const Dashboard = () => {
           activeTab={activeTab}
           enableAdvancedGlass={enableAdvancedGlass}
           onChange={(tab) => {
+            // Save scroll position for the current tab before switching
+            scrollPosRef.current[activeTab] = window.scrollY;
+
             setHashForTab(tab);
             setActiveTab(tab);  // Immediately update state for instant UI response
 

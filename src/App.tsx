@@ -12,6 +12,7 @@ import { PreferencesProvider } from "@/contexts/PreferencesContext";
 import { FocusModeProvider } from "@/contexts/FocusModeContext";
 import { TrainingProvider } from "@/contexts/TrainingContext";
 import RootRedirect from "@/components/RootRedirect";
+import ScrollToTop from "@/components/ScrollToTop";
 import "./lib/i18n";
 import { QueryProvider } from "@/components/providers/QueryProvider";
 import { Suspense, lazy } from "react";
@@ -60,6 +61,7 @@ const App = () => {
                   <Sonner />
                   <PWAInstallPrompt />
                   <BrowserRouter>
+                    <ScrollToTop />
                     <Suspense fallback={<div className="h-screen w-full flex items-center justify-center bg-background"><div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div></div>}>
                       <Routes>
                         <Route path="/" element={<RootRedirect />} />
