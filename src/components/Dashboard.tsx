@@ -170,9 +170,7 @@ const Dashboard = () => {
     } else {
       history.pushState(null, '', `#/${tab}`);
     }
-    if (tab === 'dashboard' || tab === 'workout') {
-      requestAnimationFrame(() => window.scrollTo({ top: 0, left: 0, behavior: 'auto' }));
-    }
+    // Duplicate scroll logic removed; handled centrally in useLayoutEffect
   };
 
   const initialTab = hashToTab(location.hash) ?? 'dashboard'; // default to dashboard if null
@@ -258,12 +256,16 @@ const Dashboard = () => {
     };
     document.title = titles[activeTab];
 
-    // Restore scroll position for the new tab
+    // Restore scroll position for the new tab with double RAF to ensure layout is stable
     if (prev !== next) {
-      window.scrollTo({
-        top: scrollPosRef.current[activeTab] || 0,
-        left: 0,
-        behavior: 'auto'
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          window.scrollTo({
+            top: scrollPosRef.current[activeTab] || 0,
+            left: 0,
+            behavior: 'auto'
+          });
+        });
       });
     }
 
@@ -540,15 +542,15 @@ const Dashboard = () => {
 
           <div className="space-y-6">
             {/* View stack: one child mounted at a time with slide animations */}
-            <div className="relative">
-              <AnimatePresence mode="popLayout" initial={false} custom={direction}>
+            <div className="grid grid-cols-1 grid-rows-1">
+              <AnimatePresence initial={false} custom={direction}>
                 <motion.div
                   key={activeTab}
                   custom={direction}
                   initial="enter"
                   animate="center"
                   exit="exit"
-                  className="w-full"
+                  className="w-full col-start-1 row-start-1"
                   variants={{
                     enter: (dir: 1 | -1) => ({
                       x: prefersReducedMotion || !isMobile ? 0 : dir * 40,
