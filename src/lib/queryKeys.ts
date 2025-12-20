@@ -11,7 +11,7 @@ export const queryKeys = {
   logs: {
     all: ['workout-logs'] as const,
     byPlan: (planId: string | undefined, userId?: string) => 
-      ['workout-logs', userId, planId].filter(Boolean) as const,
+      ['workout-logs', userId, planId].filter(Boolean) as readonly string[],
   },
 
   // 3. Week Completion (Dashboard Circles)

@@ -1,10 +1,10 @@
+import { describe, it, expect, beforeEach } from 'vitest';
 import {
     OfflineMutationEntry,
     enqueue,
     updateEntry,
     removeEntry,
     loadQueue,
-    saveQueue,
     clearAll
 } from './offlineQueue';
 
@@ -36,7 +36,6 @@ describe('offlineQueue', () => {
     });
 
     it('should enqueue items correctly', () => {
-        let queue: OfflineMutationEntry[] = loadQueue();
         const payload = {
             planId: '1',
             weekKey: 'week1',
@@ -45,7 +44,7 @@ describe('offlineQueue', () => {
             completed: true
         };
 
-        const result = enqueue(queue, 'TOGGLE_DAY_COMPLETION', payload);
+        const result = enqueue('TOGGLE_DAY_COMPLETION', payload);
 
         expect(result.queue).toHaveLength(1);
         expect(result.entry.type).toBe('TOGGLE_DAY_COMPLETION');
@@ -59,7 +58,6 @@ describe('offlineQueue', () => {
     });
 
     it('should update entry status', () => {
-        let queue: OfflineMutationEntry[] = [];
         const payload = {
             planId: '1',
             weekKey: 'week1',
@@ -68,34 +66,32 @@ describe('offlineQueue', () => {
             completed: true
         };
 
-        const { queue: q1, entry } = enqueue(queue, 'TOGGLE_DAY_COMPLETION', payload);
-        queue = q1;
+        const { entry } = enqueue('TOGGLE_DAY_COMPLETION', payload);
 
-        queue = updateEntry(queue, entry.id, { status: 'syncing', attempts: 1 });
+        const updatedQueue = updateEntry(entry.id, { status: 'syncing', attempts: 1 });
 
-        expect(queue[0].status).toBe('syncing');
-        expect(queue[0].attempts).toBe(1);
+        expect(updatedQueue[0].status).toBe('syncing');
+        expect(updatedQueue[0].attempts).toBe(1);
 
         const loaded = loadQueue();
         expect(loaded[0].status).toBe('syncing');
     });
 
     it('should remove entry', () => {
-        let queue: OfflineMutationEntry[] = [];
-        const { queue: q1, entry } = enqueue(queue, 'TOGGLE_DAY_COMPLETION', {
+        const { entry } = enqueue('TOGGLE_DAY_COMPLETION', {
             planId: '1',
             weekKey: 'week1',
             dayIndex: 0,
             exerciseIndex: 0,
             completed: true
         });
-        queue = q1;
 
+        let queue = loadQueue();
         expect(queue).toHaveLength(1);
 
-        queue = removeEntry(queue, entry.id);
+        const updatedQueue = removeEntry(entry.id);
 
-        expect(queue).toHaveLength(0);
+        expect(updatedQueue).toHaveLength(0);
         expect(loadQueue()).toHaveLength(0);
     });
 });

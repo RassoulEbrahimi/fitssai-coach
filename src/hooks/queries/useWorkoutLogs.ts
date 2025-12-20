@@ -56,17 +56,17 @@ export const useWorkoutLogs = (planId?: string) => {
         },
 
         // ✅ NEW: Automatic invalidation uses centralized key
-        queryKey,
+        queryKey: [...queryKey],
 
         messages: {
             error: 'Fehler beim Speichern'
         },
 
-        onMutate: async ({ workoutDateStr, completed }) => {
+        onMutate: async ({ workoutDateStr, completed }: { workoutDateStr: string; completed: boolean }) => {
             // ✅ NEW: Cancel using centralized key
             await queryClient.cancelQueries({ queryKey });
 
-            const previousLogs = queryClient.getQueryData(queryKey);
+            const previousLogs = queryClient.getQueryData<WorkoutLog[]>(queryKey);
 
             // Optimistic update
             queryClient.setQueryData(queryKey, (old: WorkoutLog[] = []) => {
@@ -91,7 +91,7 @@ export const useWorkoutLogs = (planId?: string) => {
             return { previousLogs };
         },
 
-        onError: (err, newTodo, context) => {
+        onError: (err: unknown, newTodo: { workoutDateStr: string; completed: boolean }, context: { previousLogs?: WorkoutLog[] } | undefined) => {
             // ✅ NEW: Rollback using centralized key
             if (context?.previousLogs) {
                 queryClient.setQueryData(queryKey, context.previousLogs);
