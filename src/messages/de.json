@@ -1,9 +1,4 @@
 {
-  "todayWorkout": {
-    "setCompleted": "Satz {{set}} erledigt ✓",
-    "setsLabel": "Sätze",
-    "repsShort": "Wdh"
-  },
   "auth": {
     "subtitle": "Schließe dich Tausenden an, die ihre Fitnessziele erreichen",
     "signIn": "Anmelden",
@@ -37,16 +32,16 @@
     }
   },
   "hero": {
-    "badge": "KI-gestützte Fitness-Revolution",
-    "title": "Dein persönlicher",
-    "titleHighlight": "KI-Fitness-Coach",
-    "description": "Verwandle deine Fitness-Reise mit personalisierten Trainings- und Ernährungsplänen powered by fortschrittlicher KI. Erreiche deine Ziele schneller als je zuvor.",
-    "startJourney": "Starte deine Reise",
+    "badge": "FitssAI Coach",
+    "title": "Erreiche deine Bestform mit",
+    "titleHighlight": "KI-Präzision",
+    "subline": "Maßgeschneiderte Trainings- & Ernährungspläne, die sich deinem Leben anpassen. Smart, effizient und immer für dich da.",
+    "startJourney": "Jetzt starten",
     "watchDemo": "Demo ansehen",
     "stats": {
-      "activeUsers": "Aktive Benutzer",
+      "activeUsers": "Nutzer",
       "successRate": "Erfolgsrate",
-      "support": "KI-Unterstützung"
+      "support": "Verfügbarkeit"
     }
   },
   "features": {
@@ -207,7 +202,7 @@
     "weekNavigation": {
       "week1": "Woche 1",
       "week2": "Woche 2",
-      "week3": "Woche 3", 
+      "week3": "Woche 3",
       "week4": "Woche 4",
       "jumpToWeek": "Zu Woche springen"
     },
@@ -275,15 +270,23 @@
     "optional": "optional",
     "updateSuccess": "Übung aktualisiert",
     "updateFailed": "Aktualisierung fehlgeschlagen",
-    "calendar": { "prev": "Vorherige Woche", "next": "Nächste Woche" },
-    "stepper": { "week": "Woche {{num}}", "past": "Abgeschlossen", "current": "Aktuell", "future": "Bevorstehend" },
+    "calendar": {
+      "prev": "Vorherige Woche",
+      "next": "Nächste Woche"
+    },
+    "stepper": {
+      "week": "Woche {{num}}",
+      "past": "Abgeschlossen",
+      "current": "Aktuell",
+      "future": "Bevorstehend"
+    },
     "weekShort": "W{{num}}",
     "planProgress": {
       "title": "Fortschritt im Plan"
     },
     "weekAria": {
       "current": "W{{num}} — aktuelle Woche",
-      "past": "W{{num}} — abgeschlossen", 
+      "past": "W{{num}} — abgeschlossen",
       "future": "W{{num}} — zukünftig"
     },
     "weekSection": {
