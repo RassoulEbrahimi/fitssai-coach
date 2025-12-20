@@ -5,13 +5,13 @@ import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { motion, AnimatePresence } from 'framer-motion';
-import { 
-  Menu, 
-  X, 
-  Home, 
-  User2, 
-  LogIn, 
-  UserPlus, 
+import {
+  Menu,
+  X,
+  Home,
+  User2,
+  LogIn,
+  UserPlus,
   LayoutDashboard,
   LogOut,
   Shield,
@@ -22,7 +22,11 @@ import LanguageSwitcher from './LanguageSwitcher';
 import ThemeToggle from './ThemeToggle';
 import InstallPrompt from './InstallPrompt';
 
-const Navbar = () => {
+interface NavbarProps {
+  variant?: 'default' | 'landing';
+}
+
+const Navbar = ({ variant = 'default' }: NavbarProps) => {
   const { user, signOut } = useAuth();
   const { t, i18n } = useTranslation();
   const [isOpen, setIsOpen] = useState(false);
@@ -44,11 +48,11 @@ const Navbar = () => {
     href: string;
     Icon: React.ComponentType<any>;
   }> = [
-    { id: 'dashboard', label: 'Dashboard', href: '/dashboard#/', Icon: Home },
-    { id: 'workout', label: 'Trainingsplan', href: '/dashboard#/workout', Icon: Dumbbell },
-    { id: 'nutrition', label: 'Ernährungsplan', href: '/dashboard#/nutrition', Icon: Utensils },
-    { id: 'profile', label: 'Profil', href: '/dashboard#/profile', Icon: User2 },
-  ];
+      { id: 'dashboard', label: 'Dashboard', href: '/dashboard#/', Icon: Home },
+      { id: 'workout', label: 'Trainingsplan', href: '/dashboard#/workout', Icon: Dumbbell },
+      { id: 'nutrition', label: 'Ernährungsplan', href: '/dashboard#/nutrition', Icon: Utensils },
+      { id: 'profile', label: 'Profil', href: '/dashboard#/profile', Icon: User2 },
+    ];
 
   const [activeDesktopTab, setActiveDesktopTab] = useState<'dashboard' | 'workout' | 'nutrition' | 'profile'>(() => {
     if (typeof window === 'undefined') return 'dashboard';
@@ -69,10 +73,10 @@ const Navbar = () => {
 
   const checkAdminStatus = async () => {
     if (!user) return;
-    
+
     try {
       const { data, error } = await supabase.rpc('is_current_user_admin');
-      
+
       if (error) throw error;
       setIsAdmin(data || false);
     } catch (error) {
@@ -89,9 +93,13 @@ const Navbar = () => {
     }
   };
 
+  const navClasses = variant === 'landing'
+    ? "fixed top-0 w-full z-50 bg-black/10 backdrop-blur-md border-b border-white/5 hidden md:flex transition-colors duration-300"
+    : "fixed top-0 w-full z-50 bg-background/80 backdrop-blur-md border-b border-border hidden md:flex";
+
   return (
-    <motion.nav 
-      className="fixed top-0 w-full z-50 bg-background/80 backdrop-blur-md border-b border-border hidden md:flex"
+    <motion.nav
+      className={navClasses}
       initial={{ y: -100 }}
       animate={{ y: 0 }}
       transition={{ duration: 0.3 }}
@@ -103,7 +111,7 @@ const Navbar = () => {
           whileTap={{ scale: 0.95 }}
         >
           <Link to="/" className="flex items-center gap-2">
-            <motion.div 
+            <motion.div
               className="gradient-primary p-2 rounded-lg"
               whileHover={{ rotate: 360 }}
               transition={{ duration: 0.5 }}
@@ -113,7 +121,7 @@ const Navbar = () => {
             <span className="text-xl font-bold">FitssAI</span>
           </Link>
         </motion.div>
-        
+
         {/* Desktop Navigation */}
         {user && (
           <nav
@@ -143,12 +151,12 @@ const Navbar = () => {
             })}
           </nav>
         )}
-        
+
         {!user && (
           <div className="hidden md:flex items-center gap-8">
             <motion.div whileHover={{ y: -2 }} transition={{ duration: 0.2 }}>
-              <Link 
-                to="/" 
+              <Link
+                to="/"
                 className="text-foreground hover:text-primary transition-colors relative story-link"
               >
                 <Home className="h-4 w-4 inline mr-2" />
@@ -157,7 +165,7 @@ const Navbar = () => {
             </motion.div>
           </div>
         )}
-        
+
         {/* Desktop Actions */}
         <div className="hidden md:flex items-center gap-4">
           <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
@@ -236,87 +244,87 @@ const Navbar = () => {
       {/* Mobile Navigation */}
       <AnimatePresence>
         {isOpen && (
-          <motion.div 
+          <motion.div
             className="md:hidden border-t border-border bg-background/95 backdrop-blur-sm"
             initial={{ opacity: 0, height: 0 }}
             animate={{ opacity: 1, height: "auto" }}
             exit={{ opacity: 0, height: 0 }}
             transition={{ duration: 0.3 }}
           >
-          <div className="container mx-auto px-6 py-4 space-y-4">
-            {user ? (
-              <>
-                <Link
-                  to="/"
-                  className="flex items-center gap-2 text-foreground hover:text-primary transition-colors"
-                  onClick={() => setIsOpen(false)}
-                >
-                  <Home className="h-4 w-4" />
-                  {t('navbar.home')}
-                </Link>
-
-                <Link
-                  to="/dashboard"
-                  className="flex items-center gap-2 text-foreground hover:text-primary transition-colors"
-                  onClick={() => setIsOpen(false)}
-                >
-                  <LayoutDashboard className="h-4 w-4" />
-                  {t('navbar.dashboard')}
-                </Link>
-
-                <Link
-                  to="/dashboard#profile"
-                  className="flex items-center gap-2 text-foreground hover:text-primary transition-colors"
-                  onClick={() => setIsOpen(false)}
-                >
-                  <User2 className="h-4 w-4" />
-                  {t('navbar.profile')}
-                </Link>
-
-                <div className="pt-2 border-t border-border">
-                  <Button 
-                    variant="outline" 
-                    className="w-full justify-start"
-                    onClick={handleSignOut}
+            <div className="container mx-auto px-6 py-4 space-y-4">
+              {user ? (
+                <>
+                  <Link
+                    to="/"
+                    className="flex items-center gap-2 text-foreground hover:text-primary transition-colors"
+                    onClick={() => setIsOpen(false)}
                   >
-                    <LogOut className="h-4 w-4 mr-2" />
-                    {t('navbar.signOut')}
-                  </Button>
-                </div>
-              </>
-            ) : (
-              <>
-                <Link
-                  to="/"
-                  className="flex items-center gap-2 text-foreground hover:text-primary transition-colors"
-                  onClick={() => setIsOpen(false)}
-                >
-                  <Home className="h-4 w-4" />
-                  {t('navbar.home')}
-                </Link>
+                    <Home className="h-4 w-4" />
+                    {t('navbar.home')}
+                  </Link>
 
-                <div className="pt-2 border-t border-border space-y-2">
-                  <Link to="/auth/sign-in" onClick={() => setIsOpen(false)}>
-                    <Button variant="outline" className="w-full justify-start">
-                      <LogIn className="h-4 w-4 mr-2" />
-                      {t('navbar.signIn')}
-                    </Button>
+                  <Link
+                    to="/dashboard"
+                    className="flex items-center gap-2 text-foreground hover:text-primary transition-colors"
+                    onClick={() => setIsOpen(false)}
+                  >
+                    <LayoutDashboard className="h-4 w-4" />
+                    {t('navbar.dashboard')}
                   </Link>
-                  <Link to="/auth/sign-up" onClick={() => setIsOpen(false)}>
-                    <Button className="gradient-primary text-primary-foreground w-full">
-                      <UserPlus className="h-4 w-4 mr-2" />
-                      {t('navbar.signUp')}
-                    </Button>
+
+                  <Link
+                    to="/dashboard#profile"
+                    className="flex items-center gap-2 text-foreground hover:text-primary transition-colors"
+                    onClick={() => setIsOpen(false)}
+                  >
+                    <User2 className="h-4 w-4" />
+                    {t('navbar.profile')}
                   </Link>
-                </div>
-              </>
-            )}
-            <div className="pt-2 border-t border-border flex items-center gap-2">
-              <InstallPrompt />
-              <ThemeToggle />
-              <LanguageSwitcher />
+
+                  <div className="pt-2 border-t border-border">
+                    <Button
+                      variant="outline"
+                      className="w-full justify-start"
+                      onClick={handleSignOut}
+                    >
+                      <LogOut className="h-4 w-4 mr-2" />
+                      {t('navbar.signOut')}
+                    </Button>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <Link
+                    to="/"
+                    className="flex items-center gap-2 text-foreground hover:text-primary transition-colors"
+                    onClick={() => setIsOpen(false)}
+                  >
+                    <Home className="h-4 w-4" />
+                    {t('navbar.home')}
+                  </Link>
+
+                  <div className="pt-2 border-t border-border space-y-2">
+                    <Link to="/auth/sign-in" onClick={() => setIsOpen(false)}>
+                      <Button variant="outline" className="w-full justify-start">
+                        <LogIn className="h-4 w-4 mr-2" />
+                        {t('navbar.signIn')}
+                      </Button>
+                    </Link>
+                    <Link to="/auth/sign-up" onClick={() => setIsOpen(false)}>
+                      <Button className="gradient-primary text-primary-foreground w-full">
+                        <UserPlus className="h-4 w-4 mr-2" />
+                        {t('navbar.signUp')}
+                      </Button>
+                    </Link>
+                  </div>
+                </>
+              )}
+              <div className="pt-2 border-t border-border flex items-center gap-2">
+                <InstallPrompt />
+                <ThemeToggle />
+                <LanguageSwitcher />
+              </div>
             </div>
-          </div>
           </motion.div>
         )}
       </AnimatePresence>

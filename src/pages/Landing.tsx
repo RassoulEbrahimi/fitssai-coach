@@ -1,7 +1,5 @@
 import Navbar from "@/components/Navbar";
 import Hero from "@/components/Hero";
-import Features from "@/components/Features";
-import CTA from "@/components/CTA";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
 
@@ -13,18 +11,16 @@ const Landing = () => {
     if (user) {
       navigate('/dashboard');
     } else {
-      navigate('/auth/sign-up');
+      navigate('/auth/sign-in'); // Changed to sign-in as per requirements
     }
   };
 
   return (
-    <div className="min-h-screen bg-background">
-      <Navbar />
-      <div className="pt-16"> {/* Account for fixed navbar */}
+    <div className="min-h-screen bg-zinc-950 selection:bg-primary/30">
+      <Navbar variant="landing" />
+      <main>
         <Hero onGetStarted={handleGetStarted} />
-        <Features />
-        <CTA onGetStarted={handleGetStarted} />
-      </div>
+      </main>
     </div>
   );
 };
