@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { ArrowRight, ArrowLeft } from "lucide-react";
+import { ArrowRight, ArrowLeft, Loader2, RefreshCw } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { Input } from "@/components/ui/input";
@@ -10,13 +10,40 @@ import {
     InputOTPSlot,
 } from "@/components/ui/input-otp";
 import { CanvasRevealEffect } from "./CanvasRevealEffect";
+import { useAuth } from "@/hooks/useAuth";
+import { useNavigate } from "react-router-dom";
 
 export default function SignInFlow() {
+    const { user } = useAuth();
+    const navigate = useNavigate();
+
+    const [mode, setMode] = useState<"login" | "signup">("login");
     const [step, setStep] = useState<"email" | "otp" | "success">("email");
     const [email, setEmail] = useState("");
     const [otp, setOtp] = useState("");
     const [loading, setLoading] = useState(false);
     const [showReverseCanvas, setShowReverseCanvas] = useState(false);
+    const [resendCooldown, setResendCooldown] = useState(0);
+
+    // Redirect if already logged in and not in the middle of success sequence
+    useEffect(() => {
+        if (user && step !== "success") {
+            // Check if we are "really" authenticated (session exists)
+            // But useAuth handles that. 
+            navigate("/dashboard");
+        }
+    }, [user, step, navigate]);
+
+    // Cooldown timer
+    useEffect(() => {
+        let timer: NodeJS.Timeout;
+        if (resendCooldown > 0) {
+            timer = setTimeout(() => setResendCooldown((c) => c - 1), 1000);
+        }
+        return () => {
+            if (timer) clearTimeout(timer);
+        };
+    }, [resendCooldown]);
 
     const handleSendOtp = async (e?: React.FormEvent) => {
         e?.preventDefault();
@@ -30,18 +57,18 @@ export default function SignInFlow() {
             const { error } = await supabase.auth.signInWithOtp({
                 email,
                 options: {
-                    shouldCreateUser: false, // Strict: only existing users
+                    shouldCreateUser: mode === "signup",
                 },
             });
 
             if (error) {
-                // If error is related to "Signups not allowed" or similar
-                if (
-                    error.message.toLowerCase().includes("signups not allowed") ||
-                    error.status === 400 ||
-                    error.status === 422
-                ) {
-                    toast.error("Account not found. Please contact support.");
+                // Handle specific Supabase errors if possible
+                if (error.status === 400 || error.message.toLowerCase().includes("signups not allowed")) {
+                    if (mode === "login") {
+                        toast.error("Account not found. Please sign up first.");
+                    } else {
+                        toast.error(error.message);
+                    }
                 } else {
                     throw error;
                 }
@@ -50,6 +77,7 @@ export default function SignInFlow() {
 
             toast.success("Code sent to your inbox!");
             setStep("otp");
+            setResendCooldown(30);
         } catch (error: any) {
             toast.error(error.message || "Failed to send code");
         } finally {
@@ -70,10 +98,15 @@ export default function SignInFlow() {
 
             if (error) throw error;
 
-            // Success animation
+            // Success animation sequence
             setStep("success");
             setShowReverseCanvas(true);
-            // Redirect handled by AuthPage's useEffect on user state change
+
+            // Wait for animation then redirect
+            setTimeout(() => {
+                navigate("/dashboard");
+            }, 2000);
+
         } catch (error: any) {
             toast.error("Invalid code. Please try again.");
             setOtp("");
@@ -82,17 +115,16 @@ export default function SignInFlow() {
         }
     };
 
-    const onSignupClick = () => {
-        toast("Registration coming soon", {
-            description: "We are currently in private beta.",
-        });
+    const handleResend = async () => {
+        if (resendCooldown > 0) return;
+        await handleSendOtp();
     };
 
     return (
         <div className="relative min-h-screen w-full flex flex-col items-center justify-center overflow-hidden bg-black text-white font-sans selection:bg-emerald-500/30">
 
             {/* Background Layers */}
-            <div className="absolute inset-0 z-0">
+            <div className="absolute inset-0 z-0 pointer-events-none">
                 <AnimatePresence>
                     {!showReverseCanvas && (
                         <motion.div
@@ -132,7 +164,7 @@ export default function SignInFlow() {
                 </AnimatePresence>
             </div>
 
-            {/* Mini Navbar */}
+            {/* Mini Navbar (Toggle) */}
             <motion.div
                 initial={{ opacity: 0, y: -20 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -141,13 +173,22 @@ export default function SignInFlow() {
             >
                 <div className="flex items-center gap-1 p-1 rounded-full bg-zinc-900/80 backdrop-blur-md border border-zinc-800">
                     <button
-                        className="px-6 py-2 rounded-full text-sm font-medium bg-zinc-800 text-white shadow-sm transition-all"
+                        onClick={() => setMode("login")}
+                        className={`px-6 py-2 rounded-full text-sm font-medium transition-all ${mode === "login"
+                                ? "bg-zinc-800 text-white shadow-sm"
+                                : "text-zinc-400 hover:text-white"
+                            }`}
+                        disabled={loading || step === "success"}
                     >
                         Login
                     </button>
                     <button
-                        onClick={onSignupClick}
-                        className="px-6 py-2 rounded-full text-sm font-medium text-zinc-400 hover:text-white transition-all"
+                        onClick={() => setMode("signup")}
+                        className={`px-6 py-2 rounded-full text-sm font-medium transition-all ${mode === "signup"
+                                ? "bg-zinc-800 text-white shadow-sm"
+                                : "text-zinc-400 hover:text-white"
+                            }`}
+                        disabled={loading || step === "success"}
                     >
                         Sign up
                     </button>
@@ -167,10 +208,12 @@ export default function SignInFlow() {
                             className="flex flex-col items-center text-center"
                         >
                             <h1 className="text-4xl md:text-5xl font-bold tracking-tighter mb-4 text-white">
-                                Welcome back
+                                {mode === "login" ? "Welcome back" : "Start your journey"}
                             </h1>
                             <p className="text-zinc-400 mb-8 max-w-xs mx-auto">
-                                Enter your email to access your personalized fitness coach.
+                                {mode === "login"
+                                    ? "Enter your email to access your personalized fitness coach."
+                                    : "Create an account to get your AI-powered training plan."}
                             </p>
 
                             <form onSubmit={handleSendOtp} className="w-full max-w-sm relative group">
@@ -190,7 +233,7 @@ export default function SignInFlow() {
                                         disabled={loading || !email}
                                         className="absolute right-2 top-1/2 -translate-y-1/2 w-10 h-10 flex items-center justify-center rounded-full bg-emerald-500 text-black hover:bg-emerald-400 transition-all disabled:opacity-0 disabled:scale-75 disabled:pointer-events-none"
                                     >
-                                        <ArrowRight size={20} />
+                                        {loading ? <Loader2 className="animate-spin" size={20} /> : <ArrowRight size={20} />}
                                     </button>
                                 </div>
                             </form>
@@ -250,6 +293,22 @@ export default function SignInFlow() {
                                     Verifying code...
                                 </motion.p>
                             )}
+
+                            <div className="mt-8">
+                                <button
+                                    onClick={handleResend}
+                                    disabled={resendCooldown > 0 || loading}
+                                    className="flex items-center gap-2 text-sm text-zinc-500 hover:text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                >
+                                    {resendCooldown > 0 ? (
+                                        <span>Resend code in {resendCooldown}s</span>
+                                    ) : (
+                                        <>
+                                            <RefreshCw size={14} /> Resend code
+                                        </>
+                                    )}
+                                </button>
+                            </div>
                         </motion.div>
                     )}
 
@@ -279,7 +338,9 @@ export default function SignInFlow() {
                                     />
                                 </svg>
                             </div>
-                            <h2 className="text-3xl font-bold text-white">Welcome back</h2>
+                            <h2 className="text-3xl font-bold text-white">
+                                {mode === "login" ? "Welcome back" : "Account Created"}
+                            </h2>
                             <p className="text-zinc-300">Redirecting to your dashboard...</p>
                         </motion.div>
                     )}
