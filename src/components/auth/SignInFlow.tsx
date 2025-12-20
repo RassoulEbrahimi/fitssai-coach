@@ -1,14 +1,9 @@
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { ArrowRight, ArrowLeft, Loader2, RefreshCw } from "lucide-react";
+import { ArrowRight, Loader2, Lock, Mail, Eye, EyeOff, CheckCircle } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { Input } from "@/components/ui/input";
-import {
-    InputOTP,
-    InputOTPGroup,
-    InputOTPSlot,
-} from "@/components/ui/input-otp";
 import { CanvasRevealEffect } from "./CanvasRevealEffect";
 import { useAuth } from "@/hooks/useAuth";
 import { useNavigate } from "react-router-dom";
@@ -17,107 +12,104 @@ export default function SignInFlow() {
     const { user } = useAuth();
     const navigate = useNavigate();
 
-    const [mode, setMode] = useState<"login" | "signup">("login");
-    const [step, setStep] = useState<"email" | "otp" | "success">("email");
+    const [mode, setMode] = useState<"login" | "signup" | "forgot">("login");
+    const [step, setStep] = useState<"auth" | "success">("auth");
+
     const [email, setEmail] = useState("");
-    const [otp, setOtp] = useState("");
+    const [password, setPassword] = useState("");
+    const [confirmPassword, setConfirmPassword] = useState("");
+
+    const [showPassword, setShowPassword] = useState(false);
     const [loading, setLoading] = useState(false);
     const [showReverseCanvas, setShowReverseCanvas] = useState(false);
-    const [resendCooldown, setResendCooldown] = useState(0);
+
+    // Logging for debugging
+    useEffect(() => {
+        console.log("Auth State:", { user: !!user, step, mode });
+    }, [user, step, mode]);
 
     // Redirect if already logged in and not in the middle of success sequence
     useEffect(() => {
-        if (user && step !== "success") {
-            // Check if we are "really" authenticated (session exists)
-            // But useAuth handles that. 
+        if (user && step === "auth" && !loading) {
             navigate("/dashboard");
         }
-    }, [user, step, navigate]);
+    }, [user, step, navigate, loading]);
 
-    // Cooldown timer
-    useEffect(() => {
-        let timer: NodeJS.Timeout;
-        if (resendCooldown > 0) {
-            timer = setTimeout(() => setResendCooldown((c) => c - 1), 1000);
-        }
-        return () => {
-            if (timer) clearTimeout(timer);
-        };
-    }, [resendCooldown]);
+    const handleAuth = async (e: React.FormEvent) => {
+        e.preventDefault();
 
-    const handleSendOtp = async (e?: React.FormEvent) => {
-        e?.preventDefault();
         if (!email || !/\S+@\S+\.\S+/.test(email)) {
             toast.error("Please enter a valid email address");
             return;
         }
 
         setLoading(true);
-        try {
-            const { error } = await supabase.auth.signInWithOtp({
-                email,
-                options: {
-                    shouldCreateUser: mode === "signup",
-                },
-            });
 
-            if (error) {
-                // Handle specific Supabase errors if possible
-                if (error.status === 400 || error.message.toLowerCase().includes("signups not allowed")) {
-                    if (mode === "login") {
-                        toast.error("Account not found. Please sign up first.");
-                    } else {
-                        toast.error(error.message);
-                    }
-                } else {
-                    throw error;
+        try {
+            if (mode === "forgot") {
+                const { error } = await supabase.auth.resetPasswordForEmail(email, {
+                    redirectTo: `${window.location.origin}/auth/reset`,
+                });
+                if (error) throw error;
+                toast.success("Password reset link sent to your email!");
+                setMode("login");
+            } else if (mode === "signup") {
+                if (password.length < 6) {
+                    toast.error("Password must be at least 6 characters");
+                    setLoading(false);
+                    return;
                 }
-                return;
+                if (password !== confirmPassword) {
+                    toast.error("Passwords do not match");
+                    setLoading(false);
+                    return;
+                }
+
+                const { error, data } = await supabase.auth.signUp({
+                    email,
+                    password,
+                });
+                if (error) throw error;
+
+                if (data.session) {
+                    handleSuccess();
+                } else if (data.user && !data.session) {
+                    toast.success("Account created! Please check your email to confirm.");
+                    setMode("login");
+                }
+            } else {
+                // Login
+                const { error, data } = await supabase.auth.signInWithPassword({
+                    email,
+                    password,
+                });
+                if (error) {
+                    if (error.message === "Invalid login credentials") {
+                        toast.error("Invalid email or password");
+                    } else {
+                        throw error;
+                    }
+                    setLoading(false);
+                    return;
+                }
+
+                if (data.session) {
+                    handleSuccess();
+                }
             }
-
-            toast.success("Code sent to your inbox!");
-            setStep("otp");
-            setResendCooldown(30);
         } catch (error: any) {
-            toast.error(error.message || "Failed to send code");
+            toast.error(error.message || "Authentication failed");
         } finally {
-            setLoading(false);
+            if (step !== "success") setLoading(false);
         }
     };
 
-    const handleVerifyOtp = async (code: string) => {
-        if (code.length !== 6) return;
-
-        setLoading(true);
-        try {
-            const { error } = await supabase.auth.verifyOtp({
-                email,
-                token: code,
-                type: "email",
-            });
-
-            if (error) throw error;
-
-            // Success animation sequence
-            setStep("success");
-            setShowReverseCanvas(true);
-
-            // Wait for animation then redirect
-            setTimeout(() => {
-                navigate("/dashboard");
-            }, 2000);
-
-        } catch (error: any) {
-            toast.error("Invalid code. Please try again.");
-            setOtp("");
-        } finally {
-            setLoading(false);
-        }
-    };
-
-    const handleResend = async () => {
-        if (resendCooldown > 0) return;
-        await handleSendOtp();
+    const handleSuccess = () => {
+        setStep("success");
+        setShowReverseCanvas(true);
+        setTimeout(async () => {
+            navigate("/dashboard");
+        }, 1500);
     };
 
     return (
@@ -154,7 +146,7 @@ export default function SignInFlow() {
                             className="absolute inset-0 z-10"
                         >
                             <CanvasRevealEffect
-                                animationSpeed={5.0} // Faster chaotic reveal
+                                animationSpeed={5.0}
                                 containerClassName="bg-emerald-950"
                                 colors={[[255, 255, 255]]}
                                 dotSize={4}
@@ -171,36 +163,38 @@ export default function SignInFlow() {
                 transition={{ duration: 0.5, delay: 0.1 }}
                 className="fixed top-8 z-20"
             >
-                <div className="flex items-center gap-1 p-1 rounded-full bg-zinc-900/80 backdrop-blur-md border border-zinc-800">
-                    <button
-                        onClick={() => setMode("login")}
-                        className={`px-6 py-2 rounded-full text-sm font-medium transition-all ${mode === "login"
+                {mode !== "forgot" && (
+                    <div className="flex items-center gap-1 p-1 rounded-full bg-zinc-900/80 backdrop-blur-md border border-zinc-800">
+                        <button
+                            onClick={() => setMode("login")}
+                            className={`px-6 py-2 rounded-full text-sm font-medium transition-all ${mode === "login"
                                 ? "bg-zinc-800 text-white shadow-sm"
                                 : "text-zinc-400 hover:text-white"
-                            }`}
-                        disabled={loading || step === "success"}
-                    >
-                        Login
-                    </button>
-                    <button
-                        onClick={() => setMode("signup")}
-                        className={`px-6 py-2 rounded-full text-sm font-medium transition-all ${mode === "signup"
+                                }`}
+                            disabled={loading || step === "success"}
+                        >
+                            Login
+                        </button>
+                        <button
+                            onClick={() => setMode("signup")}
+                            className={`px-6 py-2 rounded-full text-sm font-medium transition-all ${mode === "signup"
                                 ? "bg-zinc-800 text-white shadow-sm"
                                 : "text-zinc-400 hover:text-white"
-                            }`}
-                        disabled={loading || step === "success"}
-                    >
-                        Sign up
-                    </button>
-                </div>
+                                }`}
+                            disabled={loading || step === "success"}
+                        >
+                            Sign up
+                        </button>
+                    </div>
+                )}
             </motion.div>
 
             {/* Content Container */}
             <div className="z-20 w-full max-w-md px-4">
                 <AnimatePresence mode="wait">
-                    {step === "email" && (
+                    {step === "auth" && (
                         <motion.div
-                            key="email"
+                            key="auth"
                             initial={{ opacity: 0, y: 20 }}
                             animate={{ opacity: 1, y: 0 }}
                             exit={{ opacity: 0, y: -20 }}
@@ -208,107 +202,102 @@ export default function SignInFlow() {
                             className="flex flex-col items-center text-center"
                         >
                             <h1 className="text-4xl md:text-5xl font-bold tracking-tighter mb-4 text-white">
-                                {mode === "login" ? "Welcome back" : "Start your journey"}
+                                {mode === "login" ? "Welcome back" : mode === "signup" ? "Start your journey" : "Reset Password"}
                             </h1>
                             <p className="text-zinc-400 mb-8 max-w-xs mx-auto">
                                 {mode === "login"
-                                    ? "Enter your email to access your personalized fitness coach."
-                                    : "Create an account to get your AI-powered training plan."}
+                                    ? "Enter your credentials to access your coach."
+                                    : mode === "signup"
+                                        ? "Create an account to get your AI training plan."
+                                        : "Enter your email to receive a reset link."}
                             </p>
 
-                            <form onSubmit={handleSendOtp} className="w-full max-w-sm relative group">
-                                <div className="absolute inset-0 bg-gradient-to-r from-emerald-500/20 to-teal-500/20 rounded-full blur-xl opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
+                            <form onSubmit={handleAuth} className="w-full max-w-sm relative group space-y-4">
+                                <div className="absolute inset-0 bg-gradient-to-r from-emerald-500/20 to-teal-500/20 rounded-full blur-xl opacity-0 group-hover:opacity-100 transition-opacity duration-500 -z-10" />
+
                                 <div className="relative">
+                                    <Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-500" size={20} />
                                     <Input
                                         type="email"
-                                        placeholder="name@example.com"
+                                        placeholder="Email address"
                                         value={email}
                                         onChange={(e) => setEmail(e.target.value)}
-                                        className="h-14 bg-zinc-900/90 border-zinc-800 text-white placeholder:text-zinc-600 focus-visible:ring-1 focus-visible:ring-emerald-500/50 transition-all rounded-full pl-6 pr-14 hover:border-zinc-700 text-lg"
+                                        className="h-14 bg-zinc-900/90 border-zinc-800 text-white placeholder:text-zinc-600 focus-visible:ring-1 focus-visible:ring-emerald-500/50 transition-all rounded-full pl-12 pr-4 hover:border-zinc-700 text-lg"
                                         disabled={loading}
                                         autoFocus
                                     />
+                                </div>
+
+                                {mode !== "forgot" && (
+                                    <div className="relative">
+                                        <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-500" size={20} />
+                                        <Input
+                                            type={showPassword ? "text" : "password"}
+                                            placeholder="Password"
+                                            value={password}
+                                            onChange={(e) => setPassword(e.target.value)}
+                                            className="h-14 bg-zinc-900/90 border-zinc-800 text-white placeholder:text-zinc-600 focus-visible:ring-1 focus-visible:ring-emerald-500/50 transition-all rounded-full pl-12 pr-12 hover:border-zinc-700 text-lg"
+                                            disabled={loading}
+                                        />
+                                        <button
+                                            type="button"
+                                            onClick={() => setShowPassword(!showPassword)}
+                                            className="absolute right-4 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-white transition-colors"
+                                        >
+                                            {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
+                                        </button>
+                                    </div>
+                                )}
+
+                                {mode === "signup" && (
+                                    <div className="relative">
+                                        <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-500" size={20} />
+                                        <Input
+                                            type={showPassword ? "text" : "password"}
+                                            placeholder="Confirm Password"
+                                            value={confirmPassword}
+                                            onChange={(e) => setConfirmPassword(e.target.value)}
+                                            className="h-14 bg-zinc-900/90 border-zinc-800 text-white placeholder:text-zinc-600 focus-visible:ring-1 focus-visible:ring-emerald-500/50 transition-all rounded-full pl-12 pr-12 hover:border-zinc-700 text-lg"
+                                            disabled={loading}
+                                        />
+                                    </div>
+                                )}
+
+                                <div className="flex flex-col gap-4 pt-2">
                                     <button
                                         type="submit"
-                                        disabled={loading || !email}
-                                        className="absolute right-2 top-1/2 -translate-y-1/2 w-10 h-10 flex items-center justify-center rounded-full bg-emerald-500 text-black hover:bg-emerald-400 transition-all disabled:opacity-0 disabled:scale-75 disabled:pointer-events-none"
+                                        disabled={loading || !email || (mode !== "forgot" && !password)}
+                                        className="w-full h-14 flex items-center justify-center rounded-full bg-emerald-500 text-black font-semibold hover:bg-emerald-400 transition-all disabled:opacity-50 disabled:pointer-events-none text-lg"
                                     >
-                                        {loading ? <Loader2 className="animate-spin" size={20} /> : <ArrowRight size={20} />}
+                                        {loading ? <Loader2 className="animate-spin" size={24} /> :
+                                            <span className="flex items-center gap-2">
+                                                {mode === "login" ? "Login" : mode === "signup" ? "Sign Up" : "Send Link"}
+                                                <ArrowRight size={20} />
+                                            </span>
+                                        }
                                     </button>
+
+                                    {mode === "login" && (
+                                        <button
+                                            type="button"
+                                            onClick={() => setMode("forgot")}
+                                            className="text-sm text-zinc-500 hover:text-white transition-colors"
+                                        >
+                                            Forgot password?
+                                        </button>
+                                    )}
+
+                                    {mode === "forgot" && (
+                                        <button
+                                            type="button"
+                                            onClick={() => setMode("login")}
+                                            className="text-sm text-zinc-500 hover:text-white transition-colors"
+                                        >
+                                            Back to Login
+                                        </button>
+                                    )}
                                 </div>
                             </form>
-                        </motion.div>
-                    )}
-
-                    {step === "otp" && (
-                        <motion.div
-                            key="otp"
-                            initial={{ opacity: 0, scale: 0.95 }}
-                            animate={{ opacity: 1, scale: 1 }}
-                            exit={{ opacity: 0, scale: 0.95 }}
-                            transition={{ duration: 0.3 }}
-                            className="flex flex-col items-center text-center w-full"
-                        >
-                            <button
-                                onClick={() => setStep("email")}
-                                className="mb-6 flex items-center gap-2 text-sm text-zinc-500 hover:text-white transition-colors"
-                            >
-                                <ArrowLeft size={14} /> Back to email
-                            </button>
-
-                            <h2 className="text-3xl font-bold tracking-tight mb-2 text-white">
-                                Verify your email
-                            </h2>
-                            <p className="text-zinc-400 mb-8">
-                                Enter the code sent to <span className="text-white font-medium">{email}</span>
-                            </p>
-
-                            <InputOTP
-                                maxLength={6}
-                                value={otp}
-                                onChange={(val) => {
-                                    setOtp(val);
-                                    if (val.length === 6) handleVerifyOtp(val);
-                                }}
-                                disabled={loading}
-                                className="gap-2 sm:gap-4"
-                            >
-                                <InputOTPGroup className="gap-2 sm:gap-3">
-                                    {[0, 1, 2, 3, 4, 5].map((index) => (
-                                        <InputOTPSlot
-                                            key={index}
-                                            index={index}
-                                            className="w-10 h-12 sm:w-12 sm:h-14 border border-zinc-800 rounded-xl bg-zinc-900/50 text-white text-xl sm:text-2xl font-bold transition-all focus:border-emerald-500/50 focus:ring-1 focus:ring-emerald-500/20"
-                                        />
-                                    ))}
-                                </InputOTPGroup>
-                            </InputOTP>
-
-                            {loading && (
-                                <motion.p
-                                    initial={{ opacity: 0 }}
-                                    animate={{ opacity: 1 }}
-                                    className="mt-6 text-sm text-zinc-500 animate-pulse"
-                                >
-                                    Verifying code...
-                                </motion.p>
-                            )}
-
-                            <div className="mt-8">
-                                <button
-                                    onClick={handleResend}
-                                    disabled={resendCooldown > 0 || loading}
-                                    className="flex items-center gap-2 text-sm text-zinc-500 hover:text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                                >
-                                    {resendCooldown > 0 ? (
-                                        <span>Resend code in {resendCooldown}s</span>
-                                    ) : (
-                                        <>
-                                            <RefreshCw size={14} /> Resend code
-                                        </>
-                                    )}
-                                </button>
-                            </div>
                         </motion.div>
                     )}
 
@@ -320,26 +309,10 @@ export default function SignInFlow() {
                             className="flex flex-col items-center justify-center text-center space-y-4 pt-4 relative z-50"
                         >
                             <div className="w-20 h-20 rounded-full bg-emerald-500 flex items-center justify-center text-black shadow-[0_0_50px_-5px_rgba(16,185,129,0.7)]">
-                                <svg
-                                    width="40"
-                                    height="40"
-                                    viewBox="0 0 24 24"
-                                    fill="none"
-                                    stroke="currentColor"
-                                    strokeWidth="3.5"
-                                    strokeLinecap="round"
-                                    strokeLinejoin="round"
-                                >
-                                    <motion.path
-                                        initial={{ pathLength: 0 }}
-                                        animate={{ pathLength: 1 }}
-                                        transition={{ duration: 0.4, delay: 0.2 }}
-                                        d="M20 6L9 17l-5-5"
-                                    />
-                                </svg>
+                                <CheckCircle size={40} strokeWidth={2.5} />
                             </div>
                             <h2 className="text-3xl font-bold text-white">
-                                {mode === "login" ? "Welcome back" : "Account Created"}
+                                {mode === "login" || mode === "forgot" ? "Welcome back" : "Account Created"}
                             </h2>
                             <p className="text-zinc-300">Redirecting to your dashboard...</p>
                         </motion.div>
