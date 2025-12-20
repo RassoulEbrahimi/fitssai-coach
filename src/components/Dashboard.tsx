@@ -522,7 +522,7 @@ const Dashboard = () => {
   // Loading state handled by Suspense
 
   return (
-    <div className={`relative min-h-screen overflow-x-hidden ${isFocusMode ? '' : 'z-20'}`}>
+    <div className={`relative overflow-x-hidden ${isFocusMode ? '' : 'z-20'}`}>
       {!isFocusMode && <VideoBackground />}
       <motion.div
         id="main-content"
@@ -542,7 +542,7 @@ const Dashboard = () => {
 
           <div className="space-y-6">
             {/* View stack: one child mounted at a time with slide animations */}
-            <div className="grid grid-cols-1 grid-rows-1">
+            <div className="relative grid grid-cols-1 grid-rows-1">
               <AnimatePresence initial={false} mode="popLayout" custom={direction}>
                 <motion.div
                   key={activeTab}

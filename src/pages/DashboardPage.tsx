@@ -53,7 +53,7 @@ const DashboardPage = () => {
   }
 
   return (
-    <div className={`min-h-screen bg-background ${isFocusMode ? 'overflow-hidden' : ''}`}>
+    <div className={`min-h-[100dvh] bg-background ${isFocusMode ? 'overflow-hidden' : ''}`}>
       <WorkoutErrorBoundary>
         <Dashboard />
       </WorkoutErrorBoundary>
