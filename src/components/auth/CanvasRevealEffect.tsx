@@ -77,8 +77,7 @@ const DotMatrix = ({
         <Canvas
             className="h-full w-full"
             resize={{ scroll: false }}
-            // Prevent transparency issues
-            gl={{ alpha: false, antialias: true }}
+            gl={{ alpha: true, antialias: true }}
         >
             <ShaderPlane
                 uniforms={uniforms}
