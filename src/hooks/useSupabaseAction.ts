@@ -21,6 +21,7 @@ export interface UseSupabaseActionOptions<TData, TVariables, TContext = unknown>
     onSuccess?: (data: TData, variables: TVariables, context: TContext | undefined) => void;
     onError?: (error: unknown, variables: TVariables, context: TContext | undefined) => void;
     onMutate?: (variables: TVariables) => Promise<TContext> | TContext;
+    onSettled?: (data: TData | undefined, error: Error | null, variables: TVariables, context: TContext | undefined) => void;
     retryConfig?: RetryConfig;
     messages?: ActionMessages;
     /**
@@ -31,7 +32,7 @@ export interface UseSupabaseActionOptions<TData, TVariables, TContext = unknown>
     /**
      * Action type for the offline queue (e.g. 'TOGGLE_DAY_COMPLETION')
      */
-    offlineActionType?: string;
+    offlineActionType?: 'TOGGLE_DAY_COMPLETION' | 'TOGGLE_SET';
 }
 
 // Exponential backoff retry utility
@@ -63,6 +64,7 @@ export const useSupabaseAction = <TData = unknown, TVariables = void, TContext =
     onSuccess,
     onError,
     onMutate,
+    onSettled,
     retryConfig = { retries: 3, initialDelay: 1000 },
     messages,
     shouldQueueOffline,
@@ -139,6 +141,9 @@ export const useSupabaseAction = <TData = unknown, TVariables = void, TContext =
             }
 
             if (onError) onError(error, variables, context);
+        },
+        onSettled: (data, error, variables, context) => {
+            if (onSettled) onSettled(data, error, variables, context);
         }
     });
 };

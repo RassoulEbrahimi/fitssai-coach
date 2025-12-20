@@ -143,7 +143,7 @@ export const useWeekCompletion = ({ planId, weekKey, enabled = true, availableWe
   }, [isOnline, query.data, query.isFetching, planId, weekKey, query.dataUpdatedAt]);
 
   const { mutate: toggleExercise, isPending: isToggling } = useSupabaseAction<ToggleExerciseResponse, ToggleExerciseParams, ToggleExerciseContext>({
-    action: async (params) => {
+    action: async (params: ToggleExerciseParams) => {
       const { data, error } = await supabase.functions.invoke('toggle-exercise', {
         body: {
           planId: params.planId,
@@ -161,7 +161,7 @@ export const useWeekCompletion = ({ planId, weekKey, enabled = true, availableWe
       return data;
     },
     // ✅ NEW: Automatic invalidation uses centralized key
-    queryKey,
+    queryKey: [...queryKey],
     offlineActionType: 'TOGGLE_DAY_COMPLETION',
     messages: {
       error: 'Änderung konnte nicht gespeichert werden.',

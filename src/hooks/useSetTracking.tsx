@@ -115,7 +115,7 @@ export function useSetTracking(planId: string | undefined, weekKey: string, dayI
     action: toggleSetAction,
     offlineActionType: 'TOGGLE_SET',
     // ✅ NEW: Use centralized key for auto-invalidation
-    queryKey, 
+    queryKey: [...queryKey],
     messages: {
       error: 'Fehler beim Speichern des Satzes',
     },
