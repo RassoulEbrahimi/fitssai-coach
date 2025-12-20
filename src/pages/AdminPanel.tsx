@@ -205,16 +205,31 @@ const AdminPanel = () => {
 
   const deleteUser = async (userId: string) => {
     try {
-      // Delete from auth.users (profiles will cascade delete)
-      const { error } = await supabase.auth.admin.deleteUser(userId);
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        toast.error('Nicht angemeldet. Bitte melde dich erneut an.');
+        return;
+      }
+
+      const { data, error } = await supabase.functions.invoke('admin-delete-user', {
+        body: { userId },
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session.access_token}`,
+        },
+      });
 
       if (error) throw error;
 
+      if (!data?.success) {
+        throw new Error(data?.error || 'Benutzer konnte nicht gelöscht werden.');
+      }
+
       setUsers(users.filter(user => user.id !== userId));
-      toast.success('User deleted successfully');
+      toast.success('Benutzer erfolgreich gelöscht');
     } catch (error) {
       console.error('Error deleting user:', error);
-      toast.error('Failed to delete user');
+      toast.error('Benutzer konnte nicht gelöscht werden');
     }
   };
 
