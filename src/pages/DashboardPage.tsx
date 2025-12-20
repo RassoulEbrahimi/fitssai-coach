@@ -53,7 +53,7 @@ const DashboardPage = () => {
   }
 
   return (
-    <div className="h-[100dvh] w-full overflow-hidden bg-background">
+    <div className="min-h-[100dvh] w-full overflow-x-hidden bg-background">
       <WorkoutErrorBoundary>
         <Dashboard />
       </WorkoutErrorBoundary>
