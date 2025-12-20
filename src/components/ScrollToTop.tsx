@@ -9,12 +9,12 @@ import { useLocation } from "react-router-dom";
  * behavior in a Single Page Application.
  */
 export default function ScrollToTop() {
-    const { pathname, hash } = useLocation();
+    const { pathname } = useLocation();
 
     useEffect(() => {
         // Immediate scroll reset
         window.scrollTo(0, 0);
-    }, [pathname, hash]);
+    }, [pathname]);
 
     return null;
 }
