@@ -25,14 +25,21 @@ export default function SignInFlow() {
     const [showReverseCanvas, setShowReverseCanvas] = useState(false);
     const [resendCooldown, setResendCooldown] = useState(0);
 
+    // Logging for debugging
+    useEffect(() => {
+        console.log("Auth State:", { user: !!user, step, mode });
+    }, [user, step, mode]);
+
+    // Redirect if already logged in and not in the middle of success sequence
     // Redirect if already logged in and not in the middle of success sequence
     useEffect(() => {
-        if (user && step !== "success") {
-            // Check if we are "really" authenticated (session exists)
-            // But useAuth handles that. 
+        // Only auto-redirect if we are NOT in the middle of a flow
+        // If step is 'otp' or 'success', we handle redirect manually to show animation
+        if (user && step === "email" && !loading) {
+            console.log("User already verified in 'email' step -> Redirecting");
             navigate("/dashboard");
         }
-    }, [user, step, navigate]);
+    }, [user, step, navigate, loading]);
 
     // Cooldown timer
     useEffect(() => {
@@ -53,11 +60,14 @@ export default function SignInFlow() {
         }
 
         setLoading(true);
+        console.log(`Attempting ${mode} for:`, email);
+
         try {
             const { error } = await supabase.auth.signInWithOtp({
                 email,
                 options: {
                     shouldCreateUser: mode === "signup",
+                    // We can also add data if needed for signup
                 },
             });
 
@@ -89,12 +99,16 @@ export default function SignInFlow() {
         if (code.length !== 6) return;
 
         setLoading(true);
+        console.log("Verifying OTP for:", email);
+
         try {
-            const { error } = await supabase.auth.verifyOtp({
+            const { error, data } = await supabase.auth.verifyOtp({
                 email,
                 token: code,
                 type: "email",
             });
+
+            console.log("Verify response:", { error, data });
 
             if (error) throw error;
 
@@ -103,9 +117,14 @@ export default function SignInFlow() {
             setShowReverseCanvas(true);
 
             // Wait for animation then redirect
-            setTimeout(() => {
+            // Wait for animation then redirect
+            // 21st.dev effect requires about 1.5s to look good
+            setTimeout(async () => {
+                // Double check session
+                const { data: sessionData } = await supabase.auth.getSession();
+                console.log("Final session check before redirect:", !!sessionData.session);
                 navigate("/dashboard");
-            }, 2000);
+            }, 1800);
 
         } catch (error: any) {
             toast.error("Invalid code. Please try again.");
@@ -175,8 +194,8 @@ export default function SignInFlow() {
                     <button
                         onClick={() => setMode("login")}
                         className={`px-6 py-2 rounded-full text-sm font-medium transition-all ${mode === "login"
-                                ? "bg-zinc-800 text-white shadow-sm"
-                                : "text-zinc-400 hover:text-white"
+                            ? "bg-zinc-800 text-white shadow-sm"
+                            : "text-zinc-400 hover:text-white"
                             }`}
                         disabled={loading || step === "success"}
                     >
@@ -185,8 +204,8 @@ export default function SignInFlow() {
                     <button
                         onClick={() => setMode("signup")}
                         className={`px-6 py-2 rounded-full text-sm font-medium transition-all ${mode === "signup"
-                                ? "bg-zinc-800 text-white shadow-sm"
-                                : "text-zinc-400 hover:text-white"
+                            ? "bg-zinc-800 text-white shadow-sm"
+                            : "text-zinc-400 hover:text-white"
                             }`}
                         disabled={loading || step === "success"}
                     >
