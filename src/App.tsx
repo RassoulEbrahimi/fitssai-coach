@@ -26,6 +26,7 @@ const OnboardingPage = lazy(() => import('./pages/OnboardingPage'));
 const AdminPanel = lazy(() => import('./pages/AdminPanel'));
 const NotFound = lazy(() => import('./pages/NotFound'));
 const FarewellPage = lazy(() => import('./pages/FarewellPage').then(module => ({ default: module.FarewellPage })));
+const ResetPasswordPage = lazy(() => import('./pages/ResetPasswordPage'));
 
 const App = () => {
   const { i18n } = useTranslation();
@@ -66,6 +67,7 @@ const App = () => {
                       <Routes>
                         <Route path="/" element={<RootRedirect />} />
                         <Route path="/auth/:mode" element={<AuthPage />} />
+                        <Route path="/auth/reset" element={<ResetPasswordPage />} />
                         <Route path="/dashboard" element={<DashboardPage />} />
                         <Route path="/onboarding" element={<OnboardingPage />} />
                         <Route path="/admin" element={<AdminPanel />} />
