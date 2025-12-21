@@ -14,12 +14,7 @@ const DashboardPage = () => {
   const location = useLocation();
   const mainRef = useRef<HTMLElement>(null);
 
-  // Reset scroll on route/tab change
-  useEffect(() => {
-    if (mainRef.current) {
-      mainRef.current.scrollTo({ top: 0, left: 0, behavior: "auto" });
-    }
-  }, [location.pathname, location.hash]);
+  // Reset scroll logic moved to global ScrollToTop component
 
   useEffect(() => {
     const checkUserProfile = async () => {
