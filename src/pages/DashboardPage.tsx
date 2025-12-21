@@ -53,10 +53,12 @@ const DashboardPage = () => {
   }
 
   return (
-    <div className="min-h-[100dvh] w-full overflow-x-hidden bg-background">
-      <WorkoutErrorBoundary>
-        <Dashboard />
-      </WorkoutErrorBoundary>
+    <div className="flex flex-col min-h-[100dvh] w-full bg-background overflow-hidden">
+      <main className="flex-1 overflow-y-auto overscroll-contain pb-safe-or-4">
+        <WorkoutErrorBoundary>
+          <Dashboard />
+        </WorkoutErrorBoundary>
+      </main>
     </div>
   );
 };
