@@ -250,7 +250,18 @@ const Dashboard = () => {
     };
     document.title = titles[activeTab];
 
+    // Reset scroll container on tab change to prevent blank space / preserved scroll
+    const resetAppScroll = () => {
+      const el = document.getElementById("app-scroll");
+      if (el) {
+        el.scrollTo({ top: 0, left: 0, behavior: "auto" });
+      }
+    };
 
+    resetAppScroll();
+    // Double-trigger to handle potential race conditions with layout/animations
+    requestAnimationFrame(resetAppScroll);
+    setTimeout(resetAppScroll, 0);
 
     previousTabRef.current = activeTab;
   }, [activeTab]);
