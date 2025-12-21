@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useAuth } from "@/hooks/useAuth";
 import { Button } from "@/components/ui/button";
 import { Download, X } from "lucide-react";
 import { toast } from 'sonner';
@@ -15,6 +16,7 @@ interface BeforeInstallPromptEvent extends Event {
 export const PWAInstallPrompt = () => {
     const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null);
     const [showPrompt, setShowPrompt] = useState(false);
+    const { user } = useAuth();
 
     useEffect(() => {
         // Check if app is already installed
@@ -62,7 +64,10 @@ export const PWAInstallPrompt = () => {
     if (!showPrompt) return null;
 
     return (
-        <div className="fixed bottom-4 left-4 right-4 z-50 animate-in slide-in-from-bottom-5">
+        <div className={`fixed left-4 right-4 z-50 animate-in slide-in-from-bottom-5 ${user
+                ? "bottom-[calc(96px+env(safe-area-inset-bottom)+12px)]"
+                : "bottom-4"
+            }`}>
             <div className="bg-primary text-primary-foreground p-4 rounded-lg shadow-lg flex items-center justify-between gap-4">
                 <div className="flex items-center gap-3">
                     <div className="bg-white/20 p-2 rounded-full">
