@@ -16,7 +16,10 @@ import WorkoutErrorBoundary from "@/components/WorkoutErrorBoundary";
 import { NotificationPopover } from "@/components/NotificationPopover";
 
 import { Profile } from "@/hooks/queries/useProfile";
-import { WorkoutPlan, NutritionPlan, TodayWorkout } from "@/lib/types";
+import { WorkoutPlan, NutritionPlan, TodayWorkout, WorkoutLog } from "@/lib/types";
+import { useWeeklyActivity } from "@/hooks/useWeeklyActivity";
+import { generateInsights } from "@/lib/insights/engine";
+import { InsightHero } from "@/components/dashboard/InsightHero";
 
 interface HomeViewProps {
   generatingPlans: boolean;
@@ -32,6 +35,7 @@ interface HomeViewProps {
   onProgressUpdate?: (weeklyProgress: { completed: number; total: number }) => void;
   isLoadingPlans?: boolean;
   onNavigate?: (tab: 'dashboard' | 'workout' | 'nutrition' | 'profile') => void;
+  workoutLogs?: WorkoutLog[];
 }
 
 // David Goggins quotes moved outside to be stable
@@ -85,13 +89,38 @@ const HomeView: React.FC<HomeViewProps> = ({
   selectedDate,
   onProgressUpdate,
   isLoadingPlans = false,
-  onNavigate
+  onNavigate,
+  workoutLogs = []
 }) => {
   const { t } = useTranslation();
   const [quote, setQuote] = useState<string>("");
   const [isLoadingQuote, setIsLoadingQuote] = useState(true);
   const [quoteKey, setQuoteKey] = useState(0);
 
+  // Fetch weekly activity data (shared with Chart)
+  const weeklyActivity = useWeeklyActivity('weekly');
+
+  // Compute Smart Insight
+  const activeInsight = useMemo(() => {
+    // Derived stats from workoutLogs (Plan Context)
+    const totalPlanWorkouts = workoutLogs.length;
+
+    // Find last completed workout date
+    // workoutLogs are usually not sorted by date guaranteed, but often are.
+    // Let's sort to be safe or find max.
+    let lastWorkoutDateStr: string | null = null;
+    if (workoutLogs.length > 0) {
+      const sortedLogs = [...workoutLogs].sort((a, b) =>
+        new Date(b.workout_day).getTime() - new Date(a.workout_day).getTime()
+      );
+      const lastLog = sortedLogs.find(l => l.completed); // Ensure completed
+      if (lastLog) {
+        lastWorkoutDateStr = lastLog.workout_day;
+      }
+    }
+
+    return generateInsights(weeklyActivity, profile, totalPlanWorkouts, lastWorkoutDateStr);
+  }, [weeklyActivity, workoutLogs, profile]);
 
 
   const refreshQuote = () => {
@@ -277,6 +306,14 @@ const HomeView: React.FC<HomeViewProps> = ({
             </div>
           </div>
         </div>
+
+        {/* Insight Hero (Smart Insights) */}
+        <InsightHero
+          insight={activeInsight}
+          onDismiss={() => {
+            // Optional: Persist dismissal in local state or session storage if desired
+          }}
+        />
 
         {/* Motivation Quote Card */}
         {isLoadingQuote ? (

@@ -124,6 +124,8 @@ import { useBerlinToday } from "@/hooks/useBerlinToday";
 import { useWorkoutHelpers } from "@/hooks/useWorkoutHelpers";
 import { usePreferences } from "@/contexts/PreferencesContext";
 import { useFocusMode } from "@/contexts/FocusModeContext";
+import { useAppNavigation } from "@/hooks/useAppNavigation";
+import { NAVIGATION_CONFIG } from "@/lib/navigation";
 
 const Dashboard = () => {
   const { t, i18n } = useTranslation();
@@ -133,6 +135,9 @@ const Dashboard = () => {
 
   // Reactive Berlin "today" - updates automatically at midnight
   const berlinToday = useBerlinToday();
+
+  // Navigation State
+  const { activeView, navigateTo, direction } = useAppNavigation();
 
   // Custom Hooks Data Access
   const { data: profile, isLoading: isLoadingProfile, refetch: refetchProfile } = useProfile();
@@ -157,62 +162,12 @@ const Dashboard = () => {
   const [activeDayIndex, setActiveDayIndex] = useState<number>(0);
   const [selectedDate, setSelectedDate] = useState<Date>(getBerlinNow()); // Initialize with Berlin timezone
 
-
-  // Hash-based navigation helpers
-  const hashToTab = (hash: string): 'dashboard' | 'workout' | 'nutrition' | 'profile' | null => {
-    const clean = (hash || '').replace(/^#\/?/, '').toLowerCase();
-    if (clean === '' || clean === 'dashboard' || clean === '/') return 'dashboard';
-    if (clean === 'workout') return 'workout';
-    if (clean === 'nutrition') return 'nutrition';
-    if (clean === 'profile') return 'profile';
-    return null; // unknown → caller will fallback to 'dashboard'
-  };
-
-  const setHashForTab = (tab: 'dashboard' | 'workout' | 'nutrition' | 'profile') => {
-    if (tab === 'dashboard') {
-      history.pushState(null, '', '#/');
-    } else {
-      history.pushState(null, '', `#/${tab}`);
-    }
-    // Duplicate scroll logic removed; handled centrally in useLayoutEffect
-  };
-
-  const initialTab = hashToTab(location.hash) ?? 'dashboard'; // default to dashboard if null
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'workout' | 'nutrition' | 'profile'>(initialTab);
-
-  const activeTabRef = useRef(activeTab);
-  useEffect(() => { activeTabRef.current = activeTab; }, [activeTab]);
-
-
-  const previousTabRef = useRef<'dashboard' | 'workout' | 'nutrition' | 'profile'>(initialTab);
-
   // Performance optimization hooks
   const { prefetchOnIntersection } = useIntersectionPrefetch();
-  const { setViewRef } = useFocusManagement(activeTab);
+  const { setViewRef } = useFocusManagement(activeView);
   const bottomNavRef = useRef<HTMLDivElement>(null);
 
-  // Animation state for mobile tab switching
-  const prefersReducedMotion = useReducedMotion();
-  const [direction, setDirection] = useState<1 | -1>(1); // 1 = forward (slide left), -1 = backward (slide right)
-
-  // Mobile detection for constraining animations to mobile only
-  const isMobile = (() => {
-    if (typeof window === 'undefined') return true;
-    return window.matchMedia('(max-width: 767px)').matches;
-  })();
-
-  // Listen for workout logs changes from TodayWorkoutCard or other components
-  const queryClient = useQueryClient();
-  useEffect(() => {
-    const handleWorkoutLogsChanged = () => {
-      queryClient.invalidateQueries({ queryKey: ['workout-logs'] });
-    };
-
-    window.addEventListener('workoutLogsChanged', handleWorkoutLogsChanged);
-    return () => window.removeEventListener('workoutLogsChanged', handleWorkoutLogsChanged);
-  }, [queryClient]);
-
-  // Focus management and intersection observer for prefetching
+  // Focus management and intersectionObserver for prefetching
   useEffect(() => {
     const observer = new IntersectionObserver(
       ([entry]) => {
@@ -230,57 +185,13 @@ const Dashboard = () => {
     return () => observer.disconnect();
   }, [prefetchOnIntersection]);
 
-  // Scroll memory and document title management
-  useLayoutEffect(() => {
-    const prevTab = previousTabRef.current;
+  const prefersReducedMotion = useReducedMotion();
 
-    // We now save scroll position manually before state updates in handlers (onChange, onHashChange)
-    // to ensure we capture it before the DOM updates/unmounts.
-
-    // Update slide direction based on tab order
-    const order = ['dashboard', 'workout', 'nutrition', 'profile'] as const;
-    const prev = previousTabRef.current as typeof order[number];
-    const next = activeTab as typeof order[number];
-    if (prev !== next) {
-      setDirection(order.indexOf(next) > order.indexOf(prev) ? 1 : -1);
-    }
-
-    // Update document title based on active tab
-    const titles = {
-      dashboard: "FitssAI — Dashboard",
-      workout: "FitssAI — Trainingsplan",
-      nutrition: "FitssAI — Ernährungsplan",
-      profile: "FitssAI — Profil"
-    };
-    document.title = titles[activeTab];
-
-    // Reset scroll container on tab change to prevent blank space / preserved scroll
-    const resetAppScroll = () => {
-      const el = document.getElementById("app-scroll");
-      if (el) {
-        el.scrollTo({ top: 0, left: 0, behavior: "auto" });
-      }
-    };
-
-    resetAppScroll();
-    // Double-trigger to handle potential race conditions with layout/animations
-    requestAnimationFrame(resetAppScroll);
-    setTimeout(resetAppScroll, 0);
-
-    previousTabRef.current = activeTab;
-  }, [activeTab]);
-
-  // Focus management for accessibility
-  useEffect(() => {
-    const onHashChange = () => {
-
-
-      const next = hashToTab(location.hash) ?? 'dashboard';
-      setActiveTab(next);
-    };
-    window.addEventListener('hashchange', onHashChange);
-    return () => window.removeEventListener('hashchange', onHashChange);
-  }, []);
+  // Mobile detection for constraining animations to mobile only
+  const isMobile = (() => {
+    if (typeof window === 'undefined') return true;
+    return window.matchMedia('(max-width: 767px)').matches;
+  })();
 
   // Robust workout logging with timezone handling and toggle functionality
   const toggleDayComplete = useCallback(async (weekKey: string, dayIndex: number) => {
@@ -545,7 +456,7 @@ const Dashboard = () => {
                 presenceAffectsLayout={false}
               >
                 <motion.div
-                  key={activeTab}
+                  key={activeView}
                   custom={direction}
                   initial="enter"
                   animate="center"
@@ -568,7 +479,7 @@ const Dashboard = () => {
                     ease: 'easeOut'
                   }}
                 >
-                  {activeTab === 'dashboard' && (
+                  {activeView === 'dashboard' && (
                     <div className="space-y-6">
                       <Suspense fallback={<HomeSkeleton />}>
                         <div ref={(el) => setViewRef('dashboard', el)}>
@@ -587,12 +498,15 @@ const Dashboard = () => {
                               getWeeklyProgress={getWeeklyProgress}
                               selectedDate={selectedDate}
                               isLoadingPlans={isLoadingPlans}
+                              workoutLogs={workoutLogs || []} // Pass available logs or empty array
                               onProgressUpdate={() => {
                                 // No-op: logs update automatically via hooks query invalidation
                               }}
-                              onNavigate={(tab) => {
-                                setHashForTab(tab);
-                                setActiveTab(tab);
+                              onNavigate={(target) => {
+                                // Map view switching
+                                if (target === 'dashboard' || target === 'workout' || target === 'nutrition' || target === 'profile') {
+                                  navigateTo(target);
+                                }
                               }}
                             />
                           )}
@@ -601,7 +515,7 @@ const Dashboard = () => {
                     </div>
                   )}
 
-                  {activeTab === 'workout' && (
+                  {activeView === 'workout' && (
                     <div className="space-y-6">
                       <Suspense fallback={<WorkoutSkeleton />}>
                         <div ref={(el) => setViewRef('workout', el)}>
@@ -629,7 +543,7 @@ const Dashboard = () => {
                     </div>
                   )}
 
-                  {activeTab === 'nutrition' && (
+                  {activeView === 'nutrition' && (
                     <div className="space-y-6">
                       <Suspense fallback={<NutritionSkeleton />}>
                         <div ref={(el) => setViewRef('nutrition', el)}>
@@ -647,7 +561,7 @@ const Dashboard = () => {
                     </div>
                   )}
 
-                  {activeTab === 'profile' && (
+                  {activeView === 'profile' && (
                     <div className="space-y-6">
                       <Suspense fallback={<ProfileSkeleton />}>
                         <div ref={(el) => setViewRef('profile', el)}>
@@ -679,13 +593,10 @@ const Dashboard = () => {
       <BottomNavPortal>
         <FitssNavBar
           ref={bottomNavRef}
-          activeTab={activeTab}
+          activeView={activeView}
           enableAdvancedGlass={enableAdvancedGlass}
-          onChange={(tab) => {
-
-
-            setHashForTab(tab);
-            setActiveTab(tab);  // Immediately update state for instant UI response
+          onChange={(view) => {
+            navigateTo(view);
 
             // Optional haptic feedback for supported devices
             try {
