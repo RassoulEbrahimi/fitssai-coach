@@ -53,8 +53,8 @@ const DashboardPage = () => {
   }
 
   return (
-    <div className="flex flex-col min-h-[100dvh] w-full bg-background overflow-hidden">
-      <main className="flex-1 overflow-y-auto overscroll-contain pb-safe-or-4">
+    <div className="flex flex-col min-h-[100dvh] w-full bg-background overflow-x-hidden">
+      <main className="flex-1 overflow-y-auto overscroll-contain pb-[calc(96px+env(safe-area-inset-bottom))]">
         <WorkoutErrorBoundary>
           <Dashboard />
         </WorkoutErrorBoundary>
