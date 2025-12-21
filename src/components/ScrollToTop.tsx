@@ -17,8 +17,6 @@ export default function ScrollToTop() {
         if (scrollContainer) {
             scrollContainer.scrollTo({ top: 0, left: 0, behavior: "auto" });
         }
-        // Also reset window scroll just in case (e.g. for mobile address bar)
-        window.scrollTo(0, 0);
     }, [pathname]);
 
     return null;
