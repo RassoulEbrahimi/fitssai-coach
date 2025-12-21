@@ -131,6 +131,16 @@
       "description": "Erstelle deinen personalisierten Trainings- und Ernährungsplan, um loszulegen.",
       "button": "Pläne jetzt erstellen"
     },
+    "weeklyActivity": {
+      "empty": {
+        "title": "Noch keine Aktivität",
+        "description": "Starte ein Training, um deinen Balken zu füllen!"
+      }
+    },
+    "progress": {
+      "restDay": "Ruhetag genießen",
+      "noPlan": "Kein Plan aktiv"
+    },
     "tabs": {
       "workoutPlan": "Trainingsplan",
       "nutritionPlan": "Ernährungsplan",
@@ -274,12 +284,6 @@
       "prev": "Vorherige Woche",
       "next": "Nächste Woche"
     },
-    "stepper": {
-      "week": "Woche {{num}}",
-      "past": "Abgeschlossen",
-      "current": "Aktuell",
-      "future": "Bevorstehend"
-    },
     "weekShort": "W{{num}}",
     "planProgress": {
       "title": "Fortschritt im Plan"
@@ -297,9 +301,6 @@
       "exercises": "{{count}} Übungen",
       "futureLocked": "Zukünftige Tage sind gesperrt",
       "markDone": "Als erledigt markieren"
-    },
-    "rest": {
-      "note": "Erholung ist wichtig für deine Fortschritte."
     },
     "futureLocked": "Nur für heutige oder vergangene Tage verfügbar",
     "nextWorkout": "Nächstes Training",

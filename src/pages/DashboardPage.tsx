@@ -42,19 +42,32 @@ const DashboardPage = () => {
     }
   }, [user]);
 
-  if (loading || checkingProfile) {
+  // Unblock render: render layout immediately, handle redirect as side effect
+  if (loading) {
+    // Only block purely on generic auth loading if absolutely necessary, 
+    // but usually useAuth resolves quickly. 
+    // If we want total instant shell, we might even skip this, but 'user' is needed below.
     return (
-      <div className="min-h-screen bg-background flex items-center justify-center">
-        <div className="text-xl">Loading...</div>
+      <div className="flex flex-col min-h-[100dvh] w-full bg-background overflow-x-hidden">
+        {/* Minimal shell or skeleton could go here, for now keeping checking logic minimal */}
+        <div className="min-h-screen bg-background flex items-center justify-center">
+          {/* Short spinner is okay for auth, but profile check (below) should not block */}
+        </div>
       </div>
     );
   }
+
   if (!user) {
     return <Navigate to="/auth/sign-in" replace />;
   }
+
+  // If we definitely know they have no profile, redirect
+  // But while checking (hasProfile === null/true), we show the Dashboard
   if (hasProfile === false) {
     return <Navigate to="/onboarding" replace />;
   }
+
+  // Render Dashboard immediately even if checkingProfile is true
 
   return (
     <div className="flex flex-col min-h-[100dvh] w-full bg-background overflow-x-hidden">
