@@ -13,7 +13,7 @@ interface WeeklyActivityProps {
 export const WeeklyActivity: React.FC<WeeklyActivityProps> = ({ className }) => {
   const [viewMode, setViewMode] = useState<ViewMode>("weekly");
   const { dailyData, dayLabels, activeDays, totalMinutes, targetMinutes, isLoading, refresh } = useWeeklyActivity(viewMode);
-  
+
   const maxValue = Math.max(...dailyData, 1);
   const progressPercentage = (totalMinutes / targetMinutes) * 100;
   const isTargetAchieved = totalMinutes >= targetMinutes;
@@ -61,46 +61,54 @@ export const WeeklyActivity: React.FC<WeeklyActivityProps> = ({ className }) => 
             variant="ghost"
             size="icon"
             onClick={refresh}
-            className="h-8 w-8 rounded-full flex-shrink-0"
+            className="h-8 w-8 rounded-full flex-shrink-0 transition-transform"
+            asChild
             aria-label="Aktualisieren"
           >
-            <RefreshCw className="h-4 w-4" />
+            <motion.button
+              whileTap={{ scale: 0.95 }}
+              transition={{ duration: 0.1 }}
+            >
+              <RefreshCw className="h-4 w-4" />
+            </motion.button>
           </Button>
         </div>
       </div>
 
       {/* View Toggle - Full Width Responsive */}
       <div className="flex w-full bg-muted/50 rounded-full p-1 mb-4">
-        <button
+        <motion.button
           onClick={() => setViewMode("weekly")}
+          whileTap={{ scale: 0.95 }}
           className={cn(
             "flex-1 text-xs px-3 py-1.5 rounded-full transition-all whitespace-nowrap",
-            viewMode === "weekly" 
-              ? "bg-primary text-primary-foreground font-medium" 
+            viewMode === "weekly"
+              ? "bg-primary text-primary-foreground font-medium shadow-sm"
               : "text-muted-foreground hover:text-foreground"
           )}
         >
           Wöchentlich
-        </button>
-        <button
+        </motion.button>
+        <motion.button
           onClick={() => setViewMode("monthly")}
+          whileTap={{ scale: 0.95 }}
           className={cn(
             "flex-1 text-xs px-3 py-1.5 rounded-full transition-all whitespace-nowrap",
-            viewMode === "monthly" 
-              ? "bg-primary text-primary-foreground font-medium" 
+            viewMode === "monthly"
+              ? "bg-primary text-primary-foreground font-medium shadow-sm"
               : "text-muted-foreground hover:text-foreground"
           )}
         >
           Monatlich
-        </button>
+        </motion.button>
       </div>
-      
+
       {/* Chart - Vertical Daily Bars */}
       <div className="flex items-end justify-between gap-1.5 mb-4">
         {dailyData.map((value, index) => {
           // Calculate height proportional to actual minutes (0-60min range typically)
           const heightPercentage = maxValue > 0 ? (value / maxValue) * 100 : 0;
-          
+
           // Determine bar color based on activity level
           let barColor = "bg-muted"; // Gray for 0min
           if (value >= 30) {
@@ -108,7 +116,7 @@ export const WeeklyActivity: React.FC<WeeklyActivityProps> = ({ className }) => 
           } else if (value > 0) {
             barColor = "bg-warning"; // Yellow for >0 but <30min
           }
-          
+
           return (
             <div key={dayLabels[index]} className="flex flex-col items-center flex-1 gap-1.5 group">
               {/* Gray Track Container with Fixed Height */}
@@ -130,7 +138,7 @@ export const WeeklyActivity: React.FC<WeeklyActivityProps> = ({ className }) => 
                     <div className="absolute inset-0 bg-gradient-to-t from-transparent to-white/10" />
                   )}
                 </div>
-                
+
                 {/* Tooltip on hover */}
                 {value > 0 && (
                   <div className="absolute -top-8 left-1/2 -translate-x-1/2 bg-popover text-popover-foreground text-xs px-2 py-1 rounded shadow-md opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-10">
@@ -138,7 +146,7 @@ export const WeeklyActivity: React.FC<WeeklyActivityProps> = ({ className }) => 
                   </div>
                 )}
               </div>
-              
+
               {/* Day Label */}
               <span className="text-[10px] text-muted-foreground font-medium">
                 {dayLabels[index]}
@@ -168,8 +176,8 @@ export const WeeklyActivity: React.FC<WeeklyActivityProps> = ({ className }) => 
             transition={{ duration: 0.8, delay: 0.2 }}
             className={cn(
               "h-full rounded-full transition-all",
-              isTargetAchieved 
-                ? "bg-gradient-to-r from-success to-success/80" 
+              isTargetAchieved
+                ? "bg-gradient-to-r from-success to-success/80"
                 : "bg-gradient-to-r from-primary to-primary/80"
             )}
           />

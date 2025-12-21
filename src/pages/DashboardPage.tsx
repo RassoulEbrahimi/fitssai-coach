@@ -61,7 +61,7 @@ const DashboardPage = () => {
       <main
         ref={mainRef}
         id="app-scroll"
-        className="flex-1 overflow-y-auto overscroll-contain pb-[calc(96px+env(safe-area-inset-bottom))]"
+        className="flex-1 overflow-y-auto overscroll-contain pb-[calc(var(--bottom-nav-offset)+env(safe-area-inset-bottom))]"
       >
         <WorkoutErrorBoundary>
           <Dashboard />
