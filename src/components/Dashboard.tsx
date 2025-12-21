@@ -179,13 +179,7 @@ const Dashboard = () => {
   const activeTabRef = useRef(activeTab);
   useEffect(() => { activeTabRef.current = activeTab; }, [activeTab]);
 
-  // Scroll memory for per-tab scroll positions
-  const scrollPosRef = useRef<Record<'dashboard' | 'workout' | 'nutrition' | 'profile', number>>({
-    dashboard: 0,
-    workout: 0,
-    nutrition: 0,
-    profile: 0
-  });
+
   const previousTabRef = useRef<'dashboard' | 'workout' | 'nutrition' | 'profile'>(initialTab);
 
   // Performance optimization hooks
@@ -256,18 +250,7 @@ const Dashboard = () => {
     };
     document.title = titles[activeTab];
 
-    // Restore scroll position for the new tab with double RAF to ensure layout is stable
-    if (prev !== next) {
-      requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
-          window.scrollTo({
-            top: scrollPosRef.current[activeTab] || 0,
-            left: 0,
-            behavior: 'auto'
-          });
-        });
-      });
-    }
+
 
     previousTabRef.current = activeTab;
   }, [activeTab]);
@@ -275,10 +258,7 @@ const Dashboard = () => {
   // Focus management for accessibility
   useEffect(() => {
     const onHashChange = () => {
-      // Save scroll for the current tab using ref to avoid stale closure
-      if (activeTabRef.current) {
-        scrollPosRef.current[activeTabRef.current] = window.scrollY;
-      }
+
 
       const next = hashToTab(location.hash) ?? 'dashboard';
       setActiveTab(next);
@@ -678,8 +658,7 @@ const Dashboard = () => {
           activeTab={activeTab}
           enableAdvancedGlass={enableAdvancedGlass}
           onChange={(tab) => {
-            // Save scroll position for the current tab before switching
-            scrollPosRef.current[activeTab] = window.scrollY;
+
 
             setHashForTab(tab);
             setActiveTab(tab);  // Immediately update state for instant UI response
