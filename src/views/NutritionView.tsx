@@ -23,12 +23,8 @@ const NutritionView: React.FC<NutritionViewProps> = React.memo(({
   const { t } = useTranslation();
 
   return (
-    <motion.div
-      key="nutrition-content"
-      initial={{ opacity: 0, x: 20 }}
-      animate={{ opacity: 1, x: 0 }}
-      exit={{ opacity: 0, x: -20 }}
-      transition={{ duration: 0.3 }}
+    <div
+      className="space-y-6"
     >
       <motion.div
         initial={{ opacity: 0, y: 20 }}
@@ -131,7 +127,7 @@ const NutritionView: React.FC<NutritionViewProps> = React.memo(({
           </CardContent>
         </Card>
       </motion.div>
-    </motion.div>
+    </div>
   );
 });
 

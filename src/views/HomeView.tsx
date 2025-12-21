@@ -31,6 +31,7 @@ interface HomeViewProps {
   selectedDate: Date;
   onProgressUpdate?: (weeklyProgress: { completed: number; total: number }) => void;
   isLoadingPlans?: boolean;
+  onNavigate?: (tab: 'dashboard' | 'workout' | 'nutrition' | 'profile') => void;
 }
 
 // David Goggins quotes moved outside to be stable
@@ -83,7 +84,8 @@ const HomeView: React.FC<HomeViewProps> = ({
   getWeeklyProgress,
   selectedDate,
   onProgressUpdate,
-  isLoadingPlans = false
+  isLoadingPlans = false,
+  onNavigate
 }) => {
   const { t } = useTranslation();
   const [quote, setQuote] = useState<string>("");
@@ -220,21 +222,15 @@ const HomeView: React.FC<HomeViewProps> = ({
     <WorkoutErrorBoundary>
       <div id="main-content" className="space-y-6">
         {/* Welcome Header */}
-        <motion.div
+        <div
           className="flex items-center justify-between"
-          initial={{ opacity: 0, y: -20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.4, delay: 0.1 }}
         >
           <div className="flex items-center gap-3">
-            <motion.h1
+            <h1
               className="text-2xl font-bold bg-gradient-to-r from-emerald-400 via-green-500 to-emerald-600 text-transparent bg-clip-text"
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.5, delay: 0.2 }}
             >
               {getGreeting()}
-            </motion.h1>
+            </h1>
             <NotificationPopover />
           </div>
 
@@ -280,7 +276,7 @@ const HomeView: React.FC<HomeViewProps> = ({
               </div>
             </div>
           </div>
-        </motion.div>
+        </div>
 
         {/* Motivation Quote Card */}
         {isLoadingQuote ? (
@@ -330,7 +326,11 @@ const HomeView: React.FC<HomeViewProps> = ({
           transition={{ duration: 0.4, delay: 0.2 }}
         >
           {/* Today's Training Progress */}
-          <li className="flex items-center justify-between p-4 bg-card/70 backdrop-blur rounded-2xl ring-1 ring-border/50">
+          <motion.li
+            className="flex items-center justify-between p-4 bg-card/70 backdrop-blur rounded-2xl ring-1 ring-border/50 cursor-pointer hover:bg-card/90 transition-colors active:bg-primary/5 active:scale-[0.97]"
+            onClick={() => onNavigate?.('workout')}
+            whileTap={{ scale: 0.97 }}
+          >
             <div className="flex items-center gap-3">
               <div className="p-2 rounded-lg bg-primary/20">
                 <Dumbbell className="h-4 w-4 text-primary" aria-hidden="true" />
@@ -346,10 +346,14 @@ const HomeView: React.FC<HomeViewProps> = ({
               value={todayTrainingProgress.value}
               aria-label={`Training Fortschritt: ${todayTrainingProgress.value} Prozent`}
             />
-          </li>
+          </motion.li>
 
           {/* Nutrition Progress */}
-          <li className="flex items-center justify-between p-4 bg-card/70 backdrop-blur rounded-2xl ring-1 ring-border/50">
+          <motion.li
+            className="flex items-center justify-between p-4 bg-card/70 backdrop-blur rounded-2xl ring-1 ring-border/50 cursor-pointer hover:bg-card/90 transition-colors active:bg-primary/5 active:scale-[0.97]"
+            onClick={() => onNavigate?.('nutrition')}
+            whileTap={{ scale: 0.97 }}
+          >
             <div className="flex items-center gap-3">
               <div className="p-2 rounded-lg bg-success/20">
                 <Utensils className="h-4 w-4 text-success" aria-hidden="true" />
@@ -365,7 +369,7 @@ const HomeView: React.FC<HomeViewProps> = ({
               value={nutritionProgress}
               aria-label={`Ernährungs-Fortschritt: ${nutritionProgress} Prozent`}
             />
-          </li>
+          </motion.li>
         </motion.ul>
 
         {/* Weekly Activity Chart */}

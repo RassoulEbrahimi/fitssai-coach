@@ -78,6 +78,9 @@
     --primary-foreground: 0 0% 98%;
     --primary-glow: 142 76% 56%;
 
+    /* Layout Variables */
+    --bottom-nav-offset: 96px;
+
     /* Secondary - Cool blue accent */
     --secondary: 240 4.8% 95.9%;
     --secondary-foreground: 240 5.9% 10%;
@@ -204,31 +207,31 @@
   .gradient-primary {
     background: var(--gradient-primary);
   }
-  
+
   .gradient-hero {
     background: var(--gradient-hero);
   }
-  
+
   .gradient-card {
     background: var(--gradient-card);
   }
-  
+
   .shadow-glow {
     box-shadow: var(--shadow-glow);
   }
-  
+
   .shadow-card {
     box-shadow: var(--shadow-card);
   }
-  
+
   .transition-smooth {
     transition: var(--transition-smooth);
   }
-  
+
   .transition-bounce {
     transition: var(--transition-bounce);
   }
-  
+
   .hover-scale {
     @apply transition-transform duration-200 hover:scale-105;
   }
@@ -262,13 +265,16 @@
       opacity: 0;
     }
   }
-  
+
   @keyframes emeraldGlow {
-    0%, 100% { 
+
+    0%,
+    100% {
       filter: drop-shadow(0 0 6px rgba(16, 185, 129, 0.4));
       transform: scale(1);
     }
-    50% { 
+
+    50% {
       filter: drop-shadow(0 0 12px rgba(16, 185, 129, 0.8));
       transform: scale(1.05);
     }
@@ -296,8 +302,8 @@
 /* Reduced motion: video is paused programmatically in VideoBackground.tsx */
 
 /* PWA install button styling */
-.pwa-install-btn { 
-  @apply bg-background border-border text-foreground hover:bg-muted; 
+.pwa-install-btn {
+  @apply bg-background border-border text-foreground hover:bg-muted;
 }
 
 /* Responsive header height variable */

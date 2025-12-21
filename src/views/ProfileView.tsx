@@ -466,12 +466,7 @@ const ProfileView: React.FC<ProfileViewProps> = React.memo(({
   };
 
   return (
-    <motion.div
-      variants={containerVariants}
-      initial="hidden"
-      animate="visible"
-      className="max-w-2xl mx-auto px-4 pb-32 space-y-6"
-    >
+    <div className="max-w-2xl mx-auto space-y-8 pb-24">
       {/* Section 1: Profile Header */}
       <motion.section variants={itemVariants} className="pt-4">
         <GlassCard className="p-6">
@@ -924,7 +919,7 @@ const ProfileView: React.FC<ProfileViewProps> = React.memo(({
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </motion.div>
+    </div>
   );
 });
 
