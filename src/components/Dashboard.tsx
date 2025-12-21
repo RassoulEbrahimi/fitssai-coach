@@ -517,7 +517,7 @@ const Dashboard = () => {
       {!isFocusMode && <VideoBackground />}
       <motion.div
         id="main-content"
-        className={`relative max-w-7xl mx-auto ${isFocusMode ? 'px-0 pt-0 pb-0' : 'z-10 px-4 md:px-6 pt-4 pb-[calc(64px+env(safe-area-inset-bottom))] md:pb-6'}`}
+        className={`relative max-w-7xl mx-auto ${isFocusMode ? 'px-0 pt-0 pb-0' : 'z-10 px-4 md:px-6 pt-4'}`}
         initial={isFocusMode ? false : { opacity: 0, y: 20 }}
         animate={isFocusMode ? false : { opacity: 1, y: 0 }}
       >
@@ -534,7 +534,15 @@ const Dashboard = () => {
           <div className="space-y-6">
             {/* View stack: one child mounted at a time with slide animations */}
             <div className="relative grid grid-cols-1 grid-rows-1">
-              <AnimatePresence initial={false} mode="popLayout" custom={direction}>
+              <AnimatePresence
+                initial={false}
+                mode="wait"
+                custom={direction}
+                onExitComplete={() => {
+                  const el = document.getElementById("app-scroll");
+                  if (el) el.scrollTo({ top: 0, left: 0, behavior: "auto" });
+                }}
+              >
                 <motion.div
                   key={activeTab}
                   custom={direction}
