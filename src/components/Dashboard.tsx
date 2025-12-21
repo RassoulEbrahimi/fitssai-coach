@@ -45,6 +45,7 @@ import { useWorkoutLogs } from "@/hooks/queries/useWorkoutLogs";
 import { useProfile } from "@/hooks/queries/useProfile";
 import { useNutritionPlan } from "@/hooks/queries/useNutritionPlan";
 import { useQueryClient } from "@tanstack/react-query";
+import { useWeeklyActivity } from "@/hooks/useWeeklyActivity";
 
 // Lazy load view components for code splitting
 const HomeView = React.lazy(() => import('@/views/HomeView'));
@@ -147,6 +148,9 @@ const Dashboard = () => {
     isToggling: completingWorkout
   } = useWorkoutLogs(liveWorkoutPlan?.id);
   const { data: nutritionPlan } = useNutritionPlan();
+
+  // Prefetch weekly activity data immediately so it's ready when HomeView mounts
+  useWeeklyActivity('weekly');
 
   // Derived state or local UI state
   const [activeWeek, setActiveWeek] = useState<string | null>(null);

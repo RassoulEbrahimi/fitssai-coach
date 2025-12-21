@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { motion } from "framer-motion";
 import { AnimatedAvatar } from "@/components/ui/animated-avatar";
 import { Button } from "@/components/ui/button";
@@ -101,12 +101,12 @@ const HomeView: React.FC<HomeViewProps> = ({
 
   // Calculate today's training progress
   const todayWorkout = getTodayWorkout ? getTodayWorkout() : null;
-  const todayTrainingProgress = (() => {
-    if (!todayWorkout) return { value: 0, label: "Kein Training geplant" };
-    if (todayWorkout.__restDay) return { value: 0, label: "Ruhetag" };
+  const todayTrainingProgress = useMemo(() => {
+    if (!todayWorkout) return { value: 0, label: t('dashboard.progress.noPlan', "Kein Training geplant") };
+    if (todayWorkout.__restDay) return { value: 0, label: t('dashboard.progress.restDay', "Ruhetag genießen") };
     if (todayWorkout.isCompleted) return { value: 100, label: "Training abgeschlossen" };
     return { value: 0, label: "Training ausstehend" };
-  })();
+  }, [todayWorkout, t]);
 
   // Calculate nutrition progress (100% if plan exists, 0% otherwise)
   const nutritionProgress = nutritionPlan ? 100 : 0;
@@ -189,7 +189,7 @@ const HomeView: React.FC<HomeViewProps> = ({
   }
 
   // Get user's first name from full_name or email
-  const firstName = (() => {
+  const firstName = useMemo(() => {
     if (profile?.full_name) {
       return profile.full_name.split(' ')[0];
     }
@@ -197,10 +197,10 @@ const HomeView: React.FC<HomeViewProps> = ({
       return profile.email.split('@')[0];
     }
     return "";
-  })();
+  }, [profile]);
 
   // Dynamic time-based greeting
-  const getGreeting = () => {
+  const greeting = useMemo(() => {
     const hour = new Date().getHours();
 
     if (!firstName) {
@@ -211,7 +211,7 @@ const HomeView: React.FC<HomeViewProps> = ({
     if (hour >= 12 && hour < 18) return `Hallo, ${firstName}! 🌤`;
     if (hour >= 18 && hour < 22) return `Guten Abend, ${firstName}! 🌙`;
     return `Gute Nacht, ${firstName}! 🌌`;
-  };
+  }, [firstName]);
 
   const avatarUrl = getAvatarUrl(profile?.avatar_path);
   const progressPercentage = workoutProgress.total > 0
@@ -229,7 +229,7 @@ const HomeView: React.FC<HomeViewProps> = ({
             <h1
               className="text-2xl font-bold bg-gradient-to-r from-emerald-400 via-green-500 to-emerald-600 text-transparent bg-clip-text"
             >
-              {getGreeting()}
+              {greeting}
             </h1>
             <NotificationPopover />
           </div>
@@ -290,7 +290,7 @@ const HomeView: React.FC<HomeViewProps> = ({
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -10 }}
                 transition={{ duration: 0.3 }}
-                className="text-lg font-medium text-foreground leading-relaxed"
+                className="text-base font-medium text-foreground leading-relaxed"
               >
                 "{quote}"
               </motion.blockquote>
@@ -337,7 +337,7 @@ const HomeView: React.FC<HomeViewProps> = ({
               </div>
               <div>
                 <h2 className="font-medium text-foreground text-base">Heutiges Training</h2>
-                <p className="text-xs text-muted-foreground">
+                <p className="text-xs font-medium text-muted-foreground">
                   {todayTrainingProgress.label}
                 </p>
               </div>
@@ -360,7 +360,7 @@ const HomeView: React.FC<HomeViewProps> = ({
               </div>
               <div>
                 <h2 className="font-medium text-foreground text-base">Ernährung</h2>
-                <p className="text-xs text-muted-foreground">
+                <p className="text-xs font-medium text-muted-foreground">
                   {nutritionProgress > 0 ? "Plan verfügbar" : "Kein Plan"}
                 </p>
               </div>

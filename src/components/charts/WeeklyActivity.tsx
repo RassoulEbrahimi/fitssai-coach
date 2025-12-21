@@ -5,12 +5,15 @@ import { Button } from "@/components/ui/button";
 import { RefreshCw, Flame } from "lucide-react";
 import { useWeeklyActivity, ViewMode } from "@/hooks/useWeeklyActivity";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Activity } from "lucide-react";
+import { useTranslation } from "react-i18next";
 
 interface WeeklyActivityProps {
   className?: string;
 }
 
 export const WeeklyActivity: React.FC<WeeklyActivityProps> = ({ className }) => {
+  const { t } = useTranslation();
   const [viewMode, setViewMode] = useState<ViewMode>("weekly");
   const { dailyData, dayLabels, activeDays, totalMinutes, targetMinutes, isLoading, refresh } = useWeeklyActivity(viewMode);
 
@@ -52,7 +55,7 @@ export const WeeklyActivity: React.FC<WeeklyActivityProps> = ({ className }) => 
     >
       {/* Header */}
       <div className="flex items-center justify-between mb-4 gap-2">
-        <h2 className="text-base font-semibold text-foreground truncate">
+        <h2 className="text-lg font-semibold text-foreground truncate">
           Aktivitätsfortschritt
         </h2>
         <div className="flex items-center gap-2 flex-shrink-0">
@@ -104,7 +107,29 @@ export const WeeklyActivity: React.FC<WeeklyActivityProps> = ({ className }) => 
       </div>
 
       {/* Chart - Vertical Daily Bars */}
-      <div className="flex items-end justify-between gap-1.5 mb-4">
+      <div className="flex items-end justify-between gap-1.5 mb-4 relative">
+        {/* Zero State Overlay */}
+        {totalMinutes === 0 && (
+          <div className="absolute inset-0 z-10 flex flex-col items-center justify-center p-2 rounded-lg bg-background/50 backdrop-blur-[2px] transition-all duration-500">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.8 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ delay: 0.2 }}
+              className="flex flex-col items-center text-center space-y-2 max-w-[180px]"
+            >
+              <div className="p-2 rounded-full bg-primary/10 mb-1">
+                <Activity className="h-5 w-5 text-primary" />
+              </div>
+              <h3 className="text-sm font-semibold text-foreground">
+                {t('dashboard.weeklyActivity.empty.title', 'Noch keine Aktivität')}
+              </h3>
+              <p className="text-xs text-muted-foreground leading-tight">
+                {t('dashboard.weeklyActivity.empty.description', 'Starte ein Training, um deinen Balken zu füllen!')}
+              </p>
+            </motion.div>
+          </div>
+        )}
+
         {dailyData.map((value, index) => {
           // Calculate height proportional to actual minutes (0-60min range typically)
           const heightPercentage = maxValue > 0 ? (value / maxValue) * 100 : 0;
@@ -115,6 +140,11 @@ export const WeeklyActivity: React.FC<WeeklyActivityProps> = ({ className }) => 
             barColor = "bg-success"; // Green for ≥30min
           } else if (value > 0) {
             barColor = "bg-warning"; // Yellow for >0 but <30min
+          }
+
+          // Muted appearance if total is 0 (behind overlay)
+          if (totalMinutes === 0) {
+            barColor = "bg-muted/50";
           }
 
           return (
