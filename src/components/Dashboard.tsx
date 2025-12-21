@@ -538,6 +538,7 @@ const Dashboard = () => {
                 initial={false}
                 mode="popLayout"
                 custom={direction}
+                presenceAffectsLayout={false}
               >
                 <motion.div
                   key={activeTab}
