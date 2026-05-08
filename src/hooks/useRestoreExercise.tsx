@@ -1,171 +1,78 @@
-import { useQueryClient } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
-import { Exercise, WorkoutPlanContent } from '@/lib/types';
-import { logEvent, logError } from '@/lib/telemetryClient';
-import { useSupabaseAction } from './useSupabaseAction';
+import { useQueryClient } from "@tanstack/react-query";
+import { doc, getDoc, setDoc, Timestamp } from "firebase/firestore";
+import { db } from "@/lib/firebase";
+import { useAuth } from "./useAuth";
+import { Exercise, WorkoutPlanContent } from "@/lib/types";
+import { logEvent, logError } from "@/lib/telemetryClient";
+import { useSupabaseAction } from "./useSupabaseAction";
 
 export interface RestoreExerciseParams {
-  planId: string;
-  weekKey: string;
-  dayIndex: number;
-  exerciseIndex: number;
-  exercise: Exercise;
+  planId: string; weekKey: string; dayIndex: number; exerciseIndex: number; exercise: Exercise;
 }
-
 interface RestoreExerciseResponse {
-  success: boolean;
-  message?: string;
-  content?: WorkoutPlanContent;
-  error?: string;
-  queued?: boolean;
+  success: boolean; content?: WorkoutPlanContent; queued?: boolean;
 }
 
 export function useRestoreExercise() {
+  const { user } = useAuth();
   const queryClient = useQueryClient();
 
   const restoreExerciseMutation = useSupabaseAction<RestoreExerciseResponse, RestoreExerciseParams>({
-    action: async (params: RestoreExerciseParams): Promise<RestoreExerciseResponse> => {
-      // Get current plan
-      const { data: plan, error: fetchError } = await supabase
-        .from('workout_plans')
-        .select('content')
-        .eq('id', params.planId)
-        .single();
+    action: async (params): Promise<RestoreExerciseResponse> => {
+      if (!user) throw new Error("Not authenticated");
+      const planRef = doc(db, "users", user.uid, "workout_plans", params.planId);
+      const snap = await getDoc(planRef);
+      if (!snap.exists()) throw new Error("Plan not found");
 
-      if (fetchError || !plan) {
-        throw new Error(fetchError?.message || 'Failed to fetch plan');
-      }
-
-      // Insert exercise back at original position
-      const content = plan.content as any;
+      const content = snap.data().content as any;
       const week = content[params.weekKey] || [];
       const day = week[params.dayIndex];
+      if (!day) throw new Error("Day not found");
 
-      if (!day) {
-        throw new Error('Day not found');
-      }
-
-      // Create updated exercises array with restored exercise at original index
-      const exercises = day.exercises || [];
-      const updatedExercises = [...exercises];
-      updatedExercises.splice(params.exerciseIndex, 0, params.exercise);
-
-      // Update day with restored exercises
-      const updatedDay = { ...day, exercises: updatedExercises };
-      const updatedWeek = [...week];
-      updatedWeek[params.dayIndex] = updatedDay;
-
+      const exercises = [...(day.exercises || [])];
+      exercises.splice(params.exerciseIndex, 0, params.exercise);
       const updatedContent = {
         ...content,
-        [params.weekKey]: updatedWeek,
+        [params.weekKey]: week.map((d: any, i: number) =>
+          i === params.dayIndex ? { ...d, exercises } : d
+        ),
       };
-
-      // Save to database
-      const { error: updateError } = await supabase
-        .from('workout_plans')
-        .update({ content: updatedContent })
-        .eq('id', params.planId);
-
-      if (updateError) {
-        throw new Error(updateError.message || 'Failed to restore exercise');
-      }
-
+      await setDoc(planRef, { content: updatedContent, updatedAt: Timestamp.now() }, { merge: true });
       return { success: true, content: updatedContent };
     },
-
-    messages: {
-      success: 'Übung wiederhergestellt',
-      error: 'Fehler beim Wiederherstellen der Übung'
-    },
-
+    messages: { success: "Übung wiederhergestellt", error: "Fehler beim Wiederherstellen der Übung" },
     onMutate: async (params) => {
-      logEvent('exercise_restore_started', {
-        planId: params.planId,
-        weekKey: params.weekKey,
-        dayIndex: params.dayIndex,
-        exerciseIndex: params.exerciseIndex,
-      });
-
-      // Cancel outgoing refetches
-      await queryClient.cancelQueries({
-        queryKey: ['workout-plan', params.planId]
-      });
-
-      // Snapshot previous value for rollback
-      const previousPlan = queryClient.getQueryData(['workout-plan', params.planId]);
-
-      // Optimistically update plan in cache
-      queryClient.setQueryData(['workout-plan', params.planId], (old: any) => {
+      logEvent("exercise_restore_started", params);
+      await queryClient.cancelQueries({ queryKey: ["workout-plan", params.planId] });
+      const previousPlan = queryClient.getQueryData(["workout-plan", params.planId]);
+      queryClient.setQueryData(["workout-plan", params.planId], (old: any) => {
         if (!old?.content) return old;
-
-        const newContent = { ...old.content };
-        const week = [...(newContent[params.weekKey] || [])];
-
-        if (!week[params.dayIndex]) return old;
-
-        const day = { ...week[params.dayIndex] };
-        const exercises = [...(day.exercises || [])];
-
-        // Insert exercise at original index
-        exercises.splice(params.exerciseIndex, 0, params.exercise);
-
-        day.exercises = exercises;
-        week[params.dayIndex] = day;
-        newContent[params.weekKey] = week;
-
-        return {
-          ...old,
-          content: newContent,
-        };
+        const c = { ...old.content };
+        const w = [...(c[params.weekKey] || [])];
+        if (w[params.dayIndex]) {
+          const d = { ...w[params.dayIndex] };
+          const exs = [...(d.exercises || [])];
+          exs.splice(params.exerciseIndex, 0, params.exercise);
+          d.exercises = exs;
+          w[params.dayIndex] = d;
+          c[params.weekKey] = w;
+        }
+        return { ...old, content: c };
       });
-
-      logEvent('exercise_optimistic_restore', {
-        planId: params.planId,
-      });
-
       return { previousPlan };
     },
-
-    onError: (error: any, params, context: { previousPlan?: any } | undefined) => {
-      // Rollback on error
-      if (context?.previousPlan) {
-        queryClient.setQueryData(['workout-plan', params.planId], context.previousPlan);
-      }
-
-      logError(error, 'exercise_restore_failed');
+    onError: (error: any, params: RestoreExerciseParams, context: { previousPlan?: any } | undefined) => {
+      if (context?.previousPlan) queryClient.setQueryData(["workout-plan", params.planId], context.previousPlan);
+      logError(error, "exercise_restore_failed");
     },
-
-    onSuccess: (data, params) => {
-      // Set query data with fresh content
+    onSuccess: (data: RestoreExerciseResponse, params: RestoreExerciseParams) => {
       if (data.content && !data.queued) {
-        queryClient.setQueryData(['workout-plan', params.planId], (old: any) => {
-          if (!old) return { content: data.content };
-          return { ...old, content: data.content };
-        });
+        queryClient.setQueryData(["workout-plan", params.planId], (old: any) => ({ ...old, content: data.content }));
       }
-
-      // Invalidate queries to ensure fresh data
-      queryClient.invalidateQueries({
-        queryKey: ['workout-plan', params.planId]
-      });
-
-      // Invalidate all week completions
-      ['Week 1', 'Week 2', 'Week 3', 'Week 4'].forEach(weekKey => {
-        queryClient.invalidateQueries({
-          queryKey: ['week-completion', params.planId, weekKey]
-        });
-      });
-
-      logEvent('exercise_restore_success', {
-        planId: params.planId,
-        exerciseName: params.exercise.name,
-      });
+      queryClient.invalidateQueries({ queryKey: ["workout-plan", params.planId] });
+      logEvent("exercise_restore_success", { planId: params.planId });
     },
   });
 
-  return {
-    restoreExercise: restoreExerciseMutation.mutate,
-    isRestoring: restoreExerciseMutation.isPending,
-    error: restoreExerciseMutation.error,
-  };
+  return { restoreExercise: restoreExerciseMutation.mutate, isRestoring: restoreExerciseMutation.isPending, error: restoreExerciseMutation.error };
 }

@@ -26,7 +26,6 @@ import { motion } from "framer-motion";
 import { useTranslation } from "react-i18next";
 import { useAuth } from "@/hooks/useAuth";
 import { useAISessions } from "@/hooks/useAISessions";
-import { supabase } from "@/integrations/supabase/client";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -35,6 +34,8 @@ import { getAvatarUrl, uploadAvatar, updateProfileAvatar } from "@/lib/avatarUti
 import { compressImage } from "@/lib/imageCompression";
 import { AvatarCropDialog } from "@/components/profile/AvatarCropDialog";
 import { AvatarUploadProgress } from "@/components/profile/AvatarUploadProgress";
+import { doc, setDoc, Timestamp } from "firebase/firestore";
+import { db } from "@/lib/firebase";
 import { AnimatePresence } from "framer-motion";
 
 interface ProfileCardProps {
@@ -91,7 +92,11 @@ export const ProfileCard = ({ profile, onProfileUpdate, workoutProgress }: Profi
     if (!user) return;
     
     try {
-      const { data, error } = await supabase.rpc('is_current_user_admin');
+      const { doc: firestoreDoc, getDoc } = await import('firebase/firestore');
+      const { db } = await import('@/lib/firebase');
+      const snap = await getDoc(firestoreDoc(db, 'users', user.uid));
+      const data = snap.exists() && snap.data()?.role === 'admin';
+      const error = null;
       
       if (error) throw error;
       setIsAdmin(data || false);
@@ -111,12 +116,16 @@ export const ProfileCard = ({ profile, onProfileUpdate, workoutProgress }: Profi
     if (!user) return;
 
     try {
-      const { error } = await supabase
-        .from('profiles')
-        .update(values)
-        .eq('id', user.id);
-
-      if (error) throw error;
+      // Map snake_case form values to camelCase Firestore fields
+      const fsData: Record<string, any> = { updatedAt: Timestamp.now() };
+      if (values.full_name          !== undefined) fsData.fullName          = values.full_name;
+      if (values.fitness_goal       !== undefined) fsData.fitnessGoal       = values.fitness_goal;
+      if (values.dietary_preference !== undefined) fsData.dietaryPreference = values.dietary_preference;
+      if (values.experience_level   !== undefined) fsData.experienceLevel   = values.experience_level;
+      if (values.weight             !== undefined) fsData.weight            = values.weight;
+      if (values.height             !== undefined) fsData.height            = values.height;
+      if (values.age                !== undefined) fsData.age               = values.age;
+      await setDoc(doc(db, 'users', user.uid), fsData, { merge: true });
 
       toast.success(t('profile.updateSuccess'));
       setIsEditDialogOpen(false);

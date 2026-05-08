@@ -15,7 +15,7 @@ import { useWeekCompletion } from "@/hooks/useWeekCompletion";
 import WorkoutErrorBoundary from "@/components/WorkoutErrorBoundary";
 import { logEvent } from "@/lib/telemetryClient";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+
 import { useExerciseEditor, type Exercise } from "@/hooks/useExerciseEditor";
 import { useWorkoutHelpers } from "@/hooks/useWorkoutHelpers";
 import { normalizeWeekKey } from "@/lib/workoutPlanUtils";
@@ -91,14 +91,10 @@ const WorkoutView: React.FC<WorkoutViewProps> = ({
     queryKey: ['workout-plan', planId],
     queryFn: async () => {
       if (!planId) return null;
-      const { data, error } = await supabase
-        .from('workout_plans')
-        .select('*')
-        .eq('id', planId)
-        .single();
-
-      if (error) throw error;
-      return data as unknown as WorkoutPlan;
+      const snap = await getDoc(doc(db, 'users', user!.uid, 'workout_plans', planId));
+      if (!snap.exists()) return null;
+      const d = snap.data();
+      return { id: snap.id, user_id: user!.uid, content: d.content ?? {}, created_at: '' } as unknown as WorkoutPlan;
     },
     enabled: !!planId,
     initialData: workoutPlan,
@@ -166,19 +162,22 @@ const WorkoutView: React.FC<WorkoutViewProps> = ({
 
   // Helper function to fetch week completion
   const fetchWeekCompletion = async (weekKey: string) => {
-    if (!user || !livePlan?.id) {
-      throw new Error('User or planId not available');
-    }
-
-    const { data, error } = await supabase.functions.invoke('get-week-completion', {
-      body: { planId: livePlan.id, weekKey },
+    if (!user || !livePlan?.id) throw new Error('User or planId not available');
+    const { where, Timestamp } = await import('firebase/firestore');
+    const { CompletionKey } = await import('@/lib/completionUtils');
+    const logsRef = collection(db, 'users', user.uid, 'workout_logs');
+    const snap = await getDocs(query(logsRef,
+      where('planId',  '==', livePlan.id),
+      where('weekKey', '==', weekKey),
+    ));
+    const completionMap: Record<string, boolean> = {};
+    snap.forEach(d => {
+      const data = d.data();
+      if (data.completed && data.exerciseIndex != null && data.dayIndex != null) {
+        completionMap[`${data.weekKey}_${data.dayIndex}_${data.exerciseIndex}`] = true;
+      }
     });
-
-    if (error || !data?.success) {
-      throw new Error(error?.message || 'Failed to fetch week completion');
-    }
-
-    return data.completionMap;
+    return completionMap;
   };
 
   // Subscribe to all 4 weeks for reactive progress ring updates

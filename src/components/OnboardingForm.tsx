@@ -8,7 +8,8 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Progress } from "@/components/ui/progress";
 import { ArrowRight, ArrowLeft } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import { supabase } from "@/integrations/supabase/client";
+import { doc, setDoc, Timestamp } from "firebase/firestore";
+import { db } from "@/lib/firebase";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
 import { useForm } from "react-hook-form";
@@ -67,20 +68,16 @@ const OnboardingForm = ({ onComplete }: { onComplete: () => void }) => {
 
     setLoading(true);
     try {
-      const { error } = await supabase
-        .from('profiles')
-        .upsert({
-          id: user.id,
-          full_name: data.firstName,
-          age: data.age,
-          weight: data.weight,
-          height: data.height,
-          fitness_goal: data.goal,
-          dietary_preference: data.diet,
-          experience_level: data.experience,
-        });
-
-      if (error) throw error;
+      await setDoc(doc(db, 'users', user.uid), {
+        fullName:          data.firstName,
+        age:               data.age,
+        weight:            data.weight,
+        height:            data.height,
+        fitnessGoal:       data.goal,
+        dietaryPreference: data.diet,
+        experienceLevel:   data.experience,
+        updatedAt:         Timestamp.now(),
+      }, { merge: true });
 
       toast.success('Profile saved successfully!');
       onComplete();

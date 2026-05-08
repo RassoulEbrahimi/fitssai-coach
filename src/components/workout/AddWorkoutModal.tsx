@@ -1,4 +1,4 @@
-import { motion, AnimatePresence } from 'framer-motion';
+﻿import { motion, AnimatePresence } from 'framer-motion';
 import { X, Loader2, Bot } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
@@ -14,8 +14,9 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
-import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
+import { collection, getDocs, query, orderBy, limit, doc, setDoc, Timestamp } from 'firebase/firestore';
+import { db } from '@/lib/firebase';
 import { toastSuccess, toastError } from '@/lib/toastWithIcon';
 import { format } from 'date-fns';
 import { de } from 'date-fns/locale';
@@ -77,134 +78,26 @@ export function AddWorkoutModal({
     };
   }, [isOpen]);
 
-  const handleAIGenerate = async (prompt: string, type: 'full-day' | 'single-workout') => {
-    if (!dayContext) return;
-    
-    setIsLoading(true);
-    setError(null);
-
-    try {
-      // Extract duration from prompt (default to 45)
-      const durationMatch = prompt.match(/(\d+)\s*Minuten/);
-      const duration = durationMatch ? parseInt(durationMatch[1]) : 45;
-
-      const { data, error } = await supabase.functions.invoke('generate-day-suggestions', {
-        body: {
-          custom_prompt: prompt,
-          generation_type: type,
-          available_time: duration
-        }
-      });
-
-    if (error) {
-      console.error('Detailed error:', error);
-      
-      // Try to extract JSON error details from the error response
-      let errorDetails = null;
-      try {
-        // Check if error has context with response body
-        if (error.context?.body) {
-          errorDetails = typeof error.context.body === 'string' 
-            ? JSON.parse(error.context.body) 
-            : error.context.body;
-        }
-      } catch (parseErr) {
-        console.log('[AI Suggestions] Could not parse error body:', parseErr);
-      }
-
-      // If we have structured error details, handle them
-      if (errorDetails?.code) {
-        let userMessage = errorDetails.error;
-        
-        switch (errorDetails.code) {
-          case 'OPENAI_KEY_MISSING':
-            userMessage = 'Der KI-Dienst ist nicht eingerichtet. Bitte kontaktiere den Support.';
-            break;
-          case 'UNAUTHORIZED':
-            userMessage = 'Sitzung abgelaufen. Bitte neu anmelden.';
-            break;
-          case 'PROFILE_NOT_FOUND':
-            userMessage = 'Dein Profil ist unvollständig. Bitte vervollständige deine Daten.';
-            break;
-          case 'RATE_LIMIT_OR_QUOTA_EXCEEDED':
-            userMessage = 'KI-Dienst vorübergehend nicht verfügbar. Bitte später erneut versuchen.';
-            break;
-          case 'GENERATION_FAILED':
-            userMessage = `Fehler beim Generieren: ${errorDetails.details || errorDetails.error}`;
-            break;
-        }
-        
-        setError(userMessage);
-        toastError('Fehler', userMessage);
-        return;
-      }
-      
-      throw error;
-    }
-
-    // Check for backend error response in data
-    if (data?.error) {
-      console.error('Backend error:', data);
-      const errorCode = data.code;
-      let userMessage = data.error;
-      
-      // Map error codes to user-friendly messages
-      switch (errorCode) {
-        case 'OPENAI_KEY_MISSING':
-          userMessage = 'Der KI-Dienst ist nicht eingerichtet. Bitte kontaktiere den Support.';
-          break;
-        case 'UNAUTHORIZED':
-          userMessage = 'Sitzung abgelaufen. Bitte neu anmelden.';
-          break;
-        case 'PROFILE_NOT_FOUND':
-          userMessage = 'Dein Profil ist unvollständig. Bitte vervollständige deine Daten.';
-          break;
-        case 'RATE_LIMIT_OR_QUOTA_EXCEEDED':
-          userMessage = 'KI-Dienst vorübergehend nicht verfügbar. Bitte später erneut versuchen.';
-          break;
-        case 'GENERATION_FAILED':
-          userMessage = `Fehler beim Generieren: ${data.details || data.error}`;
-          break;
-      }
-      
-      setError(userMessage);
-      toastError('Fehler', userMessage);
-      return;
-    }
-
-      if (data?.suggestions) {
-        setSuggestions(data.suggestions);
-      } else {
-        console.error('[AddWorkoutModal] No suggestions in response:', data);
-        throw new Error('AI konnte keine Vorschläge generieren. Bitte erneut versuchen oder Eingaben prüfen.');
-      }
-    } catch (err: any) {
-      console.error('Detailed error:', err);
-      const errorMessage = err.message || 'Fehler beim Laden der Vorschläge';
-      setError(errorMessage);
-      toastError('Fehler', errorMessage);
-    } finally {
-      setIsLoading(false);
-    }
+  const handleAIGenerate = async (_prompt: string, _type: 'full-day' | 'single-workout') => {
+    const message = 'KI-Funktionen sind während der Migration vorübergehend deaktiviert.';
+    setError(message);
+    toastError('KI vorübergehend nicht verfügbar', message);
+    setIsLoading(false);
   };
 
   const handleAddWorkout = async (exercise: Exercise | WorkoutSuggestion) => {
     if (!dayContext || !user) return;
 
     try {
-      // Get current workout plan
-      const { data: planData } = await supabase
-        .from('workout_plans')
-        .select('*')
-        .eq('user_id', user.id)
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .single();
-
-      if (!planData) {
+      // Get current workout plan from Firestore
+      const plansRef = collection(db, 'users', user.uid, 'workout_plans');
+      const planSnap = await getDocs(query(plansRef, orderBy('createdAt', 'desc'), limit(1)));
+      if (planSnap.empty) {
         toastError('Fehler', 'Kein Trainingsplan gefunden');
         return;
       }
+      const planDoc  = planSnap.docs[0];
+      const planData = { id: planDoc.id, ...planDoc.data() } as any;
 
       // Update workout plan content
       const content = planData.content || {};
@@ -247,14 +140,10 @@ export function AddWorkoutModal({
       });
 
       // Save updated plan
-      const { error: updateError } = await supabase
-        .from('workout_plans')
-        .update({ content })
-        .eq('id', planData.id);
+      await setDoc(doc(db, 'users', user.uid, 'workout_plans', planData.id),
+        { content, updatedAt: Timestamp.now() }, { merge: true });
 
-      if (updateError) throw updateError;
-
-      toastSuccess('Hinzugefügt', `${exercise.name} wurde zu deinem Training hinzugefügt`);
+      toastSuccess('HinzugefÃ¼gt', `${exercise.name} wurde zu deinem Training hinzugefÃ¼gt`);
       
       if (onWorkoutAdded) {
         onWorkoutAdded();
@@ -263,7 +152,7 @@ export function AddWorkoutModal({
       onClose();
     } catch (err: any) {
       console.error('Error adding workout:', err);
-      toastError('Fehler', 'Training konnte nicht hinzugefügt werden');
+      toastError('Fehler', 'Training konnte nicht hinzugefÃ¼gt werden');
     }
   };
 
@@ -271,19 +160,15 @@ export function AddWorkoutModal({
     if (!dayContext || !user) return;
 
     try {
-      // Get current workout plan
-      const { data: planData } = await supabase
-        .from('workout_plans')
-        .select('*')
-        .eq('user_id', user.id)
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .single();
-
-      if (!planData) {
+      // Get current workout plan from Firestore
+      const plansRef2 = collection(db, 'users', user.uid, 'workout_plans');
+      const planSnap2 = await getDocs(query(plansRef2, orderBy('createdAt', 'desc'), limit(1)));
+      if (planSnap2.empty) {
         toastError('Fehler', 'Kein Trainingsplan gefunden');
         return;
       }
+      const planDoc2  = planSnap2.docs[0];
+      const planData  = { id: planDoc2.id, ...planDoc2.data() } as any;
 
       const content = planData.content || {};
       
@@ -336,16 +221,12 @@ export function AddWorkoutModal({
       dayData.exercises.push(...newExercises);
 
       // Save updated plan
-      const { error: updateError } = await supabase
-        .from('workout_plans')
-        .update({ content })
-        .eq('id', planData.id);
-
-      if (updateError) throw updateError;
+      await setDoc(doc(db, 'users', user.uid, 'workout_plans', planData.id),
+        { content, updatedAt: Timestamp.now() }, { merge: true });
 
       toastSuccess(
-        'Tagesplan hinzugefügt!',
-        `${suggestions.length} Übungen wurden ${action === 'replace' ? 'ersetzt' : 'hinzugefügt'}`
+        'Tagesplan hinzugefÃ¼gt!',
+        `${suggestions.length} Ãœbungen wurden ${action === 'replace' ? 'ersetzt' : 'hinzugefÃ¼gt'}`
       );
       
       if (onWorkoutAdded) {
@@ -356,7 +237,7 @@ export function AddWorkoutModal({
       onClose();
     } catch (err: any) {
       console.error('Error adding all workouts:', err);
-      toastError('Fehler', 'Tagesplan konnte nicht hinzugefügt werden');
+      toastError('Fehler', 'Tagesplan konnte nicht hinzugefÃ¼gt werden');
     }
   };
 
@@ -426,7 +307,7 @@ export function AddWorkoutModal({
                   onClick={onClose}
                   whileTap={prefersReducedMotion ? {} : { scale: 0.95 }}
                   transition={{ duration: 0.1 }}
-                  aria-label="Modal schließen"
+                  aria-label="Modal schlieÃŸen"
                 >
                   <X className="h-4 w-4 text-muted-foreground" />
                 </motion.button>
@@ -434,7 +315,7 @@ export function AddWorkoutModal({
                 {/* Content */}
                 <div className="relative px-3 sm:px-4 py-4 sm:py-6 pt-8 pr-[max(0.75rem,env(safe-area-inset-right))] sm:pr-[max(1rem,env(safe-area-inset-right))]">
                   <h2 className="text-2xl font-semibold mb-6 text-center bg-gradient-to-r from-primary via-emerald-400 to-teal-400 bg-clip-text text-transparent">
-                    Training hinzufügen
+                    Training hinzufÃ¼gen
                   </h2>
 
                   <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as 'ai' | 'manual')} className="w-full">
@@ -443,14 +324,14 @@ export function AddWorkoutModal({
                         value="ai" 
                         className="data-[state=active]:bg-primary/20 data-[state=active]:text-primary transition-all"
                       >
-                        <span className="mr-2">✨</span>
+                        <span className="mr-2">âœ¨</span>
                         AI Suggestion
                       </TabsTrigger>
                       <TabsTrigger 
                         value="manual"
                         className="data-[state=active]:bg-primary/20 data-[state=active]:text-primary transition-all"
                       >
-                        <span className="mr-2">➕</span>
+                        <span className="mr-2">âž•</span>
                         Manual Add
                       </TabsTrigger>
                     </TabsList>
@@ -498,12 +379,12 @@ export function AddWorkoutModal({
                           {isLoading ? (
                             <>
                               <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                              Wird hinzugefügt...
+                              Wird hinzugefÃ¼gt...
                             </>
                           ) : (
                             <>
-                              <span className="mr-2">🟢</span>
-                              <span className="truncate">Plan übernehmen</span>
+                              <span className="mr-2">ðŸŸ¢</span>
+                              <span className="truncate">Plan Ã¼bernehmen</span>
                             </>
                           )}
                         </Button>
@@ -520,10 +401,10 @@ export function AddWorkoutModal({
             <AlertDialogContent className="bg-background/95 backdrop-blur-xl border-primary/20">
               <AlertDialogHeader>
                 <AlertDialogTitle className="text-xl font-semibold bg-gradient-to-r from-primary to-emerald-400 bg-clip-text text-transparent">
-                  Vorhandene Übungen gefunden
+                  Vorhandene Ãœbungen gefunden
                 </AlertDialogTitle>
                 <AlertDialogDescription className="text-muted-foreground">
-                  Dieser Tag enthält bereits Übungen. Möchtest du die neuen Vorschläge ersetzen oder hinzufügen?
+                  Dieser Tag enthÃ¤lt bereits Ãœbungen. MÃ¶chtest du die neuen VorschlÃ¤ge ersetzen oder hinzufÃ¼gen?
                 </AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter>
@@ -534,7 +415,7 @@ export function AddWorkoutModal({
                   onClick={() => handleAddAllWorkouts('add')}
                   className="bg-primary/20 text-primary hover:bg-primary/30"
                 >
-                  Hinzufügen
+                  HinzufÃ¼gen
                 </AlertDialogAction>
                 <AlertDialogAction
                   onClick={() => handleAddAllWorkouts('replace')}

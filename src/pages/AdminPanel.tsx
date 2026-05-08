@@ -1,7 +1,6 @@
 import { useAuth } from "@/hooks/useAuth";
 import { Navigate } from "react-router-dom";
 import { useState, useEffect } from "react";
-import { supabase } from "@/integrations/supabase/client";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { parseISO } from 'date-fns';
@@ -10,6 +9,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { collection, doc, getDoc, getDocs, setDoc, Timestamp } from "firebase/firestore";
+import { db } from "@/lib/firebase";
 import { 
   Table, 
   TableBody, 
@@ -97,39 +98,31 @@ const AdminPanel = () => {
     }
   }, [user]);
 
-  const invokeAdmin = async (action: 'users' | 'plans') => {
-    const { data: { session } } = await supabase.auth.getSession();
-    if (!session) {
-      toast.error('Nicht angemeldet. (AUTH)');
-      throw new Error('Nicht angemeldet.');
-    }
-    const { data, error } = await supabase.functions.invoke('admin-fetch', {
-      body: { action },
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${session.access_token}`,
-      },
+  // Admin data is fetched directly from Firestore (edge functions removed)
+  const fetchAllUsersFromFirestore = async () => {
+    const snap = await getDocs(collection(db, 'users'));
+    return snap.docs.map(d => {
+      const data = d.data();
+      return {
+        id:                 d.id,
+        email:              data.email        ?? '',
+        age:                data.age          ?? null,
+        weight:             data.weight       ?? null,
+        height:             data.height       ?? null,
+        fitness_goal:       data.fitnessGoal  ?? '',
+        dietary_preference: data.dietaryPreference ?? '',
+        is_admin:           data.role === 'admin',
+        created_at:         data.createdAt instanceof Timestamp ? data.createdAt.toDate().toISOString() : '',
+      };
     });
-    if (error) {
-      toast.error(`Admin-Fehler: ${error.message} (INVOKE)`);
-      throw error;
-    }
-    if (!data?.success) {
-      toast.error(`Admin-Fehler: ${data.error}${data.code ? ` (${data.code})` : ''}`);
-      throw new Error(data.error);
-    }
-    return data;
   };
 
   const checkAdminStatus = async () => {
     if (!user) return;
-    
     try {
-      const { data, error } = await supabase.rpc('is_current_user_admin');
-      
-      if (error) throw error;
-      setIsAdmin(data || false);
-    } catch (error) {
+      const snap = await getDoc(doc(db, 'users', user.uid));
+      setIsAdmin(snap.exists() && snap.data()?.role === 'admin');
+    } catch {
       setIsAdmin(false);
     } finally {
       setCheckingAdmin(false);
@@ -138,21 +131,11 @@ const AdminPanel = () => {
 
   const fetchAllUsers = async () => {
     try {
-      const data = await invokeAdmin('users');
-      setUsers((data.users || []).map((u: any) => ({
-        id: u.id,
-        email: u.email,
-        age: u.age,
-        weight: u.weight,
-        height: u.height,
-        fitness_goal: u.fitness_goal,
-        dietary_preference: u.dietary_preference,
-        is_admin: u.is_admin,
-        created_at: u.created_at,
-      })));
+      const users = await fetchAllUsersFromFirestore();
+      setUsers(users);
     } catch (error) {
       console.error('Error fetching users:', error);
-      // Error toast already handled in invokeAdmin
+      toast.error('Benutzer konnten nicht geladen werden');
     } finally {
       setLoadingUsers(false);
     }
@@ -160,125 +143,60 @@ const AdminPanel = () => {
 
   const toggleAdminStatus = async (userId: string, currentStatus: boolean) => {
     try {
-      if (!currentStatus) {
-        // Grant admin - insert role
-        const { error } = await supabase
-          .from('user_roles')
-          .insert({ user_id: userId, role: 'admin' });
-        
-        if (error) throw error;
-      } else {
-        // Revoke admin - delete role
-        const { error } = await supabase
-          .from('user_roles')
-          .delete()
-          .eq('user_id', userId)
-          .eq('role', 'admin');
-        
-        if (error) throw error;
-      }
-
-      setUsers(users.map(user => 
-        user.id === userId 
-          ? { ...user, is_admin: !currentStatus }
-          : user
-      ));
-
-      toast.success(`Admin status ${!currentStatus ? 'granted' : 'revoked'} successfully`);
+      await setDoc(doc(db, 'users', userId), {
+        role: currentStatus ? 'user' : 'admin',
+        updatedAt: Timestamp.now(),
+      }, { merge: true });
+      setUsers(prev => prev.map(u => u.id === userId ? { ...u, is_admin: !currentStatus } : u));
+      toast.success(`Admin-Status ${!currentStatus ? 'gewährt' : 'entzogen'}`);
     } catch (error) {
       console.error('Error updating admin status:', error);
-      toast.error('Failed to update admin status');
+      toast.error('Admin-Status konnte nicht geändert werden');
     }
   };
 
   const fetchAllPlans = async () => {
     try {
-      const data = await invokeAdmin('plans');
-      setPlans(data.plans || []);
+      const allUsers = await fetchAllUsersFromFirestore();
+      const plans: Plan[] = [];
+      for (const u of allUsers) {
+        const [wpSnap, npSnap] = await Promise.all([
+          getDocs(collection(db, 'users', u.id, 'workout_plans')),
+          getDocs(collection(db, 'users', u.id, 'nutrition_plans')),
+        ]);
+        wpSnap.forEach(d => plans.push({ id: d.id, user_id: u.id, content: d.data().content, created_at: '', type: 'workout', user_email: u.email }));
+        npSnap.forEach(d => plans.push({ id: d.id, user_id: u.id, content: d.data().content, created_at: '', type: 'nutrition', user_email: u.email }));
+      }
+      setPlans(plans);
     } catch (error) {
       console.error('Error fetching plans:', error);
-      // Error toast already handled in invokeAdmin
+      toast.error('Pläne konnten nicht geladen werden');
     } finally {
       setLoadingPlans(false);
     }
   };
 
-  const deleteUser = async (userId: string) => {
-    try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) {
-        toast.error('Nicht angemeldet. Bitte melde dich erneut an.');
-        return;
-      }
-
-      const { data, error } = await supabase.functions.invoke('admin-delete-user', {
-        body: { userId },
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${session.access_token}`,
-        },
-      });
-
-      if (error) throw error;
-
-      if (!data?.success) {
-        throw new Error(data?.error || 'Benutzer konnte nicht gelöscht werden.');
-      }
-
-      setUsers(users.filter(user => user.id !== userId));
-      toast.success('Benutzer erfolgreich gelöscht');
-    } catch (error) {
-      console.error('Error deleting user:', error);
-      toast.error('Benutzer konnte nicht gelöscht werden');
-    }
+  const deleteUser = async (_userId: string) => {
+    // User deletion requires Firebase Admin SDK (Cloud Function) — temporarily disabled
+    toast.error('Benutzer-Löschung vorübergehend deaktiviert', {
+      description: 'Erfordert Firebase Cloud Functions (Blaze-Plan).',
+    });
   };
 
-  const regeneratePlan = async (planUserId: string, planType: 'workout' | 'nutrition') => {
-    setRegeneratingPlan(`${planUserId}-${planType}`);
-    try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) {
-        console.error('Nicht angemeldet. Bitte melde dich erneut an.');
-        return;
-      }
-
-      const { data, error } = await supabase.functions.invoke('generate-plans', {
-        body: { 
-          user_id: planUserId,
-          trigger: 'admin'
-        },
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${session.access_token}`,
-        },
-      });
-
-      if (error) throw error;
-
-      if (data.success) {
-        toast.success('Plan regenerated successfully!');
-        await fetchAllPlans(); // Refresh the plans
-      } else {
-        throw new Error(data.error || 'Failed to regenerate plan');
-      }
-    } catch (error) {
-      console.error('Error regenerating plan:', error);
-      toast.error('Failed to regenerate plan');
-    } finally {
-      setRegeneratingPlan(null);
-    }
+  const regeneratePlan = async (_planUserId: string, _planType: 'workout' | 'nutrition') => {
+    toast.info('KI-Plan-Generierung vorübergehend deaktiviert', {
+      description: 'Erfordert Firebase Cloud Functions (Blaze-Plan).',
+    });
   };
 
   const deletePlan = async (planId: string, planType: 'workout' | 'nutrition') => {
     try {
-      const table = planType === 'workout' ? 'workout_plans' : 'nutrition_plans';
-      const { error } = await supabase
-        .from(table)
-        .delete()
-        .eq('id', planId);
-
-      if (error) throw error;
-
+      const subcol = planType === 'workout' ? 'workout_plans' : 'nutrition_plans';
+      // Find which user owns this plan
+      const ownerPlan = plans.find(p => p.id === planId);
+      if (!ownerPlan) throw new Error('Plan not found');
+      const { deleteDoc, doc: fsDoc } = await import('firebase/firestore');
+      await deleteDoc(fsDoc(db, 'users', ownerPlan.user_id, subcol, planId));
       setPlans(plans.filter(plan => plan.id !== planId));
       toast.success('Plan deleted successfully');
     } catch (error) {

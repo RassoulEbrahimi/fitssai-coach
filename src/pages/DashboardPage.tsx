@@ -3,7 +3,8 @@ import { Navigate, useLocation } from "react-router-dom";
 import Dashboard from "@/components/Dashboard";
 import WorkoutErrorBoundary from "@/components/WorkoutErrorBoundary";
 import { useState, useEffect, useRef } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { doc, getDoc } from "firebase/firestore";
+import { db } from "@/lib/firebase";
 import { useFocusMode } from "@/contexts/FocusModeContext";
 
 const DashboardPage = () => {
@@ -20,16 +21,8 @@ const DashboardPage = () => {
     const checkUserProfile = async () => {
       if (!user) return;
       try {
-        const { data, error } = await supabase
-          .from('profiles')
-          .select('id')
-          .eq('id', user.id)
-          .maybeSingle();
-        if (error) {
-          console.error('Error checking profile:', error);
-          return;
-        }
-        setHasProfile(!!data);
+        const snap = await getDoc(doc(db, 'users', user.uid));
+        setHasProfile(snap.exists());
       } catch (error) {
         console.error('Error:', error);
       } finally {

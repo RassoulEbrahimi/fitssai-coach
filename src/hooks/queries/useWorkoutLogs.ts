@@ -1,107 +1,83 @@
-import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
-import { useAuth } from '@/hooks/useAuth';
-import { useSupabaseAction } from '@/hooks/useSupabaseAction';
-import { queryKeys } from '@/lib/queryKeys';
-import { WorkoutLog } from '@/lib/types';
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  collection, getDocs, query, where, addDoc, updateDoc, doc, Timestamp,
+} from "firebase/firestore";
+import { db } from "@/lib/firebase";
+import { useAuth } from "@/hooks/useAuth";
+import { useSupabaseAction } from "@/hooks/useSupabaseAction";
+import { queryKeys } from "@/lib/queryKeys";
+import { WorkoutLog } from "@/lib/types";
+
+const docToLog = (id: string, data: Record<string, any>, userId: string): WorkoutLog => ({
+  id,
+  user_id:       userId,
+  plan_id:       data.planId       ?? null,
+  workout_day:   data.workoutDay   ?? null,
+  completed:     data.completed    ?? false,
+  completed_at:  data.completedAt  instanceof Timestamp ? data.completedAt.toDate().toISOString() : null,
+  week_key:      data.weekKey      ?? null,
+  day_index:     data.dayIndex     ?? null,
+  exercise_index:data.exerciseIndex?? null,
+} as unknown as WorkoutLog);
 
 export const useWorkoutLogs = (planId?: string) => {
-    const { user } = useAuth();
-    const queryClient = useQueryClient();
+  const { user } = useAuth();
+  const queryClient = useQueryClient();
+  const queryKey = queryKeys.logs.byPlan(planId, user?.id);
 
-    // ✅ NEW: Centralized Key Generation
-    const queryKey = queryKeys.logs.byPlan(planId, user?.id);
+  const query_ = useQuery({
+    queryKey,
+    queryFn: async () => {
+      if (!user || !planId) return [];
+      const logsRef = collection(db, "users", user.uid, "workout_logs");
+      const snap = await getDocs(query(logsRef, where("planId", "==", planId)));
+      return snap.docs.map(d => docToLog(d.id, d.data() as Record<string, any>, user.uid));
+    },
+    enabled: !!user && !!planId,
+    staleTime: 1000 * 60 * 5,
+  });
 
-    const query = useQuery({
-        // ✅ NEW: Use centralized key
-        queryKey,
-        queryFn: async () => {
-            if (!user || !planId) return [];
+  const toggleDayMutation = useSupabaseAction({
+    action: async ({ workoutDateStr, completed }: { workoutDateStr: string; completed: boolean }) => {
+      if (!user || !planId) throw new Error("Missing user or plan");
+      const logsRef = collection(db, "users", user.uid, "workout_logs");
+      const snap = await getDocs(query(logsRef, where("planId", "==", planId), where("workoutDay", "==", workoutDateStr)));
+      if (!snap.empty) {
+        await updateDoc(doc(db, "users", user.uid, "workout_logs", snap.docs[0].id), {
+          completed,
+          completedAt: completed ? Timestamp.now() : null,
+        });
+      } else {
+        await addDoc(logsRef, {
+          planId, workoutDay: workoutDateStr, completed,
+          completedAt: completed ? Timestamp.now() : null,
+          createdAt: Timestamp.now(),
+        });
+      }
+      return { completed };
+    },
+    queryKey: [...queryKey],
+    messages: { error: "Fehler beim Speichern" },
+    onMutate: async ({ workoutDateStr, completed }: { workoutDateStr: string; completed: boolean }) => {
+      await queryClient.cancelQueries({ queryKey });
+      const previousLogs = queryClient.getQueryData<WorkoutLog[]>(queryKey);
+      queryClient.setQueryData(queryKey, (old: WorkoutLog[] = []) => {
+        const idx = old.findIndex(l => l.workout_day === workoutDateStr);
+        if (idx > -1) {
+          const n = [...old]; n[idx] = { ...n[idx], completed }; return n;
+        }
+        return [...old, { workout_day: workoutDateStr, completed, plan_id: planId, user_id: user!.id } as unknown as WorkoutLog];
+      });
+      return { previousLogs };
+    },
+    onError: (_err: unknown, _v: any, context: { previousLogs?: WorkoutLog[] } | undefined) => {
+      if (context?.previousLogs) queryClient.setQueryData(queryKey, context.previousLogs);
+    },
+  });
 
-            const { data, error } = await supabase
-                .from('workout_logs')
-                .select('*')
-                .eq('user_id', user.id)
-                .eq('plan_id', planId);
-
-            if (error) throw error;
-            return (data || []) as unknown as WorkoutLog[];
-        },
-        enabled: !!user && !!planId,
-        staleTime: 1000 * 60 * 5, // 5 minutes
-    });
-
-    const toggleDayMutation = useSupabaseAction({
-        action: async ({ workoutDateStr, completed }: { workoutDateStr: string; completed: boolean }) => {
-            if (!user || !planId) throw new Error('Missing user or plan');
-
-            // Check for existing log to update ID if exists (though upsert handles this, explicit update is safer for pure toggle if needed)
-            // Simpler approach: upsert based on constraint
-            const payload = {
-                user_id: user.id,
-                plan_id: planId,
-                workout_day: workoutDateStr,
-                completed,
-                completed_at: completed ? new Date().toISOString() : null
-            };
-
-            const { data, error } = await supabase
-                .from('workout_logs')
-                .upsert(payload, { onConflict: 'user_id,plan_id,workout_day' })
-                .select()
-                .single();
-
-            if (error) throw error;
-            return data;
-        },
-
-        // ✅ NEW: Automatic invalidation uses centralized key
-        queryKey: [...queryKey],
-
-        messages: {
-            error: 'Fehler beim Speichern'
-        },
-
-        onMutate: async ({ workoutDateStr, completed }: { workoutDateStr: string; completed: boolean }) => {
-            // ✅ NEW: Cancel using centralized key
-            await queryClient.cancelQueries({ queryKey });
-
-            const previousLogs = queryClient.getQueryData<WorkoutLog[]>(queryKey);
-
-            // Optimistic update
-            queryClient.setQueryData(queryKey, (old: WorkoutLog[] = []) => {
-                const existingIndex = old.findIndex(
-                    (log: WorkoutLog) => log.workout_day === workoutDateStr
-                );
-
-                if (existingIndex > -1) {
-                    const newLogs = [...old];
-                    newLogs[existingIndex] = { ...newLogs[existingIndex], completed };
-                    return newLogs;
-                } else {
-                    return [...old, {
-                        workout_day: workoutDateStr,
-                        completed,
-                        plan_id: planId,
-                        user_id: user!.id
-                    }];
-                }
-            });
-
-            return { previousLogs };
-        },
-
-        onError: (err: unknown, newTodo: { workoutDateStr: string; completed: boolean }, context: { previousLogs?: WorkoutLog[] } | undefined) => {
-            // ✅ NEW: Rollback using centralized key
-            if (context?.previousLogs) {
-                queryClient.setQueryData(queryKey, context.previousLogs);
-            }
-        },
-    });
-
-    return {
-        ...query,
-        toggleDay: toggleDayMutation.mutate,
-        isToggling: toggleDayMutation.isPending,
-    };
+  return {
+    ...query_,
+    toggleDay: toggleDayMutation.mutate,
+    isToggling: toggleDayMutation.isPending,
+  };
 };

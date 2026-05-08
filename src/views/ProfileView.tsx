@@ -13,7 +13,9 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { usePreferences } from "@/contexts/PreferencesContext";
-import { supabase } from "@/integrations/supabase/client";
+import { doc, setDoc, Timestamp } from "firebase/firestore";
+import { db } from "@/lib/firebase";
+import { useAuth as _useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
 import { uploadAvatar, updateProfileAvatar, getAvatarUrl } from "@/lib/avatarUtils";
 import { WorkoutPlan, NutritionPlan } from "@/lib/types";
@@ -293,7 +295,8 @@ const ProfileView: React.FC<ProfileViewProps> = React.memo(({
   useEffect(() => {
     const fetchUserStats = async () => {
       try {
-        const { data, error } = await supabase.rpc('get_user_stats');
+        const data = null; // get_user_stats RPC removed — stats disabled during migration
+        const error = null;
         if (error) {
           console.error('Error fetching user stats:', error);
           return;
@@ -413,17 +416,13 @@ const ProfileView: React.FC<ProfileViewProps> = React.memo(({
         setIsUploading(false);
       }
 
-      const { error } = await supabase
-        .from("profiles")
-        .update({
-          full_name: formData.full_name?.trim() || null,
-          weight: weight || null,
-          height: height || null,
-          age: age || null,
-        })
-        .eq("id", profile.id);
-
-      if (error) throw error;
+      await setDoc(doc(db, 'users', profile.id), {
+        fullName:  formData.full_name?.trim() || null,
+        weight:    weight || null,
+        height:    height || null,
+        age:       age    || null,
+        updatedAt: Timestamp.now(),
+      }, { merge: true });
 
       toast.success("Profil aktualisiert");
       setIsEditOpen(false);
@@ -444,15 +443,11 @@ const ProfileView: React.FC<ProfileViewProps> = React.memo(({
 
     setIsSaving(true);
     try {
-      const { error } = await supabase
-        .from("profiles")
-        .update({
-          fitness_goal: goalsData.fitness_goal || null,
-          dietary_preference: goalsData.dietary_preference || null,
-        })
-        .eq("id", profile.id);
-
-      if (error) throw error;
+      await setDoc(doc(db, 'users', profile.id), {
+        fitnessGoal:       goalsData.fitness_goal || null,
+        dietaryPreference: goalsData.dietary_preference || null,
+        updatedAt:         Timestamp.now(),
+      }, { merge: true });
 
       toast.success("Ziele aktualisiert");
       setIsGoalsOpen(false);
