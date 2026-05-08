@@ -1,5 +1,6 @@
-import { useState, useEffect } from 'react';
-import { supabase } from '@/integrations/supabase/client';
+﻿import { useState, useEffect } from 'react';
+import { collection, getDocs, query, orderBy, Timestamp } from 'firebase/firestore';
+import { db } from '@/lib/firebase';
 import { useAuth } from './useAuth';
 import { startOfDay, subDays, format } from 'date-fns';
 
@@ -40,13 +41,16 @@ export const useAIAnalytics = () => {
       }
 
       try {
-        const { data: logs, error } = await supabase
-          .from('ai_logs')
-          .select('created_at, success, latency_ms')
-          .eq('user_id', user.id)
-          .order('created_at', { ascending: false });
-
-        if (error) throw error;
+        const logsRef = collection(db, 'users', user.uid, 'ai_logs');
+        const snap = await getDocs(query(logsRef, orderBy('createdAt', 'desc')));
+        const logs = snap.docs.map(d => {
+          const data = d.data();
+          return {
+            created_at: data.createdAt instanceof Timestamp ? data.createdAt.toDate().toISOString() : '',
+            success:    data.success    ?? false,
+            latency_ms: data.latencyMs  ?? 0,
+          };
+        });
 
         if (!logs || logs.length === 0) {
           setAnalytics({
@@ -115,5 +119,9 @@ export const useAIAnalytics = () => {
     fetchAnalytics();
   }, [user]);
 
-  return { analytics, loading };
+  return {
+    ...analytics,
+    analytics,
+    loading
+  };
 };

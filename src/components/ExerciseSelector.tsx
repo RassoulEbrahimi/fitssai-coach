@@ -9,7 +9,8 @@ import {
 } from '@/components/ui/command';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { cn } from '@/lib/utils';
-import { supabase } from '@/integrations/supabase/client';
+import { collection, getDocs, query, orderBy } from 'firebase/firestore';
+import { db } from '@/lib/firebase';
 import { Loader2 } from 'lucide-react';
 
 // Type for exercise from database
@@ -67,18 +68,12 @@ export const ExerciseSelector: React.FC<ExerciseSelectorProps> = ({
     const fetchExercises = async () => {
       setIsLoading(true);
       try {
-        const { data, error } = await supabase
-          .from('exercises')
-          .select('*')
-          .order('name');
-
-        if (error) {
-          console.error('Error fetching exercises:', error);
-          return;
-        }
+        const exRef = collection(db, 'exercises');
+        const snap = await getDocs(query(exRef, orderBy('name')));
+        const data = snap.docs.map(d => ({ id: d.id, ...d.data() }));
 
         // Transform database exercises to include type and icon
-        const transformedExercises: DatabaseExercise[] = (data || []).map(ex => ({
+        const transformedExercises: DatabaseExercise[] = (data || []).map((ex: any) => ({
           id: ex.id,
           name: ex.name,
           target_muscle: ex.target_muscle,

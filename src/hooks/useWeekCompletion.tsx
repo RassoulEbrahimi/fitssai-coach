@@ -1,21 +1,16 @@
-import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
-import { useAuth } from './useAuth';
-import { useOfflineQueue } from './useOfflineQueue';
-import { logEvent, logError } from '@/lib/telemetryClient';
-import { toastError } from '@/lib/toastWithIcon';
-import { useEffect, useMemo } from 'react';
-import { CompletionState, setExerciseCompletion } from '@/lib/completionUtils';
-import { useSupabaseAction, retryWithBackoff } from './useSupabaseAction';
-import { queryKeys } from '@/lib/queryKeys';
-
-// Server response format (flat completion map)
-interface WeekCompletionResponse {
-  success: boolean;
-  completionMap: CompletionState;
-  weekKey: string;
-  planId: string;
-}
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  collection, getDocs, query, where, doc, addDoc, updateDoc, Timestamp,
+} from "firebase/firestore";
+import { db } from "@/lib/firebase";
+import { useAuth } from "./useAuth";
+import { useOfflineQueue } from "./useOfflineQueue";
+import { logEvent, logError } from "@/lib/telemetryClient";
+import { toastError } from "@/lib/toastWithIcon";
+import { useEffect, useMemo } from "react";
+import { CompletionState, setExerciseCompletion } from "@/lib/completionUtils";
+import { useSupabaseAction } from "./useSupabaseAction";
+import { queryKeys } from "@/lib/queryKeys";
 
 interface UseWeekCompletionParams {
   planId: string | undefined;
@@ -34,42 +29,36 @@ interface ToggleExerciseParams {
   caloriesBurned?: number;
 }
 
-interface ToggleExerciseResponse {
-  success: boolean;
-  data: unknown;
-}
+interface ToggleExerciseContext { previousData: CompletionState | undefined; }
 
-interface ToggleExerciseContext {
-  previousData: CompletionState | undefined;
-}
+// Build CompletionState from Firestore workout_logs for a given planId + weekKey
+const buildCompletionState = (docs: { dayIndex?: number; exerciseIndex?: number; completed?: boolean }[]): CompletionState => {
+  const map: CompletionState = {};
+  for (const d of docs) {
+    if (d.completed && d.dayIndex !== undefined && d.exerciseIndex !== undefined) {
+      const key = `${d.exerciseIndex}_${d.dayIndex}`;
+      map[key] = true;
+    }
+  }
+  return map;
+};
 
 export const useWeekCompletion = ({ planId, weekKey, enabled = true, availableWeeks }: UseWeekCompletionParams) => {
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const { isOnline } = useOfflineQueue();
 
-  // ✅ NEW: Centralized Key Generation
   const queryKey = queryKeys.completion.byWeek(planId, weekKey);
 
-  // Prefetch helper function
   const prefetchWeekCompletion = async (targetPlanId: string, targetWeekKey: string) => {
-    logEvent('prefetch_week', { planId: targetPlanId, weekKey: targetWeekKey });
-
+    logEvent("prefetch_week", { planId: targetPlanId, weekKey: targetWeekKey });
     await queryClient.prefetchQuery({
-      // ✅ NEW: Use factory for prefetch key
       queryKey: queryKeys.completion.byWeek(targetPlanId, targetWeekKey),
       queryFn: async () => {
-        if (!user) throw new Error('User not available');
-
-        const { data, error } = await supabase.functions.invoke('get-week-completion', {
-          body: { planId: targetPlanId, weekKey: targetWeekKey },
-        });
-
-        if (error || !data?.success) {
-          throw new Error(error?.message || 'Prefetch failed');
-        }
-
-        return data.completionMap;
+        if (!user) throw new Error("User not available");
+        const logsRef = collection(db, "users", user.uid, "workout_logs");
+        const snap = await getDocs(query(logsRef, where("planId", "==", targetPlanId), where("weekKey", "==", targetWeekKey)));
+        return buildCompletionState(snap.docs.map(d => d.data() as any));
       },
       staleTime: 30000,
     });
@@ -77,51 +66,24 @@ export const useWeekCompletion = ({ planId, weekKey, enabled = true, availableWe
 
   const isInvalidWeek = useMemo(() => {
     if (!availableWeeks || availableWeeks.length === 0) return false;
-    const normalizedWeekKey = weekKey.replace(/\s+/g, '').toLowerCase();
-    const hasWeek = availableWeeks.some(w => w.replace(/\s+/g, '').toLowerCase() === normalizedWeekKey);
-    return !hasWeek;
+    const n = weekKey.replace(/\s+/g, "").toLowerCase();
+    return !availableWeeks.some(w => w.replace(/\s+/g, "").toLowerCase() === n);
   }, [availableWeeks, weekKey]);
 
-  const query = useQuery<CompletionState>({
-    // ✅ NEW: Use centralized key
+  const query_ = useQuery<CompletionState>({
     queryKey,
     queryFn: async () => {
-      if (!user || !planId) {
-        throw new Error('User or planId not available');
-      }
-
-      logEvent('fetch_week_completion_start', { planId, weekKey });
-
+      if (!user || !planId) throw new Error("User or planId not available");
+      logEvent("fetch_week_completion_start", { planId, weekKey });
       try {
-        const data = await retryWithBackoff(async () => {
-          const { data, error } = await supabase.functions.invoke('get-week-completion', {
-            body: { planId, weekKey },
-          });
-
-          if (error) {
-            console.error('Error fetching week completion:', error);
-            throw new Error(error.message || 'Failed to fetch week completion');
-          }
-
-          if (!data?.success) {
-            throw new Error('Invalid response from server');
-          }
-
-          return data;
-        }, { retries: 3, initialDelay: 1000 });
-
-        logEvent('fetch_week_completion_success', { planId, weekKey });
-        return data.completionMap;
+        const logsRef = collection(db, "users", user.uid, "workout_logs");
+        const snap = await getDocs(query(logsRef, where("planId", "==", planId), where("weekKey", "==", weekKey)));
+        const state = buildCompletionState(snap.docs.map(d => d.data() as any));
+        logEvent("fetch_week_completion_success", { planId, weekKey });
+        return state;
       } catch (error: any) {
-        console.error('Failed to fetch week completion after retries:', error);
         logError(error, `fetch_week_completion_failed: ${planId} ${weekKey}`);
-        logEvent('aria_announcement_triggered', { context: 'fetch_error' });
-
-        toastError(
-          'Fehler beim Laden',
-          'Trainingsplan konnte nicht geladen werden. Bitte versuche es erneut.'
-        );
-
+        toastError("Fehler beim Laden", "Trainingsplan konnte nicht geladen werden.");
         throw error;
       }
     },
@@ -129,103 +91,79 @@ export const useWeekCompletion = ({ planId, weekKey, enabled = true, availableWe
     staleTime: 30000,
     gcTime: 5 * 60 * 1000,
     retry: false,
-    networkMode: 'offlineFirst',
+    networkMode: "offlineFirst",
   });
 
   useEffect(() => {
-    if (!isOnline && query.data && !query.isFetching) {
-      logEvent('offline_fallback', {
-        planId,
-        weekKey,
-        cacheAge: query.dataUpdatedAt ? Date.now() - query.dataUpdatedAt : 0
-      });
+    if (!isOnline && query_.data && !query_.isFetching) {
+      logEvent("offline_fallback", { planId, weekKey });
     }
-  }, [isOnline, query.data, query.isFetching, planId, weekKey, query.dataUpdatedAt]);
+  }, [isOnline, query_.data, query_.isFetching, planId, weekKey]);
 
-  const { mutate: toggleExercise, isPending: isToggling } = useSupabaseAction<ToggleExerciseResponse, ToggleExerciseParams, ToggleExerciseContext>({
+  const { mutate: toggleExercise, isPending: isToggling } = useSupabaseAction<any, ToggleExerciseParams, ToggleExerciseContext>({
     action: async (params: ToggleExerciseParams) => {
-      const { data, error } = await supabase.functions.invoke('toggle-exercise', {
-        body: {
-          planId: params.planId,
-          weekKey: params.weekKey,
-          dayIndex: params.dayIndex,
-          exerciseIndex: params.exerciseIndex,
+      if (!user) throw new Error("Not authenticated");
+      const logsRef = collection(db, "users", user.uid, "workout_logs");
+      // Find existing log for this exact exercise position
+      const snap = await getDocs(query(logsRef,
+        where("planId",         "==", params.planId),
+        where("weekKey",        "==", params.weekKey),
+        where("dayIndex",       "==", params.dayIndex),
+        where("exerciseIndex",  "==", params.exerciseIndex),
+      ));
+      if (!snap.empty) {
+        await updateDoc(doc(db, "users", user.uid, "workout_logs", snap.docs[0].id), {
           completed: params.completed,
-          durationMinutes: params.durationMinutes,
-          caloriesBurned: params.caloriesBurned,
-        },
-      });
-
-      if (error) throw new Error(error.message || 'Failed to toggle exercise');
-      if (!data?.success) throw new Error('Invalid response from server');
-      return data;
+          completedAt: params.completed ? Timestamp.now() : null,
+        });
+      } else {
+        await addDoc(logsRef, {
+          planId:        params.planId,
+          weekKey:       params.weekKey,
+          dayIndex:      params.dayIndex,
+          exerciseIndex: params.exerciseIndex,
+          completed:     params.completed,
+          completedAt:   params.completed ? Timestamp.now() : null,
+          createdAt:     Timestamp.now(),
+          durationMinutes: params.durationMinutes ?? null,
+          caloriesBurned:  params.caloriesBurned  ?? null,
+        });
+      }
+      return { success: true };
     },
-    // ✅ NEW: Automatic invalidation uses centralized key
     queryKey: [...queryKey],
-    offlineActionType: 'TOGGLE_DAY_COMPLETION',
-    messages: {
-      error: 'Änderung konnte nicht gespeichert werden.',
-    },
+    offlineActionType: "TOGGLE_DAY_COMPLETION",
+    messages: { error: "Änderung konnte nicht gespeichert werden." },
     onMutate: async (params) => {
-      // ✅ NEW: Cancel using centralized key
       await queryClient.cancelQueries({ queryKey });
-
       const previousData = queryClient.getQueryData<CompletionState>(queryKey);
-
-      // ✅ NEW: Update using centralized key
-      queryClient.setQueryData<CompletionState>(
-        queryKey,
-        (old) => {
-          if (!old) return old;
-          return setExerciseCompletion(
-            old,
-            params.weekKey,
-            params.dayIndex,
-            params.exerciseIndex,
-            params.completed
-          );
-        }
-      );
-
+      queryClient.setQueryData<CompletionState>(queryKey, (old) => {
+        if (!old) return old;
+        return setExerciseCompletion(old, params.weekKey, params.dayIndex, params.exerciseIndex, params.completed);
+      });
       return { previousData };
     },
-    onError: (error, params, context) => {
-      if (isOnline && context?.previousData) {
-        // ✅ NEW: Rollback using centralized key
-        queryClient.setQueryData(queryKey, context.previousData);
-      }
-    }
+    onError: (_error: any, _params: any, context: ToggleExerciseContext | undefined) => {
+      if (isOnline && context?.previousData) queryClient.setQueryData(queryKey, context.previousData);
+    },
   });
 
   if (isInvalidWeek) {
     return {
-      completionMap: {},
-      isLoading: false,
-      isError: false,
-      error: null,
-      toggleExercise: () => { },
-      isToggling: false,
-      isOnline,
+      completionMap: {}, isLoading: false, isError: false, error: null,
+      toggleExercise: () => {}, isToggling: false, isOnline,
       refetch: async () => ({ data: {}, isError: false }),
-      prefetchWeekCompletion,
-      isCached: false,
-      dataUpdatedAt: Date.now(),
+      prefetchWeekCompletion, isCached: false, dataUpdatedAt: Date.now(),
     };
   }
 
-  const completionMap = useMemo(() => query.data || {}, [query.data]);
+  const completionMap = useMemo(() => query_.data || {}, [query_.data]);
 
   return {
-    completionMap,
-    isLoading: query.isLoading,
-    isError: query.isError,
-    error: query.error,
-    toggleExercise,
-    isToggling,
-    isOnline,
-    refetch: query.refetch,
-    prefetchWeekCompletion,
-    isCached: !!query.data && query.isStale,
-    dataUpdatedAt: query.dataUpdatedAt,
+    completionMap, isLoading: query_.isLoading, isError: query_.isError,
+    error: query_.error, toggleExercise, isToggling, isOnline,
+    refetch: query_.refetch, prefetchWeekCompletion,
+    isCached: !!query_.data && query_.isStale,
+    dataUpdatedAt: query_.dataUpdatedAt,
   };
 };

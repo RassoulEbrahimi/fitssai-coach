@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Bell, Dumbbell, Utensils, Sparkles, TrendingUp } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import { supabase } from "@/integrations/supabase/client";
+
 import { getAvatarUrl } from "@/lib/avatarUtils";
 import { GradientCard } from "@/components/micro/GradientCard";
 import { ProgressPill } from "@/components/micro/ProgressPill";

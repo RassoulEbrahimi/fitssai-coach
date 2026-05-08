@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { useAuth } from '@/hooks/useAuth';
-import { supabase } from '@/integrations/supabase/client';
+
 import { Button } from '@/components/ui/button';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -73,13 +73,12 @@ const Navbar = ({ variant = 'default' }: NavbarProps) => {
 
   const checkAdminStatus = async () => {
     if (!user) return;
-
     try {
-      const { data, error } = await supabase.rpc('is_current_user_admin');
-
-      if (error) throw error;
-      setIsAdmin(data || false);
-    } catch (error) {
+      const { doc, getDoc } = await import('firebase/firestore');
+      const { db } = await import('@/lib/firebase');
+      const snap = await getDoc(doc(db, 'users', user.uid));
+      setIsAdmin(snap.exists() && snap.data()?.role === 'admin');
+    } catch {
       setIsAdmin(false);
     }
   };

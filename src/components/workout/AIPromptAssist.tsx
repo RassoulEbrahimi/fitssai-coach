@@ -12,7 +12,6 @@ import { getUserFeedbackSummary, getFeedbackInsight } from '@/integrations/supab
 import { useAuth } from '@/hooks/useAuth';
 import { AISuccessOverlay } from '@/components/ui/AISuccessOverlay';
 import { SmartFocusBar, SmartFocusType } from './SmartFocusBar';
-import { supabase } from '@/integrations/supabase/client';
 import { Switch } from '@/components/ui/switch';
 
 type AIState = 'idle' | 'thinking' | 'results' | 'applied';
@@ -161,16 +160,7 @@ export function AIPromptAssist({
 
   const handleAIGenerate = async (prompt: string, type: 'full-day' | 'single-workout') => {
     try {
-      const { data, error } = await supabase.functions.invoke('generate-day-suggestions', {
-        body: {
-          custom_prompt: prompt,
-          available_time: parseInt(duration) || 45,
-          day_of_week: dayContext ? dayNames[dayContext.dayIndex] : undefined,
-          focus_type: smartFocus
-        }
-      });
-
-      if (error) throw error;
+      throw new Error('AI_UNAVAILABLE');
       
       // Pass the suggestions to the parent component through onGenerate
       // This is a workaround since onGenerate expects a string prompt
