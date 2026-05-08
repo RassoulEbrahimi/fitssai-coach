@@ -57,8 +57,8 @@ const VideoBackground: React.FC = () => {
         preload="auto"
         data-test-id="video-bg-video"
       >
-        <source src="/video/dashboard-bg.webm" type="video/webm" />
-        <source src="/video/dashboard-bg.mp4" type="video/mp4" />
+        <source src={`${import.meta.env.BASE_URL}video/dashboard-bg.webm`} type="video/webm" />
+        <source src={`${import.meta.env.BASE_URL}video/dashboard-bg.mp4`} type="video/mp4" />
         Dein Browser unterstützt kein Video-Tag.
       </video>
 
