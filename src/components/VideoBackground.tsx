@@ -42,7 +42,7 @@ const VideoBackground: React.FC = () => {
 
   return (
     <div
-      className="pointer-events-none fixed inset-0 z-0 overflow-hidden"
+      className="pointer-events-none fixed inset-0 z-[1] overflow-hidden"
       aria-hidden="true"
       data-test-id="video-bg-root"
     >
