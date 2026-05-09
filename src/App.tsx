@@ -66,8 +66,8 @@ const App = () => {
                     <Suspense fallback={<div className="h-screen w-full flex items-center justify-center bg-background"><div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div></div>}>
                       <Routes>
                         <Route path="/" element={<RootRedirect />} />
-                        <Route path="/auth/:mode" element={<AuthPage />} />
                         <Route path="/auth/reset" element={<ResetPasswordPage />} />
+                        <Route path="/auth/:mode" element={<AuthPage />} />
                         <Route path="/dashboard" element={<DashboardPage />} />
                         <Route path="/onboarding" element={<OnboardingPage />} />
                         <Route path="/admin" element={<AdminPanel />} />
