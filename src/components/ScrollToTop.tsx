@@ -12,7 +12,9 @@ export default function ScrollToTop() {
     const { pathname } = useLocation();
 
     useEffect(() => {
-        // Reset the dedicated scroll container
+        window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+
+        // Keep resetting the legacy container during the scroll-model transition.
         const scrollContainer = document.getElementById("app-scroll");
         if (scrollContainer) {
             scrollContainer.scrollTo({ top: 0, left: 0, behavior: "auto" });
