@@ -63,7 +63,7 @@ const DashboardPage = () => {
   // Render Dashboard immediately even if checkingProfile is true
 
   return (
-    <div className="flex flex-col min-h-[100dvh] w-full bg-background overflow-x-hidden">
+    <div className="flex flex-col min-h-[100dvh] w-full bg-transparent overflow-x-hidden">
       <main
         ref={mainRef}
         id="app-scroll"
