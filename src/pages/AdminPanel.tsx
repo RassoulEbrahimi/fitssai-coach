@@ -3,7 +3,7 @@ import { Navigate } from "react-router-dom";
 import { useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
-import { parseISO } from 'date-fns';
+import { isValid, parseISO } from 'date-fns';
 import { formatDateForDisplay } from '@/lib/dateUtils';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -164,8 +164,14 @@ const AdminPanel = () => {
           getDocs(collection(db, 'users', u.id, 'workout_plans')),
           getDocs(collection(db, 'users', u.id, 'nutrition_plans')),
         ]);
-        wpSnap.forEach(d => plans.push({ id: d.id, user_id: u.id, content: d.data().content, created_at: '', type: 'workout', user_email: u.email }));
-        npSnap.forEach(d => plans.push({ id: d.id, user_id: u.id, content: d.data().content, created_at: '', type: 'nutrition', user_email: u.email }));
+        wpSnap.forEach(d => {
+          const data = d.data();
+          plans.push({ id: d.id, user_id: u.id, content: data.content, created_at: data.createdAt instanceof Timestamp ? data.createdAt.toDate().toISOString() : '', type: 'workout', user_email: u.email });
+        });
+        npSnap.forEach(d => {
+          const data = d.data();
+          plans.push({ id: d.id, user_id: u.id, content: data.content, created_at: data.createdAt instanceof Timestamp ? data.createdAt.toDate().toISOString() : '', type: 'nutrition', user_email: u.email });
+        });
       }
       setPlans(plans);
     } catch (error) {
@@ -205,8 +211,10 @@ const AdminPanel = () => {
     }
   };
 
-  const formatDate = (dateString: string) => {
-    return formatDateForDisplay(parseISO(dateString), 'EEEE, d. MMMM');
+  const formatDate = (dateString: string | null | undefined) => {
+    if (!dateString) return '-';
+    const date = parseISO(dateString);
+    return isValid(date) ? formatDateForDisplay(date, 'EEEE, d. MMMM') : '-';
   };
 
   const formatGoal = (goal: string) => {
@@ -371,29 +379,29 @@ const AdminPanel = () => {
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {users.map((user) => (
-                        <TableRow key={user.id}>
-                          <TableCell className="font-medium">{user.email}</TableCell>
-                          <TableCell>{user.age}</TableCell>
-                          <TableCell>{user.weight} kg</TableCell>
-                          <TableCell>{user.height} cm</TableCell>
-                          <TableCell>{formatGoal(user.fitness_goal)}</TableCell>
-                          <TableCell>{formatDiet(user.dietary_preference)}</TableCell>
+                      {users.map((profileUser) => (
+                        <TableRow key={profileUser.id}>
+                          <TableCell className="font-medium">{profileUser.email}</TableCell>
+                          <TableCell>{profileUser.age}</TableCell>
+                          <TableCell>{profileUser.weight} kg</TableCell>
+                          <TableCell>{profileUser.height} cm</TableCell>
+                          <TableCell>{formatGoal(profileUser.fitness_goal)}</TableCell>
+                          <TableCell>{formatDiet(profileUser.dietary_preference)}</TableCell>
                           <TableCell>
-                            <Badge variant={user.is_admin ? "default" : "secondary"}>
-                              {user.is_admin ? 'Admin' : 'Benutzer'}
+                            <Badge variant={profileUser.is_admin ? "default" : "secondary"}>
+                              {profileUser.is_admin ? 'Admin' : 'Benutzer'}
                             </Badge>
                           </TableCell>
-                          <TableCell>{formatDate(user.created_at)}</TableCell>
+                          <TableCell>{formatDate(profileUser.created_at)}</TableCell>
                           <TableCell>
                             <div className="flex items-center gap-2">
                               <Button
                                 variant="outline"
                                 size="sm"
-                                onClick={() => toggleAdminStatus(user.id, user.is_admin)}
-                                disabled={user.id === user?.id} // Prevent self-modification
+                                onClick={() => toggleAdminStatus(profileUser.id, profileUser.is_admin)}
+                                disabled={profileUser.id === user?.uid} // Prevent self-modification
                               >
-                                {user.is_admin ? (
+                                {profileUser.is_admin ? (
                                   <UserX className="h-4 w-4" />
                                 ) : (
                                   <UserCheck className="h-4 w-4" />
@@ -406,7 +414,7 @@ const AdminPanel = () => {
                                     variant="outline" 
                                     size="sm"
                                     className="text-destructive hover:text-destructive"
-                                    disabled={user.id === user?.id} // Prevent self-deletion
+                                    disabled={profileUser.id === user?.uid} // Prevent self-deletion
                                   >
                                     <Trash2 className="h-4 w-4" />
                                   </Button>
@@ -417,7 +425,7 @@ const AdminPanel = () => {
                                        Benutzer löschen
                                      </AlertDialogTitle>
                                      <AlertDialogDescription>
-                                       Sind Sie sicher, dass Sie den Benutzer ${user.email} löschen möchten? Diese Aktion kann nicht rückgängig gemacht werden.
+                                       Sind Sie sicher, dass Sie den Benutzer ${profileUser.email} löschen möchten? Diese Aktion kann nicht rückgängig gemacht werden.
                                      </AlertDialogDescription>
                                   </AlertDialogHeader>
                                   <AlertDialogFooter>
@@ -425,7 +433,7 @@ const AdminPanel = () => {
                                        Abbrechen
                                      </AlertDialogCancel>
                                      <AlertDialogAction
-                                       onClick={() => deleteUser(user.id)}
+                                       onClick={() => deleteUser(profileUser.id)}
                                        className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
                                      >
                                        Löschen
