@@ -9,7 +9,6 @@ import {
 import { auth } from "@/lib/firebase";
 import { toast } from "sonner";
 import { Input } from "@/components/ui/input";
-import { CanvasRevealEffect } from "./CanvasRevealEffect";
 import { useAuth } from "@/hooks/useAuth";
 import { useNavigate } from "react-router-dom";
 
@@ -26,7 +25,6 @@ export default function SignInFlow() {
 
     const [showPassword, setShowPassword]       = useState(false);
     const [loading, setLoading]                 = useState(false);
-    const [showReverseCanvas, setShowReverseCanvas] = useState(false);
 
     useEffect(() => {
         console.log("Auth State:", { user: !!user, step, mode });
@@ -90,29 +88,11 @@ export default function SignInFlow() {
 
     const handleSuccess = () => {
         setStep("success");
-        setShowReverseCanvas(true);
         setTimeout(() => { navigate("/dashboard"); }, 1500);
     };
 
     return (
         <div className="relative min-h-screen w-full flex flex-col items-center justify-center overflow-hidden bg-black text-white font-sans selection:bg-emerald-500/30">
-            <div className="absolute inset-0 z-0 pointer-events-none">
-                <AnimatePresence>
-                    {!showReverseCanvas && (
-                        <motion.div initial={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 1 }} className="absolute inset-0">
-                            <CanvasRevealEffect animationSpeed={3.0} containerClassName="bg-black" colors={[[0, 255, 163]]} opacities={[0.2, 0.2, 0.2, 0.2, 0.2, 0.4, 0.4, 0.4, 0.4, 1]} dotSize={2} />
-                        </motion.div>
-                    )}
-                </AnimatePresence>
-                <AnimatePresence>
-                    {showReverseCanvas && (
-                        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.5 }} className="absolute inset-0 z-10">
-                            <CanvasRevealEffect animationSpeed={5.0} containerClassName="bg-emerald-950" colors={[[255, 255, 255]]} dotSize={4} />
-                        </motion.div>
-                    )}
-                </AnimatePresence>
-            </div>
-
             <motion.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5, delay: 0.1 }} className="fixed top-8 z-20">
                 {mode !== "forgot" && (
                     <div className="flex items-center gap-1 p-1 rounded-full bg-zinc-900/80 backdrop-blur-md border border-zinc-800">
