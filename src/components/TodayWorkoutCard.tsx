@@ -128,6 +128,7 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
     timerState,
     startTimer,
     skipTimer,
+    cancelTimerForSet,
   } = useRestTimer();
 
 
@@ -299,7 +300,13 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
 
   // Handle starting training - also enables fullscreen
   const handleStartTraining = () => {
-    startSession();
+    // Bind the session to this exact plan day so a reload resumes the same
+    // workout instead of re-attaching to whatever day is shown.
+    if (workoutPlan?.id) {
+      startSession({ planId: workoutPlan.id, weekKey, dayIndex });
+    } else {
+      startSession();
+    }
     setFocusMode(true);
   };
 
@@ -487,6 +494,7 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
                         timerState={timerState}
                         onStartTimer={startTimer}
                         onSkipTimer={skipTimer}
+                        onCancelTimerForSet={cancelTimerForSet}
                       />
                     ))}
                   </div>

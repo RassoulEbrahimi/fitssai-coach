@@ -1,45 +1,78 @@
-import React, { createContext, useContext, useState, useEffect, ReactNode, useCallback } from 'react';
-
-export const SESSION_STARTED_KEY = 'fitssai.training.session.started';
-export const SESSION_START_TIME_KEY = 'fitssai.training.session.start_time';
+import React, {
+    createContext,
+    useContext,
+    useState,
+    useEffect,
+    ReactNode,
+    useCallback,
+    useRef,
+} from 'react';
+import {
+    SESSION_STORAGE_KEY,
+    createSessionPayload,
+    clearStoredSession,
+    describeSessionRejection,
+    migrateLegacySession,
+    parseSessionPayload,
+    readStoredSession,
+    resolveStoredSession,
+    writeStoredSession,
+    type SessionPlanContext,
+    type SessionRejectionReason,
+    type TrainingSessionPayload,
+} from '@/lib/trainingSession';
 
 interface TrainingSessionContextValue {
     isStarted: boolean;
     duration: number; // in seconds
-    startSession: () => void;
+    /** The plan day this session is bound to, or null when nothing is running. */
+    session: TrainingSessionPayload | null;
+    /** Set when a stored session had to be discarded; cleared once shown. */
+    rejectionNotice: string | null;
+    clearRejectionNotice: () => void;
+    startSession: (binding?: { planId: string; weekKey: string; dayIndex: number }) => void;
     endSession: () => void;
+    /**
+     * Validate any stored session against the loaded plan. Called once the plan
+     * is known; a session that does not match is ended rather than rebound.
+     */
+    validateSessionAgainstPlan: (plan: SessionPlanContext) => void;
 }
 
 const TrainingSessionContext = createContext<TrainingSessionContextValue | undefined>(undefined);
 
 export function TrainingSessionProvider({ children }: { children: ReactNode }) {
-    const [isStarted, setIsStarted] = useState<boolean>(() => {
-        try {
-            return localStorage.getItem(SESSION_STARTED_KEY) === 'true';
-        } catch {
-            return false;
-        }
+    const [session, setSession] = useState<TrainingSessionPayload | null>(() => {
+        // The legacy keys carried no plan binding, so there is nothing safe to
+        // resume from them; migrateLegacySession clears them.
+        migrateLegacySession();
+        return readStoredSession();
     });
 
-    const [startTime, setStartTime] = useState<number | null>(() => {
-        try {
-            const stored = localStorage.getItem(SESSION_START_TIME_KEY);
-            return stored ? parseInt(stored, 10) : null;
-        } catch {
-            return null;
-        }
-    });
-
+    const [rejectionNotice, setRejectionNotice] = useState<string | null>(null);
     const [duration, setDuration] = useState(0);
+    /** Validate against the plan only once per loaded session. */
+    const validatedForRef = useRef<string | null>(null);
 
+    /**
+     * When the session starts, this is when. A *bound* session also persists
+     * its plan day; an unbound one (no plan loaded yet) runs in memory only, so
+     * it simply does not survive a reload — which is correct, because there is
+     * no day to resume into.
+     */
+    const [startedAt, setStartedAt] = useState<number | null>(() =>
+        session ? session.startedAt : null
+    );
+
+    const isStarted = startedAt !== null;
+
+    // Keep other tabs in sync.
     useEffect(() => {
         const handleStorageChange = (e: StorageEvent) => {
-            if (e.key === SESSION_STARTED_KEY) {
-                setIsStarted(e.newValue === 'true');
-            }
-            if (e.key === SESSION_START_TIME_KEY) {
-                setStartTime(e.newValue ? parseInt(e.newValue, 10) : null);
-            }
+            if (e.key !== SESSION_STORAGE_KEY) return;
+            const next = parseSessionPayload(e.newValue);
+            setSession(next);
+            setStartedAt(next ? next.startedAt : null);
         };
         window.addEventListener('storage', handleStorageChange);
         return () => window.removeEventListener('storage', handleStorageChange);
@@ -48,11 +81,10 @@ export function TrainingSessionProvider({ children }: { children: ReactNode }) {
     useEffect(() => {
         let interval: ReturnType<typeof setInterval>;
 
-        if (isStarted && startTime) {
-            setDuration(Math.floor((Date.now() - startTime) / 1000));
-            interval = setInterval(() => {
-                setDuration(Math.floor((Date.now() - startTime) / 1000));
-            }, 1000);
+        if (startedAt !== null) {
+            const tick = () => setDuration(Math.floor((Date.now() - startedAt) / 1000));
+            tick();
+            interval = setInterval(tick, 1000);
         } else {
             setDuration(0);
         }
@@ -60,31 +92,70 @@ export function TrainingSessionProvider({ children }: { children: ReactNode }) {
         return () => {
             if (interval) clearInterval(interval);
         };
-    }, [isStarted, startTime]);
+    }, [startedAt]);
 
-    const startSession = useCallback(() => {
-        const now = Date.now();
-        setIsStarted(true);
-        setStartTime(now);
-        localStorage.setItem(SESSION_STARTED_KEY, 'true');
-        localStorage.setItem(SESSION_START_TIME_KEY, now.toString());
-    }, []);
+    const startSession = useCallback(
+        (binding?: { planId: string; weekKey: string; dayIndex: number }) => {
+            if (!binding) {
+                // Without a plan day there is nothing to resume into later, so
+                // nothing is persisted — the session runs in memory only.
+                setSession(null);
+                clearStoredSession();
+                setStartedAt(Date.now());
+                return;
+            }
+            const payload = createSessionPayload(binding.planId, binding.weekKey, binding.dayIndex);
+            validatedForRef.current = `${payload.planId}|${payload.weekKey}|${payload.dayIndex}`;
+            setSession(payload);
+            setStartedAt(payload.startedAt);
+            writeStoredSession(payload);
+        },
+        []
+    );
 
     const endSession = useCallback(() => {
-        setIsStarted(false);
-        setStartTime(null);
+        validatedForRef.current = null;
+        setSession(null);
+        setStartedAt(null);
         setDuration(0);
-        localStorage.removeItem(SESSION_STARTED_KEY);
-        localStorage.removeItem(SESSION_START_TIME_KEY);
+        clearStoredSession();
     }, []);
+
+    const validateSessionAgainstPlan = useCallback((plan: SessionPlanContext) => {
+        setSession((current) => {
+            if (!current) return current;
+
+            const key = `${current.planId}|${current.weekKey}|${current.dayIndex}`;
+            if (validatedForRef.current === key) return current;
+
+            const { session: resolved, reason } = resolveStoredSession(current, plan);
+            if (resolved) {
+                validatedForRef.current = key;
+                return resolved;
+            }
+
+            // Stale: end it. Never silently rebind to today's workout.
+            clearStoredSession();
+            validatedForRef.current = null;
+            setStartedAt(null);
+            setRejectionNotice(describeSessionRejection(reason as SessionRejectionReason));
+            return null;
+        });
+    }, []);
+
+    const clearRejectionNotice = useCallback(() => setRejectionNotice(null), []);
 
     return (
         <TrainingSessionContext.Provider
             value={{
                 isStarted,
                 duration,
+                session,
+                rejectionNotice,
+                clearRejectionNotice,
                 startSession,
-                endSession
+                endSession,
+                validateSessionAgainstPlan,
             }}
         >
             {children}
