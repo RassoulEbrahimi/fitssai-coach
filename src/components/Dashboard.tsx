@@ -22,7 +22,7 @@ import {
   ChevronDown,
   Lock
 } from "lucide-react";
-import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
+import { motion, useReducedMotion } from "framer-motion";
 import { useTranslation } from "react-i18next";
 import { useAuth } from "@/hooks/useAuth";
 import { WorkoutLog, WeekContent } from "@/lib/types";
@@ -137,7 +137,7 @@ const Dashboard = () => {
   const berlinToday = useBerlinToday();
 
   // Navigation State
-  const { activeView, navigateTo, direction } = useAppNavigation();
+  const { activeView, navigateTo, direction, routeParams } = useAppNavigation();
 
   // Custom Hooks Data Access
   const { data: profile, isLoading: isLoadingProfile, refetch: refetchProfile } = useProfile();
@@ -386,6 +386,31 @@ const Dashboard = () => {
     setActiveWeek(weekKey);
   }, [liveWorkoutPlan]);
 
+  /**
+   * Restore a workout deep link (`#/workout?w=<week>&d=<day>`) once the plan
+   * is loaded. Week and day are derived from the plan's start date, so this
+   * has to wait for `liveWorkoutPlan`; the ref makes it fire exactly once so
+   * it never fights the hash WorkoutView rewrites as the user browses.
+   */
+  const deepLinkAppliedRef = useRef(false);
+  useEffect(() => {
+    if (deepLinkAppliedRef.current) return;
+    if (activeView !== 'workout') return;
+    if (!liveWorkoutPlan?.created_at) return;
+
+    const weekParam = Number(routeParams.get('w'));
+    const dayParam = Number(routeParams.get('d'));
+    if (!Number.isInteger(weekParam) || weekParam < 1 || weekParam > 4) return;
+    if (!Number.isInteger(dayParam) || dayParam < 0 || dayParam > 6) return;
+
+    const target = getWorkoutDate(liveWorkoutPlan.created_at, `Week ${weekParam}`, dayParam);
+    if (!target) return;
+
+    deepLinkAppliedRef.current = true;
+    handleDateChange(target);
+  }, [activeView, liveWorkoutPlan?.created_at, routeParams, handleDateChange]);
+
+
 
   // Accurate weekly progress calculation using Berlin timezone
   const getWeeklyProgress = useCallback(() => {
@@ -428,7 +453,7 @@ const Dashboard = () => {
   // Loading state handled by Suspense
 
   return (
-    <div className={`relative overflow-x-hidden ${isFocusMode ? '' : 'z-20'}`}>
+    <div className={`relative overflow-x-clip ${isFocusMode ? '' : 'z-20'}`}>
       {!isFocusMode && <VideoBackground />}
       <motion.div
         id="main-content"
@@ -448,31 +473,26 @@ const Dashboard = () => {
 
 
           <div className="space-y-6">
-            {/* View stack: one child mounted at a time with slide animations */}
-            <div className="relative grid grid-cols-1 grid-rows-1">
-              <AnimatePresence
-                initial={false}
-                mode="popLayout"
-                custom={direction}
-                presenceAffectsLayout={false}
-              >
+            {/*
+              Exactly one view is mounted at a time. There is deliberately no
+              exit animation: an outgoing view kept alive for a transition
+              stays focusable and clickable, so tab order and hit-testing
+              briefly span two screens. The enter animation is keyed on the
+              active view, which gives the same perceived motion.
+            */}
+            <div className="relative">
                 <motion.div
                   key={activeView}
                   custom={direction}
                   initial="enter"
                   animate="center"
-                  exit="exit"
-                  className="w-full col-start-1 row-start-1"
+                  className="w-full"
                   variants={{
                     enter: (dir: 1 | -1) => ({
                       x: prefersReducedMotion || !isMobile ? 0 : dir * 40,
                       opacity: prefersReducedMotion || !isMobile ? 1 : 0
                     }),
-                    center: { x: 0, opacity: 1 },
-                    exit: (dir: 1 | -1) => ({
-                      x: prefersReducedMotion || !isMobile ? 0 : dir * -40,
-                      opacity: prefersReducedMotion || !isMobile ? 1 : 0
-                    })
+                    center: { x: 0, opacity: 1 }
                   }}
                   transition={{
                     type: 'tween',
@@ -585,7 +605,6 @@ const Dashboard = () => {
                   )}
 
                 </motion.div>
-              </AnimatePresence>
             </div>
           </div>
         </motion.div>

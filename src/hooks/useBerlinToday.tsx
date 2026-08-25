@@ -23,7 +23,9 @@ export const useBerlinToday = () => {
         timestamp: new Date().toISOString()
       });
       
-      console.log(`[useBerlinToday] Midnight rollover detected, new today: ${newToday}`);
+      if (import.meta.env.DEV) {
+        console.log(`[useBerlinToday] Midnight rollover detected, new today: ${newToday}`);
+      }
     };
 
     // Calculate milliseconds until next midnight in Berlin timezone
@@ -37,7 +39,9 @@ export const useBerlinToday = () => {
       const nowUtc = new Date();
       const msUntilMidnight = tomorrowBerlin.getTime() - nowUtc.getTime();
       
-      console.log(`[useBerlinToday] Time until next Berlin midnight: ${Math.round(msUntilMidnight / 1000 / 60)} minutes`);
+      if (import.meta.env.DEV) {
+        console.log(`[useBerlinToday] Time until next Berlin midnight: ${Math.round(msUntilMidnight / 1000 / 60)} minutes`);
+      }
       
       return Math.max(0, msUntilMidnight);
     };

@@ -22,17 +22,6 @@ export const WeeklyActivity: React.FC<WeeklyActivityProps> = ({ className }) => 
   const isTargetAchieved = totalMinutes >= targetMinutes;
   const totalDays = viewMode === "weekly" ? 7 : 30;
 
-  // Debug logging
-  console.log("🔍 WeeklyActivity Debug:", {
-    viewMode,
-    dailyData,
-    dayLabels,
-    maxValue,
-    totalMinutes,
-    activeDays,
-    isLoading
-  });
-
   if (isLoading) {
     return (
       <div className={cn("bg-card rounded-3xl p-4 ring-1 ring-border/50 shadow-lg", className)}>

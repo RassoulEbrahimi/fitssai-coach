@@ -41,7 +41,7 @@ const DashboardPage = () => {
     // but usually useAuth resolves quickly. 
     // If we want total instant shell, we might even skip this, but 'user' is needed below.
     return (
-      <div className="flex flex-col min-h-[100dvh] w-full bg-background overflow-x-hidden">
+      <div className="flex flex-col min-h-[100dvh] w-full bg-background overflow-x-clip">
         {/* Minimal shell or skeleton could go here, for now keeping checking logic minimal */}
         <div className="min-h-screen bg-background flex items-center justify-center">
           {/* Short spinner is okay for auth, but profile check (below) should not block */}
@@ -63,7 +63,7 @@ const DashboardPage = () => {
   // Render Dashboard immediately even if checkingProfile is true
 
   return (
-    <div className="flex flex-col min-h-[100dvh] w-full bg-transparent overflow-x-hidden">
+    <div className="flex flex-col min-h-[100dvh] w-full bg-transparent overflow-x-clip">
       <main
         ref={mainRef}
         id="app-scroll"
