@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { shortenSha, formatBuildLabel } from "./buildInfo";
+import { shortenSha, formatBuildLabel, formatVersionLabel, normalizeVersion } from "./buildInfo";
 
 describe("shortenSha", () => {
   it("takes the first seven characters of a full SHA", () => {
@@ -42,5 +42,38 @@ describe("formatBuildLabel", () => {
   it("renders the dev fallback", () => {
     expect(formatBuildLabel(null)).toBe("Build dev");
     expect(formatBuildLabel("unknown")).toBe("Build dev");
+  });
+});
+
+describe("normalizeVersion", () => {
+  it("passes a real version through", () => {
+    expect(normalizeVersion("1.4.2")).toBe("1.4.2");
+  });
+
+  it("falls back rather than inventing a version", () => {
+    expect(normalizeVersion(null)).toBe("0.0.0");
+    expect(normalizeVersion(undefined)).toBe("0.0.0");
+    expect(normalizeVersion("  ")).toBe("0.0.0");
+  });
+});
+
+describe("formatVersionLabel", () => {
+  it("renders the package version and short SHA", () => {
+    expect(formatVersionLabel("1.0.0", "4a9741f3f859136b02c7fc606eff0095a5159757")).toBe(
+      "Version 1.0.0 · 4a9741f"
+    );
+  });
+
+  it("uses the dev fallback for the commit, keeping the real version", () => {
+    expect(formatVersionLabel("1.0.0", null)).toBe("Version 1.0.0 · dev");
+    expect(formatVersionLabel("1.0.0", "unknown")).toBe("Version 1.0.0 · dev");
+  });
+
+  it("falls back on both halves independently", () => {
+    expect(formatVersionLabel(null, null)).toBe("Version 0.0.0 · dev");
+  });
+
+  it("separates the two parts with a middle dot", () => {
+    expect(formatVersionLabel("2.1.0", "abcdef1234")).toContain(" · ");
   });
 });

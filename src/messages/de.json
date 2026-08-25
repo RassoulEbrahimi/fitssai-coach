@@ -42,7 +42,9 @@
     "passwordUpdated": "Passwort erfolgreich aktualisiert!",
     "passwordUpdateFailed": "Passwort konnte nicht aktualisiert werden",
     "resetCodeMissing": "Der Link zum Zurücksetzen des Passworts fehlt oder ist ungültig.",
-    "resetCodeInvalid": "Der Link zum Zurücksetzen des Passworts ist ungültig oder abgelaufen."
+    "resetCodeInvalid": "Der Link zum Zurücksetzen des Passworts ist ungültig oder abgelaufen.",
+    "showPassword": "Passwort anzeigen",
+    "hidePassword": "Passwort verbergen"
   },
   "navbar": {
     "home": "Startseite",

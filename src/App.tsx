@@ -27,6 +27,7 @@ const AdminPanel = lazy(() => import('./pages/AdminPanel'));
 const NotFound = lazy(() => import('./pages/NotFound'));
 const FarewellPage = lazy(() => import('./pages/FarewellPage').then(module => ({ default: module.FarewellPage })));
 const ResetPasswordPage = lazy(() => import('./pages/ResetPasswordPage'));
+const LegalPage = lazy(() => import('./pages/LegalPage'));
 
 const App = () => {
   const { i18n } = useTranslation();
@@ -72,6 +73,7 @@ const App = () => {
                         <Route path="/onboarding" element={<OnboardingPage />} />
                         <Route path="/admin" element={<AdminPanel />} />
                         <Route path="/farewell" element={<FarewellPage />} />
+                        <Route path="/legal/:document" element={<LegalPage />} />
                         {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
                         <Route path="*" element={<NotFound />} />
                       </Routes>
