@@ -55,7 +55,8 @@ export function AddWorkoutModal({
   const [hasExistingExercises, setHasExistingExercises] = useState(false);
   const { user } = useAuth();
 
-  // Sync activeTab with mode prop when modal opens
+  // Reset on every open: manual is the default, so reopening after a visit to
+  // the KI tab starts on manual again rather than remembering the last tab.
   useEffect(() => {
     if (isOpen) {
       setActiveTab(mode);
@@ -260,8 +261,8 @@ export function AddWorkoutModal({
               Training hinzufügen
             </DialogTitle>
             <DialogDescription className="sr-only">
-              Füge Übungen zu diesem Trainingstag hinzu — mit einem KI-Vorschlag
-              oder manuell.
+              Füge Übungen zu diesem Trainingstag hinzu — manuell oder mit
+              einem KI-Vorschlag.
             </DialogDescription>
           </DialogHeader>
 
@@ -269,20 +270,27 @@ export function AddWorkoutModal({
           <div className="relative">
 
                   <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as 'ai' | 'manual')} className="w-full">
+                    {/*
+                      Manual is the primary action and comes first; the KI
+                      suggestion is secondary. Labels are German, like the rest
+                      of the app.
+                    */}
                     <TabsList className="grid w-full grid-cols-2 mb-6 bg-muted/50">
                       <TabsTrigger 
-                        value="ai" 
-                        className="data-[state=active]:bg-primary/20 data-[state=active]:text-primary transition-all"
+                        value="manual"
+                        className="min-w-0 px-1.5 text-xs sm:px-3 sm:text-sm data-[state=active]:bg-primary/20 data-[state=active]:text-primary transition-all"
                       >
-                        <span className="mr-2">✨</span>
-                        AI Suggestion
+                        {/* The emoji is decoration; at 360px the label needs
+                            the width more than the icon does. */}
+                        <span className="mr-2 hidden sm:inline" aria-hidden="true">➕</span>
+                        <span className="whitespace-nowrap">Manuell hinzufügen</span>
                       </TabsTrigger>
                       <TabsTrigger 
-                        value="manual"
-                        className="data-[state=active]:bg-primary/20 data-[state=active]:text-primary transition-all"
+                        value="ai" 
+                        className="min-w-0 px-1.5 text-xs sm:px-3 sm:text-sm data-[state=active]:bg-primary/20 data-[state=active]:text-primary transition-all"
                       >
-                        <span className="mr-2">➕</span>
-                        Manual Add
+                        <span className="mr-2 hidden sm:inline" aria-hidden="true">✨</span>
+                        <span className="whitespace-nowrap">KI-Vorschlag</span>
                       </TabsTrigger>
                     </TabsList>
 

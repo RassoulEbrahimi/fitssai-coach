@@ -167,7 +167,7 @@
     "weeklyActivity": {
       "empty": {
         "title": "Noch keine Aktivität",
-        "description": "Starte ein Training, um deinen Balken zu füllen!"
+        "description": "Starte dein erstes Training – dein Fortschritt erscheint hier."
       }
     },
     "progress": {

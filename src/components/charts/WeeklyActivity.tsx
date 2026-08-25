@@ -21,6 +21,10 @@ export const WeeklyActivity: React.FC<WeeklyActivityProps> = ({ className }) => 
   const progressPercentage = (totalMinutes / targetMinutes) * 100;
   const isTargetAchieved = totalMinutes >= targetMinutes;
   const totalDays = viewMode === "weekly" ? 7 : 30;
+  // No real history for this period. The bar chart carries no information at
+  // that point, so it is not rendered at all — the previous build kept it and
+  // floated the empty-state message on top of it, which is what collided.
+  const hasNoActivity = totalMinutes === 0 && activeDays === 0;
 
   if (isLoading) {
     return (
@@ -95,30 +99,31 @@ export const WeeklyActivity: React.FC<WeeklyActivityProps> = ({ className }) => 
         </motion.button>
       </div>
 
-      {/* Chart - Vertical Daily Bars */}
-      <div className="flex items-end justify-between gap-1.5 mb-4 relative">
-        {/* Zero State Overlay */}
-        {totalMinutes === 0 && (
-          <div className="absolute inset-0 z-10 flex flex-col items-center justify-center p-2 rounded-lg bg-background/50 backdrop-blur-[2px] transition-all duration-500">
-            <motion.div
-              initial={{ opacity: 0, scale: 0.8 }}
-              animate={{ opacity: 1, scale: 1 }}
-              transition={{ delay: 0.2 }}
-              className="flex flex-col items-center text-center space-y-2 max-w-[180px]"
-            >
-              <div className="p-2 rounded-full bg-primary/10 mb-1">
-                <Activity className="h-5 w-5 text-primary" />
-              </div>
-              <h3 className="text-sm font-semibold text-foreground">
-                {t('dashboard.weeklyActivity.empty.title', 'Noch keine Aktivität')}
-              </h3>
-              <p className="text-xs text-muted-foreground leading-tight">
-                {t('dashboard.weeklyActivity.empty.description', 'Starte ein Training, um deinen Balken zu füllen!')}
-              </p>
-            </motion.div>
+      {/* Zero state - its own block in normal flow, never over the metrics */}
+      {hasNoActivity ? (
+        <motion.div
+          data-testid="activity-empty-state"
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.1 }}
+          className="flex flex-col items-center text-center gap-2 rounded-2xl bg-muted/30 px-4 py-6 mb-4"
+        >
+          <div className="p-2 rounded-full bg-primary/10">
+            <Activity className="h-5 w-5 text-primary" aria-hidden="true" />
           </div>
-        )}
-
+          <h3 className="text-sm font-semibold text-foreground">
+            {t('dashboard.weeklyActivity.empty.title', 'Noch keine Aktivität')}
+          </h3>
+          <p className="text-xs text-muted-foreground max-w-[240px]">
+            {t(
+              'dashboard.weeklyActivity.empty.description',
+              'Starte dein erstes Training – dein Fortschritt erscheint hier.'
+            )}
+          </p>
+        </motion.div>
+      ) : (
+      /* Chart - Vertical Daily Bars */
+      <div className="flex items-end justify-between gap-1.5 mb-4">
         {dailyData.map((value, index) => {
           // Calculate height proportional to actual minutes (0-60min range typically)
           const heightPercentage = maxValue > 0 ? (value / maxValue) * 100 : 0;
@@ -129,11 +134,6 @@ export const WeeklyActivity: React.FC<WeeklyActivityProps> = ({ className }) => 
             barColor = "bg-success"; // Green for ≥30min
           } else if (value > 0) {
             barColor = "bg-warning"; // Yellow for >0 but <30min
-          }
-
-          // Muted appearance if total is 0 (behind overlay)
-          if (totalMinutes === 0) {
-            barColor = "bg-muted/50";
           }
 
           return (
@@ -174,6 +174,7 @@ export const WeeklyActivity: React.FC<WeeklyActivityProps> = ({ className }) => 
           );
         })}
       </div>
+      )}
 
       {/* Progress Summary */}
       <div className="space-y-3">
@@ -207,11 +208,11 @@ export const WeeklyActivity: React.FC<WeeklyActivityProps> = ({ className }) => 
           {isTargetAchieved ? (
             <>
               <Flame className="h-4 w-4 text-success" aria-hidden="true" />
-              <span className="text-sm font-medium text-success">Strong week!</span>
+              <span className="text-sm font-medium text-success">Starke Woche!</span>
             </>
           ) : (
             <span className="text-sm text-muted-foreground">
-              Keep pushing, tomorrow counts!
+              Bleib dran – morgen zählt auch!
             </span>
           )}
         </div>

@@ -12,6 +12,11 @@ import { cn } from '@/lib/utils';
 import { collection, getDocs, query, orderBy } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { Loader2 } from 'lucide-react';
+import {
+  EXERCISE_CATEGORIES,
+  classifyExercise,
+  type ExerciseCategory,
+} from '@/lib/exerciseCategories';
 
 // Type for exercise from database
 export interface DatabaseExercise {
@@ -34,17 +39,6 @@ const muscleToIcon: Record<string, string> = {
   'Abs': '🧘',
 };
 
-// Map target muscles to tabs
-const muscleToTab: Record<string, 'upper' | 'lower' | 'core'> = {
-  'Chest': 'upper',
-  'Back': 'upper',
-  'Shoulders': 'upper',
-  'Triceps': 'upper',
-  'Biceps': 'upper',
-  'Legs': 'lower',
-  'Abs': 'core',
-};
-
 interface ExerciseSelectorProps {
   onSelect: (exercise: DatabaseExercise) => void;
   currentExercise?: DatabaseExercise | null;
@@ -57,7 +51,7 @@ export const ExerciseSelector: React.FC<ExerciseSelectorProps> = ({
   className,
 }) => {
   const [searchValue, setSearchValue] = useState('');
-  const [selectedTab, setSelectedTab] = useState<'upper' | 'lower' | 'core'>('upper');
+  const [selectedTab, setSelectedTab] = useState<ExerciseCategory>('push');
   const [highlightedExercise, setHighlightedExercise] = useState<string | null>(null);
   const [exercises, setExercises] = useState<DatabaseExercise[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -96,8 +90,7 @@ export const ExerciseSelector: React.FC<ExerciseSelectorProps> = ({
   // Set initial tab based on current exercise
   useEffect(() => {
     if (currentExercise) {
-      const tab = muscleToTab[currentExercise.target_muscle] || 'upper';
-      setSelectedTab(tab);
+      setSelectedTab(classifyExercise(currentExercise));
       
       // Highlight and scroll after a short delay
       setTimeout(() => {
@@ -124,20 +117,11 @@ export const ExerciseSelector: React.FC<ExerciseSelectorProps> = ({
       ex.name.toLowerCase().includes(normalizedSearch)
     );
   } else {
-    // Filter by selected tab
-    if (selectedTab === 'upper') {
-      filteredExercises = filteredExercises.filter(ex => 
-        ['Chest', 'Back', 'Shoulders', 'Triceps', 'Biceps'].includes(ex.target_muscle)
-      );
-    } else if (selectedTab === 'lower') {
-      filteredExercises = filteredExercises.filter(ex => 
-        ex.target_muscle === 'Legs'
-      );
-    } else if (selectedTab === 'core') {
-      filteredExercises = filteredExercises.filter(ex => 
-        ex.target_muscle === 'Abs'
-      );
-    }
+    // Filter by selected category. Classification is total, so the two
+    // categories together always cover the whole catalogue.
+    filteredExercises = filteredExercises.filter(
+      ex => classifyExercise(ex) === selectedTab
+    );
   }
   
   // Group by target muscle
@@ -171,11 +155,13 @@ export const ExerciseSelector: React.FC<ExerciseSelectorProps> = ({
         />
       </Command>
       
-      <Tabs value={selectedTab} onValueChange={(v) => setSelectedTab(v as 'upper' | 'lower' | 'core')}>
-        <TabsList className="grid w-full grid-cols-3">
-          <TabsTrigger value="upper">💪 Oberkörper</TabsTrigger>
-          <TabsTrigger value="lower">🦵 Beine</TabsTrigger>
-          <TabsTrigger value="core">🧘 Core</TabsTrigger>
+      <Tabs value={selectedTab} onValueChange={(v) => setSelectedTab(v as ExerciseCategory)}>
+        <TabsList className="grid w-full grid-cols-2">
+          {EXERCISE_CATEGORIES.map((category) => (
+            <TabsTrigger key={category.id} value={category.id}>
+              {category.label}
+            </TabsTrigger>
+          ))}
         </TabsList>
       </Tabs>
       
