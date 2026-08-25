@@ -110,3 +110,41 @@ export const isBerlinTodayForWeekDay = (
   const todayStr = getBerlinToday();
   return workoutDateStr === todayStr;
 };
+
+/**
+ * The seven calendar dates (Monday…Sunday) of the real week containing `date`.
+ *
+ * This is the *calendar display* authority and is deliberately independent of
+ * the plan: `getWorkoutDate` answers "which real day is plan week N, day M",
+ * which is a different question and is anchored to `created_at`. Deriving the
+ * calendar strip from the plan is what made a plan created in November 2025
+ * render "Nov. 2025" forever, because `getWorkoutWeekDay` clamps any date past
+ * the programme onto Week 4.
+ *
+ * `date` must already carry Berlin wall-clock fields — that is what
+ * `getBerlinNow()` returns and what the app stores as the selected date — so
+ * no further timezone conversion happens here and none is needed.
+ */
+export const getCalendarWeekDates = (date: Date): Date[] => {
+  const monday = startOfWeek(startOfDay(date), WEEK_OPTIONS);
+  return Array.from({ length: 7 }, (_, index) => addDays(monday, index));
+};
+
+/** Weekday of `date` as a Monday-based index (0 = Monday … 6 = Sunday). */
+export const getCalendarDayIndex = (date: Date): number => {
+  const dayStart = startOfDay(date);
+  const monday = startOfWeek(dayStart, WEEK_OPTIONS);
+  return differenceInCalendarDays(dayStart, monday);
+};
+
+/** YYYY-MM-DD for a Berlin wall-clock date, for comparison against today. */
+export const toCalendarDateString = (date: Date): string =>
+  format(date, "yyyy-MM-dd");
+
+/** True when `date` is today in Berlin. */
+export const isCalendarToday = (date: Date): boolean =>
+  toCalendarDateString(date) === getBerlinToday();
+
+/** Shift a selected date by whole calendar weeks, keeping the weekday. */
+export const shiftCalendarWeeks = (date: Date, weeks: number): Date =>
+  addDays(startOfDay(date), weeks * 7);
