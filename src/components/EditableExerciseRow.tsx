@@ -4,6 +4,7 @@ import { Input } from '@/components/ui/input';
 import { Info, Edit2, Check, X } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import type { Exercise } from '@/hooks/useExerciseEditor';
+import { formatRestDisplay } from '@/lib/restTimeParser';
 
 interface EditableExerciseRowProps {
   exercise: Exercise;
@@ -106,8 +107,8 @@ const EditableExerciseRow: React.FC<EditableExerciseRowProps> = ({
           {exercise.rest && (
             <div className="flex items-center gap-0.5 sm:gap-1">
               <span className="text-sm md:text-base" aria-hidden="true">⏱</span>
-              <span className="tabular-nums">{exercise.rest}</span>
-              <span className="sr-only">Pause: {exercise.rest}</span>
+              <span className="tabular-nums">{formatRestDisplay(exercise.rest)}</span>
+              <span className="sr-only">Pause: {formatRestDisplay(exercise.rest)}</span>
             </div>
           )}
           {exercise.description && exercise.description.includes('km') && (

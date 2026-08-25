@@ -1,4 +1,4 @@
-﻿import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import { X, Loader2, Bot } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
@@ -143,7 +143,7 @@ export function AddWorkoutModal({
       await setDoc(doc(db, 'users', user.uid, 'workout_plans', planData.id),
         { content, updatedAt: Timestamp.now() }, { merge: true });
 
-      toastSuccess('HinzugefÃ¼gt', `${exercise.name} wurde zu deinem Training hinzugefÃ¼gt`);
+      toastSuccess('Hinzugefügt', `${exercise.name} wurde zu deinem Training hinzugefügt`);
       
       if (onWorkoutAdded) {
         onWorkoutAdded();
@@ -152,7 +152,7 @@ export function AddWorkoutModal({
       onClose();
     } catch (err: any) {
       console.error('Error adding workout:', err);
-      toastError('Fehler', 'Training konnte nicht hinzugefÃ¼gt werden');
+      toastError('Fehler', 'Training konnte nicht hinzugefügt werden');
     }
   };
 
@@ -225,8 +225,8 @@ export function AddWorkoutModal({
         { content, updatedAt: Timestamp.now() }, { merge: true });
 
       toastSuccess(
-        'Tagesplan hinzugefÃ¼gt!',
-        `${suggestions.length} Ãœbungen wurden ${action === 'replace' ? 'ersetzt' : 'hinzugefÃ¼gt'}`
+        'Tagesplan hinzugefügt!',
+        `${suggestions.length} Übungen wurden ${action === 'replace' ? 'ersetzt' : 'hinzugefügt'}`
       );
       
       if (onWorkoutAdded) {
@@ -237,7 +237,7 @@ export function AddWorkoutModal({
       onClose();
     } catch (err: any) {
       console.error('Error adding all workouts:', err);
-      toastError('Fehler', 'Tagesplan konnte nicht hinzugefÃ¼gt werden');
+      toastError('Fehler', 'Tagesplan konnte nicht hinzugefügt werden');
     }
   };
 
@@ -307,7 +307,7 @@ export function AddWorkoutModal({
                   onClick={onClose}
                   whileTap={prefersReducedMotion ? {} : { scale: 0.95 }}
                   transition={{ duration: 0.1 }}
-                  aria-label="Modal schlieÃŸen"
+                  aria-label="Modal schließen"
                 >
                   <X className="h-4 w-4 text-muted-foreground" />
                 </motion.button>
@@ -315,7 +315,7 @@ export function AddWorkoutModal({
                 {/* Content */}
                 <div className="relative px-3 sm:px-4 py-4 sm:py-6 pt-8 pr-[max(0.75rem,env(safe-area-inset-right))] sm:pr-[max(1rem,env(safe-area-inset-right))]">
                   <h2 className="text-2xl font-semibold mb-6 text-center bg-gradient-to-r from-primary via-emerald-400 to-teal-400 bg-clip-text text-transparent">
-                    Training hinzufÃ¼gen
+                    Training hinzufügen
                   </h2>
 
                   <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as 'ai' | 'manual')} className="w-full">
@@ -324,14 +324,14 @@ export function AddWorkoutModal({
                         value="ai" 
                         className="data-[state=active]:bg-primary/20 data-[state=active]:text-primary transition-all"
                       >
-                        <span className="mr-2">âœ¨</span>
+                        <span className="mr-2">✨</span>
                         AI Suggestion
                       </TabsTrigger>
                       <TabsTrigger 
                         value="manual"
                         className="data-[state=active]:bg-primary/20 data-[state=active]:text-primary transition-all"
                       >
-                        <span className="mr-2">âž•</span>
+                        <span className="mr-2">➕</span>
                         Manual Add
                       </TabsTrigger>
                     </TabsList>
@@ -379,12 +379,12 @@ export function AddWorkoutModal({
                           {isLoading ? (
                             <>
                               <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                              Wird hinzugefÃ¼gt...
+                              Wird hinzugefügt...
                             </>
                           ) : (
                             <>
-                              <span className="mr-2">ðŸŸ¢</span>
-                              <span className="truncate">Plan Ã¼bernehmen</span>
+                              <span className="mr-2">🟢</span>
+                              <span className="truncate">Plan übernehmen</span>
                             </>
                           )}
                         </Button>
@@ -401,10 +401,10 @@ export function AddWorkoutModal({
             <AlertDialogContent className="bg-background/95 backdrop-blur-xl border-primary/20">
               <AlertDialogHeader>
                 <AlertDialogTitle className="text-xl font-semibold bg-gradient-to-r from-primary to-emerald-400 bg-clip-text text-transparent">
-                  Vorhandene Ãœbungen gefunden
+                  Vorhandene Übungen gefunden
                 </AlertDialogTitle>
                 <AlertDialogDescription className="text-muted-foreground">
-                  Dieser Tag enthÃ¤lt bereits Ãœbungen. MÃ¶chtest du die neuen VorschlÃ¤ge ersetzen oder hinzufÃ¼gen?
+                  Dieser Tag enthält bereits Übungen. Möchtest du die neuen Vorschläge ersetzen oder hinzufügen?
                 </AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter>
@@ -415,7 +415,7 @@ export function AddWorkoutModal({
                   onClick={() => handleAddAllWorkouts('add')}
                   className="bg-primary/20 text-primary hover:bg-primary/30"
                 >
-                  HinzufÃ¼gen
+                  Hinzufügen
                 </AlertDialogAction>
                 <AlertDialogAction
                   onClick={() => handleAddAllWorkouts('replace')}

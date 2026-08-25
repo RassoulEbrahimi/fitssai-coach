@@ -7,6 +7,30 @@ import { motion, AnimatePresence } from "framer-motion";
 import { useTranslation } from "react-i18next";
 import { NutritionPlan, NutritionMeal } from "@/lib/types";
 
+/**
+ * Display-only mapping for the meal buckets stored in Firestore.
+ * The stored keys are the contract and stay untouched (read-only in Phase 1);
+ * only the label shown to the user and the display order are defined here.
+ */
+const MEAL_LABELS: Record<string, string> = {
+  breakfast: "Frühstück",
+  lunch: "Mittagessen",
+  dinner: "Abendessen",
+  snacks: "Snacks",
+  snack: "Snacks",
+};
+
+const MEAL_ORDER = ["breakfast", "lunch", "dinner", "snacks", "snack"];
+
+const mealLabel = (key: string): string =>
+  MEAL_LABELS[key.trim().toLowerCase()] ?? key;
+
+/** Chronological order for known buckets; anything unknown keeps its order at the end. */
+const mealRank = (key: string): number => {
+  const index = MEAL_ORDER.indexOf(key.trim().toLowerCase());
+  return index === -1 ? MEAL_ORDER.length : index;
+};
+
 
 
 interface NutritionViewProps {
@@ -42,9 +66,11 @@ const NutritionView: React.FC<NutritionViewProps> = React.memo(({
           <CardContent>
             {nutritionPlan ? (
               <div className="space-y-6">
-                {Object.entries(nutritionPlan.content).map(([mealType, meals]) => (
+                {Object.entries(nutritionPlan.content)
+                  .sort(([a], [b]) => mealRank(a) - mealRank(b))
+                  .map(([mealType, meals]) => (
                   <div key={mealType} className="space-y-3">
-                    <h3 className="text-lg font-semibold capitalize text-primary">{mealType}</h3>
+                    <h3 className="text-lg font-semibold text-primary">{mealLabel(mealType)}</h3>
                     <div className="grid gap-3">
                       {(Array.isArray(meals) ? meals : []).map((meal: NutritionMeal, mealIndex: number) => (
                         <motion.div
@@ -66,7 +92,7 @@ const NutritionView: React.FC<NutritionViewProps> = React.memo(({
                                   transition={{ duration: 0.2 }}
                                 >
                                   <Badge variant="secondary" className="ml-3">
-                                    {meal.calories} cal
+                                    {meal.calories} kcal
                                   </Badge>
                                 </motion.div>
                               </div>
@@ -76,7 +102,7 @@ const NutritionView: React.FC<NutritionViewProps> = React.memo(({
                       ))}
                     </div>
                   </div>
-                ))}
+                  ))}
               </div>
             ) : (
               <motion.div

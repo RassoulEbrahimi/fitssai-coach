@@ -6,7 +6,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { Progress } from "@/components/ui/progress";
 import ExerciseSetRow from "./ExerciseSetRow";
 import RestTimerBar from "./RestTimerBar";
-import { parseRestTime } from "@/lib/restTimeParser";
+import { parseRestTime, formatRestDisplay } from "@/lib/restTimeParser";
 
 interface Exercise {
   name: string;
@@ -163,7 +163,7 @@ export const ExerciseWithSets: React.FC<ExerciseWithSetsProps> = ({
                 </span>
                 {exercise.rest && (
                   <span className="text-xs text-muted-foreground">
-                    • {exercise.rest} Pause
+                    • {formatRestDisplay(exercise.rest, { withLabel: true })}
                   </span>
                 )}
               </div>

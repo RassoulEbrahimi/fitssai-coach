@@ -57,3 +57,28 @@ export function formatRestTime(seconds: number): string {
   const secs = seconds % 60;
   return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
 }
+
+/**
+ * Format a stored rest value for display, in one consistent convention.
+ *
+ * Stored values are inconsistent ("90 sec", "1:30", "60", "90s"), so the raw
+ * value is normalised through parseRestTime first and always rendered in
+ * seconds: "90 s", or "90 s Pause" when the label is needed for context.
+ *
+ * @param rest - Raw stored rest value
+ * @param options.withLabel - Append the German "Pause" label
+ * @returns Formatted string, or an empty string when there is no rest value
+ */
+export function formatRestDisplay(
+  rest: string | undefined,
+  options: { withLabel?: boolean } = {}
+): string {
+  if (!rest || rest.trim() === '') {
+    return '';
+  }
+  const seconds = parseRestTime(rest, 0);
+  if (seconds <= 0) {
+    return '';
+  }
+  return options.withLabel ? `${seconds} s Pause` : `${seconds} s`;
+}
