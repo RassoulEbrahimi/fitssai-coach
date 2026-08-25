@@ -54,7 +54,7 @@ const App = () => {
             <TrainingProvider>
               <AuthProvider>
                 <TooltipProvider>
-                  <div className="sr-only focus:not-sr-only focus:absolute focus:top-0 focus:left-0 focus:p-2 focus:bg-background focus:z-50">
+                  <div className="sr-only focus-within:not-sr-only focus-within:absolute focus-within:top-0 focus-within:left-0 focus-within:p-2 focus-within:bg-background focus-within:z-50">
                     <a href="#main-content" className="mr-4">Zum Hauptinhalt springen</a>
                     <a href="#navigation">Zur Navigation springen</a>
                   </div>

@@ -201,6 +201,22 @@
     font-feature-settings: "rlig" 1, "calt" 1;
     overflow-x: hidden;
   }
+
+  /* Global focus-visible baseline: one consistent keyboard-focus treatment.
+     Uses the existing --ring token, which is defined for both light and dark. */
+  :focus-visible {
+    outline: 2px solid hsl(var(--ring));
+    outline-offset: 2px;
+  }
+
+  /* Landmarks are focus targets for the skip links, not interactive controls,
+     so they should not paint a focus ring when reached that way. */
+  [id="main-content"]:focus,
+  [id="main-content"]:focus-visible,
+  nav[id="navigation"]:focus,
+  nav[id="navigation"]:focus-visible {
+    outline: none;
+  }
 }
 
 @layer utilities {

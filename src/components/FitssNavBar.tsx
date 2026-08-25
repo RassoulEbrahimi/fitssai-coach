@@ -10,7 +10,7 @@ interface FitssNavBarProps {
   enableAdvancedGlass?: boolean
 }
 
-export const FitssNavBar = forwardRef<HTMLDivElement, FitssNavBarProps>(
+export const FitssNavBar = forwardRef<HTMLElement, FitssNavBarProps>(
   ({ activeView, onChange, enableAdvancedGlass = false }, ref) => {
     const navItems = NAVIGATION_Order.map(view => ({
       name: NAVIGATION_CONFIG[view].label,

@@ -21,7 +21,7 @@ interface NavBarProps {
   className?: string
 }
 
-export const NavBar = React.forwardRef<HTMLDivElement, NavBarProps>(
+export const NavBar = React.forwardRef<HTMLElement, NavBarProps>(
   ({ items, activeTab, onTabChange, enableAdvancedGlass = false, className }, ref) => {
   const [isMobile, setIsMobile] = useState(false)
   const { actualTheme } = useTheme()
@@ -106,8 +106,11 @@ export const NavBar = React.forwardRef<HTMLDivElement, NavBarProps>(
         }
       `}</style>
       
-      <motion.div 
+      <motion.nav 
         ref={ref}
+        id="navigation"
+        aria-label="Hauptnavigation"
+        tabIndex={-1}
         initial={false}
         animate={{
           y: isFocusMode ? 100 : 0,
@@ -342,7 +345,7 @@ export const NavBar = React.forwardRef<HTMLDivElement, NavBarProps>(
         </motion.div>
         </div> {/* Close relative wrapper for glass layer */}
       </div> {/* Close flex container */}
-      </motion.div>
+      </motion.nav>
     </>
   )
 })
