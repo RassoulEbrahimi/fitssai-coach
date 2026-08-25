@@ -6,7 +6,7 @@ import { WifiOff, RefreshCw, AlertCircle, CheckCircle2 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useTranslation } from "react-i18next";
 import { format } from 'date-fns';
-import { getWorkoutWeekDay } from "@/lib/workoutDateUtils";
+import { getWorkoutWeekDay, getCalendarWeekDates, getCalendarDayIndex, isCalendarToday, shiftCalendarWeeks } from "@/lib/workoutDateUtils";
 import { de } from 'date-fns/locale';
 import ExerciseListSkeleton from "@/components/skeletons/ExerciseListSkeleton";
 import TodayWorkoutCard from "@/components/TodayWorkoutCard";
@@ -136,6 +136,33 @@ const WorkoutView: React.FC<WorkoutViewProps> = ({
   // Expanded day is always the currently selected day
   const expandedDay = activeDayIndex;
 
+  /*
+    Calendar strip. Dates come from the real week around `selectedDate`, never
+    from `plan.created_at`: the plan grid clamps anything past week 4 back onto
+    week 4, which is why a plan created in November 2025 kept rendering
+    "Nov. 2025". Each cell still reports the plan day its date maps to, so
+    completion marks stay correct without the display borrowing the plan's
+    calendar.
+  */
+  const calendarDayIndex = useMemo(() => getCalendarDayIndex(selectedDate), [selectedDate]);
+
+  const calendarCells = useMemo(() => {
+    return getCalendarWeekDates(selectedDate).map((date) => {
+      const planDay = livePlan?.created_at
+        ? getWorkoutWeekDay(livePlan.created_at, date)
+        : null;
+      const withinPlan = planDay ? !planDay.isBeforeStart && !planDay.isAfterPlan : false;
+      return {
+        date,
+        isToday: isCalendarToday(date),
+        isCompleted:
+          withinPlan && planDay
+            ? isDayCompleted(normalizeWeekKey(planDay.weekKey), planDay.dayIndex)
+            : false,
+      };
+    });
+  }, [selectedDate, livePlan?.created_at, isDayCompleted]);
+
   // Canonical week key used everywhere in this component
   const wk = normalizeWeekKey(activeWeek);
 
@@ -239,33 +266,20 @@ const WorkoutView: React.FC<WorkoutViewProps> = ({
   const planFinished = planDay.planFinished;
 
   // Handle week navigation
+  /*
+    Navigation walks real calendar weeks. It used to step through plan weeks
+    and derive a date from the plan, which meant the arrows could not leave the
+    plan's own month and never reached the current one.
+  */
   const handlePrevWeek = useCallback(() => {
-    if (!livePlan?.created_at) return;
-
-    const currentWeekNum = Number(wk.match(/\d+/)?.[0] ?? 1);
-    const newWeekNum = Math.max(1, currentWeekNum - 1);
-    const newWeekKey = `Week ${newWeekNum}`;
-    const newDate = getDateFor(newWeekKey, activeDayIndex);
-
-    if (newDate) {
-      logEvent('week_navigation', { direction: 'prev', fromWeek: wk, toWeek: newWeekKey });
-      handleDateChange(newDate);
-    }
-  }, [livePlan?.created_at, wk, activeDayIndex, getDateFor, handleDateChange]);
+    logEvent('week_navigation', { direction: 'prev', fromWeek: wk });
+    handleDateChange(shiftCalendarWeeks(selectedDate, -1));
+  }, [wk, selectedDate, handleDateChange]);
 
   const handleNextWeek = useCallback(() => {
-    if (!livePlan?.created_at) return;
-
-    const currentWeekNum = Number(wk.match(/\d+/)?.[0] ?? 1);
-    const newWeekNum = Math.min(52, currentWeekNum + 1);
-    const newWeekKey = `Week ${newWeekNum}`;
-    const newDate = getDateFor(newWeekKey, activeDayIndex);
-
-    if (newDate) {
-      logEvent('week_navigation', { direction: 'next', fromWeek: wk, toWeek: newWeekKey });
-      handleDateChange(newDate);
-    }
-  }, [livePlan?.created_at, wk, activeDayIndex, getDateFor, handleDateChange]);
+    logEvent('week_navigation', { direction: 'next', fromWeek: wk });
+    handleDateChange(shiftCalendarWeeks(selectedDate, 1));
+  }, [wk, selectedDate, handleDateChange]);
 
   // Keyboard shortcuts for week navigation
   useEffect(() => {
@@ -297,12 +311,12 @@ const WorkoutView: React.FC<WorkoutViewProps> = ({
 
   // Handle day click in calendar
   const handleDayClick = useCallback((dayIndex: number) => {
-    // Update selected date - this will automatically update expandedDay via activeDayIndex
-    const newDate = getDateFor(wk, dayIndex);
+    // Select the real calendar date of that cell; the plan day follows from it.
+    const newDate = calendarCells[dayIndex]?.date;
     if (newDate) {
       handleDateChange(newDate);
     }
-  }, [wk, getDateFor, handleDateChange]);
+  }, [calendarCells, handleDateChange]);
 
   // Handle week activation with animation - set selectedDate to that week's Monday + current dayIndex
   const handleWeekActivation = (weekNum: number) => {
@@ -589,11 +603,8 @@ const WorkoutView: React.FC<WorkoutViewProps> = ({
     </motion.div>;
   }
 
-  // Compute header date from active day or fallback to day 0
-  const headerDate = getDateFor(wk, activeDayIndex ?? 0) ?? getDateFor(wk, 0);
-  const monthYear = headerDate ? format(headerDate, 'MMM yyyy', {
-    locale: de
-  }) : '';
+  // Header shows the month/year of the date the user is actually looking at.
+  const monthYear = format(selectedDate, 'MMM yyyy', { locale: de });
 
   return (
     <WorkoutErrorBoundary>
@@ -670,12 +681,9 @@ const WorkoutView: React.FC<WorkoutViewProps> = ({
 
         {/* Weekly Calendar Navigation */}
         <WeekNavigation
-          wk={wk}
           monthYear={monthYear}
-          activeDayIndex={activeDayIndex}
-          getDateFor={getDateFor}
-          isDayCompleted={isDayCompleted}
-          isTodayInWeekDay={isTodayInWeekDay}
+          cells={calendarCells}
+          activeDayIndex={calendarDayIndex}
           onPrevWeek={handlePrevWeek}
           onNextWeek={handleNextWeek}
           onDayClick={handleDayClick}

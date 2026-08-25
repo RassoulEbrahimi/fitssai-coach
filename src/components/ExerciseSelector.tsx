@@ -124,9 +124,19 @@ export const ExerciseSelector: React.FC<ExerciseSelectorProps> = ({
     );
   }
   
-  // Group by target muscle
+  /*
+    Catalogue entries without a usable `target_muscle` used to be filtered out
+    by the old muscle-list tabs, so their group never rendered. Push/Pull shows
+    every exercise, which surfaced them under a literal "undefined" heading.
+    They are collected under a truthful German label instead — never dropped.
+  */
+  const UNGROUPED = '__ungrouped__';
+
   const groupedExercises = filteredExercises.reduce((acc, ex) => {
-    const muscle = ex.target_muscle;
+    const muscle =
+      typeof ex.target_muscle === 'string' && ex.target_muscle.trim() !== ''
+        ? ex.target_muscle.trim()
+        : UNGROUPED;
     if (!acc[muscle]) acc[muscle] = [];
     acc[muscle].push(ex);
     return acc;
@@ -142,6 +152,14 @@ export const ExerciseSelector: React.FC<ExerciseSelectorProps> = ({
     'Biceps': 'Bizeps',
     'Abs': 'Bauch',
   };
+
+  /** Named groups first, the catch-all last. */
+  const groupEntries = Object.entries(groupedExercises).sort(
+    ([a], [b]) => Number(a === UNGROUPED) - Number(b === UNGROUPED)
+  );
+
+  const groupHeading = (muscle: string): string =>
+    muscle === UNGROUPED ? 'Weitere Übungen' : muscleTranslations[muscle] || muscle;
 
   return (
     <div className={cn("space-y-3", className)}>
@@ -176,8 +194,8 @@ export const ExerciseSelector: React.FC<ExerciseSelectorProps> = ({
             <>
               <CommandEmpty>Keine Übung gefunden.</CommandEmpty>
               
-              {Object.entries(groupedExercises).map(([muscle, muscleExercises]) => (
-                <CommandGroup key={muscle} heading={muscleTranslations[muscle] || muscle}>
+              {groupEntries.map(([muscle, muscleExercises]) => (
+                <CommandGroup key={muscle} heading={groupHeading(muscle)}>
                   {muscleExercises.map((exercise) => (
                     <CommandItem
                       key={exercise.id}

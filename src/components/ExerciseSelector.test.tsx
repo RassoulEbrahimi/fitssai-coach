@@ -13,6 +13,9 @@ const CATALOGUE = [
   { id: "7", name: "Crunches", target_muscle: "Abs", category: "Eigengewicht" },
   { id: "8", name: "Rückenstrecker", target_muscle: "Abs", category: "Eigengewicht" },
   { id: "9", name: "Farmers Walk", target_muscle: "Grip", category: "Sonstiges" },
+  // Real catalogue rows can be missing this field entirely.
+  { id: "10", name: "Burpees", category: "Eigengewicht" },
+  { id: "11", name: "Seilspringen", target_muscle: "   ", category: "Cardio" },
 ];
 
 vi.mock("@/lib/firebase", () => ({ auth: {}, db: {} }));
@@ -157,5 +160,52 @@ describe("selection", () => {
 
     expect(onSelect).toHaveBeenCalledTimes(1);
     expect(onSelect.mock.calls[0][0]).toMatchObject({ id: "1", name: "Bankdrücken" });
+  });
+});
+
+describe("exercises with missing group metadata", () => {
+  it("never renders a literal \"undefined\" heading", async () => {
+    // Regression: grouping keyed on a missing target_muscle produced the
+    // string "undefined" as a visible group heading.
+    const { container } = await renderSelector();
+
+    expect(container.textContent).not.toContain("undefined");
+    expect(screen.queryByText("undefined")).not.toBeInTheDocument();
+  });
+
+  it("groups them under a truthful German label, placed last", async () => {
+    const { container } = await renderSelector();
+
+    const headings = Array.from(container.querySelectorAll("[cmdk-group-heading]")).map(
+      (el) => el.textContent?.trim() ?? ""
+    );
+    expect(headings).toContain("Weitere Übungen");
+    expect(headings[headings.length - 1]).toBe("Weitere Übungen");
+    expect(headings).not.toContain("undefined");
+  });
+
+  it("keeps those exercises reachable, not hidden", async () => {
+    const user = userEvent.setup();
+    const { container } = await renderSelector();
+
+    const push = visibleExerciseNames(container);
+    await user.click(screen.getByRole("tab", { name: "Pull" }));
+    await waitFor(() => expect(visibleExerciseNames(container)).not.toEqual(push));
+    const pull = visibleExerciseNames(container);
+
+    const seen = new Set([...push, ...pull]);
+    expect(seen).toContain("Burpees");
+    expect(seen).toContain("Seilspringen");
+    expect(push.length + pull.length).toBe(CATALOGUE.length);
+  });
+
+  it("still finds them through search", async () => {
+    const user = userEvent.setup();
+    const { container } = await renderSelector();
+
+    await user.type(screen.getByPlaceholderText("Übung suchen..."), "Burp");
+
+    await waitFor(() => expect(visibleExerciseNames(container)).toContain("Burpees"));
+    expect(container.textContent).not.toContain("undefined");
   });
 });

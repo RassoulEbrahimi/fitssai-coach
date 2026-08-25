@@ -8,25 +8,31 @@ import { formatDateForDisplay } from "@/lib/dateUtils";
 import { useTranslation } from "react-i18next";
 import { cn } from "@/lib/utils";
 
+/**
+ * One cell of the calendar strip: a real calendar date, plus whatever plan day
+ * that date happens to map to. The two are kept apart on purpose — the date is
+ * what the user sees, the plan day is what the content resolves against.
+ */
+export interface CalendarCell {
+    date: Date;
+    isToday: boolean;
+    isCompleted: boolean;
+}
+
 interface WeekNavigationProps {
-    wk: string;
     monthYear: string;
+    /** Monday…Sunday of the displayed calendar week. */
+    cells: CalendarCell[];
     activeDayIndex: number;
-    getDateFor: (weekKey: string, dayIndex: number) => Date | null;
-    isDayCompleted: (weekKey: string, dayIndex: number) => boolean;
-    isTodayInWeekDay: (weekKey: string, dayIndex: number) => boolean;
     onPrevWeek: () => void;
     onNextWeek: () => void;
     onDayClick: (dayIndex: number) => void;
 }
 
 export const WeekNavigation: React.FC<WeekNavigationProps> = ({
-    wk,
     monthYear,
+    cells,
     activeDayIndex,
-    getDateFor,
-    isDayCompleted,
-    isTodayInWeekDay,
     onPrevWeek,
     onNextWeek,
     onDayClick,
@@ -63,13 +69,12 @@ export const WeekNavigation: React.FC<WeekNavigationProps> = ({
                 </div>
 
                 <div className="grid grid-cols-7 gap-3">
-                    {Array.from({ length: 7 }, (_, i) => {
-                        const date = getDateFor(wk, i);
-                        const dayName = date ? formatDateForDisplay(date, 'E') : '';
-                        const dayNumber = date ? formatDateForDisplay(date, 'd') : '';
+                    {cells.map((cell, i) => {
+                        const dayName = formatDateForDisplay(cell.date, 'E');
+                        const dayNumber = formatDateForDisplay(cell.date, 'd');
                         const isActive = activeDayIndex === i;
-                        const isCompleted = isDayCompleted(wk, i);
-                        const isToday = isTodayInWeekDay(wk, i);
+                        const isCompleted = cell.isCompleted;
+                        const isToday = cell.isToday;
 
                         return (
                             <button
