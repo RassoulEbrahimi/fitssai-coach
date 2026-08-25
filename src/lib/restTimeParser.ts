@@ -82,3 +82,20 @@ export function formatRestDisplay(
   }
   return options.withLabel ? `${seconds} s Pause` : `${seconds} s`;
 }
+
+/**
+ * Screen-reader text for a running rest countdown.
+ *
+ * Announcing every tick would produce a second-by-second stream, so only the
+ * milestones that matter are voiced: 30s, 10s and the end of the pause.
+ * Returns null for every other second, which keeps the live region silent.
+ */
+export function getRestAnnouncement(
+  remainingSeconds: number,
+  isComplete: boolean
+): string | null {
+  if (isComplete || remainingSeconds === 0) return 'Pause beendet';
+  if (remainingSeconds === 30) return '30 Sekunden Pause verbleibend';
+  if (remainingSeconds === 10) return '10 Sekunden Pause verbleibend';
+  return null;
+}
