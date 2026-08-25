@@ -165,7 +165,7 @@ const Dashboard = () => {
   // Performance optimization hooks
   const { prefetchOnIntersection } = useIntersectionPrefetch();
   const { setViewRef } = useFocusManagement(activeView);
-  const bottomNavRef = useRef<HTMLDivElement>(null);
+  const bottomNavRef = useRef<HTMLElement>(null);
 
   // Focus management and intersectionObserver for prefetching
   useEffect(() => {
@@ -432,6 +432,7 @@ const Dashboard = () => {
       {!isFocusMode && <VideoBackground />}
       <motion.div
         id="main-content"
+        tabIndex={-1}
         className={`relative max-w-7xl mx-auto ${isFocusMode ? 'px-0 pt-0 pb-0' : 'z-10 px-4 md:px-6 pt-6'}`}
         initial={isFocusMode ? false : { opacity: 0, y: 20 }}
         animate={isFocusMode ? false : { opacity: 1, y: 0 }}

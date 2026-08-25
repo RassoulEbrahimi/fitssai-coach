@@ -249,7 +249,7 @@ const HomeView: React.FC<HomeViewProps> = ({
 
   return (
     <WorkoutErrorBoundary>
-      <div id="main-content" className="space-y-6">
+      <div className="space-y-6">
         {/* Welcome Header */}
         <div
           className="flex items-center justify-between"
