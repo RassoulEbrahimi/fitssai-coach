@@ -1,6 +1,11 @@
-import { useState, useEffect, createContext, useContext } from "react";
-
-type Theme = "light" | "dark" | "system";
+import { useState, useEffect, useCallback, createContext, useContext } from "react";
+import {
+  type Theme,
+  THEME_STORAGE_KEY,
+  readStoredTheme,
+  getSystemTheme,
+  applyThemeClass,
+} from "@/lib/theme";
 
 interface ThemeContextType {
   theme: Theme;
@@ -10,56 +15,54 @@ interface ThemeContextType {
 
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
 
+/**
+ * Single source of truth for the app theme.
+ *
+ * Storage, migration and DOM class rules live in `@/lib/theme`; the same
+ * rules are mirrored by the pre-hydration script in index.html so the first
+ * paint already matches the persisted setting.
+ */
 export const ThemeProvider = ({ children }: { children: React.ReactNode }) => {
-  const [theme, setThemeState] = useState<Theme>("system");
-  const [actualTheme, setActualTheme] = useState<"light" | "dark">("light");
+  // Initialised from storage so the first render agrees with the class the
+  // pre-hydration script already put on <html> — no flash, no second paint.
+  const [theme, setThemeState] = useState<Theme>(() => readStoredTheme());
+  const [actualTheme, setActualTheme] = useState<"light" | "dark">(() => {
+    const stored = readStoredTheme();
+    return stored === "system" ? getSystemTheme() : stored;
+  });
 
-  // Get system theme preference
-  const getSystemTheme = (): "light" | "dark" => {
-    if (typeof window !== "undefined") {
-      return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
-    }
-    return "light";
-  };
+  const resolveAndApply = useCallback((value: Theme) => {
+    const resolved = value === "system" ? getSystemTheme() : value;
+    setActualTheme(resolved);
+    applyThemeClass(resolved);
+  }, []);
 
-  // Update actual theme based on theme setting
-  const updateActualTheme = (themeValue: Theme) => {
-    const systemTheme = getSystemTheme();
-    const newActualTheme = themeValue === "system" ? systemTheme : themeValue;
-    setActualTheme(newActualTheme);
-    
-    // Update DOM
-    const root = document.documentElement;
-    root.classList.remove("light", "dark");
-    root.classList.add(newActualTheme);
-  };
-
-  // Set theme and persist to localStorage
-  const setTheme = (newTheme: Theme) => {
-    setThemeState(newTheme);
-    localStorage.setItem("theme", newTheme);
-    updateActualTheme(newTheme);
-  };
-
-  useEffect(() => {
-    // Load theme from localStorage or default to system
-    const savedTheme = localStorage.getItem("theme") as Theme | null;
-    const initialTheme = savedTheme || "system";
-    
-    setThemeState(initialTheme);
-    updateActualTheme(initialTheme);
-
-    // Listen for system theme changes
-    const mediaQuery = window.matchMedia("(prefers-color-scheme: dark)");
-    const handleSystemThemeChange = () => {
-      if (theme === "system") {
-        updateActualTheme("system");
+  const setTheme = useCallback(
+    (newTheme: Theme) => {
+      setThemeState(newTheme);
+      try {
+        window.localStorage.setItem(THEME_STORAGE_KEY, newTheme);
+      } catch {
+        // Persisting is best-effort; the in-memory theme still applies.
       }
-    };
+      resolveAndApply(newTheme);
+    },
+    [resolveAndApply]
+  );
 
-    mediaQuery.addEventListener("change", handleSystemThemeChange);
-    return () => mediaQuery.removeEventListener("change", handleSystemThemeChange);
-  }, [theme]);
+  // Keep the DOM in sync with the current setting.
+  useEffect(() => {
+    resolveAndApply(theme);
+  }, [theme, resolveAndApply]);
+
+  // Follow the OS only while the setting is "system".
+  useEffect(() => {
+    if (theme !== "system") return;
+    const mediaQuery = window.matchMedia("(prefers-color-scheme: dark)");
+    const handleChange = () => resolveAndApply("system");
+    mediaQuery.addEventListener("change", handleChange);
+    return () => mediaQuery.removeEventListener("change", handleChange);
+  }, [theme, resolveAndApply]);
 
   return (
     <ThemeContext.Provider value={{ theme, actualTheme, setTheme }}>

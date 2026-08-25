@@ -3,6 +3,39 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- Theme: applied before first paint so there is no light/dark flash.
+         Canonical key is fitssai.theme; the legacy generic "theme" key is
+         migrated once. Kept deliberately minimal — no other boot logic. -->
+    <script>
+      (function () {
+        try {
+          var KEY = "fitssai.theme";
+          var LEGACY = "theme";
+          var valid = { light: 1, dark: 1, system: 1 };
+          var stored = localStorage.getItem(KEY);
+          if (!valid[stored]) {
+            var legacy = localStorage.getItem(LEGACY);
+            if (valid[legacy]) {
+              localStorage.setItem(KEY, legacy);
+              localStorage.removeItem(LEGACY);
+              stored = legacy;
+            } else {
+              stored = "system";
+            }
+          }
+          var resolved =
+            stored === "system"
+              ? (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light")
+              : stored;
+          var root = document.documentElement;
+          root.classList.remove("light", "dark");
+          root.classList.add(resolved);
+          root.style.colorScheme = resolved;
+        } catch (e) {
+          /* Blocked storage: leave the default stylesheet in charge. */
+        }
+      })();
+    </script>
     <title>FitssAI - Your Personal AI Fitness Coach</title>
     <meta name="description" content="Transform your fitness journey with personalized workout and nutrition plans powered by advanced AI. Achieve your goals faster than ever before." />
     <meta name="author" content="Lovable" />
