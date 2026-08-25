@@ -16,6 +16,7 @@ import { usePreferences } from "@/contexts/PreferencesContext";
 import { doc, setDoc, Timestamp } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { useAuth as _useAuth } from "@/hooks/useAuth";
+import { useTheme } from "@/hooks/useTheme";
 import { toast } from "sonner";
 import { uploadAvatar, updateProfileAvatar, getAvatarUrl } from "@/lib/avatarUtils";
 import { WorkoutPlan, NutritionPlan } from "@/lib/types";
@@ -92,10 +93,10 @@ const itemVariants = {
 // Glass card component
 const GlassCard: React.FC<{ children: React.ReactNode; className?: string; onClick?: () => void }> = ({ children, className = "", onClick }) => (
   <div
-    className={`relative overflow-hidden rounded-2xl border border-white/10 bg-white/5 backdrop-blur-md ${onClick ? "cursor-pointer hover:bg-white/10 transition-colors" : ""} ${className}`}
+    className={`relative overflow-hidden rounded-2xl border border-border bg-card/80 backdrop-blur-md ${onClick ? "cursor-pointer hover:bg-accent transition-colors" : ""} ${className}`}
     onClick={onClick}
   >
-    <div className="absolute inset-0 bg-gradient-to-br from-white/5 to-transparent pointer-events-none" />
+    <div className="absolute inset-0 bg-gradient-to-br from-foreground/5 to-transparent pointer-events-none" />
     <div className="relative">{children}</div>
   </div>
 );
@@ -140,7 +141,7 @@ const CircularProgress: React.FC<CircularProgressProps> = ({
           r={radius}
           fill="none"
           strokeWidth={strokeWidth}
-          className="text-white/10"
+          className="text-muted-foreground/20"
           stroke="currentColor"
         />
         {/* Progress with gradient effect */}
@@ -175,7 +176,7 @@ const MiniStat: React.FC<{
   value: string;
 }> = ({ icon, label, value }) => (
   <div className="flex items-center gap-2">
-    <div className="p-1.5 rounded-lg bg-white/10 text-muted-foreground">
+    <div className="p-1.5 rounded-lg bg-muted text-muted-foreground">
       {icon}
     </div>
     <div>
@@ -196,7 +197,7 @@ const StatCard: React.FC<{
 }> = ({ icon, label, value, unit, accent, children }) => (
   <GlassCard className="p-4">
     <div className="flex items-center gap-2 mb-2">
-      <div className={`p-2 rounded-lg ${accent ? "bg-emerald-500/20 text-emerald-400" : "bg-white/10 text-muted-foreground"}`}>
+      <div className={`p-2 rounded-lg ${accent ? "bg-emerald-500/20 text-emerald-600 dark:text-emerald-400" : "bg-muted text-muted-foreground"}`}>
         {icon}
       </div>
       <span className="text-xs text-muted-foreground uppercase tracking-wider">{label}</span>
@@ -246,50 +247,8 @@ const ProfileView: React.FC<ProfileViewProps> = React.memo(({
     calories: 0,
   });
 
-  // Theme state
-  type ThemeMode = 'system' | 'light' | 'dark';
-  const [themeMode, setThemeMode] = useState<ThemeMode>(() => {
-    const stored = localStorage.getItem('fitssai.theme');
-    return (stored as ThemeMode) || 'system';
-  });
-
-  // Theme effect
-  useEffect(() => {
-    const applyTheme = (mode: ThemeMode) => {
-      const root = document.documentElement;
-
-      if (mode === 'dark') {
-        root.classList.add('dark');
-      } else if (mode === 'light') {
-        root.classList.remove('dark');
-      } else {
-        // System mode
-        const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-        if (prefersDark) {
-          root.classList.add('dark');
-        } else {
-          root.classList.remove('dark');
-        }
-      }
-    };
-
-    applyTheme(themeMode);
-    localStorage.setItem('fitssai.theme', themeMode);
-
-    // Listen for system changes only when in system mode
-    if (themeMode === 'system') {
-      const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
-      const handler = (e: MediaQueryListEvent) => {
-        if (e.matches) {
-          document.documentElement.classList.add('dark');
-        } else {
-          document.documentElement.classList.remove('dark');
-        }
-      };
-      mediaQuery.addEventListener('change', handler);
-      return () => mediaQuery.removeEventListener('change', handler);
-    }
-  }, [themeMode]);
+  // Theme is owned by ThemeProvider (useTheme) — this screen only renders the control.
+  const { theme: themeMode, setTheme: setThemeMode } = useTheme();
 
   // Fetch user stats on mount
   useEffect(() => {
@@ -661,7 +620,7 @@ const ProfileView: React.FC<ProfileViewProps> = React.memo(({
               </div>
             </div>
             {/* Segmented Control */}
-            <div className="flex rounded-xl bg-white/5 p-1 gap-1">
+            <div className="flex rounded-xl bg-muted/50 p-1 gap-1">
               {[
                 { value: 'system' as const, icon: Monitor, label: 'System' },
                 { value: 'light' as const, icon: Sun, label: 'Hell' },
@@ -671,8 +630,8 @@ const ProfileView: React.FC<ProfileViewProps> = React.memo(({
                   key={value}
                   onClick={() => setThemeMode(value)}
                   className={`flex-1 flex items-center justify-center gap-1.5 py-2 px-3 rounded-lg text-xs font-medium transition-all ${themeMode === value
-                    ? 'bg-emerald-500/20 text-emerald-400 shadow-sm'
-                    : 'text-muted-foreground hover:bg-white/5'
+                    ? 'bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 shadow-sm'
+                    : 'text-muted-foreground hover:bg-accent'
                     }`}
                 >
                   <Icon className="w-3.5 h-3.5" />
@@ -733,7 +692,7 @@ const ProfileView: React.FC<ProfileViewProps> = React.memo(({
 
       {/* Edit Profile Dialog */}
       <Dialog open={isEditOpen} onOpenChange={setIsEditOpen}>
-        <DialogContent className="bg-background/95 backdrop-blur-xl border-white/10">
+        <DialogContent className="bg-background/95 backdrop-blur-xl border-border">
           <DialogHeader>
             <DialogTitle>Profil bearbeiten</DialogTitle>
           </DialogHeader>
@@ -863,7 +822,7 @@ const ProfileView: React.FC<ProfileViewProps> = React.memo(({
 
       {/* Edit Goals Dialog */}
       <Dialog open={isGoalsOpen} onOpenChange={setIsGoalsOpen}>
-        <DialogContent className="bg-background/95 backdrop-blur-xl border-white/10">
+        <DialogContent className="bg-background/95 backdrop-blur-xl border-border">
           <DialogHeader>
             <DialogTitle>Ziele bearbeiten</DialogTitle>
           </DialogHeader>

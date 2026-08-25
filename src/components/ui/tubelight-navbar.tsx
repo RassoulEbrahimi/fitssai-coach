@@ -246,8 +246,8 @@ export const NavBar = React.forwardRef<HTMLElement, NavBarProps>(
                 }}
                 className={cn(
                   "relative cursor-pointer text-sm font-semibold px-6 py-2 rounded-full transition-colors touch-manipulation",
-                  "text-foreground/70 hover:text-emerald-300",
-                  isActive && "text-emerald-400",
+                  "text-foreground/70 hover:text-emerald-600 dark:hover:text-emerald-300",
+                  isActive && "text-emerald-600 dark:text-emerald-400",
                 )}
                 style={{ willChange: isActive ? 'transform' : 'auto' }}
               >
