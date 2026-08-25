@@ -18,6 +18,7 @@ interface Exercise {
 
 interface RestTimerState {
   exerciseIndex: number | null;
+  setNumber: number | null;
   remainingSeconds: number;
   totalRestSeconds: number;
   isComplete: boolean;
@@ -39,8 +40,10 @@ interface ExerciseWithSetsProps {
   defaultExpanded?: boolean;
   // Rest timer props
   timerState: RestTimerState;
-  onStartTimer: (exerciseIndex: number, durationSeconds: number) => void;
+  onStartTimer: (exerciseIndex: number, durationSeconds: number, setNumber?: number | null) => void;
   onSkipTimer: () => void;
+  /** Cancels the rest timer only when this exact set owns it. */
+  onCancelTimerForSet?: (exerciseIndex: number, setNumber: number) => void;
 }
 
 export const ExerciseWithSets: React.FC<ExerciseWithSetsProps> = ({
@@ -54,6 +57,7 @@ export const ExerciseWithSets: React.FC<ExerciseWithSetsProps> = ({
   timerState,
   onStartTimer,
   onSkipTimer,
+  onCancelTimerForSet,
 }) => {
   // Parse number of sets
   const totalSets = useMemo(() => {
@@ -107,9 +111,12 @@ export const ExerciseWithSets: React.FC<ExerciseWithSetsProps> = ({
       completed: willBeCompleted,
     });
 
-    // Start rest timer when a set is completed (not uncompleted)
     if (willBeCompleted) {
-      onStartTimer(exerciseIndex, restSeconds);
+      // The timer belongs to the set that started it.
+      onStartTimer(exerciseIndex, restSeconds, setNumber);
+    } else {
+      // Un-completing that same set cancels its timer; other sets leave it alone.
+      onCancelTimerForSet?.(exerciseIndex, setNumber);
     }
   };
 

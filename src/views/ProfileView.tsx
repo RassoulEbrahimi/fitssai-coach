@@ -5,6 +5,7 @@ import { RefreshCw, Sparkles, User, Ruler, Weight, Activity, Settings, Calendar,
 import { AIAnalyticsCard } from "@/components/AIAnalyticsCard";
 import { LogoutButton } from "@/components/LogoutButton";
 import { DeleteAccountButton } from "@/components/DeleteAccountButton";
+import { BUILD_LABEL } from "@/lib/buildInfo";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
@@ -688,6 +689,14 @@ const ProfileView: React.FC<ProfileViewProps> = React.memo(({
       <motion.section variants={itemVariants} className="space-y-3">
         <LogoutButton />
         <DeleteAccountButton />
+
+        {/*
+          Read-only build identity, so it is possible to tell at a glance
+          whether the browser/PWA is running the latest deploy.
+        */}
+        <p className="pt-2 text-center text-[11px] text-muted-foreground/70">
+          {BUILD_LABEL}
+        </p>
       </motion.section>
 
       {/* Edit Profile Dialog */}

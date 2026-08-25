@@ -122,6 +122,7 @@ import {
 } from "@/lib/workoutDateUtils";
 import { useBerlinToday } from "@/hooks/useBerlinToday";
 import { resolvePlanDay, isPlanFinished, getWeekDayProgress } from "@/lib/planLifecycle";
+import { useTrainingSession } from "@/contexts/TrainingSessionContext";
 import { useWorkoutHelpers } from "@/hooks/useWorkoutHelpers";
 import { usePreferences } from "@/contexts/PreferencesContext";
 import { useFocusMode } from "@/contexts/FocusModeContext";
@@ -348,6 +349,30 @@ const Dashboard = () => {
       isCompleted: resolved.isCompleted,
     };
   }, [liveWorkoutPlan, workoutLogs]);
+
+  /**
+   * Validate any stored session against the loaded plan. A session bound to a
+   * different plan, or to a day the plan no longer has, is ended here rather
+   * than silently re-attached to today's workout.
+   */
+  const { validateSessionAgainstPlan, rejectionNotice, clearRejectionNotice } = useTrainingSession();
+
+  useEffect(() => {
+    if (!liveWorkoutPlan?.id) return;
+    validateSessionAgainstPlan({
+      planId: liveWorkoutPlan.id,
+      hasDay: (weekKey, dayIndex) => {
+        const days = liveWorkoutPlan.content?.[weekKey];
+        return Array.isArray(days) && !!days[dayIndex];
+      },
+    });
+  }, [liveWorkoutPlan, validateSessionAgainstPlan]);
+
+  useEffect(() => {
+    if (!rejectionNotice) return;
+    toast.info(rejectionNotice);
+    clearRejectionNotice();
+  }, [rejectionNotice, clearRejectionNotice]);
 
   /** True once the four-week programme is over. */
   const planFinished = useMemo(
