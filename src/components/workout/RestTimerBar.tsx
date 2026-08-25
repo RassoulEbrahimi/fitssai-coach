@@ -2,7 +2,7 @@ import React from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Timer, SkipForward, Zap } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { formatRestTime } from "@/lib/restTimeParser";
+import { formatRestTime, getRestAnnouncement } from "@/lib/restTimeParser";
 import { Button } from "@/components/ui/button";
 
 interface RestTimerBarProps {
@@ -75,6 +75,20 @@ export const RestTimerBar: React.FC<RestTimerBarProps> = ({
             }}
           />
           
+          {/*
+            The visible countdown is aria-hidden: role="timer" plus a live
+            region that only carries milestones keeps the announcement useful
+            instead of once per second.
+          */}
+          <div
+            role="timer"
+            aria-live="polite"
+            aria-atomic="true"
+            className="sr-only"
+          >
+            {getRestAnnouncement(remainingSeconds, isComplete)}
+          </div>
+
           {/* Content layer */}
           <div className="relative z-10 px-4 py-3">
             <AnimatePresence mode="wait">
@@ -113,13 +127,14 @@ export const RestTimerBar: React.FC<RestTimerBarProps> = ({
                       "w-4 h-4 transition-colors",
                       isUrgent ? "text-amber-400" : "text-primary"
                     )} />
-                    <span className="text-sm font-medium text-muted-foreground">
+                    <span className="text-sm font-medium text-muted-foreground" aria-hidden="true">
                       Pause
                     </span>
                   </div>
                   
-                  {/* Center: Timer countdown with animated size */}
-                  <div className="flex-1 flex justify-center">
+                  {/* Center: countdown. Hidden from AT — the live region above
+                      carries the milestones, so the digits are decorative. */}
+                  <div className="flex-1 flex justify-center" aria-hidden="true">
                     <AnimatePresence mode="wait">
                       <motion.span 
                         key={remainingSeconds < 60 ? "seconds-only" : "full-time"}
@@ -159,13 +174,14 @@ export const RestTimerBar: React.FC<RestTimerBarProps> = ({
                       size="icon"
                       onClick={onSkip}
                       className={cn(
-                        "h-8 w-8 rounded-full",
+                        // 44px minimum touch target.
+                        "h-11 w-11 rounded-full",
                         "text-muted-foreground hover:text-foreground",
                         "hover:bg-foreground/10 transition-colors"
                       )}
-                      aria-label="Überspringen"
+                      aria-label="Pause überspringen"
                     >
-                      <SkipForward className="w-4 h-4" />
+                      <SkipForward className="w-4 h-4" aria-hidden="true" />
                     </Button>
                   </div>
                 </motion.div>

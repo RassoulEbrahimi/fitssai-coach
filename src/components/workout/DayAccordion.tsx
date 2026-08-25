@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Collapsible, CollapsibleTrigger, CollapsibleContent } from "@/components/ui/collapsible";
 import { motion, AnimatePresence } from "framer-motion";
-import { ChevronUp, ChevronRight, Plus } from "lucide-react";
+import { ChevronUp, ChevronRight, Plus, Sparkles } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { cn } from "@/lib/utils";
 import { isElementVisible } from "@/lib/workout/viewHelpers";
@@ -14,7 +14,6 @@ import { formatDateForDisplay } from "@/lib/dateUtils";
 // Imports for children
 import ExerciseListSkeleton from "@/components/skeletons/ExerciseListSkeleton";
 import { WorkoutFeedbackCard } from "@/components/feedback/WorkoutFeedbackCard";
-import { SpeedDial } from "@/components/SpeedDial";
 // Lazy import for ExerciseList to avoid circular deps if any, 
 // but since we are refactoring, we can likely import directly or pass as prop if needed.
 // However, the original file used React.lazy. Let's keep consistency or allow passing the component.
@@ -217,10 +216,33 @@ export const DayAccordion: React.FC<DayAccordionProps> = ({
                                                     )}
 
                                                     {!isRestDay && (
-                                                        <SpeedDial
-                                                            onAddExercise={() => onOpenAddExercise(wk, dayIndex)}
-                                                            onAutoFill={() => onAutoFill(wk, dayIndex)}
-                                                        />
+                                                        /*
+                                                          In-flow actions. These replace a floating SpeedDial that
+                                                          overlaid the day's content and whose 28px buttons were well
+                                                          under the 44px target floor.
+                                                        */
+                                                        <div className="mt-3 flex flex-wrap gap-2">
+                                                            <Button
+                                                                type="button"
+                                                                variant="outline"
+                                                                size="sm"
+                                                                className="min-h-[44px] flex-1 gap-2"
+                                                                onClick={() => onOpenAddExercise(wk, dayIndex)}
+                                                            >
+                                                                <Plus className="h-4 w-4" aria-hidden="true" />
+                                                                Übung hinzufügen
+                                                            </Button>
+                                                            <Button
+                                                                type="button"
+                                                                variant="ghost"
+                                                                size="sm"
+                                                                className="min-h-[44px] flex-1 gap-2"
+                                                                onClick={() => onAutoFill(wk, dayIndex)}
+                                                            >
+                                                                <Sparkles className="h-4 w-4" aria-hidden="true" />
+                                                                Automatisch ausfüllen
+                                                            </Button>
+                                                        </div>
                                                     )}
 
                                                     {!isRestDay && !isFutureDay && <div className="mt-2 pt-1.5 border-t border-border/50" />}

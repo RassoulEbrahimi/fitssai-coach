@@ -1,7 +1,7 @@
-import { motion, AnimatePresence } from 'framer-motion';
 import { X, Loader2, Bot } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import {
@@ -54,7 +54,6 @@ export function AddWorkoutModal({
   const [showConfirmDialog, setShowConfirmDialog] = useState(false);
   const [hasExistingExercises, setHasExistingExercises] = useState(false);
   const { user } = useAuth();
-  const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
   // Sync activeTab with mode prop when modal opens
   useEffect(() => {
@@ -241,82 +240,33 @@ export function AddWorkoutModal({
     }
   };
 
-  const modalVariants = prefersReducedMotion
-    ? {
-        hidden: { opacity: 0 },
-        visible: { opacity: 1 }
-      }
-    : {
-        hidden: { opacity: 0, scale: 0.95 },
-        visible: { opacity: 1, scale: 1 }
-      };
-
-  const overlayVariants = {
-    hidden: { opacity: 0 },
-    visible: { opacity: 1 }
-  };
 
   return (
-    <AnimatePresence>
-      {isOpen && (
-        <>
-          {/* Backdrop overlay */}
-          <motion.div
-            className="fixed inset-0 bg-background/80 backdrop-blur-sm z-50"
-            variants={overlayVariants}
-            initial="hidden"
-            animate="visible"
-            exit="hidden"
-            transition={{ duration: 0.2 }}
-            onClick={onClose}
-          />
+    <>
+      {/*
+        Ported onto the shared Radix dialog primitive: it supplies role="dialog",
+        aria-modal, the focus trap, Escape-to-close and focus return to the
+        trigger. The previous hand-rolled overlay had none of those.
+      */}
+      <Dialog open={isOpen} onOpenChange={(open) => { if (!open) onClose(); }}>
+        <DialogContent
+          className="w-full max-w-2xl max-h-[90dvh] overflow-y-auto rounded-3xl border-primary/20 bg-background/95 backdrop-blur-xl [&>button]:h-11 [&>button]:w-11 [&>button]:flex [&>button]:items-center [&>button]:justify-center [&>button]:rounded-full [&>button]:bg-muted/80 [&>button]:opacity-100"
+          style={{
+            boxShadow: '0 0 40px rgba(16, 185, 129, 0.25), 0 8px 32px rgba(0, 0, 0, 0.12)',
+          }}
+        >
+          <DialogHeader>
+            <DialogTitle className="text-2xl font-semibold text-center bg-gradient-to-r from-primary via-emerald-400 to-teal-400 bg-clip-text text-transparent">
+              Training hinzufügen
+            </DialogTitle>
+            <DialogDescription className="sr-only">
+              Füge Übungen zu diesem Trainingstag hinzu — mit einem KI-Vorschlag
+              oder manuell.
+            </DialogDescription>
+          </DialogHeader>
 
-          {/* Modal */}
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 pointer-events-none">
-            <motion.div
-              className="relative w-full max-w-2xl pointer-events-auto"
-              variants={modalVariants}
-              initial="hidden"
-              animate="visible"
-              exit="hidden"
-              transition={prefersReducedMotion ? { duration: 0.15 } : { duration: 0.3, ease: [0.4, 0, 0.2, 1] }}
-            >
-              {/* Glass container */}
-              <div
-                className="relative bg-background/95 backdrop-blur-xl rounded-3xl border border-primary/20 overflow-visible"
-                style={{
-                  boxShadow: '0 0 40px rgba(16, 185, 129, 0.25), 0 8px 32px rgba(0, 0, 0, 0.12)',
-                  willChange: 'transform, opacity'
-                }}
-              >
-                {/* Decorative glow elements */}
-                <div className="absolute inset-0 pointer-events-none overflow-hidden">
-                  <div
-                    className="absolute -top-24 -right-24 w-48 h-48 bg-primary/20 rounded-full blur-3xl"
-                    style={{ willChange: 'transform' }}
-                  />
-                  <div
-                    className="absolute -bottom-24 -left-24 w-48 h-48 bg-emerald-500/10 rounded-full blur-3xl"
-                    style={{ willChange: 'transform' }}
-                  />
-                </div>
-
-                {/* Close button */}
-                <motion.button
-                  className="absolute top-4 right-4 z-10 w-8 h-8 rounded-full bg-muted/80 hover:bg-muted flex items-center justify-center transition-colors"
-                  onClick={onClose}
-                  whileTap={prefersReducedMotion ? {} : { scale: 0.95 }}
-                  transition={{ duration: 0.1 }}
-                  aria-label="Modal schließen"
-                >
-                  <X className="h-4 w-4 text-muted-foreground" />
-                </motion.button>
-
-                {/* Content */}
-                <div className="relative px-3 sm:px-4 py-4 sm:py-6 pt-8 pr-[max(0.75rem,env(safe-area-inset-right))] sm:pr-[max(1rem,env(safe-area-inset-right))]">
-                  <h2 className="text-2xl font-semibold mb-6 text-center bg-gradient-to-r from-primary via-emerald-400 to-teal-400 bg-clip-text text-transparent">
-                    Training hinzufügen
-                  </h2>
+          {/* Content */}
+          <div className="relative">
 
                   <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as 'ai' | 'manual')} className="w-full">
                     <TabsList className="grid w-full grid-cols-2 mb-6 bg-muted/50">
@@ -391,12 +341,11 @@ export function AddWorkoutModal({
                       )}
                     </div>
                   )}
-                </div>
-              </div>
-            </motion.div>
           </div>
+        </DialogContent>
+      </Dialog>
 
-          {/* Confirmation Dialog */}
+      {/* Confirmation Dialog */}
           <AlertDialog open={showConfirmDialog} onOpenChange={setShowConfirmDialog}>
             <AlertDialogContent className="bg-background/95 backdrop-blur-xl border-primary/20">
               <AlertDialogHeader>
@@ -426,8 +375,6 @@ export function AddWorkoutModal({
               </AlertDialogFooter>
             </AlertDialogContent>
           </AlertDialog>
-        </>
-      )}
-    </AnimatePresence>
+    </>
   );
 }

@@ -30,6 +30,8 @@ export const ExerciseSetRow: React.FC<ExerciseSetRowProps> = ({
       onClick={onToggle}
       className={cn(
         "flex items-center justify-between px-3 py-2.5 rounded-md cursor-pointer transition-all duration-150",
+        // 44px minimum touch target.
+        "min-h-[44px]",
         "hover:bg-muted/60 active:scale-[0.98]",
         isCompleted 
           ? "bg-primary/10 border border-primary/20" 
@@ -38,7 +40,7 @@ export const ExerciseSetRow: React.FC<ExerciseSetRowProps> = ({
       )}
       role="checkbox"
       aria-checked={isCompleted}
-      aria-label={`Satz ${setNumber}: ${targetReps} Wiederholungen${targetWeight ? ` × ${targetWeight}` : ''}`}
+      aria-label={`Satz ${setNumber}: ${targetReps} Wiederholungen${targetWeight ? ` mit ${targetWeight}` : ''} — ${isCompleted ? 'abgeschlossen' : 'offen'}`}
       tabIndex={0}
       onKeyDown={(e) => {
         if (e.key === 'Enter' || e.key === ' ') {
