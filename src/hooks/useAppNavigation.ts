@@ -1,24 +1,33 @@
 import { useState, useEffect, useCallback, useLayoutEffect, useRef } from 'react';
-import { AppView, getViewForRoute, getRouteForView, NAVIGATION_CONFIG, NAVIGATION_Order } from '@/lib/navigation';
+import { AppView, parseHashRoute, getRouteForView, NAVIGATION_CONFIG, NAVIGATION_Order } from '@/lib/navigation';
 
 interface UseAppNavigationReturn {
     activeView: AppView;
     navigateTo: (view: AppView) => void;
     direction: 1 | -1;
+    /** Query parameters carried by the current hash, e.g. `?w=2&d=3`. */
+    routeParams: URLSearchParams;
 }
 
 export const useAppNavigation = (): UseAppNavigationReturn => {
-    // Initialize state based on current hash
-    const getInitialView = (): AppView => getViewForRoute(window.location.hash);
+    // Initialize from the current hash, path and query parsed separately.
+    const initialRoute = parseHashRoute(window.location.hash);
 
-    const [activeView, setActiveView] = useState<AppView>(getInitialView);
+    const [activeView, setActiveView] = useState<AppView>(initialRoute.view);
     const [direction, setDirection] = useState<1 | -1>(1);
     const previousViewRef = useRef<AppView>(activeView);
+
+    /**
+     * Query parameters as they were on first load. Deep links are restored
+     * once, from this snapshot: the workout view rewrites the hash as the
+     * user browses weeks, so reading live params later would fight it.
+     */
+    const initialParamsRef = useRef<URLSearchParams>(initialRoute.params);
 
     // Sync state with URL hash changes (bi-directional)
     useEffect(() => {
         const handleHashChange = () => {
-            const newView = getViewForRoute(window.location.hash);
+            const { view: newView } = parseHashRoute(window.location.hash);
             if (newView !== activeView) {
                 setActiveView(newView);
             }
@@ -75,5 +84,5 @@ export const useAppNavigation = (): UseAppNavigationReturn => {
         }
     }, [activeView]);
 
-    return { activeView, navigateTo, direction };
+    return { activeView, navigateTo, direction, routeParams: initialParamsRef.current };
 };

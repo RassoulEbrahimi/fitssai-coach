@@ -9,6 +9,3 @@ if (!rootEl) {
 }
 
 createRoot(rootEl).render(React.createElement(App));
-
-// QA: confirm mount in console
-console.log('[FitssAI] App mounted');

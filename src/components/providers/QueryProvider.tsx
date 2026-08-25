@@ -26,7 +26,9 @@ export function QueryProvider({ children }: { children: React.ReactNode }) {
             onSuccess={() => {
                 if (import.meta.env.DEV) {
                     const cache = queryClient.getQueryCache().getAll();
-                    console.log(`[QueryProvider] Cache restored. Queries: ${cache.length}`, cache.map(q => q.queryKey));
+                    if (import.meta.env.DEV) {
+                        console.log(`[QueryProvider] Cache restored. Queries: ${cache.length}`, cache.map(q => q.queryKey));
+                    }
                 }
             }}
         >

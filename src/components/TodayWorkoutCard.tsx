@@ -15,6 +15,7 @@ import { isBerlinPast, isBerlinFuture } from "@/lib/dateUtils";
 import { useBerlinToday } from "@/hooks/useBerlinToday";
 import { Play, WifiOff, Clock, Dumbbell, Flame, Check, Maximize2, Minimize2 } from "lucide-react";
 import WorkoutErrorBoundary from "@/components/WorkoutErrorBoundary";
+import FocusModePortal from "@/components/FocusModePortal";
 import { logEvent } from "@/lib/telemetryClient";
 import { CompletionState } from "@/lib/completionUtils";
 import { useWorkoutHelpers } from "@/hooks/useWorkoutHelpers";
@@ -309,10 +310,11 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
 
   return (
     <WorkoutErrorBoundary>
+      <FocusModePortal active={isFocusMode}>
       <div
         className={
           isFocusMode
-            ? "fixed top-0 left-0 w-screen h-[100dvh] z-[99999] bg-background m-0 p-0 overflow-y-auto overscroll-contain"
+            ? "fixed inset-0 w-screen h-[100dvh] z-[99999] bg-background m-0 p-0 overflow-y-auto overscroll-contain"
             : ""
         }
         style={isFocusMode ? { isolation: 'isolate' } : undefined}
@@ -518,6 +520,7 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
           </CardContent>
         </Card>
       </div>
+      </FocusModePortal>
     </WorkoutErrorBoundary>
   );
 };

@@ -47,13 +47,36 @@ export const getRouteForView = (view: AppView): string => {
     return NAVIGATION_CONFIG[view].path;
 };
 
-export const getViewForRoute = (hash: string): AppView => {
-    const clean = (hash || '').replace(/^#/, '').toLowerCase();
+export interface ParsedRoute {
+    view: AppView;
+    /** Query parameters from the hash, e.g. `#/workout?w=2&d=3`. */
+    params: URLSearchParams;
+}
 
-    // Direct match or root
-    if (clean === '' || clean === '/') return 'dashboard';
+/**
+ * Split a hash into pathname and query, then resolve the view.
+ *
+ * The hash carries its own query string (`#/workout?w=2&d=3`), so the path
+ * must be isolated before it is matched against the route table — comparing
+ * the raw hash meant any deep link with parameters fell back to Dashboard.
+ */
+export const parseHashRoute = (hash: string): ParsedRoute => {
+    const raw = (hash || '').replace(/^#/, '');
+    const queryStart = raw.indexOf('?');
+    const pathname = (queryStart === -1 ? raw : raw.slice(0, queryStart)).toLowerCase();
+    const search = queryStart === -1 ? '' : raw.slice(queryStart + 1);
 
-    // Find matching config
-    const entry = Object.values(NAVIGATION_CONFIG).find(cfg => cfg.path === clean);
-    return entry ? entry.id : 'dashboard';
+    const params = new URLSearchParams(search);
+
+    if (pathname === '' || pathname === '/') {
+        return { view: 'dashboard', params };
+    }
+
+    // Tolerate a trailing slash so `#/workout/` resolves like `#/workout`.
+    const normalized = pathname.length > 1 ? pathname.replace(/\/+$/, '') : pathname;
+    const entry = Object.values(NAVIGATION_CONFIG).find(cfg => cfg.path === normalized);
+
+    return { view: entry ? entry.id : 'dashboard', params };
 };
+
+export const getViewForRoute = (hash: string): AppView => parseHashRoute(hash).view;
