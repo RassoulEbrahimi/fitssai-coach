@@ -5,7 +5,6 @@ import { confirmPasswordReset, verifyPasswordResetCode } from "firebase/auth";
 import { auth } from "@/lib/firebase";
 import { toast } from "sonner";
 import { Input } from "@/components/ui/input";
-import { CanvasRevealEffect } from "./CanvasRevealEffect";
 import { useNavigate, useSearchParams } from "react-router-dom";
 
 export default function ResetPasswordFlow() {
@@ -73,9 +72,6 @@ export default function ResetPasswordFlow() {
 
     return (
         <div className="relative min-h-screen w-full flex flex-col items-center justify-center overflow-hidden bg-black text-white font-sans selection:bg-emerald-500/30">
-            <div className="absolute inset-0 z-0 pointer-events-none">
-                <CanvasRevealEffect animationSpeed={3.0} containerClassName="bg-black" colors={[[0, 255, 163]]} opacities={[0.2, 0.2, 0.2, 0.2, 0.2, 0.4, 0.4, 0.4, 0.4, 1]} dotSize={2} />
-            </div>
             <div className="z-20 w-full max-w-md px-4">
                 <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }} className="flex flex-col items-center text-center">
                     <h1 className="text-4xl md:text-5xl font-bold tracking-tighter mb-4 text-white">Reset Password</h1>
