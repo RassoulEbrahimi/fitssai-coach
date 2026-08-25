@@ -9,7 +9,9 @@
     "build:dev": "vite build --mode development",
     "lint": "eslint .",
     "preview": "vite preview",
+    "check:mojibake": "node scripts/check-mojibake.mjs",
     "check:placeholders": "node scripts/check-placeholders.mjs",
+    "check:text": "npm run check:mojibake && npm run check:placeholders",
     "test": "vitest run",
     "test:watch": "vitest"
   },

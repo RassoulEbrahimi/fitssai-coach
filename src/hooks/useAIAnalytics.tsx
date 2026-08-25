@@ -3,6 +3,7 @@ import { collection, getDocs, query, orderBy, Timestamp } from 'firebase/firesto
 import { db } from '@/lib/firebase';
 import { useAuth } from './useAuth';
 import { startOfDay, subDays, format } from 'date-fns';
+import { de } from 'date-fns/locale';
 
 interface AILog {
   created_at: string;
@@ -92,7 +93,7 @@ export const useAIAnalytics = () => {
 
         // Convert to array for chart
         const dailyData: DailyData[] = Array.from(dailyMap.entries()).map(([dateStr, count]) => ({
-          day: format(new Date(dateStr), 'EEE'), // Mon, Tue, etc.
+          day: format(new Date(dateStr), 'EEE', { locale: de }), // Mo, Di, ...
           count,
           date: new Date(dateStr)
         }));
