@@ -9,5 +9,5 @@ export async function getUserFeedbackSummary(_userId: string): Promise<FeedbackS
 }
 
 export function getFeedbackInsight(_feedback: FeedbackSummary): string {
-  return "KI-Feedback wird nach der Firebase-Migration reaktiviert.";
+  return "KI-Feedback steht derzeit nicht zur Verfügung.";
 }

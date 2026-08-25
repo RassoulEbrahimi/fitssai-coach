@@ -43,39 +43,55 @@ export default defineConfig(({ mode }) => ({
   },
   plugins: [
     react(),
+    // The single service-worker and manifest authority. Both are generated
+    // from this config, and `base` is applied to start_url, scope and the
+    // registration, so everything resolves under /fitssai-coach/.
     VitePWA({
       registerType: 'autoUpdate',
-      includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'mask-icon.svg'],
+      // Registration lives in src/lib/pwa.ts so there is exactly one place
+      // that registers a worker; the auto-injected script would be a second.
+      injectRegister: null,
+      includeAssets: ['favicon.ico', 'apple-touch-icon.png'],
       manifest: {
-        name: 'FitssAI Coach',
+        name: 'FitssAI',
         short_name: 'FitssAI',
-        description: 'Your AI-powered workout and nutrition coach.',
-        theme_color: '#ffffff',
-        background_color: '#ffffff',
+        description: 'Dein KI-Coach für Training & Ernährung.',
+        lang: 'de',
+        // Matches the theme-color meta tag in index.html.
+        theme_color: '#16a34a',
+        background_color: '#0b1220',
         display: 'standalone',
         orientation: 'portrait',
+        categories: ['health', 'fitness', 'lifestyle'],
         icons: [
           {
             src: 'icons/fitssai-192.png',
             sizes: '192x192',
-            type: 'image/png'
+            type: 'image/png',
+            purpose: 'any'
           },
           {
             src: 'icons/fitssai-512.png',
             sizes: '512x512',
-            type: 'image/png'
+            type: 'image/png',
+            purpose: 'any'
           },
           {
             src: 'icons/fitssai-maskable-512.png',
             sizes: '512x512',
             type: 'image/png',
-            purpose: 'any maskable'
+            purpose: 'maskable'
           }
         ]
       },
       workbox: {
         // Cache standard assets for offline usage
-        globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}']
+        globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
+        // Drop precaches from previous deploys instead of accumulating them.
+        cleanupOutdatedCaches: true,
+        // index.html is precached with a content revision, so a new deploy
+        // replaces the shell rather than pinning the old one forever.
+        navigateFallback: 'index.html'
       }
     })
   ].filter(Boolean),

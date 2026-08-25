@@ -9,6 +9,7 @@ import {
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
+import { clearSignOutSensitiveStorage } from "@/lib/storage";
 
 export const LogoutButton: React.FC = () => {
   const [showConfirm, setShowConfirm] = useState(false);
@@ -20,8 +21,9 @@ export const LogoutButton: React.FC = () => {
     try {
       setIsLoggingOut(true);
       await signOut(auth);
-      localStorage.clear();
-      sessionStorage.clear();
+      // Only account-scoped keys: preferences such as the theme belong to the
+      // device and must survive signing out.
+      clearSignOutSensitiveStorage();
       toast({ title: "Erfolgreich abgemeldet", description: "Du wurdest erfolgreich abgemeldet." });
       setTimeout(() => navigate("/auth/sign-in"), 300);
     } catch (error) {

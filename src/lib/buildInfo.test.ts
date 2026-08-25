@@ -1,4 +1,6 @@
 import { describe, it, expect } from "vitest";
+import { readFileSync } from "fs";
+import { resolve } from "path";
 import { shortenSha, formatBuildLabel, formatVersionLabel, normalizeVersion } from "./buildInfo";
 
 describe("shortenSha", () => {
@@ -75,5 +77,29 @@ describe("formatVersionLabel", () => {
 
   it("separates the two parts with a middle dot", () => {
     expect(formatVersionLabel("2.1.0", "abcdef1234")).toContain(" · ");
+  });
+});
+
+describe("injected build identity", () => {
+  it("resolves the app version from package.json, not a hardcoded literal", async () => {
+    const { APP_VERSION } = await import("./buildInfo");
+    const pkg = JSON.parse(
+      readFileSync(resolve(__dirname, "../../package.json"), "utf8")
+    ) as { version: string };
+
+    expect(pkg.version).toBe("1.0.0");
+    expect(APP_VERSION).toBe(pkg.version);
+  });
+
+  it("formats the Profile label as 'Version 1.0.0 · <sha>'", () => {
+    expect(formatVersionLabel("1.0.0", "8440809bfbe9d0e52b28b8fa2f68c37cbe4ebf4e")).toBe(
+      "Version 1.0.0 · 8440809"
+    );
+  });
+
+  it("never renders the 0.0.0 scaffold default for the real app version", async () => {
+    const { VERSION_LABEL } = await import("./buildInfo");
+    expect(VERSION_LABEL).not.toContain("Version 0.0.0");
+    expect(VERSION_LABEL).toMatch(/^Version 1\.0\.0 · ([0-9a-f]{7}|dev)$/);
   });
 });

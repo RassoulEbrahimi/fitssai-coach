@@ -40,7 +40,7 @@ export const useWorkoutPlan = () => {
     onError: (error: any) => {
       if (error.message === AI_UNAVAILABLE) {
         toast.info("KI-Generierung vorübergehend deaktiviert", {
-          description: "Wird nach der Firebase-Migration reaktiviert.",
+          description: "Diese Funktion steht derzeit nicht zur Verfügung.",
         });
       } else {
         toast.error(error.message || "Fehler beim Erstellen der Pläne");

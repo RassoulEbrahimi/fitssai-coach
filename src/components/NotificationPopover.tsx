@@ -9,30 +9,24 @@ import {
 } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
 import { useTheme } from "@/hooks/useTheme";
+import { countUnread, getNotifications } from "@/lib/notifications";
 
-interface Notification {
-  id: string;
-  title: string;
-  timeAgo: string;
-  read?: boolean;
-}
-
-// Sample notifications - replace with real data later
-const sampleNotifications: Notification[] = [
-  { id: "1", title: "Neues Ziel erreicht!", timeAgo: "2 Std. her", read: false },
-  { id: "2", title: "Trainingsplan aktualisiert", timeAgo: "5 Std. her", read: false },
-  { id: "3", title: "Wöchentlicher Fortschritt", timeAgo: "1 Tag her", read: true },
-];
-
+/**
+ * Notification affordance.
+ *
+ * The list comes from the real source, which is currently empty — there is no
+ * notification backend yet. Nothing is invented here: no sample entries, and
+ * the unread badge only appears when real unread items exist, so the bell
+ * never claims activity that did not happen.
+ */
 export const NotificationPopover = () => {
   const [isOpen, setIsOpen] = useState(false);
   const { actualTheme } = useTheme();
   const isDark = actualTheme === "dark";
 
-  // For demo, using sample notifications
-  const notifications = sampleNotifications;
+  const notifications = getNotifications();
   const hasNotifications = notifications.length > 0;
-  const unreadCount = notifications.filter(n => !n.read).length;
+  const unreadCount = countUnread(notifications);
 
   return (
     <Popover open={isOpen} onOpenChange={setIsOpen}>
@@ -87,7 +81,7 @@ export const NotificationPopover = () => {
               {/* Header */}
               <div className="px-4 py-3 border-b border-emerald-500/20">
                 <h3 className="font-bold text-foreground flex items-center gap-2">
-                  <span className="text-emerald-500">●</span>
+                  <span className="text-emerald-500" aria-hidden="true">●</span>
                   Benachrichtigungen
                 </h3>
               </div>
@@ -103,7 +97,7 @@ export const NotificationPopover = () => {
                         animate={{ opacity: 1, x: 0 }}
                         transition={{ delay: index * 0.05 }}
                         className={cn(
-                          "px-4 py-3 border-l-2 hover:bg-emerald-500/10 transition-colors cursor-pointer",
+                          "px-4 py-3 border-l-2",
                           notification.read 
                             ? "border-l-transparent opacity-60" 
                             : "border-l-emerald-500"
@@ -130,30 +124,13 @@ export const NotificationPopover = () => {
                     transition={{ delay: 0.1 }}
                     className="py-12 px-4 text-center"
                   >
-                    <div className="text-4xl mb-2">🎉</div>
+                    <div className="text-4xl mb-2" aria-hidden="true">🎉</div>
                     <p className="text-sm text-muted-foreground">
-                      Du bist auf dem neuesten Stand!
+                      Du bist auf dem neuesten Stand.
                     </p>
                   </motion.div>
                 )}
               </div>
-
-              {/* Footer */}
-              {hasNotifications && (
-                <div className="px-4 py-3 border-t border-emerald-500/20">
-                  <Button
-                    variant="ghost"
-                    className="w-full text-sm font-medium text-emerald-500 hover:text-emerald-400 hover:bg-emerald-500/10"
-                    onClick={() => {
-                      // Navigate to notifications page or show all
-                      console.log("Show all notifications");
-                      setIsOpen(false);
-                    }}
-                  >
-                    Alle anzeigen →
-                  </Button>
-                </div>
-              )}
             </motion.div>
           </PopoverContent>
         )}
