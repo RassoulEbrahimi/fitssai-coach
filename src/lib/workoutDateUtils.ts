@@ -30,26 +30,48 @@ export const getWorkoutDate = (
   return addDays(planStart, offsetDays);
 };
 
+/** A FitssAI plan is a fixed four-week programme. */
+export const PLAN_WEEKS = 4;
+
 /**
- * Convert calendar date → weekKey + dayIndex
- * @param planCreatedAt - ISO timestamp of when the plan was created
- * @param date - The date to convert
- * @returns Object with weekKey and dayIndex, clamped to valid ranges (Week 1-4, day 0-6)
+ * Convert calendar date → weekKey + dayIndex within the four-week programme.
+ *
+ * `weekKey` is always inside `Week 1..Week 4` so no caller can render a
+ * "Woche 43" label or look up a week the plan does not have. The raw
+ * arithmetic is still reported through `weekNumber`, and the two boundary
+ * flags say which side of the programme the date fell on — callers that need
+ * the lifecycle decision should use `resolvePlanDay` in `planLifecycle.ts`
+ * rather than re-deriving it from these fields.
  */
 export const getWorkoutWeekDay = (
   planCreatedAt: string,
   date: Date
-): { weekKey: string; dayIndex: number } => {
+): {
+  weekKey: string;
+  dayIndex: number;
+  /** Unclamped week number: may be < 1 or > PLAN_WEEKS. */
+  weekNumber: number;
+  isBeforeStart: boolean;
+  isAfterPlan: boolean;
+} => {
   const planStart = startOfDay(getPlanStartMonday(planCreatedAt));
   const dateBerlin = startOfDay(toZonedTime(date, TARGET_TIMEZONE));
 
   const daysDiff = differenceInCalendarDays(dateBerlin, planStart);
-  const weekIndex = Math.floor(daysDiff / 7);
-  const dayIndex = daysDiff % 7;
+  const weekNumber = Math.floor(daysDiff / 7) + 1;
+  const isBeforeStart = daysDiff < 0;
+  const isAfterPlan = weekNumber > PLAN_WEEKS;
+
+  const boundedWeek = Math.min(Math.max(weekNumber, 1), PLAN_WEEKS);
+  // Guard the modulo: it is negative for dates before the plan starts.
+  const rawDayIndex = ((daysDiff % 7) + 7) % 7;
 
   return {
-    weekKey: `Week ${Math.max(1, weekIndex + 1)}`,
-    dayIndex: Math.max(0, Math.min(6, dayIndex)),
+    weekKey: `Week ${boundedWeek}`,
+    dayIndex: isBeforeStart ? 0 : Math.max(0, Math.min(6, rawDayIndex)),
+    weekNumber,
+    isBeforeStart,
+    isAfterPlan,
   };
 };
 

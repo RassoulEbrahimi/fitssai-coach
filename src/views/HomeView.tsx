@@ -35,6 +35,8 @@ interface HomeViewProps {
   onProgressUpdate?: (weeklyProgress: { completed: number; total: number }) => void;
   isLoadingPlans?: boolean;
   onNavigate?: (tab: 'dashboard' | 'workout' | 'nutrition' | 'profile') => void;
+  /** True once the fixed four-week programme is over. */
+  planFinished?: boolean;
   workoutLogs?: WorkoutLog[];
 }
 
@@ -80,6 +82,7 @@ const HomeView: React.FC<HomeViewProps> = ({
   generatingPlans,
   workoutPlan,
   nutritionPlan,
+  planFinished = false,
   onGeneratePlans,
   profile,
   workoutProgress = { completed: 0, total: 0 },
@@ -131,14 +134,28 @@ const HomeView: React.FC<HomeViewProps> = ({
   // Calculate today's training progress
   const todayWorkout = getTodayWorkout ? getTodayWorkout() : null;
   const todayTrainingProgress = useMemo(() => {
+    // Once the programme is finished there is no "today" in the plan; say so
+    // explicitly rather than implying a plan is merely missing.
+    if (planFinished) return { value: 100, label: "4-Wochen-Plan abgeschlossen" };
     if (!todayWorkout) return { value: 0, label: t('dashboard.progress.noPlan', "Kein Training geplant") };
     if (todayWorkout.__restDay) return { value: 0, label: t('dashboard.progress.restDay', "Ruhetag genießen") };
     if (todayWorkout.isCompleted) return { value: 100, label: "Training abgeschlossen" };
     return { value: 0, label: "Training ausstehend" };
-  }, [todayWorkout, t]);
+  }, [todayWorkout, planFinished, t]);
 
-  // Calculate nutrition progress (100% if plan exists, 0% otherwise)
-  const nutritionProgress = nutritionPlan ? 100 : 0;
+  /**
+   * Nutrition is read-only in Phase 1: nothing is logged, so there is no real
+   * completion to report. A 0/100 bar derived purely from "does a plan exist"
+   * reads as progress the user never made, so this shows plan status instead.
+   */
+  const nutritionStatus = nutritionPlan ? "Plan aktiv" : "Kein Plan";
+  const nutritionMealCount = useMemo(() => {
+    if (!nutritionPlan?.content) return 0;
+    return Object.values(nutritionPlan.content).reduce(
+      (sum, meals) => sum + (Array.isArray(meals) ? meals.length : 0),
+      0
+    );
+  }, [nutritionPlan]);
 
 
   // Load random Goggins quote on mount
@@ -398,14 +415,18 @@ const HomeView: React.FC<HomeViewProps> = ({
               <div>
                 <h2 className="font-medium text-foreground text-base">Ernährung</h2>
                 <p className="text-xs font-medium text-muted-foreground">
-                  {nutritionProgress > 0 ? "Plan verfügbar" : "Kein Plan"}
+                  {nutritionStatus}
+                  {nutritionMealCount > 0 && ` · ${nutritionMealCount} Mahlzeiten`}
                 </p>
               </div>
             </div>
-            <ProgressPill
-              value={nutritionProgress}
-              aria-label={`Ernährungs-Fortschritt: ${nutritionProgress} Prozent`}
-            />
+            {/* No percentage: nothing is logged, so there is no progress to show. */}
+            <span
+              className="text-xs font-medium text-muted-foreground whitespace-nowrap"
+              aria-label={`Ernährungsplan-Status: ${nutritionStatus}`}
+            >
+              {nutritionStatus}
+            </span>
           </motion.li>
         </motion.ul>
 

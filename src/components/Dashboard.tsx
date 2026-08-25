@@ -29,7 +29,7 @@ import { WorkoutLog, WeekContent } from "@/lib/types";
 // Removed direct useQuery and supabase import for data fetching
 import { ProfileCard } from "@/components/ProfileCard";
 import VideoBackground from '@/components/VideoBackground';
-import { useState, useEffect, Suspense, useRef, useCallback, useLayoutEffect } from "react";
+import { useState, useEffect, Suspense, useRef, useCallback, useMemo, useLayoutEffect } from "react";
 import React from "react";
 import { toast } from "sonner";
 import { format, addDays, isSameDay, startOfWeek, differenceInCalendarDays, startOfDay, parseISO } from "date-fns";
@@ -121,6 +121,7 @@ import {
   isBerlinTodayForWeekDay
 } from "@/lib/workoutDateUtils";
 import { useBerlinToday } from "@/hooks/useBerlinToday";
+import { resolvePlanDay, isPlanFinished, getWeekDayProgress } from "@/lib/planLifecycle";
 import { useWorkoutHelpers } from "@/hooks/useWorkoutHelpers";
 import { usePreferences } from "@/contexts/PreferencesContext";
 import { useFocusMode } from "@/contexts/FocusModeContext";
@@ -314,47 +315,45 @@ const Dashboard = () => {
 
 
   // Get today's workout data
+  /**
+   * Today's plan day, resolved through the shared four-week lifecycle so the
+   * Dashboard and the Workout view can never disagree. Returns null once the
+   * programme is finished — no Week 1 content is served after Week 4.
+   */
   const getTodayWorkout = useCallback(() => {
-    if (!liveWorkoutPlan || !liveWorkoutPlan.content) return null;
+    if (!liveWorkoutPlan?.created_at) return null;
 
-    for (const [weekKey, days] of Object.entries(liveWorkoutPlan.content)) {
-      const weekData = days as WeekContent;
-      // Check full week (0..6) not just weekData.length
-      for (let dayIndex = 0; dayIndex < 7; dayIndex++) {
-        // Function inside callback is okay if it relies on stable scope or is passed in.
-        // But here we rely on isTodayInWeekDay which is now a useCallback.
-        // Re-implement logic slightly to avoid dependency issues or add it to deps.
-        if (isBerlinTodayForWeekDay(liveWorkoutPlan.created_at, weekKey, dayIndex)) {
-          // Re-implementing isDayCompleted logic inline or using the callback if we add it to deps.
-          // Inline is safer for useCallback deps sometimes.
-          const dateString = getWorkoutDateString(liveWorkoutPlan.created_at, weekKey, dayIndex);
-          const isCompleted = workoutLogs?.some(log => log.workout_day === dateString && log.completed) ?? false;
+    const resolved = resolvePlanDay(liveWorkoutPlan, getBerlinNow(), {
+      isDayCompleted: (weekKey, dayIndex) => {
+        const dateString = getWorkoutDateString(liveWorkoutPlan.created_at, weekKey, dayIndex);
+        return workoutLogs?.some(log => log.workout_day === dateString && log.completed) ?? false;
+      },
+    });
 
-          // Helper to get workout safely
-          const day = weekData[dayIndex];
-          const workoutData = (day && Array.isArray(day.exercises) && day.exercises.length > 0) ? day : null;
+    if (resolved.status !== 'active') return null;
 
-          if (workoutData) {
-            return {
-              weekKey,
-              dayIndex,
-              dayData: workoutData,
-              isCompleted: isCompleted,
-            };
-          } else {
-            // Rest day sentinel
-            return {
-              __restDay: true,
-              weekKey,
-              dayIndex,
-              isCompleted: false
-            };
-          }
-        }
-      }
+    if (resolved.isRestDay) {
+      return {
+        __restDay: true,
+        weekKey: resolved.weekKey,
+        dayIndex: resolved.dayIndex,
+        isCompleted: false,
+      };
     }
-    return null;
+
+    return {
+      weekKey: resolved.weekKey,
+      dayIndex: resolved.dayIndex,
+      dayData: resolved.dayData,
+      isCompleted: resolved.isCompleted,
+    };
   }, [liveWorkoutPlan, workoutLogs]);
+
+  /** True once the four-week programme is over. */
+  const planFinished = useMemo(
+    () => isPlanFinished(liveWorkoutPlan, getBerlinNow()),
+    [liveWorkoutPlan]
+  );
 
   // Set initial active week and today's day on load, sync with date changes
   useEffect(() => {
@@ -426,17 +425,20 @@ const Dashboard = () => {
         !isBerlinFuture(log.workout_day); // Exclude future days
     });
 
-    // Calculate total planned workout days for current week
-    let totalPlannedDays = 0;
-    if (liveWorkoutPlan.content) {
-      // For demo, use first week's structure. In production, calculate based on current week
-      const content = liveWorkoutPlan.content;
-      const firstWeek = Object.values(content)[0];
-
-      if (Array.isArray(firstWeek)) {
-        totalPlannedDays = firstWeek.filter((day) => day && day.exercises && day.exercises.length > 0).length;
-      }
+    // Planned training days for the week the user is actually in. This used to
+    // read Object.values(content)[0] — the plan's *first* week — so every week
+    // was measured against Week 1's shape, and a finished plan still reported a
+    // target.
+    const today = resolvePlanDay(liveWorkoutPlan, getBerlinNow());
+    if (today.status !== 'active' || !today.weekKey) {
+      return { completed: 0, total: 0 };
     }
+
+    const totalPlannedDays = getWeekDayProgress(
+      liveWorkoutPlan,
+      today.weekKey,
+      () => false
+    ).total;
 
     return {
       completed: Math.min(weeklyLogs.length, totalPlannedDays), // Cap at total planned
@@ -514,6 +516,7 @@ const Dashboard = () => {
                               onGeneratePlans={generatePlan}
                               profile={profile}
                               workoutProgress={getWeeklyProgress()}
+                              planFinished={planFinished}
                               getTodayWorkout={getTodayWorkout}
                               isDayCompleted={isDayCompleted}
                               getWeeklyProgress={getWeeklyProgress}

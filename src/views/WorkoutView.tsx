@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect, useMemo, useCallback } from "react"
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
-import { WifiOff, RefreshCw, AlertCircle } from "lucide-react";
+import { WifiOff, RefreshCw, AlertCircle, CheckCircle2 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useTranslation } from "react-i18next";
 import { format } from 'date-fns';
@@ -35,6 +35,7 @@ import { DayAccordion } from "@/components/workout/DayAccordion";
 
 // Logic helpers
 import { /* isElementVisible, */ updateHash } from "@/lib/workout/viewHelpers";
+import { resolvePlanDay, formatWeekLabel, getWeekDayProgress, PLAN_TOTAL_WEEKS } from "@/lib/planLifecycle";
 
 interface WorkoutViewProps {
   workoutPlan: WorkoutPlan;
@@ -219,10 +220,23 @@ const WorkoutView: React.FC<WorkoutViewProps> = ({
     });
   }, [user, livePlan?.id, queryClient]);
 
-  // Memoized week progress calculation using hook
-  const weekProgress = useMemo(() => {
-    return calcWeekStats(wk, completionMap);
-  }, [wk, completionMap, calcWeekStats]);
+  /**
+   * Week progress in DAYS — how many of the week's training days are done.
+   * The visible label and the screen-reader text below use this same unit;
+   * previously the number came from exercise counts while the label said
+   * "Tage".
+   */
+  const weekProgress = useMemo(
+    () => getWeekDayProgress(livePlan, wk, (weekKey, dayIndex) => isDayCompleted(weekKey, dayIndex)),
+    [livePlan, wk, isDayCompleted]
+  );
+
+  /** Lifecycle state for the currently selected date. */
+  const planDay = useMemo(
+    () => resolvePlanDay(livePlan, selectedDate),
+    [livePlan, selectedDate]
+  );
+  const planFinished = planDay.planFinished;
 
   // Handle week navigation
   const handlePrevWeek = useCallback(() => {
@@ -593,7 +607,7 @@ const WorkoutView: React.FC<WorkoutViewProps> = ({
           aria-atomic="true"
           className="sr-only"
         >
-          Woche {currentWeekNum} geladen. {weekProgress.completed} von {weekProgress.total} Trainingseinheiten abgeschlossen.
+          {formatWeekLabel(currentWeekNum, PLAN_TOTAL_WEEKS)} geladen. {weekProgress.completed} von {weekProgress.total} Tagen abgeschlossen.
         </div>
 
         {/* Offline Indicator */}
@@ -682,6 +696,30 @@ const WorkoutView: React.FC<WorkoutViewProps> = ({
           isCached={isCached}
           dataUpdatedAt={dataUpdatedAt}
         />
+
+        {/*
+          Completed state: the four-week programme is over. The plan content
+          below stays reachable as history, but nothing here offers to start a
+          training day, and no week resets to Week 1.
+        */}
+        {planFinished && (
+          <Card className="border-emerald-500/40 bg-emerald-500/5" role="status">
+            <CardContent className="py-4 px-4 space-y-2">
+              <div className="flex items-center gap-2">
+                <CheckCircle2 className="h-5 w-5 text-emerald-600 dark:text-emerald-400" aria-hidden="true" />
+                <p className="font-semibold text-foreground">4-Wochen-Plan abgeschlossen</p>
+              </div>
+              <p className="text-sm text-muted-foreground">
+                Du hast alle {PLAN_TOTAL_WEEKS} Wochen dieses Plans hinter dir. Dein bisheriger
+                Plan bleibt unten einsehbar.
+              </p>
+              <p className="text-sm text-muted-foreground">
+                Neue Pläne können derzeit nicht erstellt werden, da die KI-Planerstellung
+                vorübergehend nicht verfügbar ist.
+              </p>
+            </CardContent>
+          </Card>
+        )}
 
         {/* Plan Progress Stepper */}
         <WeekProgress
