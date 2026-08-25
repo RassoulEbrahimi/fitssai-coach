@@ -12,13 +12,29 @@ import { Input } from "@/components/ui/input";
 import { useAuth } from "@/hooks/useAuth";
 import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
+import { authPathForMode, type AuthMode } from "@/lib/authRoutes";
+import LegalFooter from "@/components/LegalFooter";
 
-export default function SignInFlow() {
+export default function SignInFlow({ initialMode = "login" }: { initialMode?: AuthMode } = {}) {
     const { user } = useAuth();
     const navigate = useNavigate();
     const { t } = useTranslation();
 
-    const [mode, setMode] = useState<"login" | "signup" | "forgot">("login");
+    const [mode, setMode] = useState<AuthMode>(initialMode);
+
+    // Follow the route when the user navigates between /auth/sign-in and
+    // /auth/sign-up (including via browser back/forward).
+    useEffect(() => {
+        setMode(initialMode);
+    }, [initialMode]);
+
+    /** Switch form mode and keep the URL in step, so the two never disagree. */
+    const switchMode = (next: AuthMode) => {
+        setMode(next);
+        if (next !== "forgot") {
+            navigate(authPathForMode(next), { replace: true });
+        }
+    };
     const [step, setStep] = useState<"auth" | "success">("auth");
 
     const [email, setEmail]                   = useState("");
@@ -27,10 +43,6 @@ export default function SignInFlow() {
 
     const [showPassword, setShowPassword]       = useState(false);
     const [loading, setLoading]                 = useState(false);
-
-    useEffect(() => {
-        console.log("Auth State:", { user: !!user, step, mode });
-    }, [user, step, mode]);
 
     useEffect(() => {
         if (user && step === "auth" && !loading) {
@@ -52,7 +64,7 @@ export default function SignInFlow() {
             if (mode === "forgot") {
                 await sendPasswordResetEmail(auth, email);
                 toast.success(t("auth.resetLinkSent"));
-                setMode("login");
+                switchMode("login");
             } else if (mode === "signup") {
                 if (password.length < 6) {
                     toast.error(t("auth.passwordTooShort"));
@@ -98,8 +110,8 @@ export default function SignInFlow() {
             <motion.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5, delay: 0.1 }} className="fixed top-8 z-20">
                 {mode !== "forgot" && (
                     <div className="flex items-center gap-1 p-1 rounded-full bg-zinc-900/80 backdrop-blur-md border border-zinc-800">
-                        <button onClick={() => setMode("login")} className={`px-6 py-2 rounded-full text-sm font-medium transition-all ${mode === "login" ? "bg-zinc-800 text-white shadow-sm" : "text-zinc-400 hover:text-white"}`} disabled={loading || step === "success"}>{t("auth.login")}</button>
-                        <button onClick={() => setMode("signup")} className={`px-6 py-2 rounded-full text-sm font-medium transition-all ${mode === "signup" ? "bg-zinc-800 text-white shadow-sm" : "text-zinc-400 hover:text-white"}`} disabled={loading || step === "success"}>{t("auth.register")}</button>
+                        <button type="button" onClick={() => switchMode("login")} aria-pressed={mode === "login"} className={`px-6 py-2 rounded-full text-sm font-medium transition-all ${mode === "login" ? "bg-zinc-800 text-white shadow-sm" : "text-zinc-400 hover:text-white"}`} disabled={loading || step === "success"}>{t("auth.login")}</button>
+                        <button type="button" onClick={() => switchMode("signup")} aria-pressed={mode === "signup"} className={`px-6 py-2 rounded-full text-sm font-medium transition-all ${mode === "signup" ? "bg-zinc-800 text-white shadow-sm" : "text-zinc-400 hover:text-white"}`} disabled={loading || step === "success"}>{t("auth.register")}</button>
                     </div>
                 )}
             </motion.div>
@@ -117,27 +129,30 @@ export default function SignInFlow() {
                             <form onSubmit={handleAuth} className="w-full max-w-sm relative group space-y-4">
                                 <div className="relative">
                                     <Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-500" size={20} />
-                                    <Input type="email" placeholder={t("auth.emailPlaceholder")} value={email} onChange={(e) => setEmail(e.target.value)} className="h-14 bg-zinc-900/90 border-zinc-800 text-white placeholder:text-zinc-600 focus-visible:ring-1 focus-visible:ring-emerald-500/50 transition-all rounded-full pl-12 pr-4 hover:border-zinc-700 text-lg" disabled={loading} autoFocus />
+                                    <label htmlFor="auth-email" className="sr-only">{t("auth.emailPlaceholder")}</label>
+                                    <Input id="auth-email" name="email" type="email" inputMode="email" autoComplete="email" placeholder={t("auth.emailPlaceholder")} value={email} onChange={(e) => setEmail(e.target.value)} className="h-14 bg-zinc-900/90 border-zinc-800 text-white placeholder:text-zinc-600 focus-visible:ring-1 focus-visible:ring-emerald-500/50 transition-all rounded-full pl-12 pr-4 hover:border-zinc-700 text-lg" disabled={loading} autoFocus />
                                 </div>
                                 {mode !== "forgot" && (
                                     <div className="relative">
                                         <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-500" size={20} />
-                                        <Input type={showPassword ? "text" : "password"} placeholder={t("auth.passwordPlaceholder")} value={password} onChange={(e) => setPassword(e.target.value)} className="h-14 bg-zinc-900/90 border-zinc-800 text-white placeholder:text-zinc-600 focus-visible:ring-1 focus-visible:ring-emerald-500/50 transition-all rounded-full pl-12 pr-12 hover:border-zinc-700 text-lg" disabled={loading} />
-                                        <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-4 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-white transition-colors">{showPassword ? <EyeOff size={20} /> : <Eye size={20} />}</button>
+                                        <label htmlFor="auth-password" className="sr-only">{t("auth.passwordPlaceholder")}</label>
+                                        <Input id="auth-password" name="password" type={showPassword ? "text" : "password"} autoComplete={mode === "signup" ? "new-password" : "current-password"} placeholder={t("auth.passwordPlaceholder")} value={password} onChange={(e) => setPassword(e.target.value)} className="h-14 bg-zinc-900/90 border-zinc-800 text-white placeholder:text-zinc-600 focus-visible:ring-1 focus-visible:ring-emerald-500/50 transition-all rounded-full pl-12 pr-12 hover:border-zinc-700 text-lg" disabled={loading} />
+                                        <button type="button" onClick={() => setShowPassword(!showPassword)} aria-label={showPassword ? t("auth.hidePassword") : t("auth.showPassword")} aria-pressed={showPassword} className="absolute right-4 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-white transition-colors">{showPassword ? <EyeOff size={20} aria-hidden="true" /> : <Eye size={20} aria-hidden="true" />}</button>
                                     </div>
                                 )}
                                 {mode === "signup" && (
                                     <div className="relative">
                                         <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-500" size={20} />
-                                        <Input type={showPassword ? "text" : "password"} placeholder={t("auth.confirmPassword")} value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} className="h-14 bg-zinc-900/90 border-zinc-800 text-white placeholder:text-zinc-600 focus-visible:ring-1 focus-visible:ring-emerald-500/50 transition-all rounded-full pl-12 pr-12 hover:border-zinc-700 text-lg" disabled={loading} />
+                                        <label htmlFor="auth-confirm-password" className="sr-only">{t("auth.confirmPassword")}</label>
+                                        <Input id="auth-confirm-password" name="confirmPassword" type={showPassword ? "text" : "password"} autoComplete="new-password" placeholder={t("auth.confirmPassword")} value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} className="h-14 bg-zinc-900/90 border-zinc-800 text-white placeholder:text-zinc-600 focus-visible:ring-1 focus-visible:ring-emerald-500/50 transition-all rounded-full pl-12 pr-12 hover:border-zinc-700 text-lg" disabled={loading} />
                                     </div>
                                 )}
                                 <div className="flex flex-col gap-4 pt-2">
                                     <button type="submit" disabled={loading || !email || (mode !== "forgot" && !password)} className="w-full h-14 flex items-center justify-center rounded-full bg-emerald-500 text-black font-semibold hover:bg-emerald-400 transition-all disabled:opacity-50 disabled:pointer-events-none text-lg">
                                         {loading ? <Loader2 className="animate-spin" size={24} /> : <span className="flex items-center gap-2">{mode === "login" ? t("auth.login") : mode === "signup" ? t("auth.register") : t("auth.sendLink")}<ArrowRight size={20} /></span>}
                                     </button>
-                                    {mode === "login" && <button type="button" onClick={() => setMode("forgot")} className="text-sm text-zinc-500 hover:text-white transition-colors">{t("auth.forgotPassword")}</button>}
-                                    {mode === "forgot" && <button type="button" onClick={() => setMode("login")} className="text-sm text-zinc-500 hover:text-white transition-colors">{t("auth.backToLogin")}</button>}
+                                    {mode === "login" && <button type="button" onClick={() => switchMode("forgot")} className="text-sm text-zinc-500 hover:text-white transition-colors">{t("auth.forgotPassword")}</button>}
+                                    {mode === "forgot" && <button type="button" onClick={() => switchMode("login")} className="text-sm text-zinc-500 hover:text-white transition-colors">{t("auth.backToLogin")}</button>}
                                 </div>
                             </form>
                         </motion.div>
@@ -152,8 +167,9 @@ export default function SignInFlow() {
                 </AnimatePresence>
             </div>
 
-            <div className="absolute bottom-8 text-center z-20">
+            <div className="absolute bottom-8 text-center z-20 space-y-2">
                 <p className="text-xs text-zinc-800 font-medium tracking-widest uppercase">{t("auth.secureSystem")}</p>
+                <LegalFooter />
             </div>
         </div>
     );

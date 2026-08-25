@@ -2,6 +2,7 @@ import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react-swc";
 import path from "path";
 import { execSync } from "child_process";
+import { createRequire } from "module";
 import { VitePWA } from 'vite-plugin-pwa';
 
 /**
@@ -20,9 +21,20 @@ const resolveBuildSha = (): string => {
   }
 };
 
+/** App version, read from package.json so it is never hand-maintained here. */
+const resolveAppVersion = (): string => {
+  try {
+    const require = createRequire(import.meta.url);
+    return require("./package.json").version ?? "0.0.0";
+  } catch {
+    return "0.0.0";
+  }
+};
+
 export default defineConfig(({ mode }) => ({
   define: {
     __FITSSAI_BUILD_SHA__: JSON.stringify(resolveBuildSha()),
+    __FITSSAI_APP_VERSION__: JSON.stringify(resolveAppVersion()),
   },
   base: "/fitssai-coach/",
   server: {

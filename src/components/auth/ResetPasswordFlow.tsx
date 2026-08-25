@@ -89,7 +89,8 @@ export default function ResetPasswordFlow() {
                     <form onSubmit={handleResetPassword} className="w-full max-w-sm relative group space-y-4">
                         <div className="relative">
                             <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-500" size={20} />
-                            <Input type="password" placeholder={t("auth.newPassword")} value={password} onChange={(e) => setPassword(e.target.value)} className="h-14 bg-zinc-900/90 border-zinc-800 text-white placeholder:text-zinc-600 focus-visible:ring-1 focus-visible:ring-emerald-500/50 transition-all rounded-full pl-12 pr-4 hover:border-zinc-700 text-lg" disabled={loading || validatingCode || !!codeError} autoFocus />
+                            <label htmlFor="reset-new-password" className="sr-only">{t("auth.newPassword")}</label>
+                            <Input id="reset-new-password" name="newPassword" type="password" autoComplete="new-password" placeholder={t("auth.newPassword")} value={password} onChange={(e) => setPassword(e.target.value)} className="h-14 bg-zinc-900/90 border-zinc-800 text-white placeholder:text-zinc-600 focus-visible:ring-1 focus-visible:ring-emerald-500/50 transition-all rounded-full pl-12 pr-4 hover:border-zinc-700 text-lg" disabled={loading || validatingCode || !!codeError} autoFocus />
                         </div>
                         <button type="submit" disabled={loading || validatingCode || !!codeError || !password} className="w-full h-14 flex items-center justify-center rounded-full bg-emerald-500 text-black font-semibold hover:bg-emerald-400 transition-all disabled:opacity-50 disabled:pointer-events-none">
                             {loading || validatingCode ? <Loader2 className="animate-spin" size={20} /> : <span className="flex items-center gap-2">{t("auth.updatePassword")} <ArrowRight size={20} /></span>}
