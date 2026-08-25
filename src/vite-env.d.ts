@@ -1,4 +1,5 @@
 /// <reference types="vite/client" />
+/// <reference types="vite-plugin-pwa/client" />
 
 /** Injected by vite.config.ts: the Git commit this bundle was built from. */
 declare const __FITSSAI_BUILD_SHA__: string;

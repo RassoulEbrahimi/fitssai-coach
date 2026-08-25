@@ -50,10 +50,7 @@ export const PWAInstallPrompt = () => {
         const { outcome } = await deferredPrompt.userChoice;
 
         if (outcome === 'accepted') {
-            console.log('User accepted the install prompt');
-            toast.success("Installation started!");
-        } else {
-            console.log('User dismissed the install prompt');
+            toast.success("Installation gestartet.");
         }
 
         // We've used the prompt, and can't use it again, throw it away
@@ -71,11 +68,11 @@ export const PWAInstallPrompt = () => {
             <div className="bg-primary text-primary-foreground p-4 rounded-lg shadow-lg flex items-center justify-between gap-4">
                 <div className="flex items-center gap-3">
                     <div className="bg-white/20 p-2 rounded-full">
-                        <Download className="h-6 w-6" />
+                        <Download className="h-6 w-6" aria-hidden="true" />
                     </div>
                     <div>
-                        <h3 className="font-semibold text-sm">Install App</h3>
-                        <p className="text-xs opacity-90">Install FitssAI for a better experience</p>
+                        <h3 className="font-semibold text-sm">App installieren</h3>
+                        <p className="text-xs opacity-90">FitssAI als App — schneller und auch offline nutzbar.</p>
                     </div>
                 </div>
                 <div className="flex items-center gap-2">
@@ -85,15 +82,16 @@ export const PWAInstallPrompt = () => {
                         onClick={handleInstallClick}
                         className="whitespace-nowrap"
                     >
-                        App installieren
+                        Installieren
                     </Button>
                     <Button
                         variant="ghost"
                         size="icon"
                         className="h-8 w-8 hover:bg-white/20"
+                        aria-label="Hinweis schließen"
                         onClick={() => setShowPrompt(false)}
                     >
-                        <X className="h-4 w-4" />
+                        <X className="h-4 w-4" aria-hidden="true" />
                     </Button>
                 </div>
             </div>

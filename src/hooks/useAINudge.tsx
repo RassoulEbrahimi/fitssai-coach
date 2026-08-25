@@ -38,7 +38,7 @@ export const useAINudge = (insight: Insight | null) => {
         }
 
         // Check session cache to avoid re-generating
-        const cacheKey = `ai-nudge-${insight.id}`;
+        const cacheKey = `fitssai.ai-nudge.${insight.id}`;
         const cached = sessionStorage.getItem(cacheKey);
         if (cached) {
             setNudge(JSON.parse(cached));
