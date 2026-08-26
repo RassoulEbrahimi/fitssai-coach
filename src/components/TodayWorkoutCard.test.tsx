@@ -1,5 +1,6 @@
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import '@/lib/i18n';
 import TodayWorkoutCard from '../components/TodayWorkoutCard';
 import { TrainingProvider } from '../contexts/TrainingContext';
 import React from 'react';
@@ -49,7 +50,23 @@ vi.mock('canvas-confetti', () => ({
     default: vi.fn(),
 }));
 
+/*
+  The card reads its exercises from TrainingDataContext, which seeds itself
+  from localStorage. Seeding it drives the real provider rather than mocking
+  the thing under test; with no exercises the card renders the rest-day view.
+*/
+const WORKOUT_STORAGE_KEY = 'fitssai.training.cache';
+const SEEDED_EXERCISES = [
+    { id: 'e1', name: 'Bankdrücken', sets: 3, reps: '10', rest: '90s', weight: '', weekKey: 'week1', dayIndex: 0, exerciseIndex: 0 },
+    { id: 'e2', name: 'Klimmzüge', sets: 3, reps: '8', rest: '90s', weight: '', weekKey: 'week1', dayIndex: 1, exerciseIndex: 1 },
+];
+
 describe('TodayWorkoutCard', () => {
+    beforeEach(() => {
+        localStorage.clear();
+        localStorage.setItem(WORKOUT_STORAGE_KEY, JSON.stringify(SEEDED_EXERCISES));
+    });
+
     const defaultProps = {
         selectedDate: new Date('2025-12-10'),
         weekKey: 'week1',
@@ -69,19 +86,36 @@ describe('TodayWorkoutCard', () => {
         );
     };
 
-    it.skip('renders start button when session not started', () => {
+    /*
+      These two were `it.skip` and asserted the pre-PR3 English labels
+      ("Start Training", "Training im Gange"). The whole file also failed to
+      collect on Firebase's module-scope init, so neither the skip nor the
+      stale strings were visible. Both now run against the German UI.
+    */
+    it('renders the start button when the session has not started', () => {
         renderWithProvider(<TodayWorkoutCard {...defaultProps} />);
-        expect(screen.getByText('Start Training')).toBeInTheDocument();
+
+        expect(screen.getByRole('button', { name: /Training starten/i })).toBeInTheDocument();
+        expect(screen.queryByText(/Training beenden/i)).not.toBeInTheDocument();
     });
 
-    it.skip('shows live timer and finish button when started', () => {
-        const { getByText } = renderWithProvider(<TodayWorkoutCard {...defaultProps} />);
+    it('switches to the active view when training starts', async () => {
+        renderWithProvider(<TodayWorkoutCard {...defaultProps} />);
 
-        // Start training
-        fireEvent.click(screen.getByText('Start Training'));
+        fireEvent.click(screen.getByRole('button', { name: /Training starten/i }));
 
-        // Check that we switched to active view
-        expect(screen.getByText(/Training im Gange/i)).toBeInTheDocument();
-        expect(screen.getByText('Training beenden')).toBeInTheDocument();
+        // The two views swap inside <AnimatePresence mode="wait">, so the
+        // incoming one only mounts once the outgoing one has finished exiting.
+        await waitFor(() =>
+            expect(screen.getByRole('button', { name: /Training beenden/i })).toBeInTheDocument()
+        );
+        expect(screen.getByText(/Training läuft/i)).toBeInTheDocument();
+        expect(screen.queryByRole('button', { name: /Training starten/i })).not.toBeInTheDocument();
+    });
+
+    it('imports without Firebase credentials configured', () => {
+        // Regression: this file failed during collection with
+        // auth/invalid-api-key before the Firebase test double existed.
+        expect(TodayWorkoutCard).toBeDefined();
     });
 });
