@@ -76,12 +76,7 @@ describe('InsightHero', () => {
     it('still renders what the insights engine actually produces', () => {
         // End-to-end over the real deterministic source, so the surface cannot
         // be emptied by a change to the engine without this failing.
-        const produced = generateInsights(
-            { dailyData: [], dayLabels: [], activeDays: 4, totalMinutes: 0, totalWorkouts: 4, targetMinutes: 350 },
-            null,
-            4,
-            null
-        );
+        const produced = generateInsights({ activeDays: 4 }, null, 4, null);
 
         expect(produced).not.toBeNull();
         renderHero(produced);

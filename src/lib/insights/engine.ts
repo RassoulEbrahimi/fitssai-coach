@@ -2,13 +2,14 @@ import { differenceInCalendarDays, isSameWeek, subWeeks } from "date-fns";
 import { Insight, InsightType, InsightPriority } from "./types";
 import { Profile } from "@/hooks/queries/useProfile";
 
+/**
+ * Only what the rules below actually read. Narrowed from the full hook shape so
+ * the engine does not break every time an unused field is reshaped — it used to
+ * require `totalMinutes`, which no rule consulted and which no longer exists
+ * now that minutes are measured rather than estimated.
+ */
 interface WeeklyActivityData {
-    dailyData: number[];
-    dayLabels: string[];
     activeDays: number;
-    totalMinutes: number;
-    totalWorkouts: number;
-    targetMinutes: number;
 }
 
 // Simple deterministic ID generation

@@ -4,10 +4,13 @@ import {
   collection, getDocs, query, where, doc, addDoc, deleteDoc, updateDoc, Timestamp,
 } from "firebase/firestore";
 import { queryKeys } from "@/lib/queryKeys";
+import { isWorkoutDayString } from "@/lib/workoutLog";
 
 type ToggleSetPayload = {
   planId: string; weekKey: string; dayIndex: number; exerciseIndex: number;
   setNumber: number; repsCompleted: number; weightUsed?: number | null; completed: boolean;
+  /** Carried through the queue so a replayed write dates the same day. */
+  workoutDay?: string;
 };
 type ToggleDayPayload = {
   planId: string; weekKey: string; dayIndex: number; exerciseIndex: number;
@@ -31,6 +34,7 @@ export const handlers = {
       const newLog = await addDoc(logsRef, {
         planId: payload.planId, weekKey: payload.weekKey,
         dayIndex: payload.dayIndex, exerciseIndex: payload.exerciseIndex,
+        ...(isWorkoutDayString(payload.workoutDay) ? { workoutDay: payload.workoutDay } : {}),
         completed: false, createdAt: Timestamp.now(),
       });
       logId = newLog.id;

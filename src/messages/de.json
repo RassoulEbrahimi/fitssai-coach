@@ -78,11 +78,11 @@
     }
   },
   "features": {
-    "title": "Powered by fortschrittlicher KI",
-    "description": "Erlebe die Zukunft des Fitness mit intelligenten Funktionen, die deine Transformation beschleunigen",
+    "title": "Alles für dein Training an einem Ort",
+    "description": "Struktur, Fortschritt und Übersicht — intelligentes Coaching ist der nächste Schritt.",
     "aiPlans": {
-      "title": "KI-gestützte Pläne",
-      "description": "Fortschrittliche KI analysiert dein Profil, um personalisierte Trainings- und Ernährungspläne zu erstellen, die auf deine einzigartigen Bedürfnisse und Ziele zugeschnitten sind."
+      "title": "Intelligentes Coaching in Vorbereitung",
+      "description": "Wir arbeiten daran, dein Training künftig automatisch an deine Ziele und deinen Fortschritt anzupassen. Heute legst du deinen Plan selbst an und verfolgst ihn Woche für Woche."
     },
     "customWorkouts": {
       "title": "Individuelle Workouts",

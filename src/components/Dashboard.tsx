@@ -199,14 +199,15 @@ const Dashboard = () => {
   const toggleDayComplete = useCallback(async (weekKey: string, dayIndex: number) => {
     if (!user || !liveWorkoutPlan || completingWorkout) return;
 
-    // Calculate the workout date using Berlin timezone
-    const weekNumber = parseInt(weekKey.replace(/\D/g, '')) - 1;
-    const totalDaysFromStart = (weekNumber * 7) + dayIndex;
-
-    // For demo, using plan creation date as reference. In production, use actual plan start date
-    const planCreatedDate = new Date(liveWorkoutPlan.created_at);
-    const workoutDate = addDays(planCreatedDate, totalDaysFromStart);
-    const workoutDateStr = format(workoutDate, 'yyyy-MM-dd');
+    /*
+      One date, from the one authority. This used to derive the date it *wrote*
+      with addDays(created_at) while checking completion against
+      getWorkoutDateString, which anchors to the plan's start Monday. For any
+      plan not created on a Monday the two disagreed, so the write landed on a
+      different day than the read-back looked at: the day never registered as
+      complete, and weekly activity attributed it to the wrong calendar day.
+    */
+    const workoutDateStr = getWorkoutDateString(liveWorkoutPlan.created_at, weekKey, dayIndex);
 
     // Prevent future day completion
     if (isBerlinFuture(workoutDateStr)) {
@@ -218,10 +219,9 @@ const Dashboard = () => {
     // Inlined logical check to avoid dependency on isDayCompleted being in dependency array if not needed, 
     // but better to keep isDayCompleted stable and use it.
     // For now we will rely on workoutLogs directly to avoid circular dependency issues if isDayCompleted changes.
-    const dateString = getWorkoutDateString(liveWorkoutPlan.created_at, weekKey, dayIndex);
-    const isCompleted = workoutLogs?.some(log => log.workout_day === dateString && log.completed) ?? false;
+    const isCompleted = workoutLogs?.some(log => log.workout_day === workoutDateStr && log.completed) ?? false;
 
-    toggleDay({ workoutDateStr, completed: !isCompleted });
+    toggleDay({ workoutDateStr, completed: !isCompleted, weekKey, dayIndex });
   }, [user, liveWorkoutPlan, completingWorkout, workoutLogs, toggleDay, t]);
 
   // Check if a specific day in a specific week is completed (timezone-aware)

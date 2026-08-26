@@ -15,16 +15,28 @@ interface WeeklyActivityProps {
 export const WeeklyActivity: React.FC<WeeklyActivityProps> = ({ className }) => {
   const { t } = useTranslation();
   const [viewMode, setViewMode] = useState<ViewMode>("weekly");
-  const { dailyData, dayLabels, activeDays, totalMinutes, targetMinutes, isLoading, refresh } = useWeeklyActivity(viewMode);
+  const {
+    dailyData, dayLabels, activeDays, measuredMinutes, unmeasuredWorkouts,
+    targetMinutes, isLoading, refresh,
+  } = useWeeklyActivity(viewMode);
 
   const maxValue = Math.max(...dailyData, 1);
-  const progressPercentage = (totalMinutes / targetMinutes) * 100;
-  const isTargetAchieved = totalMinutes >= targetMinutes;
+  const progressPercentage = (measuredMinutes / targetMinutes) * 100;
+  const isTargetAchieved = measuredMinutes >= targetMinutes;
   const totalDays = viewMode === "weekly" ? 7 : 30;
   // No real history for this period. The bar chart carries no information at
   // that point, so it is not rendered at all — the previous build kept it and
   // floated the empty-state message on top of it, which is what collided.
-  const hasNoActivity = totalMinutes === 0 && activeDays === 0;
+  const hasNoActivity = activeDays === 0;
+  /*
+    Minutes are shown only where they were measured. Workouts logged before
+    session durations were recorded have no length, and showing them as 0 min —
+    or padding them with an estimate, as the old MINUTES_PER_EXERCISE constant
+    did — would both be untrue. When any of the period's workouts are
+    unmeasured the figure is labelled as a floor rather than a total.
+  */
+  const hasMeasuredMinutes = measuredMinutes > 0;
+  const isPartialMeasurement = hasMeasuredMinutes && unmeasuredWorkouts > 0;
 
   if (isLoading) {
     return (
@@ -121,8 +133,12 @@ export const WeeklyActivity: React.FC<WeeklyActivityProps> = ({ className }) => 
             )}
           </p>
         </motion.div>
-      ) : (
-      /* Chart - Vertical Daily Bars */
+      ) : hasMeasuredMinutes && (
+      /*
+        The bars plot measured minutes. A history with workouts but no measured
+        durations would render seven empty bars, which reads as a broken chart
+        rather than as "not recorded" — the stats row says that in words.
+      */
       <div className="flex items-end justify-between gap-1.5 mb-4">
         {dailyData.map((value, index) => {
           // Calculate height proportional to actual minutes (0-60min range typically)
@@ -183,25 +199,36 @@ export const WeeklyActivity: React.FC<WeeklyActivityProps> = ({ className }) => 
           <span className="text-muted-foreground">
             <span className="font-semibold text-foreground">{activeDays}</span> von {totalDays} Tagen aktiv
           </span>
-          <span className="text-muted-foreground">
-            <span className="font-semibold text-foreground">{totalMinutes}</span> von {targetMinutes} min
-          </span>
+          {hasMeasuredMinutes ? (
+            <span className="text-muted-foreground">
+              {isPartialMeasurement && "mind. "}
+              <span className="font-semibold text-foreground">{measuredMinutes}</span> von {targetMinutes} min
+            </span>
+          ) : (
+            <span className="text-muted-foreground">Dauer nicht erfasst</span>
+          )}
         </div>
 
-        {/* Progress Bar */}
-        <div className="w-full bg-muted/30 rounded-full h-2 overflow-hidden">
-          <motion.div
-            initial={{ width: 0 }}
-            animate={{ width: `${Math.min(progressPercentage, 100)}%` }}
-            transition={{ duration: 0.8, delay: 0.2 }}
-            className={cn(
-              "h-full rounded-full transition-all",
-              isTargetAchieved
-                ? "bg-gradient-to-r from-success to-success/80"
-                : "bg-gradient-to-r from-primary to-primary/80"
-            )}
-          />
-        </div>
+        {/*
+          The bar tracks measured minutes against the target. With nothing
+          measured an empty bar would read as "no training", so it is left out
+          rather than drawn at zero.
+        */}
+        {hasMeasuredMinutes && (
+          <div className="w-full bg-muted/30 rounded-full h-2 overflow-hidden">
+            <motion.div
+              initial={{ width: 0 }}
+              animate={{ width: `${Math.min(progressPercentage, 100)}%` }}
+              transition={{ duration: 0.8, delay: 0.2 }}
+              className={cn(
+                "h-full rounded-full transition-all",
+                isTargetAchieved
+                  ? "bg-gradient-to-r from-success to-success/80"
+                  : "bg-gradient-to-r from-primary to-primary/80"
+              )}
+            />
+          </div>
+        )}
 
         {/* Motivational Message */}
         <div className="flex items-center justify-center gap-2 pt-1">
