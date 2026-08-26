@@ -74,7 +74,7 @@ export const ProfileCard = ({ profile, onProfileUpdate, workoutProgress }: Profi
     : 0;
 
   // Get avatar URL with cache busting
-  const avatarUrl = getAvatarUrl(profile?.avatar_path, avatarCacheBuster);
+  const avatarUrl = getAvatarUrl(profile?.avatar_path);
 
   const form = useForm<z.infer<typeof profileFormSchema>>({
     resolver: zodResolver(profileFormSchema),
@@ -118,10 +118,11 @@ export const ProfileCard = ({ profile, onProfileUpdate, workoutProgress }: Profi
     try {
       // Map snake_case form values to camelCase Firestore fields
       const fsData: Record<string, any> = { updatedAt: Timestamp.now() };
-      if (values.full_name          !== undefined) fsData.fullName          = values.full_name;
+      // Only the fields profileFormSchema actually declares. full_name and
+      // experience_level were read here but exist neither in the schema nor as
+      // form inputs, so those branches could never run.
       if (values.fitness_goal       !== undefined) fsData.fitnessGoal       = values.fitness_goal;
       if (values.dietary_preference !== undefined) fsData.dietaryPreference = values.dietary_preference;
-      if (values.experience_level   !== undefined) fsData.experienceLevel   = values.experience_level;
       if (values.weight             !== undefined) fsData.weight            = values.weight;
       if (values.height             !== undefined) fsData.height            = values.height;
       if (values.age                !== undefined) fsData.age               = values.age;
@@ -171,14 +172,9 @@ export const ProfileCard = ({ profile, onProfileUpdate, workoutProgress }: Profi
       
       // Upload compressed file with progress tracking (50-100%)
       setUploadStatus('uploading');
-      const avatarPath = await uploadAvatar(
-        user.id, 
-        compressedFile,
-        (progress) => {
-          // Map upload progress to 50-100%
-          setUploadProgress(50 + progress * 0.5);
-        }
-      );
+      // uploadAvatar(file, userId) — the arguments were previously passed in
+      // the wrong order, with a progress callback it does not accept.
+      const avatarPath = await uploadAvatar(compressedFile, user.id);
       
       // Update profile with avatar path
       await updateProfileAvatar(user.id, avatarPath);
@@ -465,7 +461,7 @@ export const ProfileCard = ({ profile, onProfileUpdate, workoutProgress }: Profi
             {/* User Info */}
             <div className="text-center mt-4">
               <h3 className="text-xl font-bold text-foreground mb-1">
-                {user?.user_metadata?.full_name || user?.email?.split('@')[0] || 'User'}
+                {user?.displayName || user?.email?.split('@')[0] || 'User'}
               </h3>
               <p className="text-muted-foreground text-sm mb-2">{user?.email}</p>
               <Badge variant="secondary" className="text-xs">

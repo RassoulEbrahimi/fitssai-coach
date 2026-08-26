@@ -371,7 +371,8 @@ const ProfileView: React.FC<ProfileViewProps> = React.memo(({
       let avatarPath = profile?.avatar_path;
       if (selectedFile) {
         setIsUploading(true);
-        avatarPath = await uploadAvatar(profile.id, selectedFile);
+        // uploadAvatar(file, userId) — arguments were reversed here.
+        avatarPath = await uploadAvatar(selectedFile, profile.id);
         await updateProfileAvatar(profile.id, avatarPath);
         setIsUploading(false);
       }
