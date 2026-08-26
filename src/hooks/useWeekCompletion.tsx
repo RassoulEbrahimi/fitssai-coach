@@ -148,6 +148,10 @@ export const useWeekCompletion = ({ planId, weekKey, enabled = true, availableWe
     },
   });
 
+  // Must run before the early return below: a conditional hook changes the
+  // hook count between renders and React throws when isInvalidWeek flips.
+  const completionMap = useMemo(() => query_.data || {}, [query_.data]);
+
   if (isInvalidWeek) {
     return {
       completionMap: {}, isLoading: false, isError: false, error: null,
@@ -156,8 +160,6 @@ export const useWeekCompletion = ({ planId, weekKey, enabled = true, availableWe
       prefetchWeekCompletion, isCached: false, dataUpdatedAt: Date.now(),
     };
   }
-
-  const completionMap = useMemo(() => query_.data || {}, [query_.data]);
 
   return {
     completionMap, isLoading: query_.isLoading, isError: query_.isError,

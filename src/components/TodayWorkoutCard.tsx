@@ -338,8 +338,13 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
               alt=""
               className="absolute inset-0 w-full h-full object-cover"
             />
-            {/* Dark gradient overlay */}
-            <div className="absolute inset-0 bg-gradient-to-t from-background via-background/70 to-black/40" />
+            {/*
+              Fixed dark scrim, not theme tokens. `from-background` resolves to
+              white in light mode, so the white hero text sat on a white
+              gradient and disappeared. The photo needs a dark scrim in both
+              themes for the same white-on-image treatment to read.
+            */}
+            <div className="absolute inset-0 bg-gradient-to-t from-zinc-950/90 via-zinc-950/70 to-zinc-900/40" />
 
             {/* Fullscreen toggle button - top right */}
             <button
@@ -385,7 +390,7 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
               {/* Date badge */}
               <Badge
                 variant="secondary"
-                className="w-fit mb-2 bg-primary/20 text-primary-foreground border-none backdrop-blur-sm"
+                className="w-fit mb-2 bg-primary/30 text-white border-none backdrop-blur-sm"
               >
                 {format(selectedDate, 'EEEE', { locale: de })}
               </Badge>
@@ -396,7 +401,7 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
               </h2>
 
               {/* Metadata row */}
-              <div className="flex items-center gap-4 mt-2 text-white/80 text-sm">
+              <div className="flex items-center gap-4 mt-2 text-white/90 text-sm">
                 <div className="flex items-center gap-1.5">
                   <Clock className="w-4 h-4" />
                   <span>{t('todayWorkout.estimatedDuration', { mins: estimatedTotalMinutes })}</span>

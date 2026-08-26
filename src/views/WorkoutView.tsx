@@ -15,6 +15,10 @@ import { useWeekCompletion } from "@/hooks/useWeekCompletion";
 import WorkoutErrorBoundary from "@/components/WorkoutErrorBoundary";
 import { logEvent } from "@/lib/telemetryClient";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+// These were used below without ever being imported, so every query that
+// touched Firestore from this file threw "collection is not defined".
+import { collection, doc, getDoc, getDocs, query, where, Timestamp } from "firebase/firestore";
+import { db } from "@/lib/firebase";
 
 import { useExerciseEditor, type Exercise } from "@/hooks/useExerciseEditor";
 import { useWorkoutHelpers } from "@/hooks/useWorkoutHelpers";
@@ -95,7 +99,17 @@ const WorkoutView: React.FC<WorkoutViewProps> = ({
       const snap = await getDoc(doc(db, 'users', user!.uid, 'workout_plans', planId));
       if (!snap.exists()) return null;
       const d = snap.data();
-      return { id: snap.id, user_id: user!.uid, content: d.content ?? {}, created_at: '' } as unknown as WorkoutPlan;
+      return {
+        id: snap.id,
+        user_id: user!.uid,
+        content: d.content ?? {},
+        // Keep the plan's start date: the calendar's plan-day resolution and
+        // the four-week lifecycle are both anchored to it. This used to be
+        // hardcoded to '' and would have wiped it once the query ran.
+        created_at: d.createdAt instanceof Timestamp
+          ? d.createdAt.toDate().toISOString()
+          : workoutPlan?.created_at ?? null,
+      } as unknown as WorkoutPlan;
     },
     enabled: !!planId,
     initialData: workoutPlan,
@@ -188,11 +202,20 @@ const WorkoutView: React.FC<WorkoutViewProps> = ({
     availableWeeks: livePlan?.content ? Object.keys(livePlan.content) : []
   });
 
+  /*
+    The banner is a hard failure notice, so it only appears when the page has
+    nothing usable to show. It used to render on any query error, which meant
+    it also fired while offline (on top of the offline banner) and while cached
+    completion data was on screen — including next to the completed-plan
+    notice, which comes from the plan itself and loads fine either way.
+  */
+  const hasCompletionData = Object.keys(completionMap).length > 0;
+  const showLoadError =
+    isCompletionError && isOnline && !isLoadingCompletion && !hasCompletionData;
+
   // Helper function to fetch week completion
   const fetchWeekCompletion = async (weekKey: string) => {
     if (!user || !livePlan?.id) throw new Error('User or planId not available');
-    const { where, Timestamp } = await import('firebase/firestore');
-    const { CompletionKey } = await import('@/lib/completionUtils');
     const logsRef = collection(db, 'users', user.uid, 'workout_logs');
     const snap = await getDocs(query(logsRef,
       where('planId',  '==', livePlan.id),
@@ -646,7 +669,7 @@ const WorkoutView: React.FC<WorkoutViewProps> = ({
 
         {/* Error State */}
         <AnimatePresence>
-          {isCompletionError && (
+          {showLoadError && (
             <motion.div
               initial={{ opacity: 0, y: -10 }}
               animate={{ opacity: 1, y: 0 }}
@@ -659,7 +682,7 @@ const WorkoutView: React.FC<WorkoutViewProps> = ({
                     <div className="flex items-center gap-2 text-destructive">
                       <AlertCircle className="h-4 w-4" aria-hidden="true" />
                       <span className="text-sm font-medium" role="alert" aria-live="assertive">
-                        Fehler beim Laden des Trainingsplans
+                        Trainingsfortschritt konnte nicht geladen werden
                       </span>
                     </div>
                     <Button
