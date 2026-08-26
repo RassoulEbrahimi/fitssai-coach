@@ -21,8 +21,18 @@ export default defineConfig({
     css: false,
   },
   resolve: {
-    alias: {
-      '@': path.resolve(__dirname, './src'),
-    },
+    alias: [
+      /*
+        Firebase initialises at module scope, so importing any component that
+        reaches it throws auth/invalid-api-key without config and the test file
+        fails during collection. Tests get an inert double instead — no
+        credentials, no network. Must precede the generic '@' alias.
+      */
+      {
+        find: /^@\/lib\/firebase$/,
+        replacement: path.resolve(__dirname, './src/test/mocks/firebase.ts'),
+      },
+      { find: '@', replacement: path.resolve(__dirname, './src') },
+    ],
   },
 });

@@ -170,6 +170,37 @@ const HomeView: React.FC<HomeViewProps> = ({
     return () => clearTimeout(timer);
   }, []);
 
+  /*
+    These two must stay above the early returns below. They used to sit after
+    them, so the loading and empty-state branches rendered four hooks while the
+    loaded branch rendered six — React throws "Rendered more hooks than during
+    the previous render" the moment the component crosses that boundary.
+  */
+  // Get user's first name from full_name or email
+  const firstName = useMemo(() => {
+    if (profile?.full_name) {
+      return profile.full_name.split(' ')[0];
+    }
+    if (profile?.email) {
+      return profile.email.split('@')[0];
+    }
+    return "";
+  }, [profile]);
+
+  // Dynamic time-based greeting
+  const greeting = useMemo(() => {
+    const hour = new Date().getHours();
+
+    if (!firstName) {
+      return "Willkommen zurück! 💪";
+    }
+
+    if (hour >= 5 && hour < 12) return `Guten Morgen, ${firstName}! ☀️`;
+    if (hour >= 12 && hour < 18) return `Hallo, ${firstName}! 🌤`;
+    if (hour >= 18 && hour < 22) return `Guten Abend, ${firstName}! 🌙`;
+    return `Gute Nacht, ${firstName}! 🌌`;
+  }, [firstName]);
+
   // Show skeleton when initially loading or generating plans
   if (isLoadingPlans || (generatingPlans && !workoutPlan && !nutritionPlan)) {
     return <HomeSkeleton />;
@@ -233,31 +264,6 @@ const HomeView: React.FC<HomeViewProps> = ({
       </WorkoutErrorBoundary>
     );
   }
-
-  // Get user's first name from full_name or email
-  const firstName = useMemo(() => {
-    if (profile?.full_name) {
-      return profile.full_name.split(' ')[0];
-    }
-    if (profile?.email) {
-      return profile.email.split('@')[0];
-    }
-    return "";
-  }, [profile]);
-
-  // Dynamic time-based greeting
-  const greeting = useMemo(() => {
-    const hour = new Date().getHours();
-
-    if (!firstName) {
-      return "Willkommen zurück! 💪";
-    }
-
-    if (hour >= 5 && hour < 12) return `Guten Morgen, ${firstName}! ☀️`;
-    if (hour >= 12 && hour < 18) return `Hallo, ${firstName}! 🌤`;
-    if (hour >= 18 && hour < 22) return `Guten Abend, ${firstName}! 🌙`;
-    return `Gute Nacht, ${firstName}! 🌌`;
-  }, [firstName]);
 
   const avatarUrl = getAvatarUrl(profile?.avatar_path);
   const progressPercentage = workoutProgress.total > 0
