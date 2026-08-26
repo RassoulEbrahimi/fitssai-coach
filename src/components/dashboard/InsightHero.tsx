@@ -1,12 +1,11 @@
 import React from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Trophy, Flame, Clock, Calendar, AlertCircle, TrendingUp, CheckCircle2, Sparkles } from 'lucide-react';
+import { Trophy, Flame, Clock, Calendar, AlertCircle, TrendingUp, CheckCircle2 } from 'lucide-react';
 import { Insight } from '@/lib/insights/types';
 import { Button } from '@/components/ui/button';
 import { GradientCard } from '@/components/micro/GradientCard';
 import { cn } from '@/lib/utils';
 import { useNavigate } from 'react-router-dom';
-import { useAINudge } from '@/hooks/useAINudge';
 
 interface InsightHeroProps {
     insight: Insight | null;
@@ -27,17 +26,19 @@ const IconMap: Record<string, React.ElementType> = {
 export const InsightHero: React.FC<InsightHeroProps> = ({ insight, onDismiss, className }) => {
     const navigate = useNavigate();
 
-    // Call AI Nudge Hook (always valid to call, handles null insight internally)
-    const { nudge, isLoading: isAILoading } = useAINudge(insight);
-
     if (!insight) return null;
 
     const Icon = insight.icon && IconMap[insight.icon] ? IconMap[insight.icon] : SparklesIcon;
 
-    // Use AI content if available, otherwise deterministic fallback
-    const displayTitle = nudge?.title || insight.title;
-    const displayMessage = nudge?.message || insight.message;
-    const isAIActive = !!nudge; // For UI styling (e.g. sparkles)
+    /*
+      The title and message come straight from the deterministic insights
+      engine. They used to be swapped for `useAINudge` output, which was a
+      hardcoded string table behind a fake 1.5s delay, and were then badged
+      with a sparkle that told the user a model had written them. Nothing
+      generates text in this app yet, so the insight speaks for itself.
+    */
+    const displayTitle = insight.title;
+    const displayMessage = insight.message;
 
     const handleAction = (e: React.MouseEvent) => {
         e.stopPropagation();
@@ -65,17 +66,6 @@ export const InsightHero: React.FC<InsightHeroProps> = ({ insight, onDismiss, cl
             >
                 <GradientCard className="p-4 sm:p-5 relative overflow-hidden group cursor-default">
 
-                    {/* AI Sparkle Indicator (Top Right) */}
-                    {isAIActive && (
-                        <motion.div
-                            initial={{ opacity: 0, scale: 0 }}
-                            animate={{ opacity: 1, scale: 1 }}
-                            className="absolute top-2 right-2"
-                        >
-                            <Sparkles className="w-4 h-4 text-amber-400 opacity-60 animate-pulse" />
-                        </motion.div>
-                    )}
-
                     <div className="flex items-start gap-4">
                         {/* Icon Container */}
                         <div className={cn(
@@ -85,26 +75,16 @@ export const InsightHero: React.FC<InsightHeroProps> = ({ insight, onDismiss, cl
                                     "bg-blue-500/20 text-blue-500"
                         )}>
                             <Icon className="w-6 h-6" />
-                            {isAILoading && (
-                                <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-sky-400 rounded-full animate-ping opacity-75" />
-                            )}
                         </div>
 
                         {/* Content */}
                         <div className="flex-1 min-w-0 pt-0.5">
-                            <motion.div
-                                key={isAIActive ? 'ai' : 'static'} // Trigger animation on text switch
-                                initial={{ opacity: 0.8 }}
-                                animate={{ opacity: 1 }}
-                                transition={{ duration: 0.5 }}
-                            >
-                                <h3 className="font-semibold text-lg leading-tight text-foreground mb-1">
-                                    {displayTitle}
-                                </h3>
-                                <p className="text-sm text-muted-foreground leading-relaxed line-clamp-3">
-                                    {displayMessage}
-                                </p>
-                            </motion.div>
+                            <h3 className="font-semibold text-lg leading-tight text-foreground mb-1">
+                                {displayTitle}
+                            </h3>
+                            <p className="text-sm text-muted-foreground leading-relaxed line-clamp-3">
+                                {displayMessage}
+                            </p>
 
                             {/* Action Button (if present) */}
                             {(insight.actionLabel) && (

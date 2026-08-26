@@ -1,143 +1,55 @@
-# 🧠 AI Feedback Table
+# AI feedback — retired
 
-The `ai_feedback` table stores user interactions with AI-generated workout suggestions.
+> **Status: historical.** Nothing described here runs. The implementation was
+> removed in PR46 (Phase 2). This file is kept as a record of what once existed
+> and why it was withdrawn, so the Phase 2 backend work does not rebuild it by
+> accident.
 
-## Columns
+## What this document used to claim
 
-- **id** → UUID primary key (auto-generated)
-- **user_id** → UUID linked to `auth.users` (cascade delete)
-- **suggestion_id** → UUID identifying which AI suggestion was rated
-- **accepted** → Boolean indicating whether the user accepted the suggestion
-- **reason** → Text field for user's feedback (e.g., "zu schwer", "nicht mein Stil")
-- **created_at** → Timestamp when feedback was created
-- **updated_at** → Timestamp when feedback was last updated (auto-updated via trigger)
+An earlier revision described an `ai_feedback` **Postgres table** with row-level
+security policies, read and written through `@supabase/supabase-js`, feeding a
+`generate-day-suggestions` **Supabase Edge Function** that adjusted prompts from
+the user's last 20 ratings. Every step was marked "✅ Implemented".
 
-## Indexes
+None of that was true of this repository at the time it was written down, and
+none of it is true now:
 
-- `idx_ai_feedback_user_id` on `user_id` for efficient user-based queries
-- `idx_ai_feedback_suggestion_id` on `suggestion_id` for suggestion-based lookups
+- FitssAI runs on **Firebase (Auth + Firestore)**. There is no Postgres, so
+  there are no tables, no RLS policies and no SQL triggers.
+- `@supabase/supabase-js` is **not a dependency** and cannot be imported.
+- There are **no Edge Functions and no Cloud Functions** of any kind. The repo
+  contains no `functions/` directory, no `firebase.json` and no `.firebaserc`.
+- The client-side helpers had already been reduced to stubs: `saveAIFeedback()`
+  threw unconditionally, and `getUserFeedbackSummary()` returned all zeros.
 
-## Row Level Security (RLS)
+## What was removed in PR46
 
-Users can only:
-- View their own feedback
-- Create feedback for themselves
-- Update their own feedback
-- Delete their own feedback
+`WorkoutFeedbackCard` collected a rating (👍 Super / 🥵 Zu schwer / 😴 Zu leicht /
+👎 Nicht mein Stil) and `await`ed `saveAIFeedback()` with no `catch`. Because
+that function always threw, tapping "Feedback senden" produced no confirmation
+and no error — the interaction simply did nothing. Rather than keep a control
+that could only fail, the card and both stub modules were deleted:
 
-## Usage Example
+- `src/components/feedback/WorkoutFeedbackCard.tsx`
+- `src/integrations/supabase/tables/ai_feedback.ts`
+- `src/integrations/supabase/ai_adaptation.ts`
+- `src/lib/adaptivePrompt.ts` (already imported by nothing)
 
-```typescript
-import { saveAIFeedback, getAIFeedbackByUser } from "@/integrations/supabase/tables/ai_feedback";
+**No feedback has ever been persisted on the Firebase stack.** There is no
+`ai_feedback` collection in Firestore to migrate or read.
 
-// Save feedback when user accepts/rejects a workout
-await saveAIFeedback({
-  user_id: user.id,
-  suggestion_id: workout.id,
-  accepted: false,
-  reason: "zu schwer",
-});
+## If feedback is rebuilt
 
-// Retrieve all feedback for a user
-const userFeedback = await getAIFeedbackByUser(user.id);
-```
+The idea — learn intensity preference from post-workout ratings — is still
+sound, and Phase 2 may revisit it. Rebuilt on this stack it would need:
 
-## Integration with Adaptive Learning
+1. A Firestore collection (e.g. `users/{uid}/workout_feedback`) with security
+   rules committed to this repository. Rules are currently **not** in version
+   control.
+2. A write path that surfaces failure to the user instead of swallowing it.
+3. A UI entry point that appears only where feedback can actually be stored.
 
-This table serves as the foundation for the Adaptive Learning System (Phase 10.15):
-
-### ✅ Step 1: Store feedback (Implemented)
-The `ai_feedback` table with RLS policies and helper functions.
-
-### ✅ Step 2: Add UI for collecting feedback (Implemented)
-**WorkoutFeedbackCard** (`src/components/feedback/WorkoutFeedbackCard.tsx`)
-- Emoji-based feedback collection (👍 Super, 🥵 Zu schwer, 😴 Zu leicht, 👎 Nicht mein Stil)
-- Optional text feedback for detailed reasons
-- Appears after completed AI-generated workouts
-
-### ✅ Step 3: Analyze patterns and adjust AI prompts (Implemented)
-
-**Data Aggregation** (`src/integrations/supabase/ai_adaptation.ts`)
-
-Analyzes the last 20 feedback entries to identify patterns:
-- `super` (positive feedback) → reinforce current style
-- `hard` (too difficult) → reduce intensity
-- `light` (too easy) → increase intensity  
-- `notstyle` (not their style) → vary the workout type
-
-```ts
-const feedback = await getUserFeedbackSummary(userId);
-// Returns: { super: 5, hard: 2, light: 1, notstyle: 0, total: 8 }
-
-const insight = getFeedbackInsight(feedback);
-// Returns: "Aktueller Stil wird beibehalten"
-```
-
-**Adaptive Prompts** (`src/lib/adaptivePrompt.ts`)
-
-The `buildAdaptivePrompt()` function enhances the base AI prompt with personalized adjustments:
-
-```ts
-const adaptivePrompt = await buildAdaptivePrompt(user.id, basePrompt);
-// Automatically adds intensity adjustments, style variations, etc.
-```
-
-**Edge Function Integration**
-
-The `generate-day-suggestions` edge function automatically applies adaptive adjustments:
-
-1. Fetches user feedback history (last 20 entries)
-2. Analyzes patterns (hard vs light, style preferences)
-3. Adjusts the AI prompt accordingly
-4. Generates personalized workout suggestions
-
-Example adjustment patterns:
-- If user marked workouts as "hard" 3+ times → reduce intensity by 10-15%
-- If user marked workouts as "light" 3+ times → increase intensity
-- If user rejected style 3+ times → add variety and new exercises
-- If user consistently accepts (70%+) → maintain current approach
-
-**UI Indicator** (`src/components/ui/AdaptiveHint.tsx`)
-- Visual indicator showing adaptive learning in action
-- Displays: "🤖 Lernt aus deinem Feedback: [insight message]"
-- Shows when generating new workouts with feedback data
-
-### Data Flow
-
-```
-User completes workout
-  ↓
-WorkoutFeedbackCard shown
-  ↓
-User provides feedback (accepted/reason)
-  ↓
-Saved to ai_feedback table
-  ↓
-Next AI generation request
-  ↓
-Edge function fetches last 20 feedback entries
-  ↓
-Analyzes patterns and adjusts prompt
-  ↓
-Generates personalized workout
-  ↓
-AdaptiveHint shows applied adjustments
-```
-
-### Benefits
-
-- **Automatic personalization**: No manual tuning required
-- **Learns over time**: Gets better with each feedback entry
-- **Transparent**: Users see how their feedback influences AI
-- **Privacy-focused**: All data stays in user's own database
-
-## Future Enhancements
-
-- Weight progression tracking based on "zu leicht" feedback
-- Equipment preference learning
-- Time-of-day optimization
-- Recovery pattern recognition
-- Long-term goal tracking and adaptation
-- Sentiment analysis on `reason` field
-- Track acceptance rate trends over time
-- Correlate feedback with workout completion rates
+Aggregation and any prompt adjustment belong **server-side**, not in the client
+bundle. Nothing should be reintroduced from the Supabase design above without
+being redesigned for Firestore first.

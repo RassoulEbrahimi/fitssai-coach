@@ -25,8 +25,8 @@ vi.mock("@/components/ExerciseSelector", () => ({
 
 import { AddWorkoutModal } from "./AddWorkoutModal";
 
-// The KI tab renders AIPromptAssist, which reads workout context via useQuery
-// and an avatar that reads the theme.
+// The KI tab renders AIPromptAssist, now a static unavailable panel. The
+// providers stay because the manual tab still uses query and theme.
 const withProviders = (ui: React.ReactNode) => {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return (

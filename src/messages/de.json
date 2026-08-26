@@ -189,8 +189,7 @@
       "comingSoon": "Dein personalisierter Ernährungsplan wird hier basierend auf deinen Ernährungsvorlieben und Zielen generiert.",
       "emptyState": {
         "title": "Noch kein Ernährungsplan",
-        "description": "Generiere deinen personalisierten Ernährungsplan basierend auf deinen Zielen und Ernährungsvorlieben.",
-        "button": "Pläne jetzt erstellen"
+        "description": "Sobald ein Ernährungsplan für dich vorliegt, findest du ihn hier."
       }
     },
     "profile": {

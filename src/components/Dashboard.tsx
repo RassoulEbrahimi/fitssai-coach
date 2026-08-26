@@ -599,11 +599,7 @@ const Dashboard = () => {
                           {isLoadingPlans && !nutritionPlan ? (
                             <NutritionSkeleton />
                           ) : (
-                            <NutritionView
-                              nutritionPlan={nutritionPlan}
-                              onGeneratePlans={generatePlan}
-                              isGenerating={generatingPlans}
-                            />
+                            <NutritionView nutritionPlan={nutritionPlan} />
                           )}
                         </div>
                       </Suspense>
