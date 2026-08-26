@@ -1,5 +1,6 @@
 import { useMutation, UseMutationOptions, useQueryClient } from '@tanstack/react-query';
 import { useOfflineQueue } from './useOfflineQueue';
+import type { OfflineMutationType } from '@/lib/offlineQueue';
 import { logEvent, logError, logRetry } from '@/lib/telemetryClient';
 import { toastError, toastOffline } from '@/lib/toastWithIcon';
 
@@ -32,7 +33,20 @@ export interface UseSupabaseActionOptions<TData, TVariables, TContext = unknown>
     /**
      * Action type for the offline queue (e.g. 'TOGGLE_DAY_COMPLETION')
      */
-    offlineActionType?: 'TOGGLE_DAY_COMPLETION' | 'TOGGLE_SET';
+    offlineActionType?: OfflineMutationType;
+    /**
+     * Maps the mutation's variables to the queue payload the handler expects.
+     *
+     * Without this the raw variables were queued as the payload, which only
+     * worked where the two happened to coincide. `useWorkoutLogs.toggleDay`
+     * passed `{workoutDateStr, completed}` while its handler read
+     * planId/weekKey/dayIndex — so every offline day completion replayed as a
+     * document of undefined fields.
+     *
+     * Returning `null` means "this cannot be replayed truthfully": nothing is
+     * queued and the caller sees the failure instead of a false success.
+     */
+    toOfflinePayload?: (variables: TVariables) => unknown | null;
 }
 
 // Exponential backoff retry utility
@@ -68,16 +82,29 @@ export const useSupabaseAction = <TData = unknown, TVariables = void, TContext =
     retryConfig = { retries: 3, initialDelay: 1000 },
     messages,
     shouldQueueOffline,
-    offlineActionType
+    offlineActionType,
+    toOfflinePayload
 }: UseSupabaseActionOptions<TData, TVariables, TContext>) => {
     const queryClient = useQueryClient();
     const { isOnline, enqueue } = useOfflineQueue();
+
+    /**
+     * The payload to store, or null when the action cannot be replayed. Falls
+     * back to the raw variables for callers that have no mapper, which is what
+     * every caller did before.
+     */
+    const buildOfflinePayload = (variables: TVariables): unknown | null =>
+        toOfflinePayload ? toOfflinePayload(variables) : variables;
 
     return useMutation<TData, Error, TVariables, TContext>({
         mutationFn: async (variables: TVariables) => {
             // 1. Offline Check (Immediate)
             if (!isOnline && offlineActionType) {
-                enqueue(offlineActionType, variables as any);
+                const payload = buildOfflinePayload(variables);
+                if (payload === null) {
+                    throw new Error('Offline-Speichern ist für diese Aktion nicht möglich.');
+                }
+                enqueue(offlineActionType, payload as any);
                 if (messages?.offlineQueued) {
                     // Optional: toastOffline(messages.offlineQueued); 
                     // Strategy: Let the caller decide or use a default toast here?
@@ -95,8 +122,13 @@ export const useSupabaseAction = <TData = unknown, TVariables = void, TContext =
                     error.message?.includes('Failed to fetch') ||
                     error.message?.includes('Network request failed');
 
-                if ((isNetworkError || (shouldQueueOffline && shouldQueueOffline(error, variables))) && offlineActionType) {
-                    enqueue(offlineActionType, variables as any);
+                const queuedPayload =
+                    (isNetworkError || (shouldQueueOffline && shouldQueueOffline(error, variables))) && offlineActionType
+                        ? buildOfflinePayload(variables)
+                        : null;
+
+                if (queuedPayload !== null && offlineActionType) {
+                    enqueue(offlineActionType, queuedPayload as any);
 
                     toastOffline(
                         'Offline gespeichert',

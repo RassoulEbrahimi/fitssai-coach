@@ -144,3 +144,37 @@ export const summariseMeasuredDuration = (
     unmeasuredCount,
   };
 };
+
+/**
+ * Whether a stored log carries the full metadata new writes produce.
+ *
+ * Two kinds of row predate that: documents written before PR47 (no
+ * `workoutDay` on set logs, no `durationSec` anywhere), and day completions
+ * written by the pre-PR47 `addDays(created_at)` path, whose `workoutDay` can
+ * be off by the plan's offset from Monday when the plan was not created on a
+ * Monday.
+ *
+ * This only reports; it never mutates, and no migration exists. It lets a
+ * consumer decide for itself how much weight to give partial history rather
+ * than silently mixing the two.
+ */
+export const hasCanonicalMetadata = (log: StoredWorkoutLog): boolean =>
+  typeof log.planId === "string" && log.planId.length > 0 &&
+  typeof log.weekKey === "string" && log.weekKey.length > 0 &&
+  typeof log.dayIndex === "number" && Number.isInteger(log.dayIndex) &&
+  isWorkoutDayString(log.workoutDay);
+
+export interface HistoryCoverage {
+  total: number;
+  /** Rows a date-sensitive metric can trust without reconstruction. */
+  canonical: number;
+  /** Rows missing some metadata; their dates may predate the date fix. */
+  partial: number;
+}
+
+export const summariseHistoryCoverage = (
+  logs: readonly StoredWorkoutLog[]
+): HistoryCoverage => {
+  const canonical = logs.filter(hasCanonicalMetadata).length;
+  return { total: logs.length, canonical, partial: logs.length - canonical };
+};

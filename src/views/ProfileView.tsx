@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from "react";
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
-import { RefreshCw, Sparkles, User, Ruler, Weight, Activity, Settings, Calendar, Crown, Pencil, Target, Utensils, Camera, Loader2, Flame, Clock, Zap, Sun, Moon, Monitor } from "lucide-react";
+import { RefreshCw, Sparkles, User, Ruler, Weight, Activity, Settings, Calendar, Crown, Pencil, Target, Utensils, Dumbbell, Camera, Loader2, Flame, Clock, Zap, Sun, Moon, Monitor } from "lucide-react";
 import { AIAnalyticsCard } from "@/components/AIAnalyticsCard";
 import { LogoutButton } from "@/components/LogoutButton";
 import { DeleteAccountButton } from "@/components/DeleteAccountButton";
@@ -11,6 +11,19 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import {
+  EQUIPMENT_OPTIONS,
+  SESSION_MINUTES_CHOICES,
+  DAYS_PER_WEEK_MAX,
+  DAYS_PER_WEEK_MIN,
+  daysPerWeekSchema,
+  equipmentSchema,
+  formatDaysPerWeek,
+  formatEquipment,
+  formatSessionMinutes,
+  sessionMinutesSchema,
+  type EquipmentType,
+} from "@/lib/coachingPreferences";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { usePreferences } from "@/contexts/PreferencesContext";
@@ -223,6 +236,7 @@ const ProfileView: React.FC<ProfileViewProps> = React.memo(({
   const { enableAdvancedGlass, setEnableAdvancedGlass } = usePreferences();
   const [isEditOpen, setIsEditOpen] = useState(false);
   const [isGoalsOpen, setIsGoalsOpen] = useState(false);
+  const [isTrainingOpen, setIsTrainingOpen] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
@@ -236,6 +250,11 @@ const ProfileView: React.FC<ProfileViewProps> = React.memo(({
     age: 0,
   });
 
+  const [trainingData, setTrainingData] = useState<{
+    equipment: EquipmentType[];
+    daysPerWeek?: number;
+    sessionMinutes?: number;
+  }>({ equipment: [] });
   const [goalsData, setGoalsData] = useState({
     fitness_goal: "",
     dietary_preference: "",
@@ -293,6 +312,15 @@ const ProfileView: React.FC<ProfileViewProps> = React.memo(({
   const bmiStatus = getBMIStatus(bmi);
 
   // Get display values for goals
+  /*
+    Coaching preferences did not exist before PR48, so most existing profiles
+    carry none. They render as "Nicht angegeben" — a stored default would look
+    like an answer the user never gave.
+  */
+  const displayEquipment = formatEquipment(profile?.equipment);
+  const displayDaysPerWeek = formatDaysPerWeek(profile?.daysPerWeek);
+  const displaySessionMinutes = formatSessionMinutes(profile?.sessionMinutes);
+
   const displayGoal = fitnessGoalLabels[profile?.fitness_goal] || profile?.fitness_goal || "--";
   const displayDiet = dietaryLabels[profile?.dietary_preference] || profile?.dietary_preference || "--";
 
@@ -396,6 +424,70 @@ const ProfileView: React.FC<ProfileViewProps> = React.memo(({
     } finally {
       setIsSaving(false);
       setIsUploading(false);
+    }
+  };
+
+  const handleOpenTraining = () => {
+    setTrainingData({
+      equipment: profile?.equipment ?? [],
+      daysPerWeek: profile?.daysPerWeek,
+      sessionMinutes: profile?.sessionMinutes,
+    });
+    setIsTrainingOpen(true);
+  };
+
+  const toggleTrainingEquipment = (id: EquipmentType) => {
+    setTrainingData((prev) => ({
+      ...prev,
+      equipment: prev.equipment.includes(id)
+        ? prev.equipment.filter((entry) => entry !== id)
+        : [...prev.equipment, id],
+    }));
+  };
+
+  /*
+    Each field is validated on its own and written only when valid, so a user
+    can fill in one preference without being forced to answer the rest. An
+    invalid or untouched field is left out of the write entirely rather than
+    stored as a placeholder.
+  */
+  const trainingErrors = {
+    equipment: !equipmentSchema.safeParse(trainingData.equipment).success,
+    daysPerWeek:
+      trainingData.daysPerWeek !== undefined &&
+      !daysPerWeekSchema.safeParse(trainingData.daysPerWeek).success,
+    sessionMinutes:
+      trainingData.sessionMinutes !== undefined &&
+      !sessionMinutesSchema.safeParse(trainingData.sessionMinutes).success,
+  };
+
+  const handleSaveTraining = async () => {
+    if (!profile?.id) return;
+    if (trainingErrors.daysPerWeek || trainingErrors.sessionMinutes) return;
+
+    const update: Record<string, unknown> = { updatedAt: Timestamp.now() };
+    if (equipmentSchema.safeParse(trainingData.equipment).success) {
+      update.equipment = trainingData.equipment;
+    }
+    if (daysPerWeekSchema.safeParse(trainingData.daysPerWeek).success) {
+      update.daysPerWeek = trainingData.daysPerWeek;
+    }
+    if (sessionMinutesSchema.safeParse(trainingData.sessionMinutes).success) {
+      update.sessionMinutes = trainingData.sessionMinutes;
+    }
+
+    setIsSaving(true);
+    try {
+      await setDoc(doc(db, 'users', profile.id), update, { merge: true });
+      // Only after the write resolves — a failure must not claim a save.
+      toast.success("Trainingsangaben aktualisiert");
+      setIsTrainingOpen(false);
+      onProfileUpdate();
+    } catch (error) {
+      console.error("Error updating training preferences:", error);
+      toast.error("Fehler beim Speichern");
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -594,6 +686,43 @@ const ProfileView: React.FC<ProfileViewProps> = React.memo(({
               size="icon"
               className="h-8 w-8 shrink-0"
               onClick={handleOpenGoals}
+            >
+              <Pencil className="h-3.5 w-3.5" />
+            </Button>
+          </div>
+        </GlassCard>
+      </motion.section>
+
+      {/* Section 3b: Training preferences — the inputs coaching will need */}
+      <motion.section variants={itemVariants}>
+        <div className="flex items-center gap-2 mb-3 px-1">
+          <Dumbbell className="w-4 h-4 text-emerald-400" />
+          <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wider">Training</h2>
+        </div>
+        <GlassCard className="p-4">
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex-1 space-y-3 min-w-0">
+              <div>
+                <span className="text-xs text-muted-foreground uppercase tracking-wider">Ausrüstung</span>
+                <p className="text-sm font-medium text-foreground break-words">{displayEquipment}</p>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <span className="text-xs text-muted-foreground uppercase tracking-wider">Tage / Woche</span>
+                  <p className="text-sm font-medium text-foreground">{displayDaysPerWeek}</p>
+                </div>
+                <div>
+                  <span className="text-xs text-muted-foreground uppercase tracking-wider">Trainingsdauer</span>
+                  <p className="text-sm font-medium text-foreground">{displaySessionMinutes}</p>
+                </div>
+              </div>
+            </div>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8 shrink-0"
+              onClick={handleOpenTraining}
+              aria-label="Trainingsangaben bearbeiten"
             >
               <Pencil className="h-3.5 w-3.5" />
             </Button>
@@ -825,6 +954,99 @@ const ProfileView: React.FC<ProfileViewProps> = React.memo(({
                   Hochladen...
                 </>
               ) : isSaving ? "Speichern..." : "Speichern"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Training Preferences Dialog */}
+      <Dialog open={isTrainingOpen} onOpenChange={setIsTrainingOpen}>
+        <DialogContent className="bg-background/95 backdrop-blur-xl border-border max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Trainingsangaben bearbeiten</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-5 py-4">
+            <div className="space-y-2">
+              <Label>Verfügbare Ausrüstung</Label>
+              <div className="grid grid-cols-1 gap-2">
+                {EQUIPMENT_OPTIONS.map((option) => {
+                  const selected = trainingData.equipment.includes(option.id);
+                  return (
+                    <button
+                      key={option.id}
+                      type="button"
+                      aria-pressed={selected}
+                      onClick={() => toggleTrainingEquipment(option.id)}
+                      className={`text-left rounded-xl border p-3 transition-colors min-h-[44px] ${
+                        selected ? "border-primary bg-primary/10" : "border-border hover:bg-muted/50"
+                      }`}
+                    >
+                      <span className="text-sm font-medium text-foreground">{option.label}</span>
+                      {option.hint && (
+                        <span className="block text-xs text-muted-foreground mt-0.5">{option.hint}</span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+              {trainingErrors.equipment && (
+                <p className="text-sm text-muted-foreground">
+                  Ohne Auswahl bleibt die Ausrüstung „Nicht angegeben“.
+                </p>
+              )}
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="edit-days">Trainingstage pro Woche</Label>
+              <Select
+                value={trainingData.daysPerWeek ? String(trainingData.daysPerWeek) : undefined}
+                onValueChange={(value) =>
+                  setTrainingData((prev) => ({ ...prev, daysPerWeek: Number(value) }))
+                }
+              >
+                <SelectTrigger id="edit-days">
+                  <SelectValue placeholder="Nicht angegeben" />
+                </SelectTrigger>
+                <SelectContent>
+                  {Array.from(
+                    { length: DAYS_PER_WEEK_MAX - DAYS_PER_WEEK_MIN + 1 },
+                    (_, index) => DAYS_PER_WEEK_MIN + index
+                  ).map((days) => (
+                    <SelectItem key={days} value={String(days)}>
+                      {days} {days === 1 ? "Tag" : "Tage"}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="edit-session">Gewünschte Trainingsdauer</Label>
+              <Select
+                value={trainingData.sessionMinutes ? String(trainingData.sessionMinutes) : undefined}
+                onValueChange={(value) =>
+                  setTrainingData((prev) => ({ ...prev, sessionMinutes: Number(value) }))
+                }
+              >
+                <SelectTrigger id="edit-session">
+                  <SelectValue placeholder="Nicht angegeben" />
+                </SelectTrigger>
+                <SelectContent>
+                  {SESSION_MINUTES_CHOICES.map((minutes) => (
+                    <SelectItem key={minutes} value={String(minutes)}>
+                      {minutes} Minuten
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsTrainingOpen(false)} disabled={isSaving}>
+              Abbrechen
+            </Button>
+            <Button onClick={handleSaveTraining} disabled={isSaving}>
+              {isSaving ? "Speichern..." : "Speichern"}
             </Button>
           </DialogFooter>
         </DialogContent>

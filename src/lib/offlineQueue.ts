@@ -1,6 +1,14 @@
 
-export type OfflineMutationType = 'TOGGLE_DAY_COMPLETION' | 'TOGGLE_SET';
+export type OfflineMutationType = 'TOGGLE_DAY_COMPLETION' | 'TOGGLE_SET' | 'TOGGLE_DAY';
 
+/**
+ * Marking one *exercise* complete.
+ *
+ * The name is historical: despite "DAY_COMPLETION" this identifies a single
+ * exercise position, and it is what `useWeekCompletion.toggleExercise`
+ * enqueues. It is left alone so queue entries already in localStorage under
+ * this type keep replaying correctly.
+ */
 export interface ToggleDayCompletionPayload {
     planId: string;
     weekKey: string;
@@ -9,6 +17,27 @@ export interface ToggleDayCompletionPayload {
     completed: boolean;
     durationMinutes?: number;
     caloriesBurned?: number;
+}
+
+/**
+ * Marking a whole plan *day* complete.
+ *
+ * `useWorkoutLogs.toggleDay` used to enqueue under TOGGLE_DAY_COMPLETION with
+ * only `{workoutDateStr, completed}`, which that handler reads as
+ * planId/weekKey/dayIndex/exerciseIndex — all undefined. Every offline day
+ * completion therefore replayed as a junk document. A day completion is a
+ * different thing from an exercise completion, so it gets its own type rather
+ * than overloading one payload with two meanings.
+ *
+ * There is deliberately no `exerciseIndex`: a day is not an exercise.
+ */
+export interface ToggleDayPayload {
+    planId: string;
+    weekKey: string;
+    dayIndex: number;
+    /** `YYYY-MM-DD`, Europe/Berlin — the day the user actually selected. */
+    workoutDay: string;
+    completed: boolean;
 }
 
 export interface ToggleSetPayload {
@@ -25,6 +54,30 @@ export interface ToggleSetPayload {
 export type OfflineMutationPayloads = {
     TOGGLE_DAY_COMPLETION: ToggleDayCompletionPayload;
     TOGGLE_SET: ToggleSetPayload;
+    TOGGLE_DAY: ToggleDayPayload;
+};
+
+/**
+ * The shape `useWorkoutLogs.toggleDay` used to enqueue under
+ * TOGGLE_DAY_COMPLETION. Entries in this shape may still be sitting in a
+ * user's localStorage queue, so the handler has to recognise them.
+ */
+export interface LegacyToggleDayPayload {
+    workoutDateStr?: string;
+    completed?: boolean;
+}
+
+/** True for a pre-PR48 day-completion entry: a date, and no plan position. */
+export const isLegacyDayCompletionPayload = (
+    payload: unknown
+): payload is LegacyToggleDayPayload => {
+    if (!payload || typeof payload !== 'object') return false;
+    const candidate = payload as Record<string, unknown>;
+    return (
+        typeof candidate.workoutDateStr === 'string' &&
+        candidate.planId === undefined &&
+        candidate.exerciseIndex === undefined
+    );
 };
 
 export interface OfflineMutationEntry<T extends OfflineMutationType = OfflineMutationType> {
