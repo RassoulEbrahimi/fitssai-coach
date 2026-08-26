@@ -14,6 +14,7 @@ import {
   writeStoredSession,
   type SessionPlanContext,
 } from "./trainingSession";
+import { computeDurationSec } from "./workoutLog";
 
 const PLAN_ID = "plan-abc";
 
@@ -34,6 +35,28 @@ describe("session payload", () => {
   it("round-trips through storage", () => {
     writeStoredSession(validSession);
     expect(readStoredSession()).toEqual(validSession);
+  });
+
+  it("preserves the original start time across a reload", () => {
+    // The measured duration is only truthful if a refresh mid-session does not
+    // restart the clock. Writing then re-reading stands in for the reload.
+    const startedAt = 1_700_000_000_000;
+    writeStoredSession(createSessionPayload(PLAN_ID, "Week 2", 3, startedAt));
+
+    const resumed = readStoredSession();
+
+    expect(resumed?.startedAt).toBe(startedAt);
+  });
+
+  it("measures elapsed time from the persisted start, not from the reload", () => {
+    const startedAt = 1_700_000_000_000;
+    writeStoredSession(createSessionPayload(PLAN_ID, "Week 2", 3, startedAt));
+
+    // Session began 25 minutes ago; the page reloaded somewhere in between.
+    const resumed = readStoredSession();
+    const endedAt = startedAt + 25 * 60 * 1000;
+
+    expect(computeDurationSec(resumed?.startedAt ?? null, endedAt)).toBe(1500);
   });
 
   it("uses one canonical namespaced key", () => {

@@ -7,10 +7,17 @@ import { useAuth } from "@/hooks/useAuth";
 import { useSupabaseAction } from "@/hooks/useSupabaseAction";
 import { useOfflineQueue } from "./useOfflineQueue";
 import { queryKeys } from "@/lib/queryKeys";
+import { isWorkoutDayString } from "@/lib/workoutLog";
 
 interface ToggleSetParams {
   planId: string; weekKey: string; dayIndex: number; exerciseIndex: number;
   setNumber: number; repsCompleted: number; weightUsed?: number | null; completed: boolean;
+  /**
+   * `YYYY-MM-DD` for the day being logged, from the date the user actually has
+   * selected — not "today". Logging a set against a past day must record that
+   * day. Optional so an older caller still produces a valid document.
+   */
+  workoutDay?: string;
 }
 
 interface SetLog {
@@ -81,6 +88,9 @@ export function useSetTracking(planId: string | undefined, weekKey: string, dayI
         const newLog = await addDoc(logsRef, {
           planId: params.planId, weekKey: params.weekKey,
           dayIndex: params.dayIndex, exerciseIndex: params.exerciseIndex,
+          // Lets a set be placed on a calendar without re-deriving the date
+          // from the plan's start Monday.
+          ...(isWorkoutDayString(params.workoutDay) ? { workoutDay: params.workoutDay } : {}),
           completed: false, createdAt: Timestamp.now(),
         });
         logId = newLog.id;

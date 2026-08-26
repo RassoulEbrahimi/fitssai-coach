@@ -24,6 +24,7 @@ import { TodayWorkoutSkeleton } from "@/components/skeletons/TodayWorkoutSkeleto
 import { useTraining } from "@/contexts/TrainingContext";
 import { useFocusMode } from "@/contexts/FocusModeContext";
 import { useSetTracking } from "@/hooks/useSetTracking";
+import { recordSessionDuration } from "@/lib/sessionRecord";
 import { useRestTimer } from "@/hooks/useRestTimer";
 import ExerciseWithSets from "@/components/workout/ExerciseWithSets";
 import workoutHeroBg from "@/assets/workout-hero-bg.jpg";
@@ -98,6 +99,7 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
     todayWorkouts,
     isStarted,
     duration,
+    session,
     startSession,
     endSession
   } = useTraining();
@@ -170,12 +172,14 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
       repsCompleted: params.repsCompleted,
       weightUsed: params.weightUsed,
       completed: params.completed,
+      // The day the user is looking at, which is not always today.
+      workoutDay: selectedDateStr,
     });
 
     if (params.completed) {
       showToast(t('todayWorkout.setCompleted', { set: params.setNumber }));
     }
-  }, [user, workoutPlan, weekKey, dayIndex, exercises, toggleSet, showToast, t]);
+  }, [user, workoutPlan, weekKey, dayIndex, selectedDateStr, exercises, toggleSet, showToast, t]);
 
   // Calculate total sets and completed sets for progress
   const progressStats = useMemo(() => {
@@ -288,14 +292,43 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
     }
   };
 
-  const handleCloseSummary = (shouldEndSession: boolean = false) => {
+  const handleCloseSummary = async (shouldEndSession: boolean = false) => {
     setShowSummary(false);
 
-    if (shouldEndSession) {
-      endSession();
-      setFocusMode(false);
-      showToast(t('todayWorkout.finishMessage'));
+    if (!shouldEndSession) return;
+
+    /*
+      Persist the measured length before clearing the session, since endSession
+      discards startedAt. The write records duration only — ending a session is
+      not the same as completing the workout, and the per-exercise logs remain
+      the authority on what was actually done.
+
+      A failure here must not strand the user in an ended-but-not-cleared
+      session, so the local session is cleared either way.
+    */
+    if (user && workoutPlan?.id && session) {
+      try {
+        await recordSessionDuration({
+          uid: user.uid,
+          planId: workoutPlan.id,
+          weekKey,
+          dayIndex,
+          workoutDay: selectedDateStr,
+          startedAt: session.startedAt,
+          endedAt: Date.now(),
+        });
+      } catch (error) {
+        logEvent('session_duration_write_failed', {
+          weekKey,
+          dayIndex,
+          message: error instanceof Error ? error.message : String(error),
+        });
+      }
     }
+
+    endSession();
+    setFocusMode(false);
+    showToast(t('todayWorkout.finishMessage'));
   };
 
   // Handle starting training - also enables fullscreen

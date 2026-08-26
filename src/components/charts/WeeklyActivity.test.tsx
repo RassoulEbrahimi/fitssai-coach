@@ -15,7 +15,9 @@ const EMPTY = {
   dailyData: [0, 0, 0, 0, 0, 0, 0],
   dayLabels: ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"],
   activeDays: 0,
-  totalMinutes: 0,
+  measuredMinutes: 0,
+  measuredWorkouts: 0,
+  unmeasuredWorkouts: 0,
   totalWorkouts: 0,
   targetMinutes: 350,
   isLoading: false,
@@ -26,7 +28,30 @@ const WITH_HISTORY = {
   ...EMPTY,
   dailyData: [30, 0, 45, 0, 20, 0, 0],
   activeDays: 3,
-  totalMinutes: 95,
+  measuredMinutes: 95,
+  measuredWorkouts: 3,
+  totalWorkouts: 3,
+};
+
+/** Workouts happened, but none of them was timed — every pre-PR47 history. */
+const LEGACY_UNMEASURED = {
+  ...EMPTY,
+  dailyData: [0, 0, 0, 0, 0, 0, 0],
+  activeDays: 3,
+  measuredMinutes: 0,
+  measuredWorkouts: 0,
+  unmeasuredWorkouts: 3,
+  totalWorkouts: 3,
+};
+
+/** Some sessions timed, some not: the total is a floor, not the whole truth. */
+const MIXED = {
+  ...EMPTY,
+  dailyData: [30, 0, 0, 0, 0, 0, 0],
+  activeDays: 3,
+  measuredMinutes: 30,
+  measuredWorkouts: 1,
+  unmeasuredWorkouts: 2,
   totalWorkouts: 3,
 };
 
@@ -74,11 +99,14 @@ describe("WeeklyActivity — zero activity", () => {
     }
   });
 
-  it("still shows the zero metrics", () => {
+  it("keeps the active-days metric but claims no minutes", () => {
+    // With nothing measured, "0 von 350 min" would assert that the user trained
+    // for no time. The days count is real, so it stays.
     const { container } = render(<WeeklyActivity />);
 
     expect(container.textContent).toContain("von 7 Tagen aktiv");
-    expect(container.textContent).toContain("von 350 min");
+    expect(container.textContent).not.toContain("von 350 min");
+    expect(container.textContent).toContain("Dauer nicht erfasst");
   });
 
   it("uses German motivational copy only", () => {
@@ -108,6 +136,8 @@ describe("WeeklyActivity — with history", () => {
     }
     expect(container.textContent).toContain("3");
     expect(container.textContent).toContain("95");
+    // Everything in this period was measured, so it is a true total.
+    expect(container.textContent).not.toContain("mind.");
   });
 });
 
@@ -129,5 +159,38 @@ describe("WeeklyActivity refresh handler", () => {
     expect(refresh).toHaveBeenCalledWith();
     const [firstArg] = refresh.mock.calls[0];
     expect(firstArg).toBeUndefined();
+  });
+});
+
+describe("WeeklyActivity — duration honesty", () => {
+  it("shows no fabricated minutes when no session was ever timed", () => {
+    activity.mockReturnValue(LEGACY_UNMEASURED);
+    const { container } = render(<WeeklyActivity />);
+
+    // Three real workouts, so the empty state must not appear...
+    expect(screen.queryByTestId("activity-empty-state")).not.toBeInTheDocument();
+    expect(container.textContent).toContain("3");
+    // ...but there is no measured time to report.
+    expect(container.textContent).toContain("Dauer nicht erfasst");
+    expect(container.textContent).not.toMatch(/\d+ von 350 min/);
+  });
+
+  it("drops the minutes chart when there are no minutes to plot", () => {
+    activity.mockReturnValue(LEGACY_UNMEASURED);
+    render(<WeeklyActivity />);
+
+    // Seven empty bars would read as a broken chart, not as "not recorded".
+    for (const label of LEGACY_UNMEASURED.dayLabels) {
+      expect(screen.queryByText(label)).not.toBeInTheDocument();
+    }
+  });
+
+  it("marks a partly measured period as a floor, not a total", () => {
+    activity.mockReturnValue(MIXED);
+    const { container } = render(<WeeklyActivity />);
+
+    expect(container.textContent).toContain("mind.");
+    expect(container.textContent).toContain("30");
+    expect(container.textContent).toContain("von 350 min");
   });
 });

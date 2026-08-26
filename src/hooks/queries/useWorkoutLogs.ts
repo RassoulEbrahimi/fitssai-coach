@@ -7,6 +7,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { useSupabaseAction } from "@/hooks/useSupabaseAction";
 import { queryKeys } from "@/lib/queryKeys";
 import { WorkoutLog } from "@/lib/types";
+import { readDurationSec } from "@/lib/workoutLog";
 
 const docToLog = (id: string, data: Record<string, any>, userId: string): WorkoutLog => ({
   id,
@@ -18,7 +19,17 @@ const docToLog = (id: string, data: Record<string, any>, userId: string): Workou
   week_key:      data.weekKey      ?? null,
   day_index:     data.dayIndex     ?? null,
   exercise_index:data.exerciseIndex?? null,
+  // Absent on every document written before PR47; null means "not measured",
+  // which is not the same as "trained for no time".
+  duration_sec:  readDurationSec(data.durationSec),
 } as unknown as WorkoutLog);
+
+interface ToggleDayParams {
+  workoutDateStr: string;
+  completed: boolean;
+  weekKey?: string;
+  dayIndex?: number;
+}
 
 export const useWorkoutLogs = (planId?: string) => {
   const { user } = useAuth();
@@ -38,18 +49,28 @@ export const useWorkoutLogs = (planId?: string) => {
   });
 
   const toggleDayMutation = useSupabaseAction({
-    action: async ({ workoutDateStr, completed }: { workoutDateStr: string; completed: boolean }) => {
+    action: async ({ workoutDateStr, completed, weekKey, dayIndex }: ToggleDayParams) => {
       if (!user || !planId) throw new Error("Missing user or plan");
       const logsRef = collection(db, "users", user.uid, "workout_logs");
       const snap = await getDocs(query(logsRef, where("planId", "==", planId), where("workoutDay", "==", workoutDateStr)));
+      /*
+        New writes also carry weekKey/dayIndex so a day log can be placed in the
+        plan without re-deriving it from created_at. Both are optional: a caller
+        that does not know them still produces a valid document, and existing
+        documents keep working without them.
+      */
+      const position =
+        weekKey !== undefined && dayIndex !== undefined ? { weekKey, dayIndex } : {};
+
       if (!snap.empty) {
         await updateDoc(doc(db, "users", user.uid, "workout_logs", snap.docs[0].id), {
+          ...position,
           completed,
           completedAt: completed ? Timestamp.now() : null,
         });
       } else {
         await addDoc(logsRef, {
-          planId, workoutDay: workoutDateStr, completed,
+          planId, workoutDay: workoutDateStr, ...position, completed,
           completedAt: completed ? Timestamp.now() : null,
           createdAt: Timestamp.now(),
         });
@@ -58,7 +79,7 @@ export const useWorkoutLogs = (planId?: string) => {
     },
     queryKey: [...queryKey],
     messages: { error: "Fehler beim Speichern" },
-    onMutate: async ({ workoutDateStr, completed }: { workoutDateStr: string; completed: boolean }) => {
+    onMutate: async ({ workoutDateStr, completed }: ToggleDayParams) => {
       await queryClient.cancelQueries({ queryKey });
       const previousLogs = queryClient.getQueryData<WorkoutLog[]>(queryKey);
       queryClient.setQueryData(queryKey, (old: WorkoutLog[] = []) => {
