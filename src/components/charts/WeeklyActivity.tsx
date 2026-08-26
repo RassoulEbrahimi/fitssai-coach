@@ -56,7 +56,7 @@ export const WeeklyActivity: React.FC<WeeklyActivityProps> = ({ className }) => 
           <Button
             variant="ghost"
             size="icon"
-            onClick={refresh}
+            onClick={() => refresh()}
             className="h-8 w-8 rounded-full flex-shrink-0 transition-transform"
             asChild
             aria-label="Aktualisieren"

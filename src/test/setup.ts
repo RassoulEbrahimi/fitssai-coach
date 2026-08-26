@@ -27,8 +27,8 @@ class NoopResizeObserver {
 
 beforeEach(() => {
     stubMatchMedia();
-    if (!('ResizeObserver' in window)) {
-        window.ResizeObserver = NoopResizeObserver as unknown as typeof ResizeObserver;
+    if (!globalThis.ResizeObserver) {
+        globalThis.ResizeObserver = NoopResizeObserver as unknown as typeof ResizeObserver;
     }
     if (!Element.prototype.scrollIntoView) {
         Element.prototype.scrollIntoView = () => {};

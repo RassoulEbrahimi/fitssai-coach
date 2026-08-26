@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 
 const activity = vi.fn();
 vi.mock("@/hooks/useWeeklyActivity", () => ({
@@ -107,5 +108,26 @@ describe("WeeklyActivity — with history", () => {
     }
     expect(container.textContent).toContain("3");
     expect(container.textContent).toContain("95");
+  });
+});
+
+describe("WeeklyActivity refresh handler", () => {
+  it("calls refetch with no arguments, not with the click event", async () => {
+    /*
+     * Regression: onClick={refresh} handed React's MouseEvent straight to
+     * TanStack Query's refetch(options?: RefetchOptions), where it was read as
+     * an options bag. The handler must swallow the event.
+     */
+    const refresh = vi.fn().mockResolvedValue(undefined);
+    activity.mockReturnValue({ ...WITH_HISTORY, refresh });
+    const user = userEvent.setup();
+
+    render(<WeeklyActivity />);
+    await user.click(screen.getByRole("button", { name: "Aktualisieren" }));
+
+    expect(refresh).toHaveBeenCalledTimes(1);
+    expect(refresh).toHaveBeenCalledWith();
+    const [firstArg] = refresh.mock.calls[0];
+    expect(firstArg).toBeUndefined();
   });
 });
