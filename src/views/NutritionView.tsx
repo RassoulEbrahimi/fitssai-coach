@@ -1,8 +1,7 @@
 import React from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Apple, Sparkles } from "lucide-react";
+import { Apple } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useTranslation } from "react-i18next";
 import { NutritionPlan, NutritionMeal } from "@/lib/types";
@@ -33,16 +32,19 @@ const mealRank = (key: string): number => {
 
 
 
+/*
+  Nutrition is read-only. The empty state used to offer a "Pläne jetzt
+  erstellen" button wired — through Dashboard — to the *workout* plan
+  generator, which itself only threw AI_UNAVAILABLE. Nothing generates
+  nutrition plans in this build, so the view reports what it has and
+  promises nothing.
+*/
 interface NutritionViewProps {
   nutritionPlan: NutritionPlan | null;
-  onGeneratePlans?: () => void;
-  isGenerating?: boolean;
 }
 
 const NutritionView: React.FC<NutritionViewProps> = React.memo(({
   nutritionPlan,
-  onGeneratePlans,
-  isGenerating = false
 }) => {
   const { t } = useTranslation();
 
@@ -130,24 +132,6 @@ const NutritionView: React.FC<NutritionViewProps> = React.memo(({
                     {t('dashboard.nutritionPlan.emptyState.description')}
                   </p>
                 </div>
-
-                {onGeneratePlans && (
-                  <motion.div
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    transition={{ delay: 0.2 }}
-                  >
-                    <Button
-                      onClick={onGeneratePlans}
-                      disabled={isGenerating}
-                      className="gap-2"
-                      size="lg"
-                    >
-                      <Sparkles className="h-4 w-4" aria-hidden="true" />
-                      {isGenerating ? t('dashboard.stats.generating') : t('dashboard.nutritionPlan.emptyState.button')}
-                    </Button>
-                  </motion.div>
-                )}
               </motion.div>
             )}
           </CardContent>

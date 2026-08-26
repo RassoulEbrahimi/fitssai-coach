@@ -43,8 +43,14 @@ const Features = () => {
       <div className="container mx-auto px-6">
         <div className="text-center mb-16">
           <h2 className="text-4xl md:text-5xl font-bold mb-6">
-            {t('features.title').split('Advanced AI')[0]}
-            <span className="gradient-primary bg-clip-text text-transparent">Advanced AI</span>
+            {/*
+              This used to split the German title on the literal "Advanced AI"
+              and then re-append that English string. The title contains no such
+              substring, so the split was a no-op and the heading rendered as
+              "Powered by fortschrittlicher KIAdvanced AI" — stray English in a
+              German-only UI.
+            */}
+            {t('features.title')}
           </h2>
           <p className="text-xl text-muted-foreground max-w-3xl mx-auto">
             {t('features.description')}

@@ -1,48 +1,63 @@
-# Backend Health Scan & Priority Map
+# Backend state & priority map
 
-This document outlines the state of the backend and frontend architecture.
+Last verified against `main` during Phase 2 / PR46.
 
-## Priority Map
+## Runtime today
 
-| Rank | Title | Area | Impact | Status | Description |
-|------|-------|------|--------|--------|-------------|
-| 1-7 | **Core Refactoring** | All | **High** | **[DONE]** | Security, RLS, Caching, Offline logic complete. |
-| 8 | **Mobile Performance** | Perf | **High** | **[DONE]** | Bundle split (~160KB entry), Lazy loading, Render optimized. |
-| 9 | **PWA & Installability** | UX | **High** | **[DONE]** | Manifest, Service Worker, Install Prompt implemented. |
+FitssAI is a **client-only** application. There is no server-side execution
+layer of any kind.
 
-## Completed Missions Log
+| Concern | State |
+| --- | --- |
+| Auth | Firebase Auth, client SDK |
+| Data | Cloud Firestore, client SDK |
+| Hosting | GitHub Pages (static), via `.github/workflows/deploy.yml` |
+| Cloud Functions | **None.** No `functions/`, no `firebase.json`, no `.firebaserc` |
+| Firestore rules | **Not in version control.** They exist only in the Firebase console |
+| Supabase / Postgres | **Retired.** Not a dependency; all remaining code removed in PR46 |
+| AI provider | **None.** No provider SDK, no API key, no generation anywhere |
+| Telemetry | `src/lib/telemetryClient.ts` — `console.log` only, no backend |
 
-### Mission 6: Polish & Lint Cleanup (Completed)
-- **Status:** **Completed.** Codebase strictly typed and clean.
+### What is *not* true, despite older notes
 
-### Mission 7: Offline-First Experience (Completed)
-- **Status:** **Completed.** Offline Banner & Queue Handlers implemented.
+An earlier version of this file described row-level security, an AI plan
+generator and `ai_logs` monitoring as complete. To be explicit:
 
-### Mission 8: Mobile Performance Improvements (Completed)
-- **Status:** **Completed.** 82% bundle reduction, fixed runtime lag.
+- **`ai_logs` is never written.** `useAIAnalytics` and `useAISessions` read
+  `users/{uid}/ai_logs`, but no code in this repository writes to it, so
+  `AIAnalyticsCard` reports zeros by construction. Making that surface honest
+  is outstanding work.
+- **No plan is generated.** `useWorkoutPlan.generatePlan` throws
+  `AI_UNAVAILABLE` and shows a German notice. It is a stub, not an integration.
+- **Nutrition plans are read-only.** There is no generator for them, and
+  nutrition generation is out of scope for Phase 2.
+- "Strictly typed and clean" was inaccurate: `npm run lint` reports a
+  pre-existing error backlog. The typecheck gate (PR44) and test gate (PR45)
+  are real and enforced in CI.
 
-### Mission 9: PWA & Installability (Completed)
-**Goal:** Make the app installable (Add to Home Screen).
-**Status:** **Completed.**
-**Achievements:**
-- [x] Configured `vite-plugin-pwa` with Service Worker.
-- [x] Created `manifest.json` via config.
-- [x] Implemented `PWAInstallPrompt` component for in-app installation.
-- [x] Note: Icons (`pwa-192x192.png`, `pwa-512x512.png`) must be present in `public/`.
+## Completed foundations
 
-## Next Steps: Live Maintenance
-The foundational roadmap (Missions 1-9) is fully complete. The system is Production-Ready.
+Caching, offline queue, bundle splitting, PWA install, theme system, plan
+lifecycle, accessibility baseline, i18n (German-only), a real `tsc` gate and a
+real `vitest` gate are all in place and enforced by `deploy.yml`.
 
-**Maintenance Tasks:**
-- Monitor `ai_logs` for GPT errors.
-- Watch user analytics for offline usage patterns.
-- Regularly run `npm run lint` to keep code clean.
+## Phase 2 — outstanding
 
-**Future Feature Ideas:**
-- [ ] Push Notifications (via Service Worker).
-- [ ] Social Sharing features.
-- [ ] Multi-language support (i18n).
+Ordered by dependency, not by value:
 
-## Build/Test Notes
-- **PWA:** Manifest verified. Service Worker active.
-- **Build:** `npm run build` passing.
+1. **Backend execution layer.** Cloud Functions require the Firebase **Blaze**
+   plan. This is a billing decision and it blocks everything below.
+   `src/pages/AdminPanel.tsx` already disables two features for this reason.
+2. **Firestore rules into version control**, reviewed before any server
+   function trusts a `role` field.
+3. **Shared plan validation** (zod is already a dependency) so generated
+   content can never be persisted unvalidated.
+4. **Session duration persistence** — `endSession` currently discards it, so
+   no historical workout time exists.
+5. **Deterministic coaching/review engine** before any model is involved.
+6. Only then: AI generation, summaries, and a real notification source
+   (`src/lib/notifications.ts` is the seam and returns `[]` today).
+
+No AI provider has been selected, and none should be assumed. Any provider key
+must live in server-side config — **never** in a `VITE_*` variable, which is
+inlined into the public bundle at build time.

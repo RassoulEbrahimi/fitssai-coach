@@ -1,25 +1,13 @@
-import { X, Loader2, Bot } from 'lucide-react';
+import { X } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '@/components/ui/alert-dialog';
 import { useAuth } from '@/hooks/useAuth';
 import { collection, getDocs, query, orderBy, limit, doc, setDoc, Timestamp } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { toastSuccess, toastError } from '@/lib/toastWithIcon';
-import { format } from 'date-fns';
-import { de } from 'date-fns/locale';
 import { ManualWorkoutForm } from './ManualWorkoutForm';
 import { AIPromptAssist } from './AIPromptAssist';
 import type { Exercise } from '@/hooks/useExerciseEditor';
@@ -48,11 +36,6 @@ export function AddWorkoutModal({
   onWorkoutAdded
 }: AddWorkoutModalProps) {
   const [activeTab, setActiveTab] = useState(mode);
-  const [suggestions, setSuggestions] = useState<WorkoutSuggestion[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [showConfirmDialog, setShowConfirmDialog] = useState(false);
-  const [hasExistingExercises, setHasExistingExercises] = useState(false);
   const { user } = useAuth();
 
   // Reset on every open: manual is the default, so reopening after a visit to
@@ -60,9 +43,6 @@ export function AddWorkoutModal({
   useEffect(() => {
     if (isOpen) {
       setActiveTab(mode);
-      setSuggestions([]);
-      setError(null);
-      setIsLoading(false);
     }
   }, [isOpen, mode]);
 
@@ -77,13 +57,6 @@ export function AddWorkoutModal({
       document.body.style.overflow = '';
     };
   }, [isOpen]);
-
-  const handleAIGenerate = async (_prompt: string, _type: 'full-day' | 'single-workout') => {
-    const message = 'KI-Funktionen sind während der Migration vorübergehend deaktiviert.';
-    setError(message);
-    toastError('KI vorübergehend nicht verfügbar', message);
-    setIsLoading(false);
-  };
 
   const handleAddWorkout = async (exercise: Exercise | WorkoutSuggestion) => {
     if (!dayContext || !user) return;
@@ -156,90 +129,6 @@ export function AddWorkoutModal({
     }
   };
 
-  const handleAddAllWorkouts = async (action?: 'replace' | 'add') => {
-    if (!dayContext || !user) return;
-
-    try {
-      // Get current workout plan from Firestore
-      const plansRef2 = collection(db, 'users', user.uid, 'workout_plans');
-      const planSnap2 = await getDocs(query(plansRef2, orderBy('createdAt', 'desc'), limit(1)));
-      if (planSnap2.empty) {
-        toastError('Fehler', 'Kein Trainingsplan gefunden');
-        return;
-      }
-      const planDoc2  = planSnap2.docs[0];
-      const planData  = { id: planDoc2.id, ...planDoc2.data() } as any;
-
-      const content = planData.content || {};
-      
-      // Ensure week exists
-      if (!content[dayContext.weekKey]) {
-        content[dayContext.weekKey] = Array(7).fill(null).map(() => ({ day: null, exercises: [] }));
-      }
-
-      const dayNames = ['Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag', 'Sonntag'];
-
-      // Ensure day exists
-      if (!content[dayContext.weekKey][dayContext.dayIndex] || 
-          typeof content[dayContext.weekKey][dayContext.dayIndex] !== 'object') {
-        content[dayContext.weekKey][dayContext.dayIndex] = {
-          day: dayNames[dayContext.dayIndex],
-          exercises: []
-        };
-      }
-
-      const dayData = content[dayContext.weekKey][dayContext.dayIndex];
-      
-      // Ensure exercises array exists
-      if (!dayData.exercises || !Array.isArray(dayData.exercises)) {
-        dayData.exercises = [];
-      }
-
-      // Check if day already has exercises
-      const existingCount = dayData.exercises.length;
-      if (existingCount > 0 && !action) {
-        setHasExistingExercises(true);
-        setShowConfirmDialog(true);
-        return;
-      }
-
-      // Replace or add logic
-      if (action === 'replace') {
-        dayData.exercises = [];
-      }
-
-      // Add all suggestions
-      const newExercises = suggestions.map(suggestion => ({
-        name: suggestion.name,
-        sets: typeof suggestion.sets === 'number' ? suggestion.sets : parseInt(String(suggestion.sets)) || 1,
-        reps: typeof suggestion.reps === 'number' ? suggestion.reps.toString() : String(suggestion.reps),
-        rest: '90s',
-        weight: '',
-        description: suggestion.description || ''
-      }));
-
-      dayData.exercises.push(...newExercises);
-
-      // Save updated plan
-      await setDoc(doc(db, 'users', user.uid, 'workout_plans', planData.id),
-        { content, updatedAt: Timestamp.now() }, { merge: true });
-
-      toastSuccess(
-        'Tagesplan hinzugefügt!',
-        `${suggestions.length} Übungen wurden ${action === 'replace' ? 'ersetzt' : 'hinzugefügt'}`
-      );
-      
-      if (onWorkoutAdded) {
-        onWorkoutAdded();
-      }
-      
-      setShowConfirmDialog(false);
-      onClose();
-    } catch (err: any) {
-      console.error('Error adding all workouts:', err);
-      toastError('Fehler', 'Tagesplan konnte nicht hinzugefügt werden');
-    }
-  };
 
 
   return (
@@ -261,8 +150,7 @@ export function AddWorkoutModal({
               Training hinzufügen
             </DialogTitle>
             <DialogDescription className="sr-only">
-              Füge Übungen zu diesem Trainingstag hinzu — manuell oder mit
-              einem KI-Vorschlag.
+              Füge Übungen zu diesem Trainingstag manuell hinzu.
             </DialogDescription>
           </DialogHeader>
 
@@ -296,15 +184,7 @@ export function AddWorkoutModal({
 
                      <ScrollArea className="h-[min(60vh,520px)] px-3 sm:px-4 pr-[max(0.75rem,env(safe-area-inset-right))] sm:pr-[max(1rem,env(safe-area-inset-right))] max-w-full overflow-x-hidden">
                       <TabsContent value="ai" className="mt-0">
-                         <AIPromptAssist
-                          dayContext={dayContext}
-                          onGenerate={handleAIGenerate}
-                          isLoading={isLoading}
-                          suggestions={suggestions}
-                          error={error}
-                          onAddWorkout={handleAddWorkout}
-                          onAddAllWorkouts={() => handleAddAllWorkouts()}
-                        />
+                        <AIPromptAssist />
                       </TabsContent>
 
                       <TabsContent value="manual" className="mt-0">
@@ -326,63 +206,12 @@ export function AddWorkoutModal({
                       >
                         Abbrechen
                       </Button>
-                      
-                      {/* Show primary CTA only when suggestions are available */}
-                      {suggestions.length > 0 && (
-                        <Button
-                          onClick={() => handleAddAllWorkouts()}
-                          className="gradient-primary shadow-glow hover:shadow-glow-lg transition-all flex-1 min-w-0"
-                          disabled={isLoading}
-                        >
-                          {isLoading ? (
-                            <>
-                              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                              Wird hinzugefügt...
-                            </>
-                          ) : (
-                            <>
-                              <span className="mr-2">🟢</span>
-                              <span className="truncate">Plan übernehmen</span>
-                            </>
-                          )}
-                        </Button>
-                      )}
                     </div>
                   )}
           </div>
         </DialogContent>
       </Dialog>
 
-      {/* Confirmation Dialog */}
-          <AlertDialog open={showConfirmDialog} onOpenChange={setShowConfirmDialog}>
-            <AlertDialogContent className="bg-background/95 backdrop-blur-xl border-primary/20">
-              <AlertDialogHeader>
-                <AlertDialogTitle className="text-xl font-semibold bg-gradient-to-r from-primary to-emerald-400 bg-clip-text text-transparent">
-                  Vorhandene Übungen gefunden
-                </AlertDialogTitle>
-                <AlertDialogDescription className="text-muted-foreground">
-                  Dieser Tag enthält bereits Übungen. Möchtest du die neuen Vorschläge ersetzen oder hinzufügen?
-                </AlertDialogDescription>
-              </AlertDialogHeader>
-              <AlertDialogFooter>
-                <AlertDialogCancel className="hover:bg-muted/80">
-                  Abbrechen
-                </AlertDialogCancel>
-                <AlertDialogAction
-                  onClick={() => handleAddAllWorkouts('add')}
-                  className="bg-primary/20 text-primary hover:bg-primary/30"
-                >
-                  Hinzufügen
-                </AlertDialogAction>
-                <AlertDialogAction
-                  onClick={() => handleAddAllWorkouts('replace')}
-                  className="gradient-primary shadow-glow"
-                >
-                  Ersetzen
-                </AlertDialogAction>
-              </AlertDialogFooter>
-            </AlertDialogContent>
-          </AlertDialog>
     </>
   );
 }

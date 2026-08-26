@@ -797,9 +797,6 @@ const WorkoutView: React.FC<WorkoutViewProps> = ({
             handleDeleteExercise(wk, dayIndex, exerciseIndex)
           }
           isUpdating={isUpdating}
-          onFeedbackSubmit={(weekKey, dayIndex) => {
-            logEvent('ai_feedback_submitted', { weekKey, dayIndex });
-          }}
         />
 
         {/* Add Workout Modal */}

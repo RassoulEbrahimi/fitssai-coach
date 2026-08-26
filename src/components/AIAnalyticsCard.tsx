@@ -89,7 +89,7 @@ export const AIAnalyticsCard = () => {
             KI-Analysen
           </h3>
           <p className="text-xs text-muted-foreground mt-1">
-            Fortschritt deiner KI-generierten Trainingsvorschläge
+            Sobald KI-Funktionen verfügbar sind, siehst du hier ihre Nutzung.
           </p>
         </div>
 
@@ -186,7 +186,7 @@ export const AIAnalyticsCard = () => {
               Noch keine KI-Aktivität
             </p>
             <p className="text-xs text-muted-foreground/60 mt-1">
-              Nutze die KI-Vorschläge, um hier Daten zu sehen
+              KI-Funktionen sind noch nicht verfügbar.
             </p>
           </motion.div>
         )}

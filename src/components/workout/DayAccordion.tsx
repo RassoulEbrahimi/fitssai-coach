@@ -13,7 +13,6 @@ import { formatDateForDisplay } from "@/lib/dateUtils";
 
 // Imports for children
 import ExerciseListSkeleton from "@/components/skeletons/ExerciseListSkeleton";
-import { WorkoutFeedbackCard } from "@/components/feedback/WorkoutFeedbackCard";
 // Lazy import for ExerciseList to avoid circular deps if any, 
 // but since we are refactoring, we can likely import directly or pass as prop if needed.
 // However, the original file used React.lazy. Let's keep consistency or allow passing the component.
@@ -49,7 +48,6 @@ interface DayAccordionProps {
     onUpdateExercise: (dayIndex: number, exerciseIndex: number, updatedExercise: Exercise) => Promise<void>;
     onDeleteExercise: (dayIndex: number, exerciseIndex: number) => void;
     isUpdating: boolean;
-    onFeedbackSubmit: (weekKey: string, dayIndex: number) => void;
 }
 
 export const DayAccordion: React.FC<DayAccordionProps> = ({
@@ -68,7 +66,6 @@ export const DayAccordion: React.FC<DayAccordionProps> = ({
     onUpdateExercise,
     onDeleteExercise,
     isUpdating,
-    onFeedbackSubmit
 }) => {
     const { t } = useTranslation();
     const dayRefs = useRef<{ [key: number]: HTMLDivElement | null }>({});
@@ -204,15 +201,6 @@ export const DayAccordion: React.FC<DayAccordionProps> = ({
                                                                 isUpdating={isUpdating}
                                                             />
                                                         </React.Suspense>
-                                                    )}
-
-                                                    {!isRestDay && day?.isAIGenerated && isCompleted && (
-                                                        <div className="mt-3 px-1">
-                                                            <WorkoutFeedbackCard
-                                                                suggestionId={`${wk}-day${dayIndex}`}
-                                                                onSubmitted={() => onFeedbackSubmit(wk, dayIndex)}
-                                                            />
-                                                        </div>
                                                     )}
 
                                                     {!isRestDay && (
