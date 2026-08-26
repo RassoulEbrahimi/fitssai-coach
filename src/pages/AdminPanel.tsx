@@ -5,6 +5,7 @@ import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { isValid, parseISO } from 'date-fns';
 import { formatDateForDisplay } from '@/lib/dateUtils';
+import { fitnessGoalLabel } from '@/lib/coaching/fitnessGoal';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -217,15 +218,10 @@ const AdminPanel = () => {
     return isValid(date) ? formatDateForDisplay(date, 'EEEE, d. MMMM') : '-';
   };
 
-  const formatGoal = (goal: string) => {
-    const goalMap: Record<string, string> = {
-      'gain-muscle': 'Muskelaufbau',
-      'lose-fat': 'Fettabbau',
-      'improve-cardio': 'Ausdauer verbessern',
-      'maintain': 'Gewicht halten'
-    };
-    return goalMap[goal] || goal;
-  };
+  // One canonical goal vocabulary, shared with the profile and the coaching
+  // layer: this map only knew the kebab-case catalogue keys, so a stored
+  // "gainMuscle" fell through and was shown raw.
+  const formatGoal = (goal: string) => fitnessGoalLabel(goal) ?? goal;
 
   const formatDiet = (diet: string) => {
     const dietMap: Record<string, string> = {

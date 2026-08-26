@@ -12,6 +12,11 @@ import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import {
+  FITNESS_GOAL_OPTIONS,
+  fitnessGoalLabel,
+  normaliseFitnessGoal,
+} from "@/lib/coaching/fitnessGoal";
+import {
   EQUIPMENT_OPTIONS,
   SESSION_MINUTES_CHOICES,
   DAYS_PER_WEEK_MAX,
@@ -60,14 +65,6 @@ const getBMIStatus = (bmi: number | null): { label: string; color: string } => {
   if (bmi < 25) return { label: "Normal", color: "text-emerald-400" };
   if (bmi < 30) return { label: "Übergewicht", color: "text-amber-400" };
   return { label: "Adipositas", color: "text-red-400" };
-};
-
-// Goal and diet mappings
-const fitnessGoalLabels: Record<string, string> = {
-  muscle_gain: "Muskelaufbau",
-  weight_loss: "Gewichtsverlust",
-  maintenance: "Erhaltung",
-  endurance: "Ausdauer",
 };
 
 const dietaryLabels: Record<string, string> = {
@@ -321,7 +318,12 @@ const ProfileView: React.FC<ProfileViewProps> = React.memo(({
   const displayDaysPerWeek = formatDaysPerWeek(profile?.daysPerWeek);
   const displaySessionMinutes = formatSessionMinutes(profile?.sessionMinutes);
 
-  const displayGoal = fitnessGoalLabels[profile?.fitness_goal] || profile?.fitness_goal || "--";
+  /*
+    One label function for every stored spelling. The old local map covered
+    only the snake_case era, so a profile carrying onboarding's canonical
+    value fell through to the raw identifier and rendered "gainMuscle".
+  */
+  const displayGoal = fitnessGoalLabel(profile?.fitness_goal) ?? "--";
   const displayDiet = dietaryLabels[profile?.dietary_preference] || profile?.dietary_preference || "--";
 
   // Get initials for avatar
@@ -344,7 +346,9 @@ const ProfileView: React.FC<ProfileViewProps> = React.memo(({
 
   const handleOpenGoals = () => {
     setGoalsData({
-      fitness_goal: profile?.fitness_goal || "",
+      // A legacy stored value maps to its canonical equivalent, so the select
+      // has something to match and saving upgrades the spelling.
+      fitness_goal: normaliseFitnessGoal(profile?.fitness_goal) ?? "",
       dietary_preference: profile?.dietary_preference || "",
     });
     setIsGoalsOpen(true);
@@ -1069,10 +1073,12 @@ const ProfileView: React.FC<ProfileViewProps> = React.memo(({
                   <SelectValue placeholder="Wähle dein Ziel" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="muscle_gain">Muskelaufbau</SelectItem>
-                  <SelectItem value="weight_loss">Gewichtsverlust</SelectItem>
-                  <SelectItem value="maintenance">Erhaltung</SelectItem>
-                  <SelectItem value="endurance">Ausdauer</SelectItem>
+                  {/* Canonical values only, so new writes are never legacy. */}
+                  {FITNESS_GOAL_OPTIONS.map((option) => (
+                    <SelectItem key={option.value} value={option.value}>
+                      {option.label}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
