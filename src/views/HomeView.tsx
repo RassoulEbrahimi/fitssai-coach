@@ -20,6 +20,9 @@ import { WorkoutPlan, NutritionPlan, TodayWorkout, WorkoutLog } from "@/lib/type
 import { useWeeklyActivity } from "@/hooks/useWeeklyActivity";
 import { generateInsights } from "@/lib/insights/engine";
 import { InsightHero } from "@/components/dashboard/InsightHero";
+import { WeeklyReview } from "@/components/dashboard/WeeklyReview";
+import { buildWeeklyFacts, normaliseFitnessGoal } from "@/lib/coaching";
+import { resolvePlanDay, isRestDayContent } from "@/lib/planLifecycle";
 
 interface HomeViewProps {
   generatingPlans: boolean;
@@ -125,6 +128,61 @@ const HomeView: React.FC<HomeViewProps> = ({
     return generateInsights(weeklyActivity, profile, totalPlanWorkouts, lastWorkoutDateStr);
   }, [weeklyActivity, workoutLogs, profile]);
 
+
+  /*
+    The deterministic week, assembled from data this view already has: the
+    plan, the plan's own logs and the profile. No extra query, and no new
+    collection — the engine is pure and takes the resolved week explicitly
+    rather than reading a clock.
+  */
+  const weeklyFacts = useMemo(() => {
+    const resolved = resolvePlanDay(workoutPlan, selectedDate);
+    const weekKey = resolved.weekKey;
+    if (!workoutPlan || !weekKey) return null;
+
+    const content = workoutPlan.content as Record<string, unknown> | undefined;
+    const rawWeek = content?.[weekKey] ?? content?.[weekKey.toLowerCase().replace(/\s+/g, "")];
+    const weekDays = Array.isArray(rawWeek) ? rawWeek : [];
+
+    const planDays = Array.from({ length: 7 }, (_, dayIndex) => ({
+      dayIndex,
+      exerciseCount: isRestDayContent(weekDays[dayIndex]) ? 0 : (weekDays[dayIndex]?.exercises?.length ?? 0),
+    }));
+
+    /*
+      Completion comes from weekKey + dayIndex only. A day log written before
+      PR47 can carry a date derived from the plan's creation date rather than
+      its start Monday, so using that date here would turn a known-bad value
+      into a confident weekly claim.
+    */
+    const weekLogs = workoutLogs.filter((log) => log.week_key === weekKey);
+    const completions = weekLogs
+      .filter((log) => typeof log.day_index === "number")
+      .map((log) => ({
+        weekKey,
+        dayIndex: log.day_index as number,
+        completed: Boolean(log.completed),
+      }));
+
+    return buildWeeklyFacts({
+      weekKey,
+      planDays,
+      completions,
+      weekLogs: weekLogs.map((log) => ({
+        weekKey: log.week_key as string | null,
+        dayIndex: log.day_index as number | null,
+        workoutDay: log.workout_day,
+        completed: log.completed,
+        durationSec: (log as { duration_sec?: number | null }).duration_sec ?? null,
+      })),
+      preferences: {
+        daysPerWeek: profile?.daysPerWeek,
+        sessionMinutes: profile?.sessionMinutes,
+      },
+      goal: normaliseFitnessGoal(profile?.fitness_goal),
+      planFinished,
+    });
+  }, [workoutPlan, workoutLogs, profile, selectedDate, planFinished]);
 
   const refreshQuote = () => {
     setQuoteKey(prev => prev + 1);
@@ -435,6 +493,9 @@ const HomeView: React.FC<HomeViewProps> = ({
             </span>
           </motion.li>
         </motion.ul>
+
+        {/* Deterministic weekly review — computed, never generated. */}
+        {weeklyFacts && <WeeklyReview facts={weeklyFacts} />}
 
         {/* Weekly Activity Chart */}
         <div role="region" aria-label="Wöchentliche Aktivitätsübersicht">
