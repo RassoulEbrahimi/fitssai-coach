@@ -9,6 +9,16 @@ import { Progress } from "@/components/ui/progress";
 import { ArrowRight, ArrowLeft } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { doc, setDoc, Timestamp } from "firebase/firestore";
+import {
+  EQUIPMENT_OPTIONS,
+  SESSION_MINUTES_CHOICES,
+  DAYS_PER_WEEK_MIN,
+  DAYS_PER_WEEK_MAX,
+  daysPerWeekSchema,
+  equipmentSchema,
+  sessionMinutesSchema,
+  type EquipmentType,
+} from "@/lib/coachingPreferences";
 import { db } from "@/lib/firebase";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
@@ -23,7 +33,12 @@ const onboardingSchema = z.object({
   height: z.number({ invalid_type_error: "Height is required" }).int().min(100, "Height must be at least 100cm").max(250, "Invalid height"),
   goal: z.enum(["gainMuscle", "loseFat", "improveCardio", "maintain"], { required_error: "Please select a goal" }),
   diet: z.enum(["vegan", "vegetarian", "keto", "highProtein", "noPreference"], { required_error: "Please select a dietary preference" }),
-  experience: z.enum(["beginner", "intermediate", "advanced"], { required_error: "Please select experience level" })
+  experience: z.enum(["beginner", "intermediate", "advanced"], { required_error: "Please select experience level" }),
+  // Training preferences a coach needs. Required for new submissions; profiles
+  // created before this step existed simply do not carry them.
+  equipment: equipmentSchema,
+  daysPerWeek: daysPerWeekSchema,
+  sessionMinutes: sessionMinutesSchema
 });
 
 const OnboardingForm = ({ onComplete }: { onComplete: () => void }) => {
@@ -38,7 +53,21 @@ const OnboardingForm = ({ onComplete }: { onComplete: () => void }) => {
   });
 
   const formData = watch();
-  const totalSteps = 3;
+  const totalSteps = 4;
+
+  /** 1..7, so every allowed value is selectable. */
+  const dayChoices = Array.from(
+    { length: DAYS_PER_WEEK_MAX - DAYS_PER_WEEK_MIN + 1 },
+    (_, index) => DAYS_PER_WEEK_MIN + index
+  );
+
+  const toggleEquipment = (id: EquipmentType) => {
+    const current = formData.equipment ?? [];
+    const next = current.includes(id)
+      ? current.filter((entry) => entry !== id)
+      : [...current, id];
+    setValue("equipment", next, { shouldValidate: true });
+  };
   const progress = (step / totalSteps) * 100;
 
   const handleNext = async () => {
@@ -50,6 +79,8 @@ const OnboardingForm = ({ onComplete }: { onComplete: () => void }) => {
       fieldsToValidate = ["goal"];
     } else if (step === 3) {
       fieldsToValidate = ["diet", "experience"];
+    } else if (step === 4) {
+      fieldsToValidate = ["equipment", "daysPerWeek", "sessionMinutes"];
     }
 
     const isValid = await trigger(fieldsToValidate);
@@ -76,6 +107,9 @@ const OnboardingForm = ({ onComplete }: { onComplete: () => void }) => {
         fitnessGoal:       data.goal,
         dietaryPreference: data.diet,
         experienceLevel:   data.experience,
+        equipment:         data.equipment,
+        daysPerWeek:       data.daysPerWeek,
+        sessionMinutes:    data.sessionMinutes,
         updatedAt:         Timestamp.now(),
       }, { merge: true });
 
@@ -257,6 +291,95 @@ const OnboardingForm = ({ onComplete }: { onComplete: () => void }) => {
                 </Select>
                 {errors.experience && (
                   <p className="text-sm text-destructive mt-1">{errors.experience.message}</p>
+                )}
+              </div>
+            </div>
+          )}
+
+          {step === 4 && (
+            <div className="space-y-6">
+              <h3 className="text-xl font-semibold text-center mb-6">Dein Training</h3>
+
+              <div>
+                <Label>Verfügbare Ausrüstung</Label>
+                <p className="text-sm text-muted-foreground mt-1 mb-3">
+                  Mehrfachauswahl möglich.
+                </p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  {EQUIPMENT_OPTIONS.map((option) => {
+                    const selected = (formData.equipment ?? []).includes(option.id);
+                    return (
+                      <button
+                        key={option.id}
+                        type="button"
+                        aria-pressed={selected}
+                        onClick={() => toggleEquipment(option.id)}
+                        className={`text-left rounded-xl border p-3 transition-colors min-h-[44px] ${
+                          selected
+                            ? "border-primary bg-primary/10"
+                            : "border-border hover:bg-muted/50"
+                        }`}
+                      >
+                        <span className="text-sm font-medium text-foreground">{option.label}</span>
+                        {option.hint && (
+                          <span className="block text-xs text-muted-foreground mt-0.5">
+                            {option.hint}
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+                {errors.equipment && (
+                  <p className="text-sm text-destructive mt-2">{errors.equipment.message}</p>
+                )}
+              </div>
+
+              <div>
+                <Label htmlFor="onboarding-days">Trainingstage pro Woche</Label>
+                <Select
+                  value={formData.daysPerWeek ? String(formData.daysPerWeek) : undefined}
+                  onValueChange={(value) =>
+                    setValue("daysPerWeek", Number(value), { shouldValidate: true })
+                  }
+                >
+                  <SelectTrigger id="onboarding-days" className="mt-1">
+                    <SelectValue placeholder="Bitte auswählen" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {dayChoices.map((days) => (
+                      <SelectItem key={days} value={String(days)}>
+                        {days} {days === 1 ? "Tag" : "Tage"}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {errors.daysPerWeek && (
+                  <p className="text-sm text-destructive mt-1">{errors.daysPerWeek.message}</p>
+                )}
+              </div>
+
+              <div>
+                <Label htmlFor="onboarding-session">Gewünschte Trainingsdauer</Label>
+                <Select
+                  value={formData.sessionMinutes ? String(formData.sessionMinutes) : undefined}
+                  onValueChange={(value) =>
+                    setValue("sessionMinutes", Number(value), { shouldValidate: true })
+                  }
+                >
+                  <SelectTrigger id="onboarding-session" className="mt-1">
+                    <SelectValue placeholder="Bitte auswählen" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {SESSION_MINUTES_CHOICES.map((minutes) => (
+                      <SelectItem key={minutes} value={String(minutes)}>
+                        {minutes} Minuten
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {errors.sessionMinutes && (
+                  <p className="text-sm text-destructive mt-1">{errors.sessionMinutes.message}</p>
                 )}
               </div>
             </div>

@@ -24,6 +24,16 @@ const docToLog = (id: string, data: Record<string, any>, userId: string): Workou
   duration_sec:  readDurationSec(data.durationSec),
 } as unknown as WorkoutLog);
 
+/*
+  Day completion. The offline path enqueues TOGGLE_DAY, whose handler performs
+  the same planId + workoutDay lookup as the online write below, so a replay
+  produces the same document. It used to enqueue TOGGLE_DAY_COMPLETION — an
+  exercise-position action — which read planId/weekKey/dayIndex/exerciseIndex
+  from a payload that had none of them.
+
+  weekKey/dayIndex are required for the offline path to be replayable; the
+  online write still tolerates their absence for any caller that lacks them.
+*/
 interface ToggleDayParams {
   workoutDateStr: string;
   completed: boolean;
@@ -78,6 +88,11 @@ export const useWorkoutLogs = (planId?: string) => {
       return { completed };
     },
     queryKey: [...queryKey],
+    offlineActionType: "TOGGLE_DAY",
+    toOfflinePayload: ({ workoutDateStr, completed, weekKey, dayIndex }: ToggleDayParams) =>
+      planId && weekKey !== undefined && dayIndex !== undefined
+        ? { planId, weekKey, dayIndex, workoutDay: workoutDateStr, completed }
+        : null,
     messages: { error: "Fehler beim Speichern" },
     onMutate: async ({ workoutDateStr, completed }: ToggleDayParams) => {
       await queryClient.cancelQueries({ queryKey });

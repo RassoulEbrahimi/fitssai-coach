@@ -5,6 +5,7 @@ import {
 } from "firebase/firestore";
 import { queryKeys } from "@/lib/queryKeys";
 import { isWorkoutDayString } from "@/lib/workoutLog";
+import { isLegacyDayCompletionPayload, type ToggleDayPayload } from "@/lib/offlineQueue";
 
 type ToggleSetPayload = {
   planId: string; weekKey: string; dayIndex: number; exerciseIndex: number;
@@ -12,7 +13,7 @@ type ToggleSetPayload = {
   /** Carried through the queue so a replayed write dates the same day. */
   workoutDay?: string;
 };
-type ToggleDayPayload = {
+type ToggleExercisePayload = {
   planId: string; weekKey: string; dayIndex: number; exerciseIndex: number;
   completed: boolean; durationMinutes?: number; caloriesBurned?: number;
 };
@@ -52,7 +53,28 @@ export const handlers = {
     ];
   },
 
-  TOGGLE_DAY_COMPLETION: async (payload: ToggleDayPayload) => {
+  /**
+   * One *exercise* position. The name is historical — see offlineQueue.ts.
+   *
+   * A pre-PR48 day completion could also land here, carrying only
+   * `{workoutDateStr, completed}`. Replaying that as an exercise log would
+   * write planId/weekKey/dayIndex/exerciseIndex as `undefined`, which is how
+   * junk documents got into `workout_logs`. There is no way to recover the
+   * plan position from that payload, and guessing one would attach the user's
+   * completion to a day they never trained — so the entry is dropped, loudly.
+   */
+  TOGGLE_DAY_COMPLETION: async (payload: ToggleExercisePayload) => {
+    // Bound to a boolean on purpose: as a type predicate this would narrow the
+    // remaining branch to `never`, since the two shapes are disjoint.
+    const isLegacyDayEntry: boolean = isLegacyDayCompletionPayload(payload);
+    if (isLegacyDayEntry) {
+      console.warn(
+        '[OfflineQueue] Dropping a pre-PR48 day-completion entry: it carries a date but no plan position, and inventing one would date the completion wrongly.',
+        { workoutDateStr: (payload as { workoutDateStr?: string }).workoutDateStr }
+      );
+      return [];
+    }
+
     const uid = auth.currentUser?.uid;
     if (!uid) throw new Error("Not authenticated");
     const logsRef = collection(db, "users", uid, "workout_logs");
@@ -77,6 +99,50 @@ export const handlers = {
     return [
       queryKeys.completion.byWeek(payload.planId, payload.weekKey),
       queryKeys.logs.byPlan(payload.planId),
+    ];
+  },
+
+  /**
+   * A whole plan day, replayed with the same semantics as the online write in
+   * `useWorkoutLogs.toggleDay`: find the day log by planId + workoutDay, then
+   * update it or create it.
+   *
+   * The date travels in the payload, so a Tuesday queued offline still writes
+   * Tuesday when it replays on Thursday. Nothing here reads a clock.
+   */
+  TOGGLE_DAY: async (payload: ToggleDayPayload) => {
+    const uid = auth.currentUser?.uid;
+    if (!uid) throw new Error("Not authenticated");
+    if (!payload.planId || !isWorkoutDayString(payload.workoutDay)) {
+      console.warn('[OfflineQueue] Dropping a day completion with unusable metadata.', payload);
+      return [];
+    }
+
+    const logsRef = collection(db, "users", uid, "workout_logs");
+    const snap = await getDocs(query(logsRef,
+      where("planId",     "==", payload.planId),
+      where("workoutDay", "==", payload.workoutDay),
+    ));
+
+    const position = { weekKey: payload.weekKey, dayIndex: payload.dayIndex };
+    if (!snap.empty) {
+      await updateDoc(doc(db, "users", uid, "workout_logs", snap.docs[0].id), {
+        ...position,
+        completed: payload.completed,
+        completedAt: payload.completed ? Timestamp.now() : null,
+      });
+    } else {
+      await addDoc(logsRef, {
+        planId: payload.planId, workoutDay: payload.workoutDay, ...position,
+        completed: payload.completed,
+        completedAt: payload.completed ? Timestamp.now() : null,
+        createdAt: Timestamp.now(),
+      });
+    }
+
+    return [
+      queryKeys.logs.byPlan(payload.planId),
+      queryKeys.completion.byWeek(payload.planId, payload.weekKey),
     ];
   },
 };

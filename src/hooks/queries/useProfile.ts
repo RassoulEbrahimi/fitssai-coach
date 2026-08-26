@@ -2,8 +2,12 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { doc, getDoc, setDoc, Timestamp } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { useAuth } from "@/hooks/useAuth";
+import {
+  parseCoachingPreferences,
+  type CoachingPreferences,
+} from "@/lib/coachingPreferences";
 
-export interface Profile {
+export interface Profile extends CoachingPreferences {
   id: string;
   email?: string;
   full_name?: string | null;
@@ -22,6 +26,10 @@ export interface Profile {
 
 const docToProfile = (id: string, d: Record<string, any>): Profile => ({
   id,
+  // Absent on every profile created before these questions existed. The parser
+  // returns undefined rather than a default, so "never answered" stays
+  // distinguishable from "answered".
+  ...parseCoachingPreferences(d),
   full_name:          d.fullName           ?? null,
   fitness_goal:       d.fitnessGoal        ?? null,
   dietary_preference: d.dietaryPreference  ?? null,
@@ -68,6 +76,9 @@ export const useUpdateProfile = () => {
       if (values.weight             !== undefined) fsData.weight            = values.weight;
       if (values.height             !== undefined) fsData.height            = values.height;
       if (values.age                !== undefined) fsData.age               = values.age;
+      if (values.equipment          !== undefined) fsData.equipment         = values.equipment;
+      if (values.daysPerWeek        !== undefined) fsData.daysPerWeek       = values.daysPerWeek;
+      if (values.sessionMinutes     !== undefined) fsData.sessionMinutes    = values.sessionMinutes;
       await setDoc(doc(db, "users", user.uid), fsData, { merge: true });
     },
     onSuccess: () => {
