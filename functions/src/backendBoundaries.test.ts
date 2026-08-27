@@ -40,21 +40,42 @@ describe("no model provider exists yet", () => {
     expect(getCoachProvider()).toBeNull();
   });
 
-  it.each(backendSources.map(rel))("%s names no provider SDK", (file) => {
-    const code = stripComments(readFileSync(join(REPO_ROOT, file), "utf-8"));
+  it.each(backendSources.filter((f) => !f.includes("/providers/")).map(rel))(
+    "%s names no provider SDK — only providers/ may",
+    (file) => {
+      const code = stripComments(readFileSync(join(REPO_ROOT, file), "utf-8"));
 
-    expect(code).not.toMatch(/openai|anthropic|@google\/gen|generativeai|mistral|cohere|ollama/i);
-    expect(code).not.toMatch(/api\.openai\.com|generativelanguage|api\.anthropic\.com/i);
+      // The seam is worth having only if the vendor stays behind it. One
+      // import of the SDK outside providers/ and swapping vendors becomes a
+      // refactor of the callers instead of a new file.
+      expect(code).not.toMatch(/openai|anthropic|@google\/gen|generativeai|mistral|cohere|ollama/i);
+      expect(code).not.toMatch(/api\.openai\.com|generativelanguage|api\.anthropic\.com/i);
+    }
+  );
+
+  it("keeps every provider SDK import inside providers/", () => {
+    const importers = backendSources.filter((file) =>
+      /from\s+["']@google\/genai["']/.test(readFileSync(file, "utf-8"))
+    );
+
+    expect(importers.map(rel)).toEqual(["functions/src/coaching/providers/gemini.ts"]);
   });
 
-  it("declares no provider package", () => {
+  it("declares exactly one provider package, and not the legacy SDK", () => {
     const pkg = JSON.parse(readFileSync(join(FUNCTIONS_ROOT, "..", "package.json"), "utf-8"));
     const declared = Object.keys({ ...pkg.dependencies, ...pkg.devDependencies });
 
+    expect(declared).toContain("@google/genai");
+    // @google/generative-ai is the superseded SDK and receives no new features.
     expect(declared).toEqual(
-      expect.not.arrayContaining(["openai", "@anthropic-ai/sdk", "@google/generative-ai", "@mistralai/mistralai", "cohere-ai"])
+      expect.not.arrayContaining([
+        "openai",
+        "@anthropic-ai/sdk",
+        "@google/generative-ai",
+        "@mistralai/mistralai",
+        "cohere-ai",
+      ])
     );
-    expect(declared.join(" ")).not.toMatch(/openai|anthropic|generative-ai|mistral|cohere/i);
   });
 
   it("treats provider output as unknown, so the caller must validate it", () => {
@@ -135,10 +156,27 @@ describe("the status callable is inert", () => {
     expect(code).not.toMatch(/firebase-admin/);
   });
 
-  it.each(statusSources)("functions/%s consumes no quota and writes no log", (file) => {
-    const code = stripComments(readFileSync(join(FUNCTIONS_ROOT, "..", file), "utf-8"));
+  it.each(statusSources.filter((file) => file !== "src/index.ts"))(
+    "functions/%s consumes no quota and writes no log",
+    (file) => {
+      const code = stripComments(readFileSync(join(FUNCTIONS_ROOT, "..", file), "utf-8"));
 
-    expect(code).not.toMatch(/createQuotaService|\.consume\(|AiLogWriter|aiLogCollectionPath/);
+      expect(code).not.toMatch(/createQuotaService|\.consume\(|\.reserve\(|AiLogWriter|aiLogCollectionPath/);
+    }
+  );
+
+  it("wires the status callable to nothing but its own handler", () => {
+    // index.ts now also hosts the generation callable, which legitimately
+    // builds quota and log stores. What must stay true is that the status
+    // callable does not touch them.
+    const code = stripComments(readFileSync(join(FUNCTIONS_ROOT, "index.ts"), "utf-8"));
+    const statusWiring = code.slice(
+      code.indexOf("export const coachBackendStatus"),
+      code.indexOf("export const generateWorkoutPlan")
+    );
+
+    expect(statusWiring).toContain("handleCoachBackendStatus(request)");
+    expect(statusWiring).not.toMatch(/quota|Quota|log|Log|provider|Provider|secrets/);
   });
 });
 

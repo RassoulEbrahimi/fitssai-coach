@@ -302,3 +302,68 @@ describe("nothing outside the declared paths is reachable", () => {
     await assertFails(getDocs(collection(alice(), "users")));
   });
 });
+
+describe("server-owned AI bookkeeping is invisible to clients", () => {
+  /*
+    These three decide whether a paid model call may happen, record what was
+    spent, and stop one click becoming two charges. A client that could read or
+    write any of them could spend money without limit or erase the evidence.
+
+    The Admin SDK bypasses rules entirely, so Cloud Functions still use all
+    three — that bypass is a documented property of the SDK, not something
+    these tests can or should emulate.
+  */
+  const SERVER_COLLECTIONS = ["_ai_quota", "_ai_logs", "_ai_operations"] as const;
+
+  it.each(SERVER_COLLECTIONS)("alice cannot read %s", async (collectionName) => {
+    await seed([collectionName, `${ALICE}__plan_generation__2026-08`], { count: 1 });
+
+    await assertFails(getDoc(doc(alice(), collectionName, `${ALICE}__plan_generation__2026-08`)));
+  });
+
+  it.each(SERVER_COLLECTIONS)("alice cannot write %s", async (collectionName) => {
+    await assertFails(
+      setDoc(doc(alice(), collectionName, `${ALICE}__plan_generation__2026-08`), { count: 0 })
+    );
+  });
+
+  it.each(SERVER_COLLECTIONS)("alice cannot list %s", async (collectionName) => {
+    await seed([collectionName, "any"], { count: 1 });
+
+    await assertFails(getDocs(collection(alice(), collectionName)));
+  });
+
+  it.each(SERVER_COLLECTIONS)("bob cannot reach alice's %s entry", async (collectionName) => {
+    await seed([collectionName, `${ALICE}__plan_generation__2026-08`], { count: 3 });
+
+    await assertFails(getDoc(doc(bob(), collectionName, `${ALICE}__plan_generation__2026-08`)));
+    await assertFails(
+      setDoc(doc(bob(), collectionName, `${ALICE}__plan_generation__2026-08`), { count: 0 })
+    );
+  });
+
+  it("alice cannot zero her own quota to buy more generations", async () => {
+    await seed(["_ai_quota", `${ALICE}__plan_generation__2026-08`], { count: 3 });
+
+    await assertFails(
+      updateDoc(doc(alice(), "_ai_quota", `${ALICE}__plan_generation__2026-08`), { count: 0 })
+    );
+    await assertFails(deleteDoc(doc(alice(), "_ai_quota", `${ALICE}__plan_generation__2026-08`)));
+  });
+
+  it("an unauthenticated client cannot reach them either", async () => {
+    await seed(["_ai_logs", "entry"], { status: "success" });
+
+    await assertFails(getDoc(doc(anon(), "_ai_logs", "entry")));
+  });
+
+  it("does not deny the user-scoped collections by accident", async () => {
+    // The deny blocks are top-level. A user's own data must be unaffected.
+    await assertSucceeds(
+      setDoc(doc(alice(), "users", ALICE, "workout_plans", "plan1"), { content: {} })
+    );
+    await assertSucceeds(
+      setDoc(doc(alice(), "users", ALICE, "ai_logs", "legacy"), { note: "client-owned" })
+    );
+  });
+});

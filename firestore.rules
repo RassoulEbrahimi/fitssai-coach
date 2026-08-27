@@ -77,5 +77,33 @@ service cloud.firestore {
       allow read: if request.auth != null;
       allow write: if false;
     }
+
+    /*
+      Server-owned AI bookkeeping. Denied to every client, read and write.
+
+      These are not private-by-obscurity: `_ai_quota` decides whether a paid
+      model call may happen, so a client that could edit it could spend money
+      without limit; `_ai_logs` is the record of what was spent, worthless if
+      the person it bills can rewrite it; `_ai_operations` is what stops one
+      click becoming two charges.
+
+      The Admin SDK bypasses rules entirely, so Cloud Functions still read and
+      write all three. Nothing here needs relaxing to let a server work — if a
+      write cannot be done by a client, it belongs in a callable.
+
+      An unmatched path is denied anyway; these blocks are explicit so the
+      intent survives the next person reading the file.
+    */
+    match /_ai_quota/{document=**} {
+      allow read, write: if false;
+    }
+
+    match /_ai_logs/{document=**} {
+      allow read, write: if false;
+    }
+
+    match /_ai_operations/{document=**} {
+      allow read, write: if false;
+    }
   }
 }

@@ -5,8 +5,14 @@ import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
 import { queryKeys } from "@/lib/queryKeys";
 import { WorkoutPlan } from "@/lib/types";
+import {
+  PlanGenerationError,
+  generateWorkoutPlan,
+  newRequestId,
+  toPlanGenerationError,
+} from "@/lib/backend/planGeneration";
+import { planGenerationErrorMessage } from "@/lib/backend/planGenerationCopy";
 
-const AI_UNAVAILABLE = "AI_UNAVAILABLE";
 
 export const useWorkoutPlan = () => {
   const { user } = useAuth();
@@ -33,18 +39,40 @@ export const useWorkoutPlan = () => {
     staleTime: 1000 * 60 * 60,
   });
 
+  /*
+    Real generation, server-side. The browser sends one request id and nothing
+    else: goal, equipment, days and session length are read from the profile by
+    the Function, and the plan is written by the Function too. A retried click
+    reuses the same id, so a double-click cannot become two plans or two
+    charges against a three-per-month quota.
+  */
   const generateMutation = useMutation({
-    mutationFn: async () => {
-      throw new Error(AI_UNAVAILABLE);
+    mutationFn: async () => generateWorkoutPlan(newRequestId()),
+
+    onSuccess: async (result) => {
+      // Refetch before telling the user it worked, so the new plan is what
+      // they see when the toast appears.
+      await queryClient.invalidateQueries({ queryKey: queryKeys.plans.byUser(user?.id) });
+
+      toast.success("Neuer Trainingsplan erstellt", {
+        description:
+          result.quota.remaining > 0
+            ? `Noch ${result.quota.remaining} von ${result.quota.limit} Plänen diesen Monat.`
+            : "Dein letzter Plan für diesen Monat.",
+      });
     },
-    onError: (error: any) => {
-      if (error.message === AI_UNAVAILABLE) {
-        toast.info("KI-Generierung vorübergehend deaktiviert", {
-          description: "Diese Funktion steht derzeit nicht zur Verfügung.",
-        });
-      } else {
-        toast.error(error.message || "Fehler beim Erstellen der Pläne");
-      }
+
+    onError: (error: unknown) => {
+      const failure =
+        error instanceof PlanGenerationError ? error : toPlanGenerationError(error);
+      const message = planGenerationErrorMessage(failure.code, {
+        missingFields: failure.missingFields,
+        limit: failure.limit,
+      });
+
+      // Never the raw error: a callable message carries a function name, a
+      // region and a request id, none of which belong in front of a user.
+      toast.error(message.title, { description: message.description });
     },
   });
 

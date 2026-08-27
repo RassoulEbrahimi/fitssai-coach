@@ -16,8 +16,9 @@ import type { PlanGenerationInput } from "./planGenerationInput";
  *     validation boundary, and a confidently-typed lie would pass straight
  *     through.
  *
- * There is deliberately no implementation of this interface in this PR, and no
- * provider package in the dependency tree.
+ * The implementation is `createGeminiProvider` in `providers/gemini.ts`, which
+ * is server-side only: the provider package is a dependency of the functions
+ * workspace and appears nowhere in the client's.
  */
 
 export interface WeeklyReviewFacts {
@@ -42,8 +43,10 @@ export interface CoachProvider {
 /**
  * Resolve the configured provider.
  *
- * There is none yet, and saying so plainly is better than returning a stub
- * that pretends to answer. Callers must handle the absence; PR51 replaces this
- * with a real lookup.
+ * The concrete implementation lives in `providers/gemini.ts` and is built by
+ * the callable, which is where the API key is available. This stays a lookup
+ * seam rather than a constructor so the interface keeps no opinion about which
+ * vendor is behind it — swapping one is a new file in `providers/`, not a
+ * refactor of the callers.
  */
 export const getCoachProvider = (): CoachProvider | null => null;
