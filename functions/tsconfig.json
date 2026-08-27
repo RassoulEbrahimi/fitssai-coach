@@ -12,6 +12,19 @@
       uploads, so the deployed bundle is self-contained.
     */
     "rootDir": "..",
+    /*
+      shared/ has no node_modules of its own, so a bare import from it would
+      resolve by walking up to the client's root install — which exists on a
+      developer's machine and does not exist in the backend CI job. Every
+      package shared/ imports is mapped to this workspace's own copy, so the
+      backend compiles from its own dependency tree alone. At runtime the
+      emitted lib/shared/*.js resolves the same package by walking up to
+      functions/node_modules, which is deployed with the function.
+    */
+    "baseUrl": ".",
+    "paths": {
+      "zod": ["node_modules/zod"]
+    },
     "sourceMap": true,
     "declaration": true,
     "strict": true,
