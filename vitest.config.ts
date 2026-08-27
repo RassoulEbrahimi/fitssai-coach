@@ -18,6 +18,12 @@ export default defineConfig({
     environment: 'jsdom',
     globals: true,
     setupFiles: ['./src/test/setup.ts'],
+    /*
+      The Functions workspace has its own vitest, its own node environment and
+      its own dependency tree. Collecting it here would run server tests in
+      jsdom and silently merge two suites that are meant to fail separately.
+    */
+    exclude: ['**/node_modules/**', '**/dist/**', 'functions/**'],
     css: false,
   },
   resolve: {
@@ -32,6 +38,7 @@ export default defineConfig({
         find: /^@\/lib\/firebase$/,
         replacement: path.resolve(__dirname, './src/test/mocks/firebase.ts'),
       },
+      { find: '@shared', replacement: path.resolve(__dirname, './shared') },
       { find: '@', replacement: path.resolve(__dirname, './src') },
     ],
   },

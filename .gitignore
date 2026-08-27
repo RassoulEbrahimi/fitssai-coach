@@ -28,8 +28,19 @@ dist-ssr
 .env.*
 !.env.example
 service_account.json
+*-firebase-adminsdk-*.json
+serviceAccountKey.json
 firebase_users.json
 uid_mapping.json
 *.gz
 *.zip
 *.backup
+
+# Firebase
+.firebase/
+firebase-debug.log
+firebase-debug.*.log
+firestore-debug.log
+ui-debug.log
+functions/lib/
+.runtimeconfig.json
