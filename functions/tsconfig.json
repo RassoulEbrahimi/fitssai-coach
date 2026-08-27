@@ -1,0 +1,28 @@
+{
+  "compilerOptions": {
+    "module": "commonjs",
+    "moduleResolution": "node",
+    "target": "ES2022",
+    "lib": ["ES2022"],
+    "outDir": "lib",
+    /*
+      The shared plan contract lives above this workspace, so the compiler root
+      is the repository root. Emitted output therefore lands in
+      lib/functions/src/ and lib/shared/ — both inside the directory Firebase
+      uploads, so the deployed bundle is self-contained.
+    */
+    "rootDir": "..",
+    "sourceMap": true,
+    "declaration": true,
+    "strict": true,
+    "noImplicitReturns": true,
+    "noFallthroughCasesInSwitch": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
+    "skipLibCheck": true
+  },
+  "include": ["src/**/*.ts", "../shared/**/*.ts"],
+  "exclude": ["src/**/*.test.ts", "src/**/*.fixtures.ts", "lib"]
+}

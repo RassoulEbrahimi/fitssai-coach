@@ -1,0 +1,14 @@
+{
+  /*
+    Typecheck-only view of the workspace: same strictness as the build, but it
+    also covers the tests and the vitest config. The build config deliberately
+    excludes tests so they are never emitted into lib/ and shipped.
+  */
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "types": ["vitest/globals", "node"]
+  },
+  "include": ["src/**/*.ts", "../shared/**/*.ts", "vitest.config.mts"],
+  "exclude": ["lib"]
+}
