@@ -10,7 +10,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { collection, doc, getDoc, getDocs, setDoc, Timestamp } from "firebase/firestore";
+import { collection, doc, getDoc, getDocs, Timestamp } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { 
   Table, 
@@ -46,7 +46,6 @@ import {
   Trash2,
   Eye,
   UserCheck,
-  UserX,
   RefreshCw,
   Dumbbell,
   Apple,
@@ -139,20 +138,6 @@ const AdminPanel = () => {
       toast.error('Benutzer konnten nicht geladen werden');
     } finally {
       setLoadingUsers(false);
-    }
-  };
-
-  const toggleAdminStatus = async (userId: string, currentStatus: boolean) => {
-    try {
-      await setDoc(doc(db, 'users', userId), {
-        role: currentStatus ? 'user' : 'admin',
-        updatedAt: Timestamp.now(),
-      }, { merge: true });
-      setUsers(prev => prev.map(u => u.id === userId ? { ...u, is_admin: !currentStatus } : u));
-      toast.success(`Admin-Status ${!currentStatus ? 'gewährt' : 'entzogen'}`);
-    } catch (error) {
-      console.error('Error updating admin status:', error);
-      toast.error('Admin-Status konnte nicht geändert werden');
     }
   };
 
@@ -359,6 +344,20 @@ const AdminPanel = () => {
                   <div className="text-lg">Loading users...</div>
                 </div>
               ) : (
+                <div className="space-y-3">
+                  {/*
+                    The role toggle that used to sit in this table wrote another
+                    user's `role` field straight from the browser. Firestore
+                    refuses that write, so the button could only ever fail —
+                    and a client that can grant itself admin is not a security
+                    boundary at all. Saying so is better than a control that
+                    silently does nothing.
+                  */}
+                  <p className="text-sm text-muted-foreground" role="note">
+                    Rollen lassen sich hier nicht ändern. Die Vergabe von
+                    Admin-Rechten erfolgt serverseitig und ist über die App
+                    nicht möglich.
+                  </p>
                 <div className="rounded-md border">
                   <Table>
                     <TableHeader>
@@ -391,19 +390,6 @@ const AdminPanel = () => {
                           <TableCell>{formatDate(profileUser.created_at)}</TableCell>
                           <TableCell>
                             <div className="flex items-center gap-2">
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => toggleAdminStatus(profileUser.id, profileUser.is_admin)}
-                                disabled={profileUser.id === user?.uid} // Prevent self-modification
-                              >
-                                {profileUser.is_admin ? (
-                                  <UserX className="h-4 w-4" />
-                                ) : (
-                                  <UserCheck className="h-4 w-4" />
-                                )}
-                              </Button>
-                              
                               <AlertDialog>
                                 <AlertDialogTrigger asChild>
                                   <Button 
@@ -443,6 +429,7 @@ const AdminPanel = () => {
                       ))}
                     </TableBody>
                   </Table>
+                </div>
                 </div>
               )}
                 </CardContent>

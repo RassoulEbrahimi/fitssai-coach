@@ -44,6 +44,39 @@ jobs:
       - name: Functions build
         run: npm --prefix functions run build
 
+  # Firestore Security Rules, exercised against the real rules engine in the
+  # emulator. This is the only job that can prove an access-control claim, so
+  # it gets its own runner: it needs Java and a downloaded emulator, which the
+  # other jobs have no use for. The Pages deployment waits for it.
+  rules:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: rules-tests/package-lock.json
+
+      # The Firestore emulator is a JAR.
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: Install rules-test dependencies
+        run: npm --prefix rules-tests ci
+
+      - name: Install Firebase CLI
+        run: npm install -g firebase-tools
+
+      - name: Firestore rules tests
+        run: npm run test:rules
+
   build:
     runs-on: ubuntu-latest
     steps:
@@ -100,7 +133,7 @@ jobs:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     runs-on: ubuntu-latest
-    needs: [build, backend]
+    needs: [build, backend, rules]
     steps:
       - name: Deploy to GitHub Pages
         id: deployment
