@@ -23,7 +23,7 @@ export default defineConfig({
       its own dependency tree. Collecting it here would run server tests in
       jsdom and silently merge two suites that are meant to fail separately.
     */
-    exclude: ['**/node_modules/**', '**/dist/**', 'functions/**'],
+    exclude: ['**/node_modules/**', '**/dist/**', 'functions/**', 'rules-tests/**'],
     css: false,
   },
   resolve: {

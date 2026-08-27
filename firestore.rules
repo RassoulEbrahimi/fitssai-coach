@@ -1,0 +1,81 @@
+// Firestore Security Rules for the FitssAI Coach project (fitssai-coach).
+//
+// Captured from the deployed production rules on 2026-08-27. The owner-access
+// model below is that capture, unchanged. The one deliberate difference is the
+// protection of authorization fields on /users/{userId}, which closes a
+// privilege-escalation path: the previous `allow write` let a signed-in user
+// set `role: "admin"` on their own profile straight from the client SDK.
+//
+// Everything here is exercised by rules-tests/firestore.rules.test.ts against
+// the real rules engine in the Firestore emulator. Those tests were first run
+// against the captured production rules, where the eight role-escalation cases
+// failed — the vulnerability, reproduced before it was fixed.
+//
+// Note: the Admin SDK, and therefore Cloud Functions, bypasses these rules
+// entirely. Server-side code needs no allowance here, and these rules must
+// never be loosened to accommodate it.
+
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isOwner(userId) {
+      return request.auth != null && request.auth.uid == userId;
+    }
+
+    // Fields that decide what someone is allowed to do. No client path writes
+    // any of them — the app's profile writes are explicit field lists and
+    // onboarding creates the document without a role — so a client write that
+    // touches one did not come from the app.
+    //
+    // `role` is the field the app actually reads. The rest are the spellings a
+    // future feature might reach for; listing them costs nothing and means the
+    // rule does not have to be revisited to stay correct.
+    function protectedFields() {
+      return ['role', 'admin', 'isAdmin', 'roles', 'permissions'];
+    }
+
+    match /users/{userId} {
+      allow read: if isOwner(userId);
+
+      // A new profile may not arrive with an authorization field already in it.
+      allow create: if isOwner(userId)
+                    && !request.resource.data.keys().hasAny(protectedFields());
+
+      // `affectedKeys()` covers added, removed and changed keys alike, so this
+      // one condition refuses introducing a role, escalating an existing one,
+      // and dropping one — including via a full-document overwrite. Writing the
+      // identical value back is not an affected key, so ordinary profile saves
+      // are unaffected.
+      allow update: if isOwner(userId)
+                    && !request.resource.data.diff(resource.data)
+                         .affectedKeys().hasAny(protectedFields());
+
+      // Unchanged from production. No client path deletes a profile document
+      // today (there is no self-service account deletion), so removing this
+      // would be a behaviour change without a security benefit.
+      allow delete: if isOwner(userId);
+
+      // User-scoped data: workout_plans, workout_logs, nutrition_plans,
+      // ai_logs and anything else under the profile. Unchanged from production
+      // — the protection above is scoped to the profile document and must not
+      // leak down here and start refusing legitimate writes.
+      match /{subcollection}/{docId} {
+        allow read, write: if isOwner(userId);
+
+        // workout_set_logs under a workout_log.
+        match /{nested}/{nestedDocId} {
+          allow read, write: if isOwner(userId);
+        }
+      }
+    }
+
+    // The shared exercise catalogue: readable by any signed-in user, written
+    // only by the Admin SDK. Unchanged from production.
+    match /exercises/{exerciseId} {
+      allow read: if request.auth != null;
+      allow write: if false;
+    }
+  }
+}

@@ -150,10 +150,16 @@ describe("no production data is migrated", () => {
     expect(declaresMigration).toBe(false);
   });
 
-  it("references no Firestore rules file, because the deployed rules are unknown", () => {
-    const firebaseJson = readFileSync(join(REPO_ROOT, "firebase.json"), "utf-8");
+  it("deploys only the targets this repository actually owns", () => {
+    const config = JSON.parse(readFileSync(join(REPO_ROOT, "firebase.json"), "utf-8"));
 
-    expect(JSON.parse(firebaseJson).firestore).toBeUndefined();
-    expect(firebaseJson).not.toMatch(/firestore\.rules|storage\.rules/);
+    // Firestore rules became version-controlled in PR54, captured from
+    // production and tested against the emulator. Storage and hosting are
+    // still nobody's here — GitHub Pages hosts the client — and a target that
+    // does not exist cannot be deployed by accident.
+    expect(config.firestore).toEqual({ rules: "firestore.rules" });
+    expect(config.storage).toBeUndefined();
+    expect(config.hosting).toBeUndefined();
+    expect(config.database).toBeUndefined();
   });
 });

@@ -61,50 +61,105 @@ default deliberately. If the project's Firestore location turns out to be
 elsewhere and co-location matters more than proximity, change the constant in
 `config.ts` — it is the only place the region is decided.
 
-## Firestore rules — capture is still outstanding
+## Firestore rules
 
-The deployed rules are **not** version-controlled, and nothing here has changed
-that. They could not be read from the Claude environment — its egress policy
-denies `auth.firebase.tools`, which every `firebase login` variant contacts
-first, so the CLI cannot authenticate at all there. Writing plausible-looking
-rules and deploying them would have overwritten production access control with
-a guess.
+The deployed rules are now version-controlled in `firestore.rules`, captured
+from production on 2026-08-27 and referenced by `firebase.json`.
 
-`firebase.json` therefore contains **no** `firestore` section and references no
-rules file, so no `firebase deploy` from this repository can touch them.
+### The access model
 
-Capturing them is a prerequisite for any future rules work.
+* `/users/{userId}` — the signed-in owner, and nobody else, may read and write.
+* `/users/{userId}/{subcollection}/{docId}` and one further level of nesting —
+  same owner-only rule. This is where `workout_plans`, `workout_logs`,
+  `nutrition_plans`, `ai_logs` and `workout_set_logs` live.
+* `/exercises/{exerciseId}` — readable by any signed-in user, writable by no
+  client.
+* Nothing else is reachable. A path the rules do not mention is denied.
 
-**The Firebase CLI cannot read them.** Verified against CLI 15.28.1: the
-`firestore` namespace offers `delete`, `bulkdelete`, `indexes`, `locations`,
-`operations`, `databases` and `backups` — there is no `rules` subcommand, and
-no rules read command anywhere else in the CLI. The only CLI verb that touches
-rules is `deploy`, which writes. Use one of these instead:
+There is no cross-user access anywhere, and no anonymous access anywhere.
 
-**Firebase Console** — definitive, and what to use if in doubt:
+### Protected authorization fields
 
-> Firebase Console → select the project → Build → Firestore Database → the
-> **Rules** tab. The editor shows the currently deployed source; the *Rules*
-> tab also keeps a version history. Copy the text verbatim.
+On the profile document `/users/{userId}` the client may not introduce, change
+or remove any of:
 
-**Security Rules REST API** — read-only, scriptable. Both calls are `GET`s, so
-neither can change anything:
-
-```bash
-PROJECT_ID=<project-id>
-TOKEN=$(gcloud auth print-access-token)
-
-# 1. Which ruleset is currently released for Firestore:
-curl -s -H "Authorization: Bearer $TOKEN" \
-  "https://firebaserules.googleapis.com/v1/projects/$PROJECT_ID/releases/cloud.firestore"
-
-# 2. Fetch that ruleset's source (rulesetName comes from step 1):
-curl -s -H "Authorization: Bearer $TOKEN" \
-  "https://firebaserules.googleapis.com/v1/<rulesetName>"
+```
+role   admin   isAdmin   roles   permissions
 ```
 
-Only after the captured file is confirmed to be the live ruleset should it be
-committed and wired into `firebase.json`.
+`role` is the one the app reads. The others are the spellings a future feature
+might reach for; listing them costs nothing and means the rule does not have to
+be revisited to stay correct.
+
+This closes a real privilege-escalation path. The previous `allow write` let a
+signed-in user set `role: "admin"` on their own profile straight from the
+client SDK — the app never writes `role` from any code path, but the rules were
+what actually decided, and they permitted it.
+
+Semantics, all covered by tests:
+
+| Operation | Rule |
+|---|---|
+| **create** | Owner only, and the new document may not carry a protected field. |
+| **update** | Owner only, and no protected field may appear in `affectedKeys()` — which covers added, changed *and* removed alike, including a full-document overwrite that would drop a role. Writing an identical value back is not an affected key, so ordinary profile saves are unaffected. |
+| **delete** | Owner only. Unchanged from production: no client path deletes a profile document today (there is no self-service account deletion), so removing it would be a behaviour change with no security benefit. |
+
+The protection is scoped to the profile document. A `role` field on a workout
+log means nothing and is allowed, so the rule cannot leak downward and start
+refusing legitimate writes.
+
+### The Admin SDK bypasses all of this
+
+Cloud Functions using `firebase-admin` are **not** subject to Security Rules.
+Future server-side quota counters and `ai_logs` writes therefore need no
+allowance here, and these rules must never be loosened to accommodate a server:
+if a write needs to happen that a client may not do, it belongs in a callable,
+not in a widened rule.
+
+### Current role-management limitation
+
+There is no way to grant or revoke admin. The Admin Panel used to offer a
+toggle that wrote another user's `role` from the browser; Firestore refused
+that write, so the button could only ever fail, and it has been removed in
+favour of copy that says so. A client that can grant itself admin is not a
+security boundary — `role === "admin"` read in the browser is a UI convenience
+and nothing more.
+
+Granting a role today means editing the document in the Firebase Console.
+Doing it properly means a callable that checks a custom claim; that is
+deliberately out of scope until it is actually needed.
+
+### Testing the rules
+
+`rules-tests/` is an isolated workspace that runs the real rules engine in the
+Firestore emulator — the only tests in this repository that can prove an
+access-control claim, because everything else asserts what our own code does
+rather than what Firestore will refuse.
+
+```bash
+npm --prefix rules-tests ci
+npm run test:rules          # boots the emulator, runs the suite, shuts down
+```
+
+It needs Java (the emulator is a JAR) and a one-time emulator download; it
+needs no credentials, and the `demo-fitssai` project id is Firebase's guarantee
+that it can never reach a real project. CI runs it in a dedicated `rules` job
+and the Pages deployment waits for it.
+
+The suite was first run against the captured production rules, where the eight
+role-escalation cases failed and the other twenty-two passed — the
+vulnerability reproduced before it was fixed, and evidence that the capture
+reproduces production faithfully.
+
+### Deploying rules
+
+```bash
+firebase use                              # must show fitssai-coach
+firebase deploy --only firestore:rules
+```
+
+Never a bare `firebase deploy`: it would push functions, and any hosting or
+storage target that exists, in one go. Always name the target.
 
 ## Authenticated callable boundary
 
@@ -244,34 +299,45 @@ toolchain can still validate the whole repository.
 
 ## Deployment
 
-**GitHub Pages** deploys automatically from `main`. CI now runs the backend job
-(typecheck, tests, build) and the Pages deployment waits for it.
+**GitHub Pages** deploys automatically from `main`. CI runs a backend job
+(typecheck, tests, build) and a rules job (Firestore Security Rules against the
+emulator); the Pages deployment waits for both.
 
 **Firebase Functions are not deployed from CI.** Doing so would require a
 long-lived credential in the repository, which is not an acceptable trade for
 saving a manual step. A test asserts the workflow contains no `firebase deploy`
 and no credential reference.
 
-Manual deployment, once `.firebaserc` exists:
+Manual deployment, always naming a target:
 
 ```bash
+firebase use                            # must show fitssai-coach
+
+# Functions:
 npm --prefix functions ci
 npm --prefix functions run typecheck
 npm --prefix functions run test
-firebase deploy --only functions        # functions-only, never a broad deploy
+firebase deploy --only functions
+
+# Firestore rules:
+firebase deploy --only firestore:rules
 ```
 
-Use the `--only functions` target. A bare `firebase deploy` could touch hosting,
-storage or rules — and the deployed Firestore rules are still unknown.
+**Never a bare `firebase deploy`.** It pushes every configured target at once —
+functions and rules together, plus any hosting or storage target that is added
+later. Name the target every time.
 
-Requirements: Blaze plan (approved), an authenticated CLI, and the correct
+Requirements: Blaze plan (active), an authenticated CLI, and the correct
 project selected.
 
 ## Intentionally not implemented
 
 * No AI provider, SDK, model call or API key.
 * No automatic plan generation and no automatic plan mutation.
-* No Firestore rules file, because the deployed rules have not been captured.
+* No custom claims, no role hierarchy, and no way to grant admin — see
+  *Current role-management limitation*.
+* No App Check, no Storage rules, no per-collection field validation beyond the
+  authorization fields named above.
 * No `ai_logs` writer and no quota persistence.
 * No user-facing AI affordance — "Neue Pläne erstellen" and "KI-Vorschlag"
   remain in their truthful unavailable states.

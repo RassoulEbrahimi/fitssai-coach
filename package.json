@@ -18,9 +18,12 @@
     "check:text": "npm run check:mojibake && npm run check:placeholders",
     "test": "vitest run",
     "test:functions": "npm --prefix functions run test",
+    "test:rules:unit": "npm --prefix rules-tests run test",
+    "test:rules": "firebase emulators:exec --only firestore --project demo-fitssai \"npm run test:rules:unit\"",
     "test:all": "npm run test && npm run test:functions",
     "test:watch": "vitest",
     "install:functions": "npm --prefix functions ci",
+    "install:rules": "npm --prefix rules-tests ci",
     "verify": "npm run typecheck && npm run test:all && npm run build && npm run build:functions && npm run check:text"
   },
   "dependencies": {

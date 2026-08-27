@@ -1,0 +1,15 @@
+{
+  "name": "fitssai-rules-tests",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Firestore Security Rules tests, run against the local emulator.",
+  "type": "module",
+  "scripts": {
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "@firebase/rules-unit-testing": "^5.0.2",
+    "firebase": "^12.18.0",
+    "vitest": "^2.1.9"
+  }
+}

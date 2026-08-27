@@ -135,8 +135,23 @@ describe("the backend gate is wired up", () => {
     }
   });
 
-  it("holds the Pages deployment until the backend passes", () => {
-    expect(workflow).toMatch(/needs:\s*\[build, backend\]/);
+  it("holds the Pages deployment until the backend and the rules pass", () => {
+    expect(workflow).toMatch(/needs:\s*\[build, backend, rules\]/);
+  });
+
+  it("runs the Firestore rules against the emulator in CI", () => {
+    // The only check that can prove an access-control claim. If it stops
+    // running, a rules regression ships silently.
+    expect(workflow).toContain("Firestore rules tests");
+    expect(workflow).toContain("npm run test:rules");
+    expect(pkg.scripts["test:rules"]).toContain("emulators:exec");
+    expect(pkg.scripts["test:rules"]).toContain("--only firestore");
+  });
+
+  it("never points the emulator at a real project", () => {
+    // A "demo-" id is Firebase's guarantee that no credentials are used and no
+    // real project can be reached.
+    expect(pkg.scripts["test:rules"]).toMatch(/--project demo-/);
   });
 
   it("deploys no Firebase resource from CI", () => {
