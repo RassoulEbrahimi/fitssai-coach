@@ -9,13 +9,43 @@ import {
 import { getCoachProvider } from "./coaching/provider";
 
 /*
-  PR50 builds the execution layer and nothing else. These guards fail the day
-  somebody quietly adds a provider, widens the prompt input to include personal
-  data, or teaches the status callable to write to Firestore.
+  Boundaries the backend has to keep: the vendor stays behind the provider
+  seam, personal data stays out of the prompt input, no secret is readable from
+  a browser, and the status callable stays inert.
+
+  Every path here is compared in POSIX form. `path.relative` yields the host
+  separator, so on Windows these guards used to compare
+  `functions\src\coaching\providers\gemini.ts` against a forward-slash
+  literal and fail on a correct implementation — a test that only passes on the
+  maintainer's operating system is not a guard.
 */
 
 const FUNCTIONS_ROOT = join(__dirname);
 const REPO_ROOT = join(__dirname, "..", "..");
+
+/**
+ * A repository path in POSIX form, whatever platform produced it.
+ *
+ * Splits on either separator rather than only `path.sep`, so the result does
+ * not depend on the host running the test — a Windows-shaped path normalises
+ * correctly on Linux too, which is what makes the fixtures below assert
+ * unconditionally. (No file in this repository has a backslash in its name,
+ * which is the only case that would mangle.)
+ */
+export const toPosix = (value: string): string => value.split(/[\\/]/).join("/");
+
+/** The one directory a provider SDK may be imported from. */
+export const PROVIDER_DIRECTORY = "functions/src/coaching/providers/";
+
+/**
+ * Whether a repository-relative path is a provider implementation.
+ *
+ * A directory rule rather than a filename list: the second provider should be
+ * a new file in `providers/`, and adding it should not mean editing this test.
+ * Takes any separator so callers cannot forget to normalise.
+ */
+export const isProviderImplementation = (path: string): boolean =>
+  toPosix(path).startsWith(PROVIDER_DIRECTORY);
 
 const walk = (dir: string): string[] =>
   readdirSync(dir).flatMap((entry) => {
@@ -33,15 +63,61 @@ const backendSources = walk(FUNCTIONS_ROOT).filter(
 
 const sharedSources = walk(join(REPO_ROOT, "shared"));
 
-const rel = (file: string) => relative(REPO_ROOT, file);
+/** Repository-relative and POSIX, so names and assertions match everywhere. */
+const rel = (file: string) => toPosix(relative(REPO_ROOT, file));
 
-describe("no model provider exists yet", () => {
-  it("resolves no provider", () => {
+describe("path normalisation", () => {
+  it("converts this host's separator to POSIX", () => {
+    expect(toPosix(join("functions", "src", "coaching", "providers", "gemini.ts"))).toBe(
+      "functions/src/coaching/providers/gemini.ts"
+    );
+  });
+
+  it("leaves an already-POSIX path alone", () => {
+    expect(toPosix("functions/src/index.ts")).toBe("functions/src/index.ts");
+  });
+
+  it("normalises a Windows-shaped path on any host", () => {
+    expect(toPosix("functions\\src\\coaching\\providers\\gemini.ts")).toBe(
+      "functions/src/coaching/providers/gemini.ts"
+    );
+  });
+
+  it("recognises a provider implementation whatever the separator", () => {
+    // The Windows form is the one that used to slip through: `includes("/providers/")`
+    // is false for a backslash path, so gemini.ts was not excluded from the
+    // "no provider SDK" sweep and a correct implementation failed the guard.
+    expect(isProviderImplementation("functions\\src\\coaching\\providers\\gemini.ts")).toBe(true);
+    expect(isProviderImplementation("functions/src/coaching/providers/gemini.ts")).toBe(true);
+    expect(
+      isProviderImplementation(join("functions", "src", "coaching", "providers", "gemini.ts"))
+    ).toBe(true);
+  });
+
+  it("rejects a Windows-shaped non-provider path too", () => {
+    expect(isProviderImplementation("functions\\src\\coaching\\generatePlan.ts")).toBe(false);
+  });
+
+  it.each([
+    "functions/src/coaching/generatePlan.ts",
+    "functions/src/index.ts",
+    "functions/src/quota/firestoreQuotaStore.ts",
+    "functions/src/logging/firestoreAiLogWriter.ts",
+    "functions/src/coaching/provider.ts",
+  ])("does not treat %s as a provider implementation", (path) => {
+    expect(isProviderImplementation(path)).toBe(false);
+  });
+});
+
+describe("the vendor stays behind the provider seam", () => {
+  it("leaves the generic lookup unconfigured — callables construct explicitly", () => {
+    // The provider needs the API key, which only the callable has, so it is
+    // built there rather than resolved from here.
     expect(getCoachProvider()).toBeNull();
   });
 
-  it.each(backendSources.filter((f) => !f.includes("/providers/")).map(rel))(
-    "%s names no provider SDK — only providers/ may",
+  it.each(backendSources.map(rel).filter((file) => !isProviderImplementation(file)))(
+    "%s names no provider SDK",
     (file) => {
       const code = stripComments(readFileSync(join(REPO_ROOT, file), "utf-8"));
 
@@ -53,12 +129,33 @@ describe("no model provider exists yet", () => {
     }
   );
 
-  it("keeps every provider SDK import inside providers/", () => {
-    const importers = backendSources.filter((file) =>
-      /from\s+["']@google\/genai["']/.test(readFileSync(file, "utf-8"))
-    );
+  it("sweeps every non-provider backend source, and does sweep some", () => {
+    const swept = backendSources.map(rel).filter((file) => !isProviderImplementation(file));
 
-    expect(importers.map(rel)).toEqual(["functions/src/coaching/providers/gemini.ts"]);
+    // A filter that accidentally excluded everything would make the guard
+    // above vacuously green.
+    expect(swept.length).toBeGreaterThan(5);
+    expect(swept).toContain("functions/src/coaching/generatePlan.ts");
+    expect(swept).toContain("functions/src/index.ts");
+    expect(swept).not.toContain("functions/src/coaching/providers/gemini.ts");
+  });
+
+  it("keeps every provider SDK import inside providers/", () => {
+    const importers = backendSources
+      .filter((file) => /from\s+["']@google\/genai["']/.test(readFileSync(file, "utf-8")))
+      .map(rel);
+
+    expect(importers).not.toEqual([]);
+    expect(importers.every(isProviderImplementation)).toBe(true);
+    expect(importers).toEqual(["functions/src/coaching/providers/gemini.ts"]);
+  });
+
+  it("resolves the importer list identically from Windows-shaped paths", () => {
+    // The same list as it would arrive from `path.relative` on Windows.
+    const windowsShaped = ["functions\\src\\coaching\\providers\\gemini.ts"];
+
+    expect(windowsShaped.map(toPosix)).toEqual(["functions/src/coaching/providers/gemini.ts"]);
+    expect(windowsShaped.every(isProviderImplementation)).toBe(true);
   });
 
   it("declares exactly one provider package, and not the legacy SDK", () => {
@@ -76,6 +173,16 @@ describe("no model provider exists yet", () => {
         "cohere-ai",
       ])
     );
+  });
+
+  it("keeps the provider package out of the client entirely", () => {
+    const client = JSON.parse(readFileSync(join(REPO_ROOT, "package.json"), "utf-8"));
+    const declared = Object.keys({ ...client.dependencies, ...client.devDependencies });
+
+    // A provider SDK in the client is a provider call from the browser, which
+    // means the key is in the browser.
+    expect(declared).not.toContain("@google/genai");
+    expect(declared.join(" ")).not.toMatch(/genai|generative-ai|openai|anthropic|mistral|cohere/i);
   });
 
   it("treats provider output as unknown, so the caller must validate it", () => {
