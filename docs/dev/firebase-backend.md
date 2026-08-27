@@ -63,21 +63,44 @@ elsewhere and co-location matters more than proximity, change the constant in
 
 ## Firestore rules — capture is still outstanding
 
-The deployed rules are **not** version-controlled, and this PR did not change
-that. The Claude environment has no authenticated Firebase CLI, so the live
-rules could not be read; writing plausible-looking rules and deploying them
-would have overwritten production access control with a guess.
+The deployed rules are **not** version-controlled, and nothing here has changed
+that. They could not be read from the Claude environment — its egress policy
+denies `auth.firebase.tools`, which every `firebase login` variant contacts
+first, so the CLI cannot authenticate at all there. Writing plausible-looking
+rules and deploying them would have overwritten production access control with
+a guess.
 
 `firebase.json` therefore contains **no** `firestore` section and references no
 rules file, so no `firebase deploy` from this repository can touch them.
 
-Capturing them is a prerequisite for any future rules work:
+Capturing them is a prerequisite for any future rules work.
+
+**The Firebase CLI cannot read them.** Verified against CLI 15.28.1: the
+`firestore` namespace offers `delete`, `bulkdelete`, `indexes`, `locations`,
+`operations`, `databases` and `backups` — there is no `rules` subcommand, and
+no rules read command anywhere else in the CLI. The only CLI verb that touches
+rules is `deploy`, which writes. Use one of these instead:
+
+**Firebase Console** — definitive, and what to use if in doubt:
+
+> Firebase Console → select the project → Build → Firestore Database → the
+> **Rules** tab. The editor shows the currently deployed source; the *Rules*
+> tab also keeps a version history. Copy the text verbatim.
+
+**Security Rules REST API** — read-only, scriptable. Both calls are `GET`s, so
+neither can change anything:
 
 ```bash
-firebase login
-firebase use <project-id>
-# Read the deployed rules WITHOUT deploying anything:
-firebase firestore:rules get > firestore.rules      # verify the output first
+PROJECT_ID=<project-id>
+TOKEN=$(gcloud auth print-access-token)
+
+# 1. Which ruleset is currently released for Firestore:
+curl -s -H "Authorization: Bearer $TOKEN" \
+  "https://firebaserules.googleapis.com/v1/projects/$PROJECT_ID/releases/cloud.firestore"
+
+# 2. Fetch that ruleset's source (rulesetName comes from step 1):
+curl -s -H "Authorization: Bearer $TOKEN" \
+  "https://firebaserules.googleapis.com/v1/<rulesetName>"
 ```
 
 Only after the captured file is confirmed to be the live ruleset should it be
