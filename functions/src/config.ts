@@ -23,10 +23,10 @@ export const BACKEND_NAME = "fitssai-coach";
 /**
  * What the backend can actually do today.
  *
- * Both are false, and they are false in code rather than in a comment, because
- * the client is entitled to ask rather than assume. PR50 builds the execution
- * layer; it does not add a model. Flipping either of these without shipping
- * the capability behind it would be the same untruth PR46 removed from the UI.
+ * These are answered in code rather than in a comment, because the client is
+ * entitled to ask rather than assume. Flipping either without shipping the
+ * capability behind it would be the same untruth PR46 removed from the UI —
+ * so `weeklySummaryAI` stays false until PR56 actually writes one.
  */
 export interface BackendCapabilities {
   /** Server-side generation of a four-week plan. */
@@ -36,6 +36,8 @@ export interface BackendCapabilities {
 }
 
 export const BACKEND_CAPABILITIES: Readonly<BackendCapabilities> = Object.freeze({
-  planGeneration: false,
+  // True from PR55: `generateWorkoutPlan` is a real callable backed by a real
+  // model. It stays true only while that remains so.
+  planGeneration: true,
   weeklySummaryAI: false,
 });

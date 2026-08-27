@@ -51,3 +51,51 @@ describe("ai log contract", () => {
     ]);
   });
 });
+
+describe("the real writer", () => {
+  it("drops undefined fields rather than storing nulls", async () => {
+    const { fakeFirestore } = await import("../testing/fakeFirestore");
+    const { createFirestoreAiLogWriter, AI_LOG_COLLECTION } = await import(
+      "./firestoreAiLogWriter"
+    );
+    const db = fakeFirestore();
+
+    await createFirestoreAiLogWriter({ firestore: db }).writeEntry({
+      uid: "alice",
+      action: "plan_generation",
+      status: "success",
+      providerCalled: true,
+      createdAt: "2026-08-27T10:00:00.000Z",
+      inputTokens: undefined,
+      outputTokens: undefined,
+    });
+
+    const [, stored] = db.under(AI_LOG_COLLECTION)[0];
+    expect(stored).not.toHaveProperty("inputTokens");
+    expect(stored).not.toHaveProperty("outputTokens");
+    expect(stored).toMatchObject({ uid: "alice", status: "success" });
+  });
+
+  it("refuses to write an entry carrying a prompt", async () => {
+    const { fakeFirestore } = await import("../testing/fakeFirestore");
+    const { createFirestoreAiLogWriter, AI_LOG_COLLECTION } = await import(
+      "./firestoreAiLogWriter"
+    );
+    const db = fakeFirestore();
+    const writer = createFirestoreAiLogWriter({ firestore: db });
+
+    await expect(
+      writer.writeEntry({
+        uid: "alice",
+        action: "plan_generation",
+        status: "success",
+        providerCalled: true,
+        createdAt: "2026-08-27T10:00:00.000Z",
+        prompt: "Erstelle einen Trainingsplan",
+      } as never)
+    ).rejects.toThrow(/forbidden/i);
+
+    // Losing an operational log beats storing what the user was asked.
+    expect(db.under(AI_LOG_COLLECTION)).toHaveLength(0);
+  });
+});

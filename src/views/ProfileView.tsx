@@ -805,17 +805,31 @@ const ProfileView: React.FC<ProfileViewProps> = React.memo(({
         <AIAnalyticsCard />
       </motion.section>
 
-      {/* Generate Plans Button */}
+      {/* Workout-plan generation */}
       {onGeneratePlans && (
-        <motion.section variants={itemVariants}>
+        <motion.section variants={itemVariants} className="space-y-2">
           <Button
             className="w-full py-6 text-lg rounded-2xl bg-gradient-to-r from-emerald-500 to-emerald-600 text-white font-semibold shadow-lg shadow-emerald-500/30 hover:shadow-xl hover:shadow-emerald-500/40 transition-all flex items-center justify-center gap-2"
             onClick={onGeneratePlans}
             disabled={generatingPlans}
           >
-            <RefreshCw className={`w-5 h-5 ${generatingPlans ? 'animate-spin' : ''}`} />
-            {generatingPlans ? "Pläne werden erstellt..." : (workoutPlan || nutritionPlan ? "Pläne neu generieren" : "Neue Pläne erstellen")}
+            <RefreshCw className={`w-5 h-5 ${generatingPlans ? 'animate-spin' : ''}`} aria-hidden="true" />
+            {generatingPlans
+              ? "Trainingsplan wird erstellt..."
+              : (workoutPlan ? "Neuen Trainingsplan erstellen" : "Trainingsplan erstellen")}
           </Button>
+
+          {/*
+            Says what actually happens. The generator creates a training plan
+            only — nutrition is not generated — and it adds a plan rather than
+            replacing one, which is the question anyone with a plan in progress
+            will have before pressing this.
+          */}
+          <p className="text-xs text-muted-foreground text-center leading-relaxed px-2">
+            Erstellt einen neuen Trainingsplan über vier Wochen aus deinen
+            Trainingseinstellungen. Bestehende Pläne bleiben erhalten.
+            Drei Pläne pro Monat.
+          </p>
         </motion.section>
       )}
 

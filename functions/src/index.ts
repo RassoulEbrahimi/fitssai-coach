@@ -1,22 +1,37 @@
-import { onCall } from "firebase-functions/v2/https";
+import { defineSecret } from "firebase-functions/params";
+import { HttpsError, onCall } from "firebase-functions/v2/https";
 import { FUNCTIONS_REGION } from "./config";
 import { handleCoachBackendStatus } from "./coaching/status";
+import { handleGenerateWorkoutPlan } from "./coaching/generatePlan";
+import { createGeminiProvider } from "./coaching/providers/gemini";
+import { createFirestoreQuotaStore } from "./quota/firestoreQuotaStore";
+import { createFirestoreAiLogWriter } from "./logging/firestoreAiLogWriter";
+import { createFirestoreOperationStore } from "./idempotency";
+import { isAiError } from "./errors";
+import { db } from "./firebase";
 
 /**
  * FitssAI Coach backend entry point.
  *
- * Each export here is a thin Firebase wrapper around a pure handler: the
- * wrapper owns the runtime concerns (region, instance limits, the callable
+ * Each export is a thin Firebase wrapper around a pure handler: the wrapper
+ * owns the runtime concerns (region, secrets, instance limits, the callable
  * protocol) and the handler owns the decisions, so the decisions can be tested
  * without a deployment.
  *
- * Authentication is enforced inside the handler rather than by configuration.
+ * Authentication is enforced inside the handlers rather than by configuration.
  * A callable happily runs for an anonymous caller — `request.auth` is simply
  * absent — so refusing that request is code, and code can be tested.
- *
- * No provider SDK is imported, no model is called and no API key is read.
- * This PR builds the execution layer; the capability comes later.
  */
+
+/**
+ * The provider API key.
+ *
+ * A Firebase Functions secret: injected into the runtime at call time, never
+ * committed, never in a build artifact, and never prefixed `VITE_` — anything
+ * with that prefix is compiled into the browser bundle and readable by every
+ * visitor. Set it with `firebase functions:secrets:set GEMINI_API_KEY`.
+ */
+export const GEMINI_API_KEY = defineSecret("GEMINI_API_KEY");
 
 export const coachBackendStatus = onCall(
   {
@@ -25,4 +40,48 @@ export const coachBackendStatus = onCall(
     maxInstances: 3,
   },
   (request) => handleCoachBackendStatus(request)
+);
+
+/**
+ * Generate a four-week plan for the signed-in caller.
+ *
+ * The only input is an opaque request id used for duplicate protection; every
+ * generation input is read server-side from the caller's own profile, so the
+ * browser cannot dictate what is sent to the model.
+ */
+export const generateWorkoutPlan = onCall(
+  {
+    region: FUNCTIONS_REGION,
+    secrets: [GEMINI_API_KEY],
+    // Each call is a paid model request, so concurrency is capped low.
+    maxInstances: 5,
+    // A four-week plan takes the model a while; the default 60s is too tight,
+    // and a timeout after the provider was billed is the worst outcome.
+    timeoutSeconds: 180,
+    memory: "512MiB",
+  },
+  async (request) => {
+    const firestore = db();
+
+    try {
+      return await handleGenerateWorkoutPlan(request, {
+        firestore,
+        provider: createGeminiProvider({ apiKey: GEMINI_API_KEY.value() }),
+        quota: createFirestoreQuotaStore({ firestore }),
+        operations: createFirestoreOperationStore(firestore),
+        log: createFirestoreAiLogWriter({ firestore }).writeEntry,
+      });
+    } catch (error) {
+      /*
+        Only our own error codes cross this boundary. A provider's message can
+        carry endpoints, project quota details and request ids; a Firestore
+        error can carry internal paths. The client maps the code to its own
+        German copy, so nothing here reaches a user as prose.
+      */
+      if (isAiError(error)) {
+        throw new HttpsError("failed-precondition", error.code, error.details);
+      }
+      throw new HttpsError("internal", "INTERNAL");
+    }
+  }
 );

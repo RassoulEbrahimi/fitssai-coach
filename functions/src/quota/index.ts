@@ -30,9 +30,17 @@ export interface QuotaDecision {
   reason?: "limit_reached";
 }
 
-/** Defaults chosen to be survivable, not generous. Revisit with real usage. */
+/**
+ * The product policy: three successful plan generations per user per calendar
+ * month. A generation is a real provider call against a paid model, so this is
+ * a cost control, and it is enforced on the server because the browser is not
+ * a place to keep one.
+ *
+ * `weekly_summary` has no implementation yet; its limit exists so the type is
+ * total, not because anything counts against it.
+ */
 export const DEFAULT_QUOTA_LIMITS: Readonly<Record<QuotaAction, number>> = Object.freeze({
-  plan_generation: 4,
+  plan_generation: 3,
   weekly_summary: 8,
 });
 

@@ -69,8 +69,11 @@ describe("what the response says", () => {
     expect(result.region.startsWith("europe-")).toBe(true);
   });
 
-  it("says AI generation is unavailable, because it is", () => {
-    expect(result.capabilities.planGeneration).toBe(false);
+  it("reports plan generation as available and weekly summaries as not", () => {
+    // planGeneration became true in PR55, when a real callable and a real
+    // model shipped behind it. weeklySummaryAI stays false until PR56 writes
+    // one — a capability flag is a claim, not an aspiration.
+    expect(result.capabilities.planGeneration).toBe(true);
     expect(result.capabilities.weeklySummaryAI).toBe(false);
     expect(result.capabilities).toEqual(BACKEND_CAPABILITIES);
   });
@@ -84,9 +87,9 @@ describe("what the response says", () => {
 
   it("cannot be mutated into claiming a capability it lacks", () => {
     const first = handleCoachBackendStatus(signedIn("a"));
-    first.capabilities.planGeneration = true;
+    first.capabilities.weeklySummaryAI = true;
 
     // The frozen source is copied per call, so one caller cannot poison the next.
-    expect(handleCoachBackendStatus(signedIn("b")).capabilities.planGeneration).toBe(false);
+    expect(handleCoachBackendStatus(signedIn("b")).capabilities.weeklySummaryAI).toBe(false);
   });
 });

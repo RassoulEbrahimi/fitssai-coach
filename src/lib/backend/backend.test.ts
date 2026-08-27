@@ -169,9 +169,10 @@ describe("no provider secret can reach the browser", () => {
   });
 
   it("reads no VITE_ provider variable anywhere in the client", () => {
-    const offenders = walk("src").filter((file) =>
-      /VITE_[A-Z_]*(OPENAI|GEMINI|ANTHROPIC|MISTRAL|MODEL|LLM)/.test(read(file))
-    );
+    // Tests are excluded: a guard that scans its own regex finds itself.
+    const offenders = walk("src")
+      .filter((file) => !/\.test\.tsx?$/.test(file))
+      .filter((file) => /VITE_[A-Z_]*(OPENAI|GEMINI|ANTHROPIC|MISTRAL|MODEL|LLM)/.test(read(file)));
 
     // Anything prefixed VITE_ is compiled into the bundle and readable by
     // every visitor. A model key must never be one.
