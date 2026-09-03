@@ -8,7 +8,6 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Progress } from "@/components/ui/progress";
 import { ArrowRight, ArrowLeft } from "lucide-react";
 import { useTranslation } from "react-i18next";
-import { doc, setDoc, Timestamp } from "firebase/firestore";
 import {
   EQUIPMENT_OPTIONS,
   SESSION_MINUTES_CHOICES,
@@ -19,8 +18,8 @@ import {
   sessionMinutesSchema,
   type EquipmentType,
 } from "@/lib/coachingPreferences";
-import { db } from "@/lib/firebase";
 import { useAuth } from "@/hooks/useAuth";
+import { useUpdateProfile } from "@/hooks/queries/useProfile";
 import { toast } from "sonner";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -44,6 +43,12 @@ const onboardingSchema = z.object({
 const OnboardingForm = ({ onComplete }: { onComplete: () => void }) => {
   const { t } = useTranslation();
   const { user } = useAuth();
+  /*
+    The same write path the profile screen uses. Onboarding used to call
+    setDoc directly, which left the cached profile — the only thing the
+    dashboard reads — holding the pre-onboarding entry after the redirect.
+  */
+  const { mutateAsync: saveProfileValues } = useUpdateProfile();
   const [step, setStep] = useState(1);
   const [loading, setLoading] = useState(false);
 
@@ -99,19 +104,18 @@ const OnboardingForm = ({ onComplete }: { onComplete: () => void }) => {
 
     setLoading(true);
     try {
-      await setDoc(doc(db, 'users', user.uid), {
-        fullName:          data.firstName,
-        age:               data.age,
-        weight:            data.weight,
-        height:            data.height,
-        fitnessGoal:       data.goal,
-        dietaryPreference: data.diet,
-        experienceLevel:   data.experience,
-        equipment:         data.equipment,
-        daysPerWeek:       data.daysPerWeek,
-        sessionMinutes:    data.sessionMinutes,
-        updatedAt:         Timestamp.now(),
-      }, { merge: true });
+      await saveProfileValues({
+        full_name:          data.firstName,
+        age:                data.age,
+        weight:             data.weight,
+        height:             data.height,
+        fitness_goal:       data.goal,
+        dietary_preference: data.diet,
+        experience_level:   data.experience,
+        equipment:          data.equipment,
+        daysPerWeek:        data.daysPerWeek,
+        sessionMinutes:     data.sessionMinutes,
+      });
 
       toast.success('Profile saved successfully!');
       onComplete();

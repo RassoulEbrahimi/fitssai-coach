@@ -6,6 +6,7 @@ import {
   parseCoachingPreferences,
   type CoachingPreferences,
 } from "@/lib/coachingPreferences";
+import { queryKeys } from "@/lib/queryKeys";
 
 export interface Profile extends CoachingPreferences {
   id: string;
@@ -48,7 +49,7 @@ export const useProfile = () => {
   const { user } = useAuth();
 
   return useQuery({
-    queryKey: ["profile", user?.id],
+    queryKey: queryKeys.profile.me(user?.id),
     queryFn: async () => {
       if (!user) return null;
       const snap = await getDoc(doc(db, "users", user.uid));
@@ -81,8 +82,29 @@ export const useUpdateProfile = () => {
       if (values.sessionMinutes     !== undefined) fsData.sessionMinutes    = values.sessionMinutes;
       await setDoc(doc(db, "users", user.uid), fsData, { merge: true });
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["profile", user?.id] });
+    /*
+      The cached profile is the only thing the UI reads, and it survives this
+      write: it is kept fresh for an hour and persisted to localStorage, so a
+      screen mounted right after a save — the dashboard, straight after
+      onboarding — would otherwise render the pre-save entry (for a new user:
+      null, i.e. every field a placeholder) until something else happened to
+      refetch it.
+
+      So write what was just saved into the cache before anything reads it,
+      then invalidate so the next mount reconciles with the server. Seeding
+      alone would leave the cache authoritative on a guess; invalidating alone
+      would still render the pre-save entry while the refetch is in flight.
+    */
+    onSuccess: (_result, values) => {
+      if (!user) return;
+      const key = queryKeys.profile.me(user.id);
+
+      queryClient.setQueryData<Profile | null>(key, (previous) => ({
+        ...(previous ?? {}),
+        ...values,
+        id: user.uid,
+      }));
+      queryClient.invalidateQueries({ queryKey: key });
     },
   });
 };
