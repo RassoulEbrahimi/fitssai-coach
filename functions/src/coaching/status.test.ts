@@ -69,12 +69,12 @@ describe("what the response says", () => {
     expect(result.region.startsWith("europe-")).toBe(true);
   });
 
-  it("reports plan generation as available and weekly summaries as not", () => {
-    // planGeneration became true in PR55, when a real callable and a real
-    // model shipped behind it. weeklySummaryAI stays false until PR56 writes
-    // one — a capability flag is a claim, not an aspiration.
+  it("reports both shipped capabilities as available", () => {
+    // planGeneration became true in PR55 and weeklySummaryAI in PR58, each
+    // when a real callable and a real model shipped behind it — a capability
+    // flag is a claim, not an aspiration.
     expect(result.capabilities.planGeneration).toBe(true);
-    expect(result.capabilities.weeklySummaryAI).toBe(false);
+    expect(result.capabilities.weeklySummaryAI).toBe(true);
     expect(result.capabilities).toEqual(BACKEND_CAPABILITIES);
   });
 
@@ -85,11 +85,11 @@ describe("what the response says", () => {
     expect(JSON.stringify(result)).not.toMatch(/email|@|displayName|name"/i);
   });
 
-  it("cannot be mutated into claiming a capability it lacks", () => {
+  it("cannot be mutated into misreporting a capability", () => {
     const first = handleCoachBackendStatus(signedIn("a"));
-    first.capabilities.weeklySummaryAI = true;
+    first.capabilities.weeklySummaryAI = false;
 
     // The frozen source is copied per call, so one caller cannot poison the next.
-    expect(handleCoachBackendStatus(signedIn("b")).capabilities.weeklySummaryAI).toBe(false);
+    expect(handleCoachBackendStatus(signedIn("b")).capabilities.weeklySummaryAI).toBe(true);
   });
 });

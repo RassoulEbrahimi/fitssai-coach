@@ -9,7 +9,9 @@ import {
   type GeminiClient,
 } from "./gemini";
 import { planResponseSchema } from "../planResponseSchema";
+import { weeklyReviewResponseSchema } from "../weeklyReviewResponseSchema";
 import type { PlanGenerationInput } from "../planGenerationInput";
+import type { WeeklyReviewInput } from "../weeklyReviewInput";
 
 /*
   The provider is exercised against a fake client. A real call would cost money
@@ -197,18 +199,66 @@ describe("transport failures", () => {
 });
 
 describe("weekly summaries", () => {
-  it("are not implemented, and say so instead of answering", async () => {
-    const { client } = respondWith({});
+  const REVIEW_INPUT: WeeklyReviewInput = {
+    weekNumber: 2,
+    scheduledDays: 3,
+    completedDays: 2,
+    missedDays: 1,
+    completionPercent: 67,
+    category: "maintain",
+  };
+
+  const answer = {
+    category: "maintain",
+    headline: "Solide Woche",
+    message: "Zwei von drei Einheiten sind abgeschlossen. Bleib beim aktuellen Umfang.",
+    reason: "Zwei der drei geplanten Trainingstage sind erledigt.",
+  };
+
+  it("asks for the weekly shape, not the plan shape", async () => {
+    const { client, calls } = respondWith(answer);
     const provider = createGeminiProvider({ apiKey: "t", client });
 
-    await expect(
-      provider.summariseWeeklyReview({
-        scheduledDays: 3,
-        completedDays: 3,
-        adherencePercent: 100,
-        measuredDurationSec: null,
-      })
-    ).rejects.toThrow(/not implemented/);
+    await provider.summariseWeeklyReviewWithUsage(REVIEW_INPUT);
+    const config = calls[0].config as Record<string, unknown>;
+
+    // The plan schema would let a model hand back exercises from a surface
+    // that must never produce plan content.
+    expect(config.responseSchema).toBe(weeklyReviewResponseSchema);
+    expect(config.responseSchema).not.toBe(planResponseSchema);
+    expect(config.responseMimeType).toBe("application/json");
+  });
+
+  it("returns the model's answer unvalidated, for the caller to check", async () => {
+    const { client } = respondWith({ category: "increase", headline: "Nope" });
+    const provider = createGeminiProvider({ apiKey: "t", client });
+
+    // A provider that filtered here would have become the validation boundary.
+    const result = await provider.summariseWeeklyReviewWithUsage(REVIEW_INPUT);
+
+    expect(result.output).toEqual({ category: "increase", headline: "Nope" });
+  });
+
+  it("sends the computed numbers and no personal data", async () => {
+    const { client, calls } = respondWith(answer);
+    const provider = createGeminiProvider({ apiKey: "t", client });
+
+    await provider.summariseWeeklyReviewWithUsage({ ...REVIEW_INPUT, goal: "gainMuscle" });
+    const prompt = String(calls[0].contents);
+
+    expect(prompt).toContain("67 %");
+    expect(prompt).toContain("maintain");
+    expect(prompt).not.toMatch(/@|uid|E-Mail|Gewicht|Grösse|Größe|Geburt/i);
+  });
+
+  it("caps its output far below the plan budget", async () => {
+    const { client, calls } = respondWith(answer);
+    const provider = createGeminiProvider({ apiKey: "t", client });
+
+    await provider.summariseWeeklyReviewWithUsage(REVIEW_INPUT);
+    const config = calls[0].config as Record<string, unknown>;
+
+    expect(config.maxOutputTokens).toBeLessThan(GENERATION_CONFIG.maxOutputTokens);
   });
 
   it("identifies itself in logs without naming a key", () => {

@@ -2,6 +2,10 @@ import { describe, it, expect } from "vitest";
 import { render, screen } from "@testing-library/react";
 import { WeeklyReview } from "./WeeklyReview";
 import { buildWeeklyFacts, type PlanDayInput, type WeeklyFactsInput } from "@/lib/coaching";
+import {
+  computeWeeklyReviewMetrics,
+  type WeeklyReviewMetricsInput,
+} from "@shared/weeklyRecommendation";
 
 /*
   The weekly review states only what was logged. These tests pin the four
@@ -120,5 +124,87 @@ describe("WeeklyReview", () => {
     expect(container.textContent ?? "").not.toMatch(
       /übertrain|verletz|schmerz|rehab|müdigkeit|faul|versagt/i
     );
+  });
+});
+
+/*
+  The recommendation section is opt-in via `metrics`, so everything above still
+  describes the numbers on their own. These describe the two together: the same
+  week, one set of figures, and no suggestion that anything was changed.
+*/
+
+const reviewMetrics = (over: Partial<WeeklyReviewMetricsInput> = {}) =>
+  computeWeeklyReviewMetrics({
+    weekKey: "Week 2",
+    weekNumber: 2,
+    hasPlan: true,
+    planDays: THREE_DAY_WEEK,
+    completions: [],
+    weekLogs: [],
+    ...over,
+  });
+
+describe("WeeklyReview with a recommendation", () => {
+  it("shows the numbers and the recommendation from the same week", () => {
+    render(
+      <WeeklyReview
+        facts={facts({ completions: allDone.slice(0, 2) })}
+        metrics={reviewMetrics({ completions: allDone.slice(0, 2) })}
+      />
+    );
+
+    expect(screen.getByText("2 von 3")).toBeInTheDocument();
+    expect(screen.getByText("67 %")).toBeInTheDocument();
+    expect(screen.getByText("Empfehlung für dich")).toBeInTheDocument();
+    expect(screen.getByText(/2 von 3 Trainingstagen abgeschlossen \(67 %\)/)).toBeInTheDocument();
+  });
+
+  it("states that the recommendation changes nothing", () => {
+    render(
+      <WeeklyReview facts={facts({ completions: allDone })} metrics={reviewMetrics({ completions: allDone })} />
+    );
+
+    expect(screen.getByText(/Dein Trainingsplan wird dadurch nicht verändert/)).toBeInTheDocument();
+  });
+
+  it("still recommends something when there is no data for the week", () => {
+    render(
+      <WeeklyReview
+        facts={facts({ planDays: [], completions: [] })}
+        metrics={reviewMetrics({ hasPlan: false, planDays: [], weekNumber: null })}
+      />
+    );
+
+    expect(screen.getByText("Noch keine Trainingsdaten für diese Woche.")).toBeInTheDocument();
+    expect(screen.getByText("Noch nichts geplant")).toBeInTheDocument();
+  });
+
+  it("attributes nothing to a model before one has been asked", () => {
+    const { container } = render(
+      <WeeklyReview
+        facts={facts({ completions: allDone, weekLogs: measured })}
+        metrics={reviewMetrics({ completions: allDone })}
+      />
+    );
+
+    // The button offers a model; nothing on screen claims one already wrote
+    // anything, and the arithmetic above carries no badge.
+    expect(screen.queryByText(/Formulierung vom KI-Coach/)).toBeNull();
+    expect(container.querySelector(".lucide-sparkles")).toBeNull();
+  });
+
+  it("offers no action that would change the plan", () => {
+    render(
+      <WeeklyReview
+        facts={facts({ completions: allDone })}
+        metrics={reviewMetrics({ completions: allDone })}
+        onViewPlan={() => undefined}
+      />
+    );
+
+    expect(screen.getByRole("button", { name: "Plan ansehen" })).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /anpassen|ändern|erstellen|generieren|übernehmen/i })
+    ).toBeNull();
   });
 });

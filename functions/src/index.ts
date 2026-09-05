@@ -3,6 +3,7 @@ import { HttpsError, onCall } from "firebase-functions/v2/https";
 import { FUNCTIONS_REGION } from "./config";
 import { handleCoachBackendStatus } from "./coaching/status";
 import { handleGenerateWorkoutPlan } from "./coaching/generatePlan";
+import { handleGenerateWeeklyReview } from "./coaching/weeklyReview";
 import { createGeminiProvider } from "./coaching/providers/gemini";
 import { createFirestoreQuotaStore } from "./quota/firestoreQuotaStore";
 import { createFirestoreAiLogWriter } from "./logging/firestoreAiLogWriter";
@@ -78,6 +79,50 @@ export const generateWorkoutPlan = onCall(
         error can carry internal paths. The client maps the code to its own
         German copy, so nothing here reaches a user as prose.
       */
+      if (isAiError(error)) {
+        throw new HttpsError("failed-precondition", error.code, error.details);
+      }
+      throw new HttpsError("internal", "INTERNAL");
+    }
+  }
+);
+
+/**
+ * The weekly review and its one coaching recommendation.
+ *
+ * Takes no input: the plan, the logs and the two profile fields it uses are
+ * read server-side under the caller's own uid, so nothing a browser sends can
+ * decide what the review says. It writes nothing to the user's documents —
+ * there is no branch in the handler that creates, edits or regenerates a
+ * workout plan, and the recommendation is advice the user acts on or ignores.
+ *
+ * Its quota is `weekly_summary`, separate from plan generation: a rephrased
+ * sentence must never eat into somebody's three plans a month.
+ */
+export const generateWeeklyReview = onCall(
+  {
+    region: FUNCTIONS_REGION,
+    secrets: [GEMINI_API_KEY],
+    maxInstances: 5,
+    // Three short strings, so the default 60s is generous — but the two
+    // Firestore reads happen first, and a cold instance pays for both.
+    timeoutSeconds: 60,
+    memory: "256MiB",
+  },
+  async (request) => {
+    const firestore = db();
+
+    try {
+      return await handleGenerateWeeklyReview(request, {
+        firestore,
+        provider: createGeminiProvider({ apiKey: GEMINI_API_KEY.value() }),
+        quota: createFirestoreQuotaStore({ firestore }),
+        log: createFirestoreAiLogWriter({ firestore }).writeEntry,
+      });
+    } catch (error) {
+      // Same boundary as plan generation: our codes cross, provider prose
+      // never does. A weekly review reaches here only if reading the caller's
+      // own data failed — every model failure degrades inside the handler.
       if (isAiError(error)) {
         throw new HttpsError("failed-precondition", error.code, error.details);
       }

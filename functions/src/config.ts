@@ -25,13 +25,18 @@ export const BACKEND_NAME = "fitssai-coach";
  *
  * These are answered in code rather than in a comment, because the client is
  * entitled to ask rather than assume. Flipping either without shipping the
- * capability behind it would be the same untruth PR46 removed from the UI —
- * so `weeklySummaryAI` stays false until PR56 actually writes one.
+ * capability behind it would be the same untruth PR46 removed from the UI, so
+ * each one moved only when the callable behind it did.
  */
 export interface BackendCapabilities {
   /** Server-side generation of a four-week plan. */
   planGeneration: boolean;
-  /** Model-written prose over the deterministic weekly review. */
+  /**
+   * Model-written wording over the deterministic weekly review.
+   *
+   * Wording only. The metrics and the recommendation category are computed by
+   * the backend either way, and no plan is ever changed by either path.
+   */
   weeklySummaryAI: boolean;
 }
 
@@ -39,5 +44,9 @@ export const BACKEND_CAPABILITIES: Readonly<BackendCapabilities> = Object.freeze
   // True from PR55: `generateWorkoutPlan` is a real callable backed by a real
   // model. It stays true only while that remains so.
   planGeneration: true,
-  weeklySummaryAI: false,
+  // True from PR58: `generateWeeklyReview` asks a real model to phrase the
+  // recommendation the deterministic rules chose. It stays true only while
+  // that remains so — and a false here would still leave the review working,
+  // because the wording falls back to the app's own.
+  weeklySummaryAI: true,
 });

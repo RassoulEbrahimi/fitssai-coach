@@ -187,3 +187,65 @@ describe("no provider secret can reach the browser", () => {
     }
   });
 });
+
+describe("the weekly review is advice, and the client keeps it that way", () => {
+  const reviewSources = [
+    "src/lib/backend/weeklyReview.ts",
+    "src/components/dashboard/CoachingRecommendation.tsx",
+    "src/components/dashboard/WeeklyReview.tsx",
+    "src/lib/coaching/reviewMetrics.ts",
+  ];
+
+  it.each(reviewSources)("%s writes nothing to Firestore", (file) => {
+    const code = stripComments(read(file));
+
+    /*
+      The product promise is that a review changes nothing. No path from the
+      weekly review reaches a write — not to a plan, not to a log, not to
+      anything — and a future edit that adds one fails here rather than in
+      somebody's training week.
+    */
+    expect(code).not.toMatch(/setDoc|addDoc|updateDoc|deleteDoc|writeBatch|updatePlanContent/);
+    expect(code).not.toMatch(/generatePlan|useWorkoutPlan|newRequestId/);
+  });
+
+  it("is requested from exactly one place, on an explicit action", () => {
+    const callers = walk("src").filter(
+      (file) => !file.startsWith("src/lib/backend") && /fetchWeeklyReview/.test(read(file))
+    );
+
+    // A review fetched on render would be a paid model call per user per view,
+    // to reword something already on the screen.
+    expect(callers.sort()).toEqual([
+      "src/components/dashboard/CoachingRecommendation.test.tsx",
+      "src/components/dashboard/CoachingRecommendation.tsx",
+    ]);
+  });
+
+  it("sends no request body at all", () => {
+    const code = stripComments(read("src/lib/backend/weeklyReview.ts"));
+
+    // Every input is read server-side under the caller's own uid, so there is
+    // nothing here for a browser to shape the answer with.
+    expect(code).toMatch(/httpsCallable<undefined,/);
+    expect(code).toMatch(/await callable\(\)/);
+  });
+
+  it("carries no secret and no provider", () => {
+    const code = stripComments(read("src/lib/backend/weeklyReview.ts"));
+
+    expect(code).not.toMatch(/apiKey|api_key|secret|token|openai|anthropic|gemini|mistral/i);
+  });
+
+  it("has exactly one definition of the recommendation rules", () => {
+    // The rules live in shared/ and are the same code the backend runs. A
+    // second copy here is the one that drifts, and the drifted copy is the one
+    // that puts a different conclusion on screen than the model was told.
+    const duplicates = walk("src").filter((file) => {
+      const code = read(file);
+      return /recommendCategory\s*=/.test(code) || /describeRecommendation\s*=/.test(code);
+    });
+
+    expect(duplicates).toEqual([]);
+  });
+});

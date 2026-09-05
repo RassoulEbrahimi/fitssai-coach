@@ -102,6 +102,7 @@ const harness = (options: {
       return { output: response, usage: options.usage?.[index] ?? {} };
     },
     generatePlan: async () => undefined,
+    summariseWeeklyReviewWithUsage: async () => ({ output: undefined, usage: {} }),
     summariseWeeklyReview: async () => undefined,
   };
 

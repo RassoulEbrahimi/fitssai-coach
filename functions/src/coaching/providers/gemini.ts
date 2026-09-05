@@ -1,8 +1,14 @@
 import { GoogleGenAI } from "@google/genai";
 import { AiError } from "../../errors";
 import { SYSTEM_INSTRUCTION, buildPlanPrompt } from "../prompt";
-import { planResponseSchema } from "../planResponseSchema";
+import { planResponseSchema, type ProviderSchema } from "../planResponseSchema";
+import {
+  WEEKLY_REVIEW_SYSTEM_INSTRUCTION,
+  buildWeeklyReviewPrompt,
+} from "../weeklyReviewPrompt";
+import { weeklyReviewResponseSchema } from "../weeklyReviewResponseSchema";
 import type { PlanGenerationInput } from "../planGenerationInput";
+import type { WeeklyReviewInput } from "../weeklyReviewInput";
 import type { CoachProvider, WeeklyReviewFacts } from "../provider";
 
 /**
@@ -45,6 +51,20 @@ export const GEMINI_PROVIDER_ID = "google-gemini";
 export const GENERATION_CONFIG = Object.freeze({
   temperature: 0.4,
   maxOutputTokens: 8192,
+  candidateCount: 1,
+});
+
+/**
+ * The weekly recommendation is three short strings, so it gets its own cap.
+ *
+ * A tenth of the plan's output budget is still several times what the schema
+ * allows, and it bounds what a runaway response can cost. Temperature stays
+ * low: this is a rewording of a fixed conclusion, and variety here only means
+ * more ways to fail the category check.
+ */
+export const WEEKLY_REVIEW_GENERATION_CONFIG = Object.freeze({
+  temperature: 0.4,
+  maxOutputTokens: 512,
   candidateCount: 1,
 });
 
@@ -146,7 +166,29 @@ export interface GeminiProvider extends CoachProvider {
     input: PlanGenerationInput,
     repairInstruction?: string
   ): Promise<ProviderResult>;
+
+  /** Weekly wording with the usage the provider reported alongside it. */
+  summariseWeeklyReviewWithUsage(input: WeeklyReviewInput): Promise<ProviderResult>;
 }
+
+/** The per-call shape of a structured-output request. */
+interface CallShape {
+  systemInstruction: string;
+  responseSchema: ProviderSchema;
+  generationConfig: Readonly<Record<string, number>>;
+}
+
+const PLAN_CALL: CallShape = {
+  systemInstruction: SYSTEM_INSTRUCTION,
+  responseSchema: planResponseSchema,
+  generationConfig: GENERATION_CONFIG,
+};
+
+const WEEKLY_REVIEW_CALL: CallShape = {
+  systemInstruction: WEEKLY_REVIEW_SYSTEM_INSTRUCTION,
+  responseSchema: weeklyReviewResponseSchema,
+  generationConfig: WEEKLY_REVIEW_GENERATION_CONFIG,
+};
 
 export const createGeminiProvider = (options: GeminiProviderOptions): GeminiProvider => {
   const maxAttempts = options.maxTransportAttempts ?? DEFAULT_TRANSPORT_ATTEMPTS;
@@ -155,7 +197,7 @@ export const createGeminiProvider = (options: GeminiProviderOptions): GeminiProv
   const client: GeminiClient =
     options.client ?? (new GoogleGenAI({ apiKey: options.apiKey }) as unknown as GeminiClient);
 
-  const call = async (prompt: string): Promise<ProviderResult> => {
+  const call = async (prompt: string, shape: CallShape): Promise<ProviderResult> => {
     let lastError: unknown;
 
     for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
@@ -164,10 +206,10 @@ export const createGeminiProvider = (options: GeminiProviderOptions): GeminiProv
           model: GEMINI_MODEL_ID,
           contents: prompt,
           config: {
-            ...GENERATION_CONFIG,
-            systemInstruction: SYSTEM_INSTRUCTION,
+            ...shape.generationConfig,
+            systemInstruction: shape.systemInstruction,
             responseMimeType: "application/json",
-            responseSchema: planResponseSchema,
+            responseSchema: shape.responseSchema,
           },
         });
 
@@ -205,14 +247,15 @@ export const createGeminiProvider = (options: GeminiProviderOptions): GeminiProv
       const prompt = repairInstruction
         ? `${buildPlanPrompt(input)}\n\n${repairInstruction}`
         : buildPlanPrompt(input);
-      return call(prompt);
+      return call(prompt, PLAN_CALL);
     },
 
-    generatePlan: async (input) => (await call(buildPlanPrompt(input))).output,
+    generatePlan: async (input) => (await call(buildPlanPrompt(input), PLAN_CALL)).output,
 
-    summariseWeeklyReview: async (_input: WeeklyReviewFacts) => {
-      // PR56. Saying so is better than shipping a stub that answers.
-      throw new AiError("INTERNAL", "Weekly summaries are not implemented.");
-    },
+    summariseWeeklyReviewWithUsage: (input) =>
+      call(buildWeeklyReviewPrompt(input), WEEKLY_REVIEW_CALL),
+
+    summariseWeeklyReview: async (input: WeeklyReviewFacts) =>
+      (await call(buildWeeklyReviewPrompt(input), WEEKLY_REVIEW_CALL)).output,
   };
 };

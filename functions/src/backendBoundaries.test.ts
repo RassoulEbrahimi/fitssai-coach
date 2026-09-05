@@ -6,6 +6,7 @@ import {
   planGenerationInputSchema,
   type PlanGenerationInput,
 } from "./coaching/planGenerationInput";
+import { weeklyReviewInputSchema, type WeeklyReviewInput } from "./coaching/weeklyReviewInput";
 import { getCoachProvider } from "./coaching/provider";
 
 /*
@@ -234,6 +235,96 @@ describe("plan-generation input is minimised", () => {
     expect(
       planGenerationInputSchema.safeParse({ ...valid, goal: "getRipped" }).success
     ).toBe(false);
+  });
+});
+
+describe("weekly-review input is minimised", () => {
+  const valid: WeeklyReviewInput = {
+    weekNumber: 2,
+    scheduledDays: 3,
+    completedDays: 2,
+    missedDays: 1,
+    completionPercent: 67,
+    category: "maintain",
+  };
+
+  it("accepts the minimum a weekly recommendation actually needs", () => {
+    expect(weeklyReviewInputSchema.safeParse(valid).success).toBe(true);
+  });
+
+  it.each([...FORBIDDEN_PROVIDER_FIELDS])("rejects an input carrying %s", (field) => {
+    // Strict, so a well-meaning caller cannot add personal context as an extra
+    // key that the schema silently strips and the provider still receives.
+    expect(weeklyReviewInputSchema.safeParse({ ...valid, [field]: "value" }).success).toBe(false);
+  });
+
+  it("names no personal field and no plan content in its own shape", () => {
+    const keys = Object.keys(weeklyReviewInputSchema.shape).sort();
+
+    // Counts and a conclusion. Nothing a workout could be described with, and
+    // nothing that identifies the person the week belongs to.
+    expect(keys).toEqual([
+      "category",
+      "completedDays",
+      "completionPercent",
+      "experienceLevel",
+      "goal",
+      "measuredDurationMinutes",
+      "measuredSessionCount",
+      "missedDays",
+      "previousWeekCompletionPercent",
+      "scheduledDays",
+      "weekNumber",
+    ]);
+    expect(keys.join(" ")).not.toMatch(/name|mail|uid|height|weight|birth/i);
+    expect(keys.join(" ")).not.toMatch(/exercise|\bsets\b|\breps\b|content/i);
+  });
+
+  it("bounds every number to what a four-week plan can produce", () => {
+    expect(weeklyReviewInputSchema.safeParse({ ...valid, weekNumber: 5 }).success).toBe(false);
+    expect(weeklyReviewInputSchema.safeParse({ ...valid, scheduledDays: 8 }).success).toBe(false);
+    expect(weeklyReviewInputSchema.safeParse({ ...valid, completionPercent: 120 }).success).toBe(false);
+  });
+
+  it("requires the category, so a model is never asked to choose one", () => {
+    const { category: _omitted, ...withoutCategory } = valid;
+
+    expect(weeklyReviewInputSchema.safeParse(withoutCategory).success).toBe(false);
+  });
+});
+
+describe("the weekly review never writes to a user's documents", () => {
+  const reviewSources = ["src/coaching/weeklyReview.ts", "src/coaching/weeklyReviewData.ts"];
+
+  it.each(reviewSources)("functions/%s performs no document write", (file) => {
+    const code = stripComments(readFileSync(join(FUNCTIONS_ROOT, "..", file), "utf-8"));
+
+    /*
+      The product promise is that a review changes nothing. The handler's own
+      quota and log writes go through injected stores, so the review pipeline
+      itself contains no write call at all — and a future edit that adds one is
+      caught here rather than in production.
+    */
+    expect(code).not.toMatch(/\.(set|create|update|delete)\(|writeBatch|bulkWriter/);
+  });
+
+  it("reads workout_plans and never addresses it for a write", () => {
+    const code = stripComments(
+      readFileSync(join(FUNCTIONS_ROOT, "coaching/weeklyReviewData.ts"), "utf-8")
+    );
+
+    expect(code).toContain('collection("workout_plans")');
+    expect(code).toMatch(/\.get\(\)/);
+  });
+
+  it("wires the weekly-review callable to no plan-writing collaborator", () => {
+    const code = stripComments(readFileSync(join(FUNCTIONS_ROOT, "index.ts"), "utf-8"));
+    const wiring = code.slice(code.indexOf("export const generateWeeklyReview"));
+
+    // No operation store and no plan id: the two things plan generation needs
+    // precisely because it persists something.
+    expect(wiring).toContain("handleGenerateWeeklyReview(request");
+    expect(wiring).not.toMatch(/operations|newPlanId|workout_plans/);
   });
 });
 

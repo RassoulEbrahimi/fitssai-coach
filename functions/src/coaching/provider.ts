@@ -1,4 +1,5 @@
 import type { PlanGenerationInput } from "./planGenerationInput";
+import type { WeeklyReviewInput } from "./weeklyReviewInput";
 
 /**
  * The seam a future model provider plugs into.
@@ -21,13 +22,14 @@ import type { PlanGenerationInput } from "./planGenerationInput";
  * workspace and appears nowhere in the client's.
  */
 
-export interface WeeklyReviewFacts {
-  scheduledDays: number;
-  completedDays: number;
-  adherencePercent: number | null;
-  measuredDurationSec: number | null;
-  goal?: PlanGenerationInput["goal"];
-}
+/**
+ * The facts a weekly recommendation may be phrased from.
+ *
+ * One definition, in `weeklyReviewInput.ts`, where the strict schema that
+ * enforces it also lives. A second shape here would be the one that quietly
+ * grew a field the schema never validated.
+ */
+export type WeeklyReviewFacts = WeeklyReviewInput;
 
 export interface CoachProvider {
   /** Identifies the implementation in logs. Never a key or an endpoint. */
@@ -36,7 +38,14 @@ export interface CoachProvider {
   /** Raw, unvalidated plan output. The caller validates before persisting. */
   generatePlan(input: PlanGenerationInput): Promise<unknown>;
 
-  /** Raw, unvalidated prose over facts the deterministic layer computed. */
+  /**
+   * Raw, unvalidated wording over facts the deterministic layer computed.
+   *
+   * `unknown` for the same reason as the plan: the caller validates the shape,
+   * checks the category against the one the rules chose, and screens the
+   * wording — a provider that could return a typed recommendation would have
+   * become the boundary that decides what a user is told.
+   */
   summariseWeeklyReview(input: WeeklyReviewFacts): Promise<unknown>;
 }
 

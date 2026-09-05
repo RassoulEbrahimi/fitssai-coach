@@ -10,3 +10,4 @@ export * from "./facts";
 export * from "./suggestions";
 export * from "./sessionSummary";
 export * from "./present";
+export * from "./reviewMetrics";
