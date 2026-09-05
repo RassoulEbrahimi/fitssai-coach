@@ -34,8 +34,21 @@ const THREE_DAY_WEEK: readonly ReviewPlanDay[] = [
   { dayIndex: 6, exerciseCount: 0 },
 ];
 
+const FIVE_DAY_WEEK: readonly ReviewPlanDay[] = Array.from({ length: 7 }, (_, dayIndex) => ({
+  dayIndex,
+  exerciseCount: dayIndex < 5 ? 4 : 0,
+}));
+
+const EVERY_DAY_WEEK: readonly ReviewPlanDay[] = Array.from({ length: 7 }, (_, dayIndex) => ({
+  dayIndex,
+  exerciseCount: 3,
+}));
+
 const done = (days: number[]): ReviewCompletion[] =>
   days.map((dayIndex) => ({ weekKey: "Week 2", dayIndex, completed: true }));
+
+const previousWeek = (days: number[]): ReviewCompletion[] =>
+  days.map((dayIndex) => ({ weekKey: "Week 1", dayIndex, completed: true }));
 
 const metrics = (over: Partial<WeeklyReviewMetricsInput> = {}) =>
   computeWeeklyReviewMetrics({
@@ -108,6 +121,59 @@ describe("the recommendation is there before any backend is", () => {
 
     expect(screen.getByText("Woche vollständig abgeschlossen")).toBeInTheDocument();
     expect(screen.getByText(/Halte diesen Umfang zunächst bei/)).toBeInTheDocument();
+  });
+
+  it("does not tell the reader to train more after two full weeks", () => {
+    /*
+      The app counts ticked-off sessions. It records nothing about effort,
+      fatigue or recovery, so two full weeks say the plan was followed — not
+      that its owner has room for more. The section says so out loud.
+    */
+    const { container } = render(
+      <CoachingRecommendation
+        metrics={metrics({
+          completions: [...done([0, 2, 4]), ...previousWeek([0, 2, 4])],
+          previousWeek: { weekKey: "Week 1", planDays: THREE_DAY_WEEK },
+        })}
+      />
+    );
+
+    expect(screen.getByText("Zwei vollständige Wochen")).toBeInTheDocument();
+    expect(screen.getByText(/entscheidest du selbst/)).toBeInTheDocument();
+    expect(screen.getByText(/kann nicht beurteilen, wie sich dein Training anfühlt/)).toBeInTheDocument();
+    expect(container.textContent ?? "").not.toMatch(/bereit für|steigere |trainiere mehr|zeit für mehr/i);
+  });
+
+  it("asks about the schedule after two low weeks instead of prescribing less", () => {
+    const { container } = render(
+      <CoachingRecommendation
+        metrics={metrics({
+          planDays: FIVE_DAY_WEEK,
+          completions: [...done([0]), ...previousWeek([0])],
+          previousWeek: { weekKey: "Week 1", planDays: FIVE_DAY_WEEK },
+        })}
+      />
+    );
+
+    expect(screen.getByText("Passt der Wochenplan zu deiner Woche?")).toBeInTheDocument();
+    expect(screen.getByText(/Woran das lag, weiß die App nicht/)).toBeInTheDocument();
+    // Why sessions were missed is not recorded, so no verdict is drawn from it.
+    expect(container.textContent ?? "").not.toMatch(/reduzier|zu viel|pensum|überforder|weniger trainieren/i);
+  });
+
+  it("calls a seven-day plan dense without a claim about the reader", () => {
+    const { container } = render(
+      <CoachingRecommendation
+        metrics={metrics({
+          planDays: EVERY_DAY_WEEK,
+          completions: done([0, 1, 2, 3, 4, 5, 6]),
+        })}
+      />
+    );
+
+    expect(screen.getByText("Dein Plan sieht sieben Trainingstage vor")).toBeInTheDocument();
+    expect(screen.getByText(/dichter Wochenplan/)).toBeInTheDocument();
+    expect(container.textContent ?? "").not.toMatch(/erholung|erholt|regeneration|deload|müde/i);
   });
 
   it("mentions no duration when none was measured", () => {
@@ -238,6 +304,16 @@ describe("what the recommendation never says", () => {
     metrics({ completions: done([0, 2]) }),
     metrics({ completions: done([0, 2, 4]) }),
     metrics({ hasPlan: false, planDays: [], weekNumber: null }),
+    metrics({
+      completions: [...done([0, 2, 4]), ...previousWeek([0, 2, 4])],
+      previousWeek: { weekKey: "Week 1", planDays: THREE_DAY_WEEK },
+    }),
+    metrics({
+      planDays: FIVE_DAY_WEEK,
+      completions: [...done([0]), ...previousWeek([0])],
+      previousWeek: { weekKey: "Week 1", planDays: FIVE_DAY_WEEK },
+    }),
+    metrics({ planDays: EVERY_DAY_WEEK, completions: done([0, 1, 2, 3, 4, 5, 6]) }),
   ];
 
   it.each(cases.map((m, index) => [index, m] as const))(
@@ -251,6 +327,24 @@ describe("what the recommendation never says", () => {
       // "nicht verändert" is the promise; anything else about changing is not.
       expect(text).not.toMatch(/automatisch|angepasst|aktualisiert|neu erstellt/i);
       expect(text).not.toMatch(/faul|versagt|Ausrede/i);
+    }
+  );
+
+  it.each(cases.map((m, index) => [index, m] as const))(
+    "case %i infers nothing the app has no data for",
+    (_index, m) => {
+      /*
+        The five things this product is never allowed to claim, because nothing
+        is persisted that could support them: detected fatigue, insufficient
+        recovery, overtraining, readiness to progress, and a need to deload.
+      */
+      const { container } = render(<CoachingRecommendation metrics={m} />);
+      const text = container.textContent ?? "";
+
+      expect(text).not.toMatch(/erschöpf|ausgelaugt|müdigkeit|\bmüde\b|überlast|überforder/i);
+      expect(text).not.toMatch(/regeneration|erholung|erholt|deload|entlastungswoche/i);
+      expect(text).not.toMatch(/bereit für|zeit für mehr|nächste stufe|dein körper|belastbarkeit/i);
+      expect(text).not.toMatch(/reduzier|verringer|pensum|trainiere (mehr|weniger|öfter)/i);
     }
   );
 });

@@ -246,6 +246,7 @@ describe("weekly-review input is minimised", () => {
     missedDays: 1,
     completionPercent: 67,
     category: "maintain",
+    focus: "on-track",
   };
 
   it("accepts the minimum a weekly recommendation actually needs", () => {
@@ -268,6 +269,7 @@ describe("weekly-review input is minimised", () => {
       "completedDays",
       "completionPercent",
       "experienceLevel",
+      "focus",
       "goal",
       "measuredDurationMinutes",
       "measuredSessionCount",
@@ -286,10 +288,24 @@ describe("weekly-review input is minimised", () => {
     expect(weeklyReviewInputSchema.safeParse({ ...valid, completionPercent: 120 }).success).toBe(false);
   });
 
-  it("requires the category, so a model is never asked to choose one", () => {
-    const { category: _omitted, ...withoutCategory } = valid;
+  it("requires the category and the focus, so a model chooses neither", () => {
+    const { category: _noCategory, ...withoutCategory } = valid;
+    const { focus: _noFocus, ...withoutFocus } = valid;
 
     expect(weeklyReviewInputSchema.safeParse(withoutCategory).success).toBe(false);
+    expect(weeklyReviewInputSchema.safeParse(withoutFocus).success).toBe(false);
+  });
+
+  it("carries no field for effort, fatigue, recovery or sleep", () => {
+    const keys = Object.keys(weeklyReviewInputSchema.shape).join(" ");
+
+    /*
+      The app persists none of these, so there is nothing truthful to send —
+      and a model that cannot see a fatigue field cannot reason from one. The
+      count of completed sessions is adherence data and is not a proxy for any
+      of them.
+    */
+    expect(keys).not.toMatch(/rpe|effort|anstrengung|fatigue|müdigkeit|recovery|erholung|sleep|schlaf|readiness|soreness/i);
   });
 });
 

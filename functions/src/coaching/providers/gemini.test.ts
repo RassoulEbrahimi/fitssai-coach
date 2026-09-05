@@ -206,6 +206,7 @@ describe("weekly summaries", () => {
     missedDays: 1,
     completionPercent: 67,
     category: "maintain",
+    focus: "on-track",
   };
 
   const answer = {
@@ -248,7 +249,9 @@ describe("weekly summaries", () => {
 
     expect(prompt).toContain("67 %");
     expect(prompt).toContain("maintain");
-    expect(prompt).not.toMatch(/@|uid|E-Mail|Gewicht|Grösse|Größe|Geburt/i);
+    expect(prompt).toContain("on-track");
+    // Word-bounded: "größere" in a wording brief is German, not a body measurement.
+    expect(prompt).not.toMatch(/@|\buid\b|E-Mail|\bGewicht\b|\bGröße\b|\bGeburt/i);
   });
 
   it("caps its output far below the plan budget", async () => {

@@ -1,4 +1,4 @@
-import { RECOMMENDATION_CATEGORIES } from "../../../shared/weeklyRecommendation";
+import type { RecommendationFocus } from "../../../shared/weeklyRecommendation";
 import type { WeeklyReviewInput } from "./weeklyReviewInput";
 
 /**
@@ -13,6 +13,14 @@ import type { WeeklyReviewInput } from "./weeklyReviewInput";
  * The prohibitions are the product rules, stated where the model can read
  * them: this feature advises, it never changes a plan, and it makes no claim
  * about a person's body that the app has no data for.
+ *
+ * That last one is the subtle rule and it is stated twice. The input is a
+ * count of completed sessions — adherence, nothing else. Nothing here records
+ * effort, fatigue, recovery, sleep or why a session was missed, so "you are
+ * ready to progress" and "that was too much for you" are both invention, and
+ * both are the invention a model reaches for unprompted when it sees three of
+ * three twice running. The instruction refuses them; a text screen on the way
+ * out refuses them again, because an instruction is not a guarantee.
  */
 
 const GOAL_LABELS: Readonly<Record<string, string>> = {
@@ -28,13 +36,35 @@ const EXPERIENCE_LABELS: Readonly<Record<string, string>> = {
   advanced: "Erfahren",
 };
 
-/** What each category means, so the wording matches the conclusion. */
-const CATEGORY_MEANING: Readonly<Record<(typeof RECOMMENDATION_CATEGORIES)[number], string>> = {
-  maintain: "Der aktuelle Umfang passt. Nichts am Plan ändern.",
-  consistency: "Regelmäßigkeit geht vor Umfang. Offene Einheiten nachholen.",
-  reduce: "Ein kleinerer Wochenumfang wäre realistischer — als Überlegung, nicht als Anweisung.",
-  increase: "Eine vorsichtige Steigerung wäre vertretbar — als Überlegung, nicht als Anweisung.",
-  recovery: "Ein fester Ruhetag in der kommenden Woche wäre eine Überlegung wert.",
+/**
+ * What each wording angle is, so the model writes the right variant.
+ *
+ * These are instructions about *tone and content*, never about what to
+ * conclude — the conclusion arrived with the input. The two delicate ones,
+ * `week-complete-repeat` and `schedule-fit`, spell out what must not be said,
+ * because they are the two the data most tempts a reader to over-read.
+ */
+const FOCUS_BRIEF: Readonly<Record<RecommendationFocus, string>> = {
+  "no-plan":
+    "Für diese Woche ist nichts geplant. Sachlich feststellen, freundlich bleiben, nichts hineindeuten.",
+  "first-session":
+    "Noch keine Einheit abgeschlossen. Zu einer ersten Einheit ermutigen, ohne Druck und ohne Vermutung, woran es lag.",
+  "catch-up":
+    "Ein Teil der Einheiten ist offen. Regelmäßigkeit als nächsten Schritt nennen, ohne den Umfang zu bewerten.",
+  "schedule-fit":
+    "Zwei Wochen mit wenigen abgeschlossenen Einheiten. Als Frage formulieren, ob die geplanten Tage zum Alltag der Person passen. " +
+    "Nicht behaupten, das Training sei zu viel gewesen, und keine Reduzierung empfehlen — warum Einheiten offen blieben, ist unbekannt.",
+  "on-track":
+    "Der größere Teil der Woche ist geschafft. Bestätigen und beim aktuellen Umfang bleiben.",
+  "week-complete":
+    "Die Woche ist vollständig abgeschlossen. Anerkennen und den Umfang zunächst beibehalten.",
+  "week-complete-repeat":
+    "Zwei vollständige Wochen in Folge. Das ist eine Aussage über die Regelmäßigkeit, nicht über Belastbarkeit. " +
+    "Eine Veränderung des Umfangs darf höchstens als eigene Entscheidung der Person vorkommen, ausdrücklich abhängig davon, " +
+    "wie sich das Training für sie anfühlt — und mit dem Hinweis, dass die App das nicht kennt. Nicht behaupten, die Person sei bereit für mehr.",
+  "dense-schedule":
+    "Der Plan sieht an allen sieben Tagen eine Einheit vor und alle wurden abgeschlossen. " +
+    "Das als Eigenschaft des Plans benennen. Ob ein Ruhetag passt, entscheidet die Person; keine Aussage über Erholung oder Belastung treffen.",
 };
 
 export const WEEKLY_REVIEW_SYSTEM_INSTRUCTION = [
@@ -47,6 +77,9 @@ export const WEEKLY_REVIEW_SYSTEM_INSTRUCTION = [
   "  oder lass sie weg. Erfinde keine weiteren Zahlen und rechne nichts um.",
   "- Die Kategorie in der Eingabe steht fest. Formuliere genau diese Kategorie",
   "  und gib sie unverändert zurück.",
+  "- Die Eingabe enthält ausschließlich Zählwerte zu abgeschlossenen und",
+  "  geplanten Einheiten. Wie anstrengend das Training war, wie erholt oder",
+  "  müde die Person ist und warum Einheiten offen blieben, ist unbekannt.",
   "- 'headline' ist eine kurze Überschrift, 'message' die Empfehlung in ein bis",
   "  zwei Sätzen, 'reason' die Begründung aus den gelieferten Zahlen.",
   "",
@@ -56,6 +89,11 @@ export const WEEKLY_REVIEW_SYSTEM_INSTRUCTION = [
   "  am Plan der Person ändert sich durch diese Rückmeldung nichts;",
   "- keine medizinischen Aussagen, keine Diagnosen, keine Aussagen über",
   "  Verletzungen, Schmerzen, Erschöpfung oder Regeneration des Körpers;",
+  "- nicht behaupten, die Person sei bereit für mehr Umfang, brauche eine",
+  "  Entlastung oder habe zu viel oder zu wenig trainiert — dafür liegen keine",
+  "  Daten vor;",
+  "- keine Empfehlung, mehr oder weniger zu trainieren, und keine Angabe zu",
+  "  Sätzen, Wiederholungen, Gewichten oder Übungen;",
   "- keine Ernährungs- oder Nahrungsergänzungsempfehlungen;",
   "- keine Aussagen über Daten, die dir nicht vorliegen;",
   "- keine Ansprache, die beschämt, druckvoll wirkt oder Schuld zuweist.",
@@ -83,7 +121,8 @@ export const buildWeeklyReviewPrompt = (input: WeeklyReviewInput): string => {
       : null,
     "",
     `- Kategorie (unveränderlich): ${input.category}`,
-    `  Bedeutung: ${CATEGORY_MEANING[input.category]}`,
+    `- Schwerpunkt: ${input.focus}`,
+    `  ${FOCUS_BRIEF[input.focus]}`,
   ];
 
   return lines.filter((line): line is string => line !== null).join("\n");

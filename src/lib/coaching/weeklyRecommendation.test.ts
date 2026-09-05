@@ -6,6 +6,8 @@ import {
   findUnsafeRecommendationText,
   formatDurationDe,
   recommendCategory,
+  recommendFocus,
+  RECOMMENDATION_CATEGORIES,
   usableDurationSec,
   validateModelRecommendation,
   weeklyRecommendationResponseSchema,
@@ -187,50 +189,123 @@ describe("the category is decided by rules, conservatively", () => {
     expect(recommendCategory(metrics({ completions: done("Week 2", [0, 2]) }))).toBe("maintain");
   });
 
-  it("keeps the plan at a first full week rather than escalating it", () => {
+  it("keeps the plan at a full week", () => {
     expect(recommendCategory(metrics({ completions: done("Week 2", [0, 2, 4]) }))).toBe("maintain");
   });
 
-  it("suggests more only after two full weeks", () => {
-    const result = metrics({
-      completions: [...done("Week 2", [0, 2, 4]), ...done("Week 1", [0, 2, 4])],
-      previousWeek: { weekKey: "Week 1", planDays: threeDayWeek },
-    });
-
-    expect(recommendCategory(result)).toBe("increase");
-  });
-
-  it("does not suggest more when the previous week was incomplete", () => {
-    const result = metrics({
-      completions: [...done("Week 2", [0, 2, 4]), ...done("Week 1", [0])],
-      previousWeek: { weekKey: "Week 1", planDays: threeDayWeek },
-    });
-
-    expect(recommendCategory(result)).toBe("maintain");
-  });
-
-  it("suggests less only after two low weeks on a demanding schedule", () => {
-    const fiveDayWeek = threeDayWeek.map((day, index) => ({ ...day, exerciseCount: index < 5 ? 4 : 0 }));
-    const result = computeWeeklyReviewMetrics({
-      weekKey: "Week 2",
-      weekNumber: 2,
-      hasPlan: true,
-      planDays: fiveDayWeek,
-      completions: [...done("Week 2", [0]), ...done("Week 1", [0])],
-      weekLogs: [],
-      previousWeek: { weekKey: "Week 1", planDays: fiveDayWeek },
-    });
-
-    expect(recommendCategory(result)).toBe("reduce");
-  });
-
-  it("suggests a rest day only when the plan itself scheduled none", () => {
+  it("names a seven-day plan as dense", () => {
     const result = metrics({
       planDays: everyDayWeek,
       completions: done("Week 2", [0, 1, 2, 3, 4, 5, 6]),
     });
 
-    expect(recommendCategory(result)).toBe("recovery");
+    expect(recommendCategory(result)).toBe("dense-schedule");
+  });
+});
+
+describe("adherence is never read as a workload verdict", () => {
+  /*
+    The one rule this whole module exists to keep. The app persists how many
+    planned sessions were ticked off and nothing else — no perceived effort, no
+    fatigue, no recovery, no sleep, no injury status, and no reason a session
+    was missed. A completion tally therefore cannot support a claim that
+    somebody should train more or less, and these tests pin that it never
+    produces one.
+  */
+
+  const twoFullWeeks = metrics({
+    completions: [...done("Week 2", [0, 2, 4]), ...done("Week 1", [0, 2, 4])],
+    previousWeek: { weekKey: "Week 1", planDays: threeDayWeek },
+  });
+
+  const fiveDayWeek: readonly ReviewPlanDay[] = Array.from({ length: 7 }, (_, dayIndex) => ({
+    dayIndex,
+    exerciseCount: dayIndex < 5 ? 4 : 0,
+  }));
+
+  const twoLowWeeks = computeWeeklyReviewMetrics({
+    weekKey: "Week 2",
+    weekNumber: 2,
+    hasPlan: true,
+    planDays: fiveDayWeek,
+    completions: [...done("Week 2", [0]), ...done("Week 1", [0])],
+    weekLogs: [],
+    previousWeek: { weekKey: "Week 1", planDays: fiveDayWeek },
+  });
+
+  it("offers no category that means 'train more' or 'train less'", () => {
+    // A dead enum value in a safety contract is an invitation, not a feature.
+    expect([...RECOMMENDATION_CATEGORIES]).toEqual(["maintain", "consistency", "dense-schedule"]);
+  });
+
+  it("keeps two full weeks on maintain", () => {
+    expect(twoFullWeeks.completionPercent).toBe(100);
+    expect(twoFullWeeks.previousWeek?.completionPercent).toBe(100);
+    expect(recommendCategory(twoFullWeeks)).toBe("maintain");
+    // The previous week changes which sentence leads, never the conclusion.
+    expect(recommendFocus(twoFullWeeks)).toBe("week-complete-repeat");
+  });
+
+  it("says nothing about readiness after two full weeks", () => {
+    const text = Object.values(describeRecommendation(twoFullWeeks)).join(" ");
+
+    expect(text).not.toMatch(/bereit für|kannst du jetzt|zeit für mehr|nächste stufe/i);
+    expect(text).not.toMatch(/steigere |erhöhe (dein|die)|trainiere (mehr|öfter|häufiger)/i);
+  });
+
+  it("frames progression after two full weeks as the reader's own decision", () => {
+    const { message } = describeRecommendation(twoFullWeeks);
+
+    expect(message).toMatch(/entscheidest du selbst/);
+    // And admits, in the same sentence, what the app cannot know.
+    expect(message).toMatch(/kann nicht beurteilen, wie sich dein Training anfühlt/);
+  });
+
+  it("keeps two low weeks on consistency", () => {
+    expect(twoLowWeeks.completionPercent).toBeLessThan(LOW_COMPLETION_PERCENT);
+    expect(twoLowWeeks.previousWeek?.completionPercent).toBeLessThan(LOW_COMPLETION_PERCENT);
+    expect(recommendCategory(twoLowWeeks)).toBe("consistency");
+    expect(recommendFocus(twoLowWeeks)).toBe("schedule-fit");
+  });
+
+  it("asks about the schedule after two low weeks instead of prescribing less", () => {
+    const { headline, message } = describeRecommendation(twoLowWeeks);
+
+    expect(headline).toMatch(/\?$/);
+    expect(message).toMatch(/Woran das lag, weiß die App nicht/);
+    expect(message).not.toMatch(/reduzier|weniger|zu viel|pensum|überforder/i);
+  });
+
+  it("flags a seven-day plan as a property of the plan, not of the person", () => {
+    const dense = metrics({
+      planDays: everyDayWeek,
+      completions: done("Week 2", [0, 1, 2, 3, 4, 5, 6]),
+    });
+    const { message } = describeRecommendation(dense);
+
+    expect(message).toMatch(/dichter Wochenplan/);
+    expect(message).toMatch(/entscheidest du/);
+    expect(message).not.toMatch(/erholung|erholt|regeneration|deload|überlast|müde/i);
+  });
+
+  it.each([
+    ["fatigue", "Du wirkst nach dieser Woche ziemlich müde und ausgelaugt."],
+    ["recovery-claim", "Deine Regeneration reicht aus, du bist gut erholt."],
+    ["progress-readiness", "Du bist bereit für mehr Umfang im Training."],
+    ["workload-prescription", "Reduzier dein Pensum in der kommenden Woche deutlich."],
+  ])("refuses a model that claims %s", (rule, message) => {
+    const candidate = {
+      category: "maintain" as const,
+      headline: "Deine Woche",
+      message,
+      reason: "Drei von drei geplanten Trainingstagen sind abgeschlossen.",
+    };
+
+    expect(findUnsafeRecommendationText(candidate)).toContain(rule);
+    expect(validateModelRecommendation(candidate, "maintain")).toEqual({
+      ok: false,
+      rejection: "unsafe-text",
+    });
   });
 });
 
@@ -244,6 +319,10 @@ describe("the deterministic wording", () => {
     metrics({ planDays: everyDayWeek, completions: done("Week 2", [0, 1, 2, 3, 4, 5, 6]) }),
     metrics({
       completions: [...done("Week 2", [0, 2, 4]), ...done("Week 1", [0, 2, 4])],
+      previousWeek: { weekKey: "Week 1", planDays: threeDayWeek },
+    }),
+    metrics({
+      completions: [...done("Week 2", [0]), ...done("Week 1", [0])],
       previousWeek: { weekKey: "Week 1", planDays: threeDayWeek },
     }),
   ];
@@ -331,7 +410,7 @@ describe("a model may rephrase the conclusion, never choose it", () => {
   });
 
   it("refuses a category the rules did not choose", () => {
-    const result = validateModelRecommendation({ ...valid, category: "increase" }, "maintain");
+    const result = validateModelRecommendation({ ...valid, category: "consistency" }, "maintain");
 
     expect(result).toEqual({ ok: false, rejection: "category-mismatch" });
   });

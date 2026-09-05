@@ -333,18 +333,40 @@ drift apart. A metric with no data behind it is reported as absent: 0 of 0 is
 not 0 %, and an unmeasured session is not a zero-minute one.
 
 **The category is a rule, not an opinion.** `recommendCategory` maps the week
-onto `maintain | consistency | reduce | increase | recovery`, conservatively:
-one full week is not enough to suggest more, two low weeks on a demanding
-schedule are enough to suggest less, and `recovery` is reached only on a fact
-about the *plan* (a week that schedules all seven days) — never on an inference
-about the person's body, which this app has no data for. A model that returns a
-different category is refused, not obeyed.
+onto exactly three values — `maintain | consistency | dense-schedule` — and a
+model that returns a different one is refused, not obeyed.
+
+Three, because three is what the data supports. Adherence — how many planned
+sessions were ticked off — is the only training signal this app persists. It
+says whether the plan was followed; it says nothing about whether the plan was
+*right*. Nothing is recorded about perceived effort, fatigue, recovery quality,
+sleep, injury readiness, whether the week felt manageable, or why a session was
+missed. So there is deliberately no "increase" and no "reduce":
+
+| Week | Category | What the wording does |
+|---|---|---|
+| Two full weeks running | `maintain` | Mentions changing the workload only as the reader's own decision, conditional on how training feels — and says the app cannot know that |
+| Repeatedly few sessions done | `consistency` | Asks whether the schedule fits the reader's week. Never asserts the workload was too much, and never recommends fewer sessions, sets or exercises |
+| Seven scheduled days, all done | `dense-schedule` | States a property of the *plan*. No claim about the person's recovery or capacity |
+
+The previous week shapes the **wording** (`focus`), never the **conclusion**
+(`category`) — which is what keeps a good adherence streak from turning into a
+readiness verdict.
+
+**Unsupported inference is refused twice.** The prompt forbids claims about
+fatigue, recovery, readiness to progress and the need to deload; a text screen
+on the response refuses them again, because an instruction is not a guarantee —
+a model handed "3 of 3, twice running" reaches for "you're ready to progress"
+unless something stops it. The screen also refuses medical claims, nutrition
+advice, prescribed sets/reps/loads, and any suggestion that the plan changed.
 
 **The model only writes sentences.** It receives the computed numbers, the
-chosen category, and at most the canonical goal and experience level. It
-returns four short fields — `category`, `headline`, `message`, `reason` — and
-its response schema has no field an exercise, a set count or a schedule could
-be expressed in.
+chosen category, the wording angle (`focus`), and at most the canonical goal
+and experience level. It returns four short fields — `category`, `headline`,
+`message`, `reason` — and its response schema has no field an exercise, a set
+count or a schedule could be expressed in. It is given no effort, fatigue,
+recovery or sleep field, because none is persisted: a field that does not exist
+cannot be reasoned from.
 
 **Nothing is ever changed.** No branch of the handler creates, edits,
 regenerates or reorders a plan; the response contains no plan content; and the

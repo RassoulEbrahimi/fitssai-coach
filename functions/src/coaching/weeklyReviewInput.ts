@@ -1,5 +1,8 @@
 import { z } from "zod";
-import { RECOMMENDATION_CATEGORIES } from "../../../shared/weeklyRecommendation";
+import {
+  RECOMMENDATION_CATEGORIES,
+  RECOMMENDATION_FOCUSES,
+} from "../../../shared/weeklyRecommendation";
 import { EXPERIENCE_LEVELS, FITNESS_GOALS } from "./planGenerationInput";
 
 /**
@@ -12,8 +15,14 @@ import { EXPERIENCE_LEVELS, FITNESS_GOALS } from "./planGenerationInput";
  * much the person weighs.
  *
  * Every numeric field is a value the backend computed itself from persisted
- * records. The model is handed the arithmetic, including the category the
- * deterministic rules already chose; it is never asked to produce either.
+ * records. The model is handed the arithmetic, the category the deterministic
+ * rules chose and the wording angle that goes with it; it is never asked to
+ * produce any of the three.
+ *
+ * Note what the model is *not* given, because the app does not have it:
+ * perceived effort, fatigue, recovery, sleep, injury status, or why a session
+ * was missed. A field that does not exist cannot be reasoned from — which is
+ * the point, since a completion tally is adherence data and nothing more.
  */
 export const weeklyReviewInputSchema = z
   .object({
@@ -32,6 +41,8 @@ export const weeklyReviewInputSchema = z
     experienceLevel: z.enum(EXPERIENCE_LEVELS).optional(),
     /** The conclusion the rules reached. The model may only phrase it. */
     category: z.enum(RECOMMENDATION_CATEGORIES),
+    /** Which true sentence leads, within that category. Also already decided. */
+    focus: z.enum(RECOMMENDATION_FOCUSES),
   })
   .strict();
 

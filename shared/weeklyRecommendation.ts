@@ -78,7 +78,12 @@ export interface WeeklyReviewMetrics {
   measuredSessionCount: number;
   unmeasuredSessionCount: number;
   durationCoverage: DurationCoverageState;
-  /** The week before, when the plan has one. Drives "reduce" and "increase". */
+  /**
+   * The week before, when the plan has one.
+   *
+   * Shapes which sentence leads, never which conclusion is drawn — see
+   * `recommendFocus`.
+   */
   previousWeek: { weekKey: string; completionPercent: number | null } | null;
 }
 
@@ -202,20 +207,78 @@ export const computeWeeklyReviewMetrics = (
  * The recommendation
  * ------------------------------------------------------------------ */
 
+/**
+ * What a week's recommendation is *about*.
+ *
+ * Three categories, and only three, because three is what this app's data can
+ * support. Adherence — how many planned sessions were ticked off — is the only
+ * training signal that is persisted. It says whether the plan was followed. It
+ * says nothing about whether the plan was *right*: nothing here records
+ * perceived effort, fatigue, recovery, sleep, injury status, why a session was
+ * missed, or whether the week felt manageable.
+ *
+ * So there is no "increase" and no "reduce". A user who completed two full
+ * weeks may be coasting or may be at their limit, and the difference is
+ * invisible from this side; a user who missed most of a week may have an
+ * unrealistic plan, or a broken boiler. Turning either into a workload verdict
+ * would be a confident claim about a person from data that cannot carry one —
+ * the same untruth as a fabricated metric, only harder to spot.
+ */
 export const RECOMMENDATION_CATEGORIES = [
-  /** Keep the current plan and the current workload. */
+  /** The week went broadly as planned. Keep going; change nothing. */
   "maintain",
-  /** Regularity before volume. */
+  /** Sessions are open. Regularity is the next step, not volume. */
   "consistency",
-  /** A smaller weekly workload would likely be more realistic. */
-  "reduce",
-  /** A cautious increase is defensible. */
-  "increase",
-  /** Plan a rest day. Never a physiological or medical claim. */
-  "recovery",
+  /**
+   * The plan schedules all seven days. A fact about the plan, stated as one —
+   * never a claim that the person needs rest, which this app cannot know.
+   */
+  "dense-schedule",
 ] as const;
 
 export type RecommendationCategory = (typeof RECOMMENDATION_CATEGORIES)[number];
+
+/**
+ * Which wording a category gets.
+ *
+ * The category is what the app concluded; the focus is which true sentence
+ * leads. Splitting them is what lets the previous week shape the *wording*
+ * without ever escalating the *conclusion* — two full weeks read differently
+ * from one, but both are still "maintain".
+ */
+export const RECOMMENDATION_FOCUSES = [
+  /** Nothing is scheduled for this week. */
+  "no-plan",
+  /** Nothing completed yet. Encouragement, no inference. */
+  "first-session",
+  /** Some done, several open. */
+  "catch-up",
+  /** Repeatedly few completed: a question about the schedule, not a verdict. */
+  "schedule-fit",
+  /** Most of the week done. */
+  "on-track",
+  /** Every planned session done. */
+  "week-complete",
+  /** Every planned session done, twice running. */
+  "week-complete-repeat",
+  /** Seven scheduled days, all completed. */
+  "dense-schedule",
+] as const;
+
+export type RecommendationFocus = (typeof RECOMMENDATION_FOCUSES)[number];
+
+/** Every focus belongs to exactly one category. */
+export const FOCUS_CATEGORY: Readonly<Record<RecommendationFocus, RecommendationCategory>> =
+  Object.freeze({
+    "no-plan": "consistency",
+    "first-session": "consistency",
+    "catch-up": "consistency",
+    "schedule-fit": "consistency",
+    "on-track": "maintain",
+    "week-complete": "maintain",
+    "week-complete-repeat": "maintain",
+    "dense-schedule": "dense-schedule",
+  });
 
 export interface WeeklyRecommendation {
   category: RecommendationCategory;
@@ -234,45 +297,46 @@ export interface WeeklyRecommendation {
 export const LOW_COMPLETION_PERCENT = 50;
 
 /**
- * Which category the week falls into.
+ * Which focus the week falls into.
  *
- * Conservative by construction, and by design it is the *only* place the
- * decision is made — a model is told the answer, never asked for it.
+ * The only inputs are counts of completed and scheduled sessions. Read what
+ * this deliberately does *not* do:
  *
- * Note what is deliberately absent: no fatigue, no overtraining, no readiness,
- * no injury risk. A count of ticked-off sessions cannot support any of them,
- * and this app has no other signal. `recovery` is reached only on a fact about
- * the *plan* — a week that schedules all seven days — never on an inference
- * about the person.
+ *  - Two full weeks do not become a recommendation to train more. They select
+ *    a wording that mentions progression as something the reader may decide,
+ *    conditional on how training feels — which the app does not measure and
+ *    says so.
+ *  - Repeated low completion does not become a recommendation to train less.
+ *    It selects a wording that asks whether the schedule fits the reader's
+ *    week, because "why" is precisely the thing no record here contains.
+ *  - Seven scheduled days is reported as what it is: a dense plan. Not
+ *    fatigue, not insufficient recovery, not a need to deload.
  */
-export const recommendCategory = (metrics: WeeklyReviewMetrics): RecommendationCategory => {
-  if (!metrics.hasPlan || metrics.scheduledDays === 0) return "consistency";
+export const recommendFocus = (metrics: WeeklyReviewMetrics): RecommendationFocus => {
+  if (!metrics.hasPlan || metrics.scheduledDays === 0) return "no-plan";
 
   const percent = metrics.completionPercent ?? 0;
   const previous = metrics.previousWeek?.completionPercent ?? null;
 
   if (percent >= 100) {
-    // Seven scheduled training days means the plan left no rest day at all.
-    if (metrics.scheduledDays >= 7) return "recovery";
-    // One full week is not a trend; two in a row is the earliest point at
-    // which suggesting more is defensible.
-    if (previous !== null && previous >= 100) return "increase";
-    return "maintain";
+    // A week the plan left no rest day in is worth naming, factually.
+    if (metrics.scheduledDays >= 7) return "dense-schedule";
+    return previous !== null && previous >= 100 ? "week-complete-repeat" : "week-complete";
   }
 
-  if (metrics.completedDays === 0) return "consistency";
+  // Nothing done at all gets encouragement and no reading of why.
+  if (metrics.completedDays === 0) return "first-session";
 
   if (percent < LOW_COMPLETION_PERCENT) {
-    // A second low week in a row on a demanding schedule: the plan asking for
-    // less is a more useful suggestion than "try harder".
-    if (previous !== null && previous < LOW_COMPLETION_PERCENT && metrics.scheduledDays >= 4) {
-      return "reduce";
-    }
-    return "consistency";
+    return previous !== null && previous < LOW_COMPLETION_PERCENT ? "schedule-fit" : "catch-up";
   }
 
-  return "maintain";
+  return "on-track";
 };
+
+/** The category the week falls into. Derived from the focus, never separately. */
+export const recommendCategory = (metrics: WeeklyReviewMetrics): RecommendationCategory =>
+  FOCUS_CATEGORY[recommendFocus(metrics)];
 
 /* ------------------------------------------------------------------ *
  * German copy for the deterministic recommendation
@@ -307,103 +371,104 @@ const completionClause = (metrics: WeeklyReviewMetrics): string =>
     : `${metrics.completedDays} von ${metrics.scheduledDays} Trainingstagen abgeschlossen (${metrics.completionPercent} %).`;
 
 /**
- * The deterministic wording for a category.
+ * The deterministic wording for a focus.
  *
- * Written to be true whatever else is on screen, and to never imply that
- * anything was changed for the user: every variant says the plan stays as it
- * is, because it does. The user decides what happens next.
+ * Written so every sentence is either a count the app actually holds or an
+ * explicit statement that the app does not know. Three things it never says,
+ * because no record here supports them: that the reader is tired, that they
+ * have recovered enough or too little, and that they are ready to train more
+ * or ought to train less. Where progression or schedule size comes up at all,
+ * it comes up as the reader's decision and is marked as one.
+ *
+ * And every variant leaves the plan alone, because the feature does.
  */
 export const describeRecommendation = (metrics: WeeklyReviewMetrics): WeeklyRecommendation => {
-  const category = recommendCategory(metrics);
+  const focus = recommendFocus(metrics);
+  const category = FOCUS_CATEGORY[focus];
   const reason = `Grundlage: ${completionClause(metrics)}${durationClause(metrics)}`;
+  const wording = (headline: string, message: string): WeeklyRecommendation => ({
+    category,
+    headline,
+    message,
+    reason,
+    source: "deterministic",
+  });
 
-  switch (category) {
-    case "consistency": {
-      if (!metrics.hasPlan || metrics.scheduledDays === 0) {
-        return {
-          category,
-          headline: "Noch nichts geplant",
-          message:
-            "Für diese Woche sind keine Trainingstage hinterlegt. Sobald ein Plan aktiv ist, siehst du hier deinen Wochenfortschritt.",
-          reason,
-          source: "deterministic",
-        };
-      }
-      if (metrics.completedDays === 0) {
-        return {
-          category,
-          headline: "Fang klein an",
-          message:
-            `Diese Woche ist noch keine deiner ${metrics.scheduledDays} geplanten Einheiten abgeschlossen. ` +
-            "Eine einzelne Einheit ist ein guter nächster Schritt. Dein Plan bleibt dabei genau so, wie er ist.",
-          reason,
-          source: "deterministic",
-        };
-      }
-      return {
-        category,
-        headline: "Regelmäßigkeit zuerst",
-        message:
-          `Du hast ${metrics.completedDays} von ${metrics.scheduledDays} Einheiten abgeschlossen. ` +
-          "Hol die offenen Einheiten nach, bevor du den Umfang erhöhst. Dein Plan bleibt unverändert.",
-        reason,
-        source: "deterministic",
-      };
-    }
+  switch (focus) {
+    case "no-plan":
+      return wording(
+        "Noch nichts geplant",
+        "Für diese Woche sind keine Trainingstage hinterlegt. Sobald ein Plan aktiv ist, siehst du hier deinen Wochenfortschritt."
+      );
 
-    case "reduce":
-      return {
-        category,
-        headline: "Weniger einplanen ist auch ein Fortschritt",
-        message:
-          "In dieser und der vorigen Woche ist jeweils der größere Teil der Einheiten offen geblieben. " +
-          "Ein kleinerer Wochenumfang wäre womöglich realistischer. Ob du das umsetzt, entscheidest du.",
-        reason,
-        source: "deterministic",
-      };
+    case "first-session":
+      return wording(
+        "Fang klein an",
+        `Diese Woche ist noch keine deiner ${metrics.scheduledDays} geplanten Einheiten abgeschlossen. ` +
+          "Eine einzelne Einheit ist ein guter nächster Schritt. Dein Plan bleibt dabei genau so, wie er ist."
+      );
 
-    case "increase":
-      return {
-        category,
-        headline: "Zwei vollständige Wochen",
-        message:
-          "Du hast diese und die vorige Woche vollständig abgeschlossen. Eine vorsichtige Steigerung wäre " +
-          "ab jetzt vertretbar. Der nächste Schritt liegt bei dir.",
-        reason,
-        source: "deterministic",
-      };
+    case "catch-up":
+      return wording(
+        "Regelmäßigkeit zuerst",
+        `Du hast ${metrics.completedDays} von ${metrics.scheduledDays} Einheiten abgeschlossen. ` +
+          "Die offenen Einheiten nachzuholen ist der nächste Schritt. Dein Plan bleibt unverändert."
+      );
 
-    case "recovery":
-      return {
-        category,
-        headline: "Ein Ruhetag wäre eine Überlegung wert",
-        message:
-          "Dein Plan sieht diese Woche an allen sieben Tagen eine Einheit vor, und du hast sie alle abgeschlossen. " +
-          "Für die kommende Woche wäre ein fester Ruhetag eine Überlegung wert.",
-        reason,
-        source: "deterministic",
-      };
+    case "schedule-fit":
+      /*
+        A question, not a verdict. The app knows how many sessions were ticked
+        off and nothing else — not why the others were not, and not whether the
+        week was too much. Saying "reduce your workload" here would be an
+        inference the records cannot carry, so the reader is handed the
+        question instead of an answer.
+      */
+      return wording(
+        "Passt der Wochenplan zu deiner Woche?",
+        "In dieser und der vorigen Woche sind mehrere geplante Einheiten offen geblieben. " +
+          "Woran das lag, weiß die App nicht. Vielleicht ist es ein guter Moment, selbst zu prüfen, " +
+          "ob die geplanten Tage zu deinem Alltag passen."
+      );
 
-    case "maintain":
-      return metrics.completionPercent !== null && metrics.completionPercent >= 100
-        ? {
-            category,
-            headline: "Woche vollständig abgeschlossen",
-            message:
-              `Alle ${metrics.scheduledDays} geplanten Einheiten sind erledigt. Halte diesen Umfang zunächst bei — ` +
-              "eine volle Woche ist ein guter Grund, nichts zu ändern.",
-            reason,
-            source: "deterministic",
-          }
-        : {
-            category,
-            headline: "Du bist auf Kurs",
-            message:
-              `${metrics.completedDays} von ${metrics.scheduledDays} Einheiten sind abgeschlossen. ` +
-              "Bleib beim aktuellen Umfang und schließe die offenen Einheiten ab.",
-            reason,
-            source: "deterministic",
-          };
+    case "on-track":
+      return wording(
+        "Du bist auf Kurs",
+        `${metrics.completedDays} von ${metrics.scheduledDays} Einheiten sind abgeschlossen. ` +
+          "Bleib beim aktuellen Umfang und schließe die offenen Einheiten ab."
+      );
+
+    case "week-complete":
+      return wording(
+        "Woche vollständig abgeschlossen",
+        `Alle ${metrics.scheduledDays} geplanten Einheiten sind erledigt. Halte diesen Umfang zunächst bei — ` +
+          "eine volle Woche ist ein guter Grund, nichts zu ändern."
+      );
+
+    case "week-complete-repeat":
+      /*
+        Two full weeks is an adherence fact, not a readiness one. The app
+        counts completed sessions; it does not know how they felt, and the
+        wording says exactly that rather than reading progress into a tally.
+      */
+      return wording(
+        "Zwei vollständige Wochen",
+        "Du hast diese und die vorige Woche vollständig abgeschlossen. Ob und wann du den Umfang " +
+          "veränderst, entscheidest du selbst — die App zählt abgeschlossene Einheiten und kann nicht " +
+          "beurteilen, wie sich dein Training anfühlt."
+      );
+
+    case "dense-schedule":
+      /*
+        The observation is about the plan: seven training days, no rest day.
+        What that means for this person is not something a completion tally can
+        answer, and the sentence declines to pretend otherwise.
+      */
+      return wording(
+        "Dein Plan sieht sieben Trainingstage vor",
+        "Diese Woche enthält dein Plan an allen sieben Tagen eine Einheit, und du hast alle abgeschlossen. " +
+          "Das ist ein dichter Wochenplan. Ob ein fester Ruhetag für dich passt, entscheidest du — die App " +
+          "kann das nicht beurteilen."
+      );
   }
 };
 
@@ -445,17 +510,60 @@ export type WeeklyRecommendationResponse = z.infer<typeof weeklyRecommendationRe
 /**
  * Wording a coaching recommendation must never contain.
  *
- * The schema stops the model returning plan *structure*; this stops it
- * returning plan structure as prose, plus the three things the product does
- * not say at all. Checked on the way out of the backend, so a model that
- * ignores its instructions is refused rather than rendered.
+ * The response schema stops a model returning plan *structure*; these stop it
+ * returning claims. The four unsupported-inference rules are the important
+ * ones, and they exist because the prompt is not a guarantee: a model handed
+ * "3 of 3 completed, twice running" will reach for "you're ready to progress"
+ * unless something refuses it.
+ *
+ * The test that every deterministic variant passes these rules runs in the
+ * same suite, so the app's own words are held to the standard it holds a
+ * model to.
  */
 const UNSAFE_TEXT_RULES: ReadonlyArray<{ id: string; pattern: RegExp }> = [
   {
     // No medical, injury or diagnostic claim. There is no data behind one.
     id: "medical",
     pattern:
-      /verletz|schmerz|diagnos|krankheit|arzt|ärzt|therapie|rehabilit|medikament|übertraining|überlastung|regenerationsfähigkeit/i,
+      /verletz|schmerz|diagnos|krankheit|arzt|ärzt|therapie|rehabilit|medikament|übertraining|übertrainiert/i,
+  },
+  {
+    /*
+      No fatigue reading. Nothing in this app records perceived effort, sleep
+      or how a session felt, so "you seem tired" is invention whichever way it
+      is phrased — including the flattering direction ("you have reserves").
+    */
+    id: "fatigue",
+    pattern:
+      /erschöpf|ausgelaugt|übermüdet|müdigkeit|\bmüde\b|überlast|überforder|zu viel trainiert|reserven/i,
+  },
+  {
+    /*
+      No recovery claim. A completion tally cannot say whether somebody has
+      recovered, needs a deload, or is regenerating well.
+    */
+    id: "recovery-claim",
+    pattern: /regeneration|regeneriert|erholung|erholt|deload|entlastungswoche|ausgeruht/i,
+  },
+  {
+    /*
+      No readiness verdict in either direction. Adherence is not evidence that
+      a person should train more, and "your body is ready" is a claim about a
+      body this app has never measured.
+    */
+    id: "progress-readiness",
+    pattern:
+      /bereit für|bereit,|kannst du (jetzt|nun|ab jetzt) (mehr|steiger|erhöh)|zeit für (mehr|die nächste)|nächste stufe|dein körper|du verträgst|belastbarkeit/i,
+  },
+  {
+    /*
+      No workload prescription. Suggesting more or fewer sessions, sets or
+      volume is a verdict on a plan the app cannot evaluate — the reader is
+      given a question about their schedule instead, never an instruction.
+    */
+    id: "workload-prescription",
+    pattern:
+      /reduzier|verringer|weniger trainieren|weniger einheiten|pensum|steigere |erhöhe (dein|die|das)|mehr volumen|volumen (erhöh|reduzier)|trainiere (mehr|öfter|häufiger|weniger)/i,
   },
   {
     // Nutrition is a separate product surface and is not advised from here.
@@ -465,7 +573,8 @@ const UNSAFE_TEXT_RULES: ReadonlyArray<{ id: string; pattern: RegExp }> = [
   {
     // Nothing may suggest the plan was already changed, or will change itself.
     id: "plan-mutation",
-    pattern: /automatisch|angepasst|angepasste|aktualisiert|umgestellt|neu erstellt|überschrieben|für dich geändert/i,
+    pattern:
+      /automatisch|angepasst|angepasste|aktualisiert|umgestellt|neu erstellt|überschrieben|für dich geändert/i,
   },
   {
     // No prescribed plan content: sets, reps, loads or "3x10".

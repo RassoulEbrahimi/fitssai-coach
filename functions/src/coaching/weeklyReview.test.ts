@@ -258,29 +258,34 @@ describe("C. every session completed", () => {
     expect(result.recommendation.category).toBe("maintain");
   });
 
-  it("suggests more only after a second full week, and only as a suggestion", async () => {
-    const { db, result } = await run({
+  it("stays on maintain after a second full week rather than escalating", async () => {
+    const { db, result, providerCalls } = await run({
       completed: [
         ["Week 2", 0], ["Week 2", 2], ["Week 2", 4],
         ["Week 1", 0], ["Week 1", 2], ["Week 1", 4],
       ],
-      response: aiAnswer("increase"),
+      response: aiAnswer("maintain"),
     });
 
-    expect(result.recommendation.category).toBe("increase");
-    // The plan is untouched: a suggestion to train more is not a change.
+    /*
+      Two full weeks is adherence, not readiness. The app records no effort, no
+      fatigue and no recovery, so "train more" would be a verdict on a body it
+      has never measured. The wording angle changes; the conclusion does not.
+    */
+    expect(result.recommendation.category).toBe("maintain");
+    expect((providerCalls[0] as { focus: string }).focus).toBe("week-complete-repeat");
     expect(db.docs.get(`users/${UID}/workout_plans/${PLAN_ID}`)?.content).toEqual(planContent());
   });
 
-  it("suggests a rest day when the plan scheduled none", async () => {
+  it("names a seven-day plan as dense, without a claim about the person", async () => {
     const { result } = await run({
       content: planContent(everyDayWeek),
       completed: [0, 1, 2, 3, 4, 5, 6].map((day) => ["Week 2", day] as [string, number]),
-      response: aiAnswer("recovery"),
+      response: aiAnswer("dense-schedule"),
     });
 
     expect(result.metrics.scheduledDays).toBe(7);
-    expect(result.recommendation.category).toBe("recovery");
+    expect(result.recommendation.category).toBe("dense-schedule");
   });
 });
 
@@ -347,7 +352,7 @@ describe("E. the provider is not the review", () => {
   it("refuses a model that disagrees with the rules about the category", async () => {
     const { result, logs } = await run({
       completed: [["Week 2", 0], ["Week 2", 2]],
-      response: aiAnswer("increase"),
+      response: aiAnswer("consistency"),
     });
 
     // The rules said "maintain"; a model does not get to overrule them.
@@ -574,7 +579,20 @@ describe("what the model is told", () => {
       goal: "gainMuscle",
       experienceLevel: "intermediate",
       category: "maintain",
+      focus: "on-track",
     });
+  });
+
+  it("is told nothing about effort, fatigue, recovery or why a session was missed", async () => {
+    const { providerCalls } = await run({
+      completed: [["Week 2", 0], ["Week 2", 2]],
+      response: aiAnswer("maintain"),
+    });
+    const keys = Object.keys(providerCalls[0] as object).join(" ");
+
+    // None of it is persisted, so none of it can be sent — and a model that
+    // cannot see a fatigue field cannot reason from one.
+    expect(keys).not.toMatch(/rpe|effort|fatigue|recovery|sleep|readiness|soreness|reason/i);
   });
 
   it("receives nothing that identifies the person", async () => {

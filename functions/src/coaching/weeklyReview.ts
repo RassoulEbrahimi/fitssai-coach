@@ -3,6 +3,7 @@ import {
   describeRecommendation,
   isExplainableWeek,
   recommendCategory,
+  recommendFocus,
   validateModelRecommendation,
   type WeeklyRecommendation,
   type WeeklyReviewMetrics,
@@ -116,6 +117,7 @@ export const buildWeeklyReviewInput = (
     ...(profile.goal ? { goal: profile.goal } : {}),
     ...(profile.experienceLevel ? { experienceLevel: profile.experienceLevel } : {}),
     category: recommendCategory(metrics),
+    focus: recommendFocus(metrics),
   });
 
   return parsed.success ? parsed.data : null;
