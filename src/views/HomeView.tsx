@@ -21,8 +21,13 @@ import { useWeeklyActivity } from "@/hooks/useWeeklyActivity";
 import { generateInsights } from "@/lib/insights/engine";
 import { InsightHero } from "@/components/dashboard/InsightHero";
 import { WeeklyReview } from "@/components/dashboard/WeeklyReview";
-import { buildWeeklyFacts, normaliseFitnessGoal } from "@/lib/coaching";
-import { resolvePlanDay, isRestDayContent } from "@/lib/planLifecycle";
+import {
+  buildWeeklyFacts,
+  buildWeeklyReviewMetrics,
+  normaliseFitnessGoal,
+  readPlanWeekDays,
+} from "@/lib/coaching";
+import { resolvePlanDay } from "@/lib/planLifecycle";
 
 interface HomeViewProps {
   generatingPlans: boolean;
@@ -140,14 +145,7 @@ const HomeView: React.FC<HomeViewProps> = ({
     const weekKey = resolved.weekKey;
     if (!workoutPlan || !weekKey) return null;
 
-    const content = workoutPlan.content as Record<string, unknown> | undefined;
-    const rawWeek = content?.[weekKey] ?? content?.[weekKey.toLowerCase().replace(/\s+/g, "")];
-    const weekDays = Array.isArray(rawWeek) ? rawWeek : [];
-
-    const planDays = Array.from({ length: 7 }, (_, dayIndex) => ({
-      dayIndex,
-      exerciseCount: isRestDayContent(weekDays[dayIndex]) ? 0 : (weekDays[dayIndex]?.exercises?.length ?? 0),
-    }));
+    const planDays = readPlanWeekDays(workoutPlan, weekKey);
 
     /*
       Completion comes from weekKey + dayIndex only. A day log written before
@@ -183,6 +181,25 @@ const HomeView: React.FC<HomeViewProps> = ({
       planFinished,
     });
   }, [workoutPlan, workoutLogs, profile, selectedDate, planFinished]);
+
+  /*
+    The same week, in the shape the coaching recommendation needs — and in the
+    shape the backend computes for itself. The arithmetic is shared code, so
+    the number on screen and the number the backend reasons about cannot drift
+    apart; this only supplies the inputs.
+  */
+  const weeklyReviewMetrics = useMemo(
+    () => {
+      const resolved = resolvePlanDay(workoutPlan, selectedDate);
+      return buildWeeklyReviewMetrics({
+        plan: workoutPlan,
+        weekKey: resolved.weekKey,
+        weekNumber: resolved.weekNumber,
+        logs: workoutLogs,
+      });
+    },
+    [workoutPlan, selectedDate, workoutLogs]
+  );
 
   const refreshQuote = () => {
     setQuoteKey(prev => prev + 1);
@@ -495,7 +512,14 @@ const HomeView: React.FC<HomeViewProps> = ({
         </motion.ul>
 
         {/* Deterministic weekly review — computed, never generated. */}
-        {weeklyFacts && <WeeklyReview facts={weeklyFacts} />}
+        {weeklyFacts && (
+          <WeeklyReview
+            facts={weeklyFacts}
+            metrics={weeklyReviewMetrics}
+            /* Reading the plan, never rewriting it. */
+            onViewPlan={onNavigate ? () => onNavigate('workout') : undefined}
+          />
+        )}
 
         {/* Weekly Activity Chart */}
         <div role="region" aria-label="Wöchentliche Aktivitätsübersicht">

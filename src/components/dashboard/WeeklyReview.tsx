@@ -11,18 +11,29 @@ import {
   suggestionText,
   type WeeklyCoachingFacts,
 } from "@/lib/coaching";
+import type { WeeklyReviewMetrics } from "@shared/weeklyRecommendation";
+import { CoachingRecommendation } from "./CoachingRecommendation";
 
 /**
  * "Wochenrückblick" — the deterministic week in numbers.
  *
- * Every value comes from the coaching engine, which computes it from logged
- * data. Nothing here is generated, so there is no sparkle, no badge and no
- * mention of KI: presenting arithmetic as if a model produced it would be the
- * same untruth PR46 removed.
+ * Every value in the metric row comes from the coaching engine, which computes
+ * it from logged data. None of it is generated, so none of it carries a
+ * sparkle, a badge or a mention of KI: presenting arithmetic as if a model
+ * produced it would be the same untruth PR46 removed.
+ *
+ * `metrics` adds the coaching recommendation below the numbers. It is optional
+ * so the numbers stand on their own — and because the recommendation section
+ * owns its own state and its own honesty about where its wording came from,
+ * which is its business rather than this component's.
  */
 
 interface WeeklyReviewProps {
   facts: WeeklyCoachingFacts;
+  /** Enables the "Empfehlung für dich" section. Advice only; changes nothing. */
+  metrics?: WeeklyReviewMetrics;
+  /** Opens the plan for reading. Never a mutation. */
+  onViewPlan?: () => void;
   className?: string;
 }
 
@@ -45,7 +56,12 @@ const Metric: React.FC<{
   </div>
 );
 
-export const WeeklyReview: React.FC<WeeklyReviewProps> = ({ facts, className }) => {
+export const WeeklyReview: React.FC<WeeklyReviewProps> = ({
+  facts,
+  metrics,
+  onViewPlan,
+  className,
+}) => {
   const suggestion = primarySuggestion(facts);
   const { adherence, duration, history } = facts;
   const note = historyNote(history);
@@ -67,9 +83,19 @@ export const WeeklyReview: React.FC<WeeklyReviewProps> = ({ facts, className }) 
 
       <GradientCard className="p-4">
         {!facts.hasAnyData ? (
-          <p className="text-sm text-muted-foreground" role="status">
-            Noch keine Trainingsdaten für diese Woche.
-          </p>
+          <div className="space-y-4">
+            <p className="text-sm text-muted-foreground" role="status">
+              Noch keine Trainingsdaten für diese Woche.
+            </p>
+            {/* Still worth a recommendation: "start somewhere" is true and useful. */}
+            {metrics && (
+              <CoachingRecommendation
+                metrics={metrics}
+                onViewPlan={onViewPlan}
+                className="pt-3 border-t border-border/40"
+              />
+            )}
+          </div>
         ) : (
           <div className="space-y-4">
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
@@ -104,6 +130,14 @@ export const WeeklyReview: React.FC<WeeklyReviewProps> = ({ facts, className }) 
 
             {/* Only when incomplete older records actually limit the numbers above. */}
             {note && <p className="text-[11px] text-muted-foreground leading-relaxed">{note}</p>}
+
+            {metrics && (
+              <CoachingRecommendation
+                metrics={metrics}
+                onViewPlan={onViewPlan}
+                className="pt-3 border-t border-border/40"
+              />
+            )}
           </div>
         )}
       </GradientCard>

@@ -184,12 +184,13 @@ signed-in client → callable → verified auth context → response
   "backend": "fitssai-coach",
   "region": "europe-west3",
   "uid": "<caller's own uid>",
-  "capabilities": { "planGeneration": false, "weeklySummaryAI": false }
+  "capabilities": { "planGeneration": true, "weeklySummaryAI": true }
 }
 ```
 
-Both capability flags are `false` in code, not in a comment. They flip when the
-capability behind them ships, not before.
+Both capability flags live in code, not in a comment. Each flipped when the
+capability behind it shipped, not before — `planGeneration` in PR55 and
+`weeklySummaryAI` in PR58.
 
 ## Shared workout-plan schema
 
@@ -302,6 +303,94 @@ Gemini accepts a restricted OpenAPI subset with no equivalent for
 so the week keys and day count cannot drift, and a parity test pins the rest —
 including that a document built to the provider schema passes the Zod one.
 
+## Weekly review and coaching recommendation
+
+`generateWeeklyReview` is a callable in `europe-west3`. It answers one
+question — "how did this training week go, and what is one sensible next
+step?" — and it is the one AI surface that **never writes anything to a user's
+documents**.
+
+```
+auth (verified token)
+  → plan + logs + two profile fields read server-side  ← read-only, throughout
+    → metrics computed deterministically (shared code)
+      → recommendation category chosen deterministically (shared rules)
+        → quota reserved  ← the last thing that can refuse for free
+          → provider call (wording only, ONE attempt, no repair)
+            → Zod validation → category must match → wording screened
+              → accepted wording returned, ai_log written
+```
+
+**The client sends nothing.** No week, no metric, no plan id: everything is
+read under the uid the auth guard resolved from a verified token, so a browser
+cannot claim a completion it never logged or review somebody else's week.
+
+**The numbers are arithmetic, not generation.** Scheduled days, completed days,
+completion percentage and measured time are computed by
+`shared/weeklyRecommendation.ts` — the same code the client runs to render the
+section, so the figure on screen and the figure the model is told about cannot
+drift apart. A metric with no data behind it is reported as absent: 0 of 0 is
+not 0 %, and an unmeasured session is not a zero-minute one.
+
+**The category is a rule, not an opinion.** `recommendCategory` maps the week
+onto exactly three values — `maintain | consistency | dense-schedule` — and a
+model that returns a different one is refused, not obeyed.
+
+Three, because three is what the data supports. Adherence — how many planned
+sessions were ticked off — is the only training signal this app persists. It
+says whether the plan was followed; it says nothing about whether the plan was
+*right*. Nothing is recorded about perceived effort, fatigue, recovery quality,
+sleep, injury readiness, whether the week felt manageable, or why a session was
+missed. So there is deliberately no "increase" and no "reduce":
+
+| Week | Category | What the wording does |
+|---|---|---|
+| Two full weeks running | `maintain` | Mentions changing the workload only as the reader's own decision, conditional on how training feels — and says the app cannot know that |
+| Repeatedly few sessions done | `consistency` | Asks whether the schedule fits the reader's week. Never asserts the workload was too much, and never recommends fewer sessions, sets or exercises |
+| Seven scheduled days, all done | `dense-schedule` | States a property of the *plan*. No claim about the person's recovery or capacity |
+
+The previous week shapes the **wording** (`focus`), never the **conclusion**
+(`category`) — which is what keeps a good adherence streak from turning into a
+readiness verdict.
+
+**Unsupported inference is refused twice.** The prompt forbids claims about
+fatigue, recovery, readiness to progress and the need to deload; a text screen
+on the response refuses them again, because an instruction is not a guarantee —
+a model handed "3 of 3, twice running" reaches for "you're ready to progress"
+unless something stops it. The screen also refuses medical claims, nutrition
+advice, prescribed sets/reps/loads, and any suggestion that the plan changed.
+
+**The model only writes sentences.** It receives the computed numbers, the
+chosen category, the wording angle (`focus`), and at most the canonical goal
+and experience level. It returns four short fields — `category`, `headline`,
+`message`, `reason` — and its response schema has no field an exercise, a set
+count or a schedule could be expressed in. It is given no effort, fatigue,
+recovery or sleep field, because none is persisted: a field that does not exist
+cannot be reasoned from.
+
+**Nothing is ever changed.** No branch of the handler creates, edits,
+regenerates or reorders a plan; the response contains no plan content; and the
+client writes nothing back. The UI says so in as many words, and the only
+action it offers besides the explanation is "Plan ansehen". Tests assert that
+`users/{uid}/workout_plans/*` is untouched on every path, including provider
+failure, refused wording and exhausted quota.
+
+**It always answers.** The metrics and the deterministic wording exist before
+any provider is called, so a missing profile, an exhausted quota, a refused
+answer and an outage all degrade to the app's own words — and the response says
+which, so deterministic wording is never dressed up as a model's.
+
+### Quota, separate from plan generation
+
+`weekly_summary`: **eight per user per calendar month**, in the same
+`_ai_quota` collection under its own action key. It never touches the
+three-generations budget — a rephrased sentence must not cost somebody a plan.
+Reserved before the call and released whenever nothing was delivered.
+
+No idempotency record is kept. `_ai_operations` exists to replay a *persisted*
+plan id, and the review persists nothing; a duplicate call is bounded by the
+monthly quota and by the button disabling itself while one is in flight.
+
 ## Quota
 
 **Three successful generations per user per calendar month.**
@@ -389,7 +478,7 @@ the browser bundle and readable by every visitor. Tests fail if one appears.
 | Capability | State |
 |---|---|
 | Four-week workout-plan generation | **Live** (PR55) |
-| Weekly AI summaries | Not implemented — `weeklySummaryAI` is `false` |
+| Weekly review + coaching recommendation | **Live** (PR58) — metrics and the recommendation category are deterministic; the model only rephrases them, on an explicit click |
 | Nutrition generation | Not implemented |
 | Exercise suggestions in Add Workout | Not implemented — that tab offers exercises for one day, which a four-week generator is not |
 | AI usage statistics in Profile | Not available — the authoritative log is server-only by design |
@@ -513,13 +602,14 @@ project selected.
 
 ## Intentionally not implemented
 
-* No automatic plan mutation: generation adds a plan, and never edits or
-  deletes an existing one.
+* No automatic plan mutation: generation adds a plan and never edits or
+  deletes an existing one, and the weekly review writes nothing at all — its
+  recommendation is advice the user acts on or ignores.
 * No custom claims, no role hierarchy, and no way to grant admin — see
   *Current role-management limitation*.
 * No App Check, no Storage rules, no per-collection field validation beyond the
   authorization fields named above.
-* No weekly AI summaries, no nutrition generation, and no exercise-level
-  suggestions — see the capability table above.
+* No nutrition generation and no exercise-level suggestions — see the
+  capability table above.
 * No Firestore migration or backfill of any kind.
 * No Firebase Functions deployment from CI.

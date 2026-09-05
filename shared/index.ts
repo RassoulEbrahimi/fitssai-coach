@@ -6,3 +6,4 @@
  * exists in one of them breaks the other.
  */
 export * from "./workoutPlan";
+export * from "./weeklyRecommendation";

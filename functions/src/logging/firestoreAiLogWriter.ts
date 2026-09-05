@@ -1,4 +1,8 @@
 import type { Firestore } from "firebase-admin/firestore";
+import type {
+  RecommendationCategory,
+  RecommendationRejection,
+} from "../../../shared/weeklyRecommendation";
 import { findForbiddenLogFields, type AiLogEntry, type AiLogWriter } from "./aiLog";
 
 /**
@@ -16,14 +20,31 @@ import { findForbiddenLogFields, type AiLogEntry, type AiLogWriter } from "./aiL
 
 export const AI_LOG_COLLECTION = "_ai_logs";
 
-export interface PlanGenerationLogEntry extends AiLogEntry {
+/** What every server-written log entry carries, whatever the action was. */
+export interface ServerAiLogEntry extends AiLogEntry {
   uid: string;
   /** False when the failure happened before any provider call — no cost. */
   providerCalled: boolean;
+}
+
+export interface PlanGenerationLogEntry extends ServerAiLogEntry {
   /** True when the first attempt failed validation and a repair was tried. */
   schemaRepairUsed?: boolean;
   /** Only on success. */
   planId?: string;
+}
+
+/**
+ * A weekly-review call.
+ *
+ * `category` is the conclusion the deterministic rules reached — a five-value
+ * enum, not a statement about the person — and `rejection` says which gate
+ * refused a model's wording. Neither carries the wording itself: the rule
+ * that a log says what happened and never what was said holds here too.
+ */
+export interface WeeklyReviewLogEntry extends ServerAiLogEntry {
+  category?: RecommendationCategory;
+  rejection?: RecommendationRejection;
 }
 
 export interface FirestoreAiLogWriterOptions {
@@ -32,7 +53,9 @@ export interface FirestoreAiLogWriterOptions {
 
 export const createFirestoreAiLogWriter = (
   options: FirestoreAiLogWriterOptions
-): AiLogWriter & { writeEntry(entry: PlanGenerationLogEntry): Promise<void> } => {
+): AiLogWriter & {
+  writeEntry(entry: PlanGenerationLogEntry | WeeklyReviewLogEntry): Promise<void>;
+} => {
   const write = async (entry: Record<string, unknown>): Promise<void> => {
     const forbidden = findForbiddenLogFields(entry);
     if (forbidden.length > 0) {
