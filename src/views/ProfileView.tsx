@@ -67,12 +67,26 @@ const getBMIStatus = (bmi: number | null): { label: string; color: string } => {
   return { label: "Adipositas", color: "text-red-400" };
 };
 
+/*
+  Every stored spelling, not just one era's. Onboarding writes its own
+  vocabulary and the goals dialog below writes another; they overlap in three
+  values and differ in the rest. A value missing here falls through to the raw
+  identifier, which is what a just-onboarded profile showed for "highProtein"
+  — the same leak PR49 fixed for the fitness goal.
+*/
 const dietaryLabels: Record<string, string> = {
+  // Written by onboarding.
+  noPreference: "Keine Vorliebe",
+  highProtein: "Proteinreich",
+
+  // Written by the goals dialog.
   standard: "Standard",
+  pescetarian: "Pescetarisch",
+
+  // Written by both.
   vegan: "Vegan",
   vegetarian: "Vegetarisch",
   keto: "Keto",
-  pescetarian: "Pescetarisch",
 };
 
 // Animation variants
