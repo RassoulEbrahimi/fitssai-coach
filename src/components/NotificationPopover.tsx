@@ -10,22 +10,34 @@ import {
 import { cn } from "@/lib/utils";
 import { useTheme } from "@/hooks/useTheme";
 import { countUnread, getNotifications } from "@/lib/notifications";
+import type { TrainingNudge } from "@/lib/nudges";
+
+interface NotificationPopoverProps {
+  /** Today's training nudges, if any. Listed as-is; never counted as unread. */
+  nudges?: readonly TrainingNudge[];
+}
 
 /**
  * Notification affordance.
  *
- * The list comes from the real source, which is currently empty — there is no
- * notification backend yet. Nothing is invented here: no sample entries, and
- * the unread badge only appears when real unread items exist, so the bell
- * never claims activity that did not happen.
+ * Two sources, both real. `getNotifications` is the (still empty) backend
+ * source — there is no notification backend yet, and nothing is invented to
+ * fill it. `nudges` are today's deterministic training nudges, computed from
+ * the plan and the user's own logs; when one is open, the bell showing "Du
+ * bist auf dem neuesten Stand" while the same nudge sits on the dashboard
+ * would be its own small untruth.
+ *
+ * The unread badge stays tied to unread *items*: a nudge is state, not an
+ * event, it is visible on the same screen, and nothing here tracks whether it
+ * was read — so it is listed, never counted.
  */
-export const NotificationPopover = () => {
+export const NotificationPopover = ({ nudges = [] }: NotificationPopoverProps = {}) => {
   const [isOpen, setIsOpen] = useState(false);
   const { actualTheme } = useTheme();
   const isDark = actualTheme === "dark";
 
   const notifications = getNotifications();
-  const hasNotifications = notifications.length > 0;
+  const hasNotifications = notifications.length > 0 || nudges.length > 0;
   const unreadCount = countUnread(notifications);
 
   return (
@@ -90,6 +102,20 @@ export const NotificationPopover = () => {
               <div className="max-h-[320px] overflow-y-auto">
                 {hasNotifications ? (
                   <ul className="py-2" role="list">
+                    {nudges.map((nudge, index) => (
+                      <motion.li
+                        key={nudge.key}
+                        initial={{ opacity: 0, x: -20 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        transition={{ delay: index * 0.05 }}
+                        className="px-4 py-3 border-l-2 border-l-emerald-500"
+                      >
+                        <p className="text-sm font-medium text-foreground leading-tight">
+                          {nudge.title}
+                        </p>
+                        <p className="text-xs text-muted-foreground mt-1">{nudge.body}</p>
+                      </motion.li>
+                    ))}
                     {notifications.map((notification, index) => (
                       <motion.li
                         key={notification.id}

@@ -28,6 +28,8 @@ import {
   readPlanWeekDays,
 } from "@/lib/coaching";
 import { resolvePlanDay } from "@/lib/planLifecycle";
+import { TrainingNudgeCard } from "@/components/dashboard/TrainingNudgeCard";
+import { useTrainingNudge } from "@/hooks/useTrainingNudge";
 import { readCompletedDayDates, readCompletedDays } from "@/lib/workoutCompletion";
 
 interface HomeViewProps {
@@ -276,6 +278,21 @@ const HomeView: React.FC<HomeViewProps> = ({
     return `Gute Nacht, ${firstName}! 🌌`;
   }, [firstName]);
 
+  /*
+    Today's nudge, evaluated from the plan and the logs this view already has.
+    Like the two memos above it, this hook must stay ahead of the early returns
+    below — a hook that only runs on the loaded branch changes the hook count
+    between renders.
+
+    It reads. Nothing here writes a plan, a log or a completion; the card's one
+    action opens the workout tab.
+  */
+  const { nudges: trainingNudges, dismiss: dismissTrainingNudge } = useTrainingNudge({
+    plan: workoutPlan,
+    logs: workoutLogs,
+    date: selectedDate,
+  });
+
   // Show skeleton when initially loading or generating plans
   if (isLoadingPlans || (generatingPlans && !workoutPlan && !nutritionPlan)) {
     return <HomeSkeleton />;
@@ -358,7 +375,7 @@ const HomeView: React.FC<HomeViewProps> = ({
             >
               {greeting}
             </h1>
-            <NotificationPopover />
+            <NotificationPopover nudges={trainingNudges} />
           </div>
 
           {/* Profile Avatar with Progress Ring */}
@@ -411,6 +428,16 @@ const HomeView: React.FC<HomeViewProps> = ({
           onDismiss={() => {
             // Optional: Persist dismissal in local state or session storage if desired
           }}
+        />
+
+        {/*
+          The training nudge: deterministic, and only on a planned day whose
+          session record is still open. See src/lib/nudges/eligibility.ts.
+        */}
+        <TrainingNudgeCard
+          nudges={trainingNudges}
+          onOpenPlan={onNavigate ? () => onNavigate('workout') : undefined}
+          onDismiss={dismissTrainingNudge}
         />
 
         {/* Motivation Quote Card */}

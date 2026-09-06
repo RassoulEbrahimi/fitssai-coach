@@ -3,6 +3,7 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { ThemeProvider } from "@/hooks/useTheme";
 import { NotificationPopover } from "./NotificationPopover";
+import type { TrainingNudge } from "@/lib/nudges";
 
 // jsdom has no matchMedia; ThemeProvider needs it to resolve the "system" theme.
 beforeEach(() => {
@@ -18,12 +19,21 @@ beforeEach(() => {
   })) as unknown as typeof window.matchMedia;
 });
 
-const renderPopover = () =>
+const renderPopover = (nudges: TrainingNudge[] = []) =>
   render(
     <ThemeProvider>
-      <NotificationPopover />
+      <NotificationPopover nudges={nudges} />
     </ThemeProvider>
   );
+
+const openNudge: TrainingNudge = {
+  type: "planned-session-today",
+  key: "plan-1|Week 1|0|planned-session-today",
+  dayKey: "plan-1|Week 1|0",
+  title: "Heute ist eine Trainingseinheit geplant.",
+  body: "Wenn es heute für dich passt, kannst du deinen Plan öffnen.",
+  browserDeliverable: true,
+};
 
 describe("NotificationPopover", () => {
   it("shows no unread badge when there are no real unread items", () => {
@@ -61,5 +71,25 @@ describe("NotificationPopover", () => {
     ]) {
       expect(screen.queryByText(stale)).not.toBeInTheDocument();
     }
+  });
+
+  it("lists today's nudge instead of claiming there is nothing", async () => {
+    const user = userEvent.setup();
+    renderPopover([openNudge]);
+
+    await user.click(screen.getByRole("button", { name: /Benachrichtigungen/i }));
+
+    expect(await screen.findByText(openNudge.title)).toBeInTheDocument();
+    expect(screen.queryByText("Du bist auf dem neuesten Stand.")).not.toBeInTheDocument();
+  });
+
+  it("still shows no unread badge for a nudge", () => {
+    // A nudge is state on the same screen, not an unread event to count.
+    const { container } = renderPopover([openNudge]);
+
+    expect(screen.getByRole("button", { name: /Benachrichtigungen/i })).toHaveAccessibleName(
+      "Benachrichtigungen"
+    );
+    expect(container.querySelector(".bg-emerald-500.text-white")).toBeNull();
   });
 });
