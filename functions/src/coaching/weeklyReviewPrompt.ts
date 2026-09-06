@@ -109,9 +109,11 @@ export const buildWeeklyReviewPrompt = (input: WeeklyReviewInput): string => {
     `- Abgeschlossene Trainingstage: ${input.completedDays}`,
     `- Offene Trainingstage: ${input.missedDays}`,
     `- Abschlussquote: ${input.completionPercent} %`,
-    input.measuredDurationMinutes !== undefined
-      ? `- Erfasste Trainingszeit: ${input.measuredDurationMinutes} Minuten aus ${input.measuredSessionCount ?? 0} erfassten Einheiten`
-      : "- Erfasste Trainingszeit: liegt nicht vor (nicht erwähnen)",
+    input.measuredDurationMinutes === undefined
+      ? "- Gemessene Trainingszeit: liegt nicht vor (nicht erwähnen)"
+      : input.durationCoverage === "partial"
+        ? `- Gemessene Trainingszeit: mindestens ${input.measuredDurationMinutes} Minuten; nur ${input.measuredSessionCount ?? 0} von ${input.completedDays} abgeschlossenen Einheiten wurden gemessen. Diese Zahl ist ein Mindestwert und darf nicht als Gesamtzeit der Woche dargestellt werden.`
+        : `- Gemessene Trainingszeit: ${input.measuredDurationMinutes} Minuten aus allen ${input.measuredSessionCount ?? 0} abgeschlossenen Einheiten`,
     input.previousWeekCompletionPercent !== undefined
       ? `- Abschlussquote der Vorwoche: ${input.previousWeekCompletionPercent} %`
       : null,

@@ -380,6 +380,52 @@ any provider is called, so a missing profile, an exhausted quota, a refused
 answer and an outage all degrade to the app's own words — and the response says
 which, so deterministic wording is never dressed up as a model's.
 
+### Weeks, and where the calendar lives
+
+A plan week is a Berlin calendar week anchored on the **Monday of the week the
+plan was created**, so a plan created on a Wednesday still starts its Week 1 on
+the Monday before. Past Week 4 the week resolves to *nothing* rather than
+wrapping — a wrapped Week 5 would review month-old logs as if they were this
+week's.
+
+That arithmetic lives in `shared/planWeek.ts` (`resolvePlanWeek`), which the
+backend imports. It used to be a third copy inside the review; consolidating it
+was PR59. Two implementations remain, deliberately:
+
+| Where | Built on | Answers |
+|---|---|---|
+| `shared/planWeek.ts` | `Intl` only | Which plan week a date is in. The backend's authority, and the specification. |
+| `src/lib/planLifecycle.ts` (`resolvePlanDay`) | date-fns-tz | The same, *plus* rest days, day content, completion and lifecycle status. The client's authority. |
+
+Merging the second into the first would mean rewiring the dashboard's day
+resolution, which is not something a weekly review should do. Instead the pair
+is pinned by an executable check: `src/lib/coaching/planWeek.test.ts` asserts
+the two agree on every week boundary of the programme, on the days either side
+of each, and across a daylight-saving change. `getWorkoutWeekDay` in
+`workoutDateUtils.ts` is a third *caller* of the same idea, but it clamps
+instead of refusing, because it maps a date for a log write rather than for a
+review.
+
+### Duration: measured or absent, per session
+
+Coverage is counted over **completed training days**, not over log documents.
+`workout_logs` holds two families of document for one day — the day document,
+where `recordSessionDuration` stores `durationSec`, and one document per
+exercise written when a set is ticked — so counting rows made a fully timed
+three-session week report itself as barely measured and label its own total a
+floor. A day's length is the longest usable measurement any of its documents
+carries, which gives the invariant the wording depends on:
+
+```
+measuredSessionCount + unmeasuredSessionCount === completedDays
+```
+
+`partial` therefore means exactly what it says: some completed sessions were
+not timed. The model is told the coverage (`durationCoverage`) alongside the
+minutes, so a floor is never presented to the reader as the week's total. A
+missing, malformed, negative, zero or implausible duration is *absent*, never
+0 — a session nobody timed is not a session of no length.
+
 ### Quota, separate from plan generation
 
 `weekly_summary`: **eight per user per calendar month**, in the same
@@ -389,7 +435,16 @@ Reserved before the call and released whenever nothing was delivered.
 
 No idempotency record is kept. `_ai_operations` exists to replay a *persisted*
 plan id, and the review persists nothing; a duplicate call is bounded by the
-monthly quota and by the button disabling itself while one is in flight.
+monthly quota and by the client refusing to start a second one.
+
+That refusal has two layers, because one was not enough. The button is disabled
+while a call is open, but `disabled` only becomes true on the next render — two
+clicks dispatched before it fired two requests and spent two of the month's
+eight explanations. An in-flight ref in `CoachingRecommendation` now rejects the
+second call synchronously, and a test drives both clicks inside one `act` so it
+fails if the ref is removed. After a failure the button reads "Erneut
+versuchen"; once the monthly budget is gone it is withdrawn entirely, since a
+retry cannot succeed until the month turns over.
 
 ## Quota
 
@@ -478,7 +533,7 @@ the browser bundle and readable by every visitor. Tests fail if one appears.
 | Capability | State |
 |---|---|
 | Four-week workout-plan generation | **Live** (PR55) |
-| Weekly review + coaching recommendation | **Live** (PR58) — metrics and the recommendation category are deterministic; the model only rephrases them, on an explicit click |
+| Weekly review + coaching recommendation | **Live** (PR58, hardened in PR59) — metrics and the recommendation category are deterministic; the model only rephrases them, on an explicit click |
 | Nutrition generation | Not implemented |
 | Exercise suggestions in Add Workout | Not implemented — that tab offers exercises for one day, which a four-week generator is not |
 | AI usage statistics in Profile | Not available — the authoritative log is server-only by design |

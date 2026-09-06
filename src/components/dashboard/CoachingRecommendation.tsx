@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useRef, useState } from "react";
 import { Lightbulb, Loader2, Sparkles } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -56,11 +56,21 @@ export const CoachingRecommendation: React.FC<CoachingRecommendationProps> = ({
   const deterministic = useMemo(() => describeRecommendation(metrics), [metrics]);
   const [fromModel, setFromModel] = useState<WeeklyRecommendation | null>(null);
   const [state, setState] = useState<ExplanationState>("idle");
+  /*
+    Every accepted call spends one unit of the month's weekly-summary budget,
+    so a second call that overlaps the first buys the user nothing and costs
+    them one. `disabled` alone is a render away from being true; this ref is
+    true the instant the handler runs, which is what makes a double-tap — or a
+    tap that lands before React has re-rendered — a single request.
+  */
+  const inFlight = useRef(false);
 
   const recommendation = fromModel ?? deterministic;
   const explainable = isExplainableWeek(metrics);
 
   const requestExplanation = async () => {
+    if (inFlight.current) return;
+    inFlight.current = true;
     setState("loading");
     try {
       const review = await fetchWeeklyReview();
@@ -74,6 +84,8 @@ export const CoachingRecommendation: React.FC<CoachingRecommendationProps> = ({
       setState(review.aiStatus === "quota_exceeded" ? "quota_exceeded" : "unavailable");
     } catch {
       setState("unavailable");
+    } finally {
+      inFlight.current = false;
     }
   };
 
@@ -117,7 +129,7 @@ export const CoachingRecommendation: React.FC<CoachingRecommendationProps> = ({
       </p>
 
       <div className="flex flex-wrap items-center gap-2 pt-1">
-        {explainable && state !== "done" && (
+        {explainable && state !== "done" && state !== "quota_exceeded" && (
           <Button
             type="button"
             variant="outline"
@@ -131,6 +143,8 @@ export const CoachingRecommendation: React.FC<CoachingRecommendationProps> = ({
                 <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" aria-hidden="true" />
                 Wird formuliert …
               </>
+            ) : state === "unavailable" ? (
+              "Erneut versuchen"
             ) : (
               "Vom KI-Coach erklären lassen"
             )}

@@ -158,6 +158,43 @@ export const computeDurationCoverage = (
 };
 
 /**
+ * One entry per completed training day, carrying that day's measured length.
+ *
+ * `workout_logs` holds two families of document for the same day: the day
+ * document, where `recordSessionDuration` puts `durationSec`, and one document
+ * per exercise, written when a set is ticked. Handing all of them to
+ * `computeDurationCoverage` counted a three-session week as fifteen sessions,
+ * one measured — so a fully timed week labelled its own total a floor.
+ *
+ * Reducing to completed training days first is what makes "partial" mean
+ * "some completed sessions were not timed". `computeDurationCoverage` itself
+ * stays a plain fold, because a single session is also a legitimate input to
+ * it (see `sessionSummary.ts`).
+ */
+export const selectSessionLogs = (
+  adherence: WeeklyAdherenceFacts,
+  weekLogs: readonly DayLogInput[]
+): DayLogInput[] => {
+  const measured = new Map<number, number>();
+  weekLogs.forEach((log) => {
+    if (typeof log.dayIndex !== "number" || !Number.isInteger(log.dayIndex)) return;
+    const seconds = usableDuration(log.durationSec);
+    if (seconds === null) return;
+    const known = measured.get(log.dayIndex);
+    if (known === undefined || seconds > known) measured.set(log.dayIndex, seconds);
+  });
+
+  return adherence.days
+    .filter((day) => day.isCompleted)
+    .map((day) => ({
+      weekKey: adherence.weekKey,
+      dayIndex: day.dayIndex,
+      completed: true,
+      durationSec: measured.get(day.dayIndex) ?? null,
+    }));
+};
+
+/**
  * Whether the completion records can carry a weekly conclusion at all.
  *
  * A record without `weekKey`/`dayIndex` cannot be placed in the programme, and
@@ -419,7 +456,7 @@ export interface WeeklyFactsInput {
 
 export const buildWeeklyFacts = (input: WeeklyFactsInput): WeeklyCoachingFacts => {
   const adherence = computeWeeklyAdherence(input.weekKey, input.planDays, input.completions);
-  const duration = computeDurationCoverage(input.weekLogs);
+  const duration = computeDurationCoverage(selectSessionLogs(adherence, input.weekLogs));
   const history = computeHistoryCoverage(input.weekLogs);
   const alignment = computePreferenceAlignment(
     input.preferences ?? {},

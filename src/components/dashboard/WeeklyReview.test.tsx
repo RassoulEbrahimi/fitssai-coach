@@ -74,7 +74,7 @@ describe("WeeklyReview", () => {
     );
 
     expect(screen.getByText("mind. 45 Min.")).toBeInTheDocument();
-    expect(screen.getByText("Dauer teilweise erfasst")).toBeInTheDocument();
+    expect(screen.getByText(/von \d+ Einheiten erfasst/)).toBeInTheDocument();
   });
 
   it("never renders a measured duration of zero", () => {
