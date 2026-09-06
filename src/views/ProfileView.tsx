@@ -3,6 +3,7 @@ import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { RefreshCw, Sparkles, User, Ruler, Weight, Activity, Settings, Calendar, Crown, Pencil, Target, Utensils, Dumbbell, Camera, Loader2, Flame, Clock, Zap, Sun, Moon, Monitor } from "lucide-react";
 import { AIAnalyticsCard } from "@/components/AIAnalyticsCard";
+import { NotificationSettingsCard } from "@/components/profile/NotificationSettingsCard";
 import { LogoutButton } from "@/components/LogoutButton";
 import { DeleteAccountButton } from "@/components/DeleteAccountButton";
 import { VERSION_LABEL } from "@/lib/buildInfo";
@@ -810,6 +811,15 @@ const ProfileView: React.FC<ProfileViewProps> = React.memo(({
               checked={enableAdvancedGlass}
               onCheckedChange={setEnableAdvancedGlass}
             />
+          </div>
+
+          {/*
+            Browser notifications. Shows the browser's real permission state
+            and asks only when the user presses the button — see
+            NotificationSettingsCard for why there is no app-side toggle.
+          */}
+          <div className="pt-2 border-t border-white/5">
+            <NotificationSettingsCard />
           </div>
         </GlassCard>
       </motion.section>
