@@ -65,16 +65,38 @@ describe("reading completions", () => {
       log({ week_key: "Week 2", day_index: 0 }),
       // A pre-PR47 log: its date may be derived from the plan's creation date
       // rather than its start Monday, so it cannot be placed in the week.
-      log({ week_key: null, day_index: null }),
+      log({ week_key: null, day_index: null, workout_day: null }),
     ]);
 
     expect(completions).toEqual([{ weekKey: "Week 2", dayIndex: 0, completed: true }]);
   });
 
-  it("carries a false completion through as false", () => {
-    expect(readCompletions([log({ week_key: "Week 2", day_index: 0, completed: false })])).toEqual([
-      { weekKey: "Week 2", dayIndex: 0, completed: false },
-    ]);
+  it("returns nothing for a day that was not completed", () => {
+    // The reader now yields completed days only, so an unfinished day is
+    // absent rather than present-and-false. Both forms count the same in
+    // `computeWeekCompletion`, which filters on `completed`.
+    expect(readCompletions([log({ week_key: "Week 2", day_index: 0, completed: false })])).toEqual(
+      []
+    );
+  });
+
+  it("ignores an exercise row, however completed it says it is", () => {
+    // The row that used to slip through: same week, same day, same flag — but
+    // it records one exercise, not the training day.
+    expect(
+      readCompletions([log({ week_key: "Week 2", day_index: 0, exercise_index: 0 })])
+    ).toEqual([]);
+  });
+
+  it("counts a completed day once, whatever else was logged that day", () => {
+    expect(
+      readCompletions([
+        log({ week_key: "Week 2", day_index: 0 }),
+        log({ week_key: "Week 2", day_index: 0, exercise_index: 0 }),
+        log({ week_key: "Week 2", day_index: 0, exercise_index: 1 }),
+        log({ week_key: "Week 2", day_index: 0, exercise_index: 2 }),
+      ])
+    ).toEqual([{ weekKey: "Week 2", dayIndex: 0, completed: true }]);
   });
 });
 

@@ -5,6 +5,7 @@ import { startOfWeek, endOfWeek, startOfMonth, endOfMonth, eachDayOfInterval, fo
 import { de } from "date-fns/locale";
 import { useAuth } from "@/hooks/useAuth";
 import { readDurationSec } from "@/lib/workoutLog";
+import { isCompletedDayLog } from "@/lib/workoutCompletion";
 
 export type ViewMode = "weekly" | "monthly";
 
@@ -62,10 +63,26 @@ export const useWeeklyActivity = (viewMode: ViewMode = "weekly") => {
       activityMap.set(format(day, "yyyy-MM-dd"), { date: day, minutes: 0, workouts: 0, measured: 0, unmeasured: 0 })
     );
 
+    /*
+      The query can only ask for `completed == true` on a date, and both
+      families of `workout_logs` document can satisfy that: set tracking leaves
+      an exercise row carrying the day's `workoutDay`, and ticking that
+      exercise sets `completed` on it. Which row may speak for a training day
+      is decided here, by the same shared rule the dashboard and the weekly
+      review use, so a single ticked exercise is not an active day.
+
+      Days are counted once each: a duplicate session row for one date is still
+      one training day.
+    */
+    const countedDays = new Set<string>();
+
     snap.docs.forEach(d => {
       const data = d.data();
+      if (!isCompletedDayLog(data)) return;
       const a = activityMap.get(data.workoutDay as string);
       if (!a) return;
+      if (countedDays.has(data.workoutDay as string)) return;
+      countedDays.add(data.workoutDay as string);
       a.workouts += 1;
 
       const seconds = readDurationSec(data.durationSec);

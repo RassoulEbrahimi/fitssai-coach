@@ -46,6 +46,7 @@ import { useProfile } from "@/hooks/queries/useProfile";
 import { useNutritionPlan } from "@/hooks/queries/useNutritionPlan";
 import { useQueryClient } from "@tanstack/react-query";
 import { useWeeklyActivity } from "@/hooks/useWeeklyActivity";
+import { isCalendarDayComplete, readCompletedDayDates } from "@/lib/workoutCompletion";
 
 // Lazy load view components for code splitting
 const HomeView = React.lazy(() => import('@/views/HomeView'));
@@ -215,21 +216,29 @@ const Dashboard = () => {
       return;
     }
 
-    // Check completion status efficiently
-    // Inlined logical check to avoid dependency on isDayCompleted being in dependency array if not needed, 
-    // but better to keep isDayCompleted stable and use it.
-    // For now we will rely on workoutLogs directly to avoid circular dependency issues if isDayCompleted changes.
-    const isCompleted = workoutLogs?.some(log => log.workout_day === workoutDateStr && log.completed) ?? false;
+    /*
+      Completion status, through the one shared rule: only the day session
+      record speaks for a day. Read inline rather than through isDayCompleted
+      to keep this callback's dependencies stable.
+    */
+    const isCompleted = isCalendarDayComplete(workoutLogs, workoutDateStr);
 
     toggleDay({ workoutDateStr, completed: !isCompleted, weekKey, dayIndex });
   }, [user, liveWorkoutPlan, completingWorkout, workoutLogs, toggleDay, t]);
 
-  // Check if a specific day in a specific week is completed (timezone-aware)
+  /*
+    Whether a plan day is completed (timezone-aware).
+
+    The single authority is `shared/workoutCompletion.ts`: only the day session
+    record counts, never an exercise or a set. Set tracking can leave an
+    exercise row carrying this day's `workoutDay`, so matching on the date and
+    a completion flag alone would let one ticked exercise complete the day.
+  */
   const isDayCompleted = useCallback((weekKey: string, dayIndex: number): boolean => {
     if (!liveWorkoutPlan?.created_at) return false;
 
     const dateString = getWorkoutDateString(liveWorkoutPlan.created_at, weekKey, dayIndex);
-    return workoutLogs?.some((log: WorkoutLog) => log.workout_day === dateString && log.completed) ?? false;
+    return isCalendarDayComplete(workoutLogs, dateString);
   }, [liveWorkoutPlan, workoutLogs]);
 
   // Check if today matches a specific week and day (Berlin timezone)
@@ -327,7 +336,7 @@ const Dashboard = () => {
     const resolved = resolvePlanDay(liveWorkoutPlan, getBerlinNow(), {
       isDayCompleted: (weekKey, dayIndex) => {
         const dateString = getWorkoutDateString(liveWorkoutPlan.created_at, weekKey, dayIndex);
-        return workoutLogs?.some(log => log.workout_day === dateString && log.completed) ?? false;
+        return isCalendarDayComplete(workoutLogs, dateString);
       },
     });
 
@@ -442,13 +451,14 @@ const Dashboard = () => {
 
     const { startStr, endStr } = getBerlinCurrentWeek();
 
-    // Filter logs for current week in Berlin timezone
-    const weeklyLogs = workoutLogs.filter(log => {
-      return log.workout_day >= startStr &&
-        log.workout_day <= endStr &&
-        log.completed &&
-        !isBerlinFuture(log.workout_day); // Exclude future days
-    });
+    /*
+      Completed days of the current Berlin week. Day sessions only, and one
+      entry per date: an exercise row carries a completion flag too, and a
+      count of ticked exercises is not a count of training days.
+    */
+    const completedThisWeek = readCompletedDayDates(workoutLogs).filter(
+      (day) => day >= startStr && day <= endStr && !isBerlinFuture(day)
+    ).length;
 
     // Planned training days for the week the user is actually in. This used to
     // read Object.values(content)[0] — the plan's *first* week — so every week
@@ -466,7 +476,7 @@ const Dashboard = () => {
     ).total;
 
     return {
-      completed: Math.min(weeklyLogs.length, totalPlannedDays), // Cap at total planned
+      completed: Math.min(completedThisWeek, totalPlannedDays), // Cap at total planned
       total: totalPlannedDays
     };
   }, [liveWorkoutPlan, workoutLogs]);

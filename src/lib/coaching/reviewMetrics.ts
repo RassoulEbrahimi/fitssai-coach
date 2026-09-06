@@ -6,6 +6,7 @@ import {
   type WeeklyReviewMetrics,
 } from "@shared/weeklyRecommendation";
 import { isRestDayContent } from "@/lib/planLifecycle";
+import { readCompletedDays } from "@/lib/workoutCompletion";
 import type { WorkoutLog, WorkoutPlan } from "@/lib/types";
 
 /**
@@ -42,22 +43,34 @@ export const readPlanWeekDays = (
 };
 
 /**
- * Completions, from plan position only.
+ * Completed days, from the day session records only.
  *
- * `workout_day` is deliberately not a fallback: a log written before PR47 can
- * carry a date derived from the plan's creation date rather than its start
- * Monday, so counting it would turn a known-bad value into a confident weekly
- * claim. An uncounted session understates the week, which is the safer error.
+ * Which record may say a day was completed is decided by
+ * `shared/workoutCompletion.ts` — the same rule the dashboard and the backend
+ * apply. An exercise-position row carries `week_key`, `day_index` and
+ * `completed` just like a day session does, so reading those three fields
+ * alone used to turn a single ticked exercise into a finished training day.
+ *
+ * `workout_day` is deliberately not a fallback for the plan position either: a
+ * log written before PR47 can carry a date derived from the plan's creation
+ * date rather than its start Monday, so counting it would turn a known-bad
+ * value into a confident weekly claim. An uncounted session understates the
+ * week, which is the safer error.
  */
 export const readCompletions = (logs: readonly WorkoutLog[]): ReviewCompletion[] =>
-  logs
-    .filter((log) => typeof log.week_key === "string" && typeof log.day_index === "number")
-    .map((log) => ({
-      weekKey: log.week_key as string,
-      dayIndex: log.day_index as number,
-      completed: Boolean(log.completed),
-    }));
+  readCompletedDays(logs).map((day) => ({ ...day, completed: true }));
 
+/**
+ * The week's logs, for the duration figures.
+ *
+ * Every row of the week is passed through, exercise positions included, and
+ * that is deliberate: `computeWeeklyReviewMetrics` groups them by day, takes
+ * the longest usable measurement any of a day's documents carries, and counts
+ * coverage over the days the week actually completed. Filtering here would
+ * take that tolerance away without changing a single count — a row's presence
+ * no longer inflates the session count, and only the completions above decide
+ * which days are done.
+ */
 export const readWeekLogs = (
   logs: readonly WorkoutLog[],
   weekKey: string
@@ -67,7 +80,7 @@ export const readWeekLogs = (
     .map((log) => ({
       weekKey,
       dayIndex: typeof log.day_index === "number" ? log.day_index : null,
-      completed: Boolean(log.completed),
+      completed: log.completed === true,
       durationSec: (log as { duration_sec?: number | null }).duration_sec ?? null,
     }));
 

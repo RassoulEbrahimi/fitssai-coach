@@ -6,6 +6,15 @@ import { useTranslation } from "react-i18next";
 import ProgressRing from "@/components/ProgressRing";
 import { cn } from "@/lib/utils";
 
+/**
+ * Exercise-level progress for one plan week.
+ *
+ * These are counts of *exercises*, not of training days: the ring answers "how
+ * much of this week's work is ticked off", which is a different question from
+ * whether a day was completed — that one only the day session record answers
+ * (see `shared/workoutCompletion.ts`). The labels below say "exercises" so the
+ * two numbers cannot be read as the same claim.
+ */
 interface WeekStats {
     completed: number;
     total: number;
@@ -80,7 +89,7 @@ export const WeekProgress: React.FC<WeekProgressProps> = ({
                             const progressColor = getProgressColor(stats.percent, isFuture);
 
                             // Get aria-label with completion stats
-                            const ariaLabel = `Week ${weekNum}: ${stats.completed}/${stats.total} sessions done, ${stats.percent}% complete`;
+                            const ariaLabel = `Week ${weekNum}: ${stats.completed}/${stats.total} exercises done, ${stats.percent}% complete`;
 
                             return (
                                 <React.Fragment key={weekNum}>
@@ -116,8 +125,8 @@ export const WeekProgress: React.FC<WeekProgressProps> = ({
                                             <TooltipContent className="text-sm" sideOffset={5}>
                                                 <div className="space-y-1">
                                                     <div className="font-semibold">Week {weekNum} Summary:</div>
-                                                    <div>✅ {stats.completed} sessions completed</div>
-                                                    <div>❌ {stats.missed} sessions missed</div>
+                                                    <div>✅ {stats.completed} exercises completed</div>
+                                                    <div>❌ {stats.missed} exercises open</div>
                                                     <div>📊 {stats.percent}% complete</div>
                                                 </div>
                                             </TooltipContent>

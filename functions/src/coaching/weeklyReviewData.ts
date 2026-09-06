@@ -7,6 +7,7 @@ import {
   type WeeklyReviewMetrics,
 } from "../../../shared/weeklyRecommendation";
 import { resolvePlanWeek, type ResolvedPlanWeek } from "../../../shared/planWeek";
+import { readCompletedWorkoutDays } from "../../../shared/workoutCompletion";
 import { normaliseFitnessGoal } from "./profileInput";
 import { EXPERIENCE_LEVELS, type ExperienceLevel, type FitnessGoal } from "./planGenerationInput";
 
@@ -84,35 +85,41 @@ export const readPlanWeek = (content: unknown, weekKey: string): ReviewPlanDay[]
 export interface StoredLog {
   weekKey?: unknown;
   dayIndex?: unknown;
+  exerciseIndex?: unknown;
+  workoutDay?: unknown;
   completed?: unknown;
   durationSec?: unknown;
 }
 
 /**
- * Completions, from plan position only.
+ * Completed days, from the day session records only.
  *
- * A log without `weekKey` + `dayIndex` cannot be placed in the programme. Its
- * `workoutDay` is deliberately not used as a fallback: a log written before
- * PR47 can carry a date derived from the plan's creation date rather than its
- * start Monday, and reading it here would turn a known-bad value into a
- * confident weekly claim.
+ * `users/{uid}/workout_logs` holds day sessions and exercise positions in one
+ * collection, and both carry `weekKey`, `dayIndex` and `completed`. Reading
+ * those three fields alone counted a single ticked exercise as a finished
+ * training day, so which row may speak for a day is now decided by
+ * `shared/workoutCompletion.ts` — the same rule the client applies.
+ *
+ * A log without `weekKey` + `dayIndex` still cannot be placed in the
+ * programme. Its `workoutDay` is deliberately not used as a fallback: a log
+ * written before PR47 can carry a date derived from the plan's creation date
+ * rather than its start Monday, and reading it here would turn a known-bad
+ * value into a confident weekly claim.
  */
 export const readCompletions = (logs: readonly StoredLog[]): ReviewCompletion[] =>
-  logs
-    .filter(
-      (log): log is StoredLog & { weekKey: string; dayIndex: number } =>
-        typeof log.weekKey === "string" &&
-        log.weekKey.length > 0 &&
-        typeof log.dayIndex === "number" &&
-        Number.isInteger(log.dayIndex)
-    )
-    .map((log) => ({
-      weekKey: log.weekKey,
-      dayIndex: log.dayIndex,
-      completed: log.completed === true,
-    }));
+  readCompletedWorkoutDays(logs).map((day) => ({ ...day, completed: true }));
 
-/** The reviewed week's logs, in the shape the metric layer reads. */
+/**
+ * The reviewed week's logs, in the shape the metric layer reads.
+ *
+ * Every row of the week is passed through, exercise positions included, and
+ * that is deliberate: `computeWeeklyReviewMetrics` groups them by day and
+ * takes the longest usable measurement any of a day's documents carries, then
+ * counts coverage over the days the week actually completed. Filtering here
+ * would take that tolerance away without changing a single count — a row's
+ * presence no longer inflates the session count, and only the completions
+ * above decide which days are done.
+ */
 export const readWeekLogs = (logs: readonly StoredLog[], weekKey: string): ReviewLog[] =>
   logs
     .filter((log) => log.weekKey === weekKey)
