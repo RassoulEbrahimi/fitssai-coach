@@ -52,6 +52,14 @@ interface HarnessOptions {
   usedQuota?: number;
   /** Logs missing plan position, as legacy documents have. */
   legacyLogs?: number;
+  /**
+   * Exercise-position rows, as `[weekKey, dayIndex, exerciseIndex]`.
+   *
+   * These carry `completed: true` and the same `weekKey` + `dayIndex` a day
+   * session does — which is exactly why they used to be counted as finished
+   * training days.
+   */
+  completedExercises?: Array<[string, number, number]>;
 }
 
 const harness = (options: HarnessOptions = {}) => {
@@ -85,6 +93,16 @@ const harness = (options: HarnessOptions = {}) => {
       ...(options.durations?.[dayIndex] === undefined
         ? {}
         : { durationSec: options.durations[dayIndex] }),
+    });
+  });
+
+  (options.completedExercises ?? []).forEach(([weekKey, dayIndex, exerciseIndex], index) => {
+    store.docs.set(`users/${UID}/workout_logs/exercise-${index}`, {
+      planId: PLAN_ID,
+      weekKey,
+      dayIndex,
+      exerciseIndex,
+      completed: true,
     });
   });
 
@@ -286,6 +304,102 @@ describe("C. every session completed", () => {
 
     expect(result.metrics.scheduledDays).toBe(7);
     expect(result.recommendation.category).toBe("dense-schedule");
+  });
+});
+
+describe("only a day session completes a training day", () => {
+  /*
+    `users/{uid}/workout_logs` holds day sessions and exercise positions in one
+    collection, and both carry weekKey, dayIndex and completed. The review used
+    to read those three fields alone, so ticking one exercise reported the
+    whole training day as done — and the dashboard, which reads the day record,
+    disagreed with it on the same data.
+  */
+
+  it("does not complete a day from one ticked exercise", async () => {
+    const { result } = await run({
+      completedExercises: [["Week 2", 0, 0]],
+      response: aiAnswer("consistency"),
+    });
+
+    expect(result.metrics.completedDays).toBe(0);
+    expect(result.metrics.completionPercent).toBe(0);
+  });
+
+  it("does not complete a day from every exercise of that day", async () => {
+    const { result } = await run({
+      completedExercises: [0, 1, 2, 3, 4].map(
+        (exerciseIndex) => ["Week 2", 0, exerciseIndex] as [string, number, number]
+      ),
+      response: aiAnswer("consistency"),
+    });
+
+    expect(result.metrics.completedDays).toBe(0);
+    expect(result.metrics.missedDays).toBe(3);
+  });
+
+  it("counts a completed day once, however many exercise rows sit on it", async () => {
+    const { result } = await run({
+      completed: [["Week 2", 0]],
+      completedExercises: [0, 1, 2, 3].map(
+        (exerciseIndex) => ["Week 2", 0, exerciseIndex] as [string, number, number]
+      ),
+      response: aiAnswer("consistency"),
+    });
+
+    expect(result.metrics.completedDays).toBe(1);
+    expect(result.metrics.completionPercent).toBe(33);
+  });
+
+  it("counts exercise rows as neither measured nor unmeasured sessions", async () => {
+    const { result } = await run({
+      completed: [["Week 2", 0]],
+      completedExercises: [0, 1, 2, 3].map(
+        (exerciseIndex) => ["Week 2", 0, exerciseIndex] as [string, number, number]
+      ),
+      response: aiAnswer("consistency"),
+    });
+
+    // One training day was done, so there is one session — not five.
+    expect(result.metrics.measuredSessionCount + result.metrics.unmeasuredSessionCount).toBe(1);
+  });
+
+  it("reads a three-day week as 1/3, 2/3 and 3/3 from true sessions only", async () => {
+    const noise: Array<[string, number, number]> = [0, 1, 2].map((exerciseIndex) => [
+      "Week 2",
+      4,
+      exerciseIndex,
+    ]);
+
+    const one = await run({
+      completed: [["Week 2", 0]],
+      completedExercises: noise,
+      response: aiAnswer("consistency"),
+    });
+    const two = await run({
+      completed: [["Week 2", 0], ["Week 2", 2]],
+      completedExercises: noise,
+      response: aiAnswer("maintain"),
+    });
+    const three = await run({
+      completed: [["Week 2", 0], ["Week 2", 2], ["Week 2", 4]],
+      completedExercises: noise,
+      response: aiAnswer("maintain"),
+    });
+
+    expect(one.result.metrics.completedDays).toBe(1);
+    expect(two.result.metrics.completedDays).toBe(2);
+    expect(three.result.metrics.completedDays).toBe(3);
+    expect(three.result.metrics.completionPercent).toBe(100);
+  });
+
+  it("still refuses a legacy row that carries neither position nor exercise", async () => {
+    const { result } = await run({
+      legacyLogs: 3,
+      response: aiAnswer("consistency"),
+    });
+
+    expect(result.metrics.completedDays).toBe(0);
   });
 });
 

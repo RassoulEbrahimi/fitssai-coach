@@ -6,6 +6,7 @@ import {
   type WeeklyReviewMetrics,
 } from "@shared/weeklyRecommendation";
 import { isRestDayContent } from "@/lib/planLifecycle";
+import { filterDaySessionLogs, readCompletedDays } from "@/lib/workoutCompletion";
 import type { WorkoutLog, WorkoutPlan } from "@/lib/types";
 
 /**
@@ -42,32 +43,39 @@ export const readPlanWeekDays = (
 };
 
 /**
- * Completions, from plan position only.
+ * Completed days, from the day session records only.
  *
- * `workout_day` is deliberately not a fallback: a log written before PR47 can
- * carry a date derived from the plan's creation date rather than its start
- * Monday, so counting it would turn a known-bad value into a confident weekly
- * claim. An uncounted session understates the week, which is the safer error.
+ * Which record may say a day was completed is decided by
+ * `shared/workoutCompletion.ts` — the same rule the dashboard and the backend
+ * apply. An exercise-position row carries `week_key`, `day_index` and
+ * `completed` just like a day session does, so reading those three fields
+ * alone used to turn a single ticked exercise into a finished training day.
+ *
+ * `workout_day` is deliberately not a fallback for the plan position either: a
+ * log written before PR47 can carry a date derived from the plan's creation
+ * date rather than its start Monday, so counting it would turn a known-bad
+ * value into a confident weekly claim. An uncounted session understates the
+ * week, which is the safer error.
  */
 export const readCompletions = (logs: readonly WorkoutLog[]): ReviewCompletion[] =>
-  logs
-    .filter((log) => typeof log.week_key === "string" && typeof log.day_index === "number")
-    .map((log) => ({
-      weekKey: log.week_key as string,
-      dayIndex: log.day_index as number,
-      completed: Boolean(log.completed),
-    }));
+  readCompletedDays(logs).map((day) => ({ ...day, completed: true }));
 
+/**
+ * The week's sessions, for the duration figures.
+ *
+ * Day sessions only: an exercise row is not a session, and counting one as
+ * "unmeasured" would report more sessions than the week has training days.
+ */
 export const readWeekLogs = (
   logs: readonly WorkoutLog[],
   weekKey: string
 ): ReviewLog[] =>
-  logs
+  filterDaySessionLogs(logs)
     .filter((log) => log.week_key === weekKey)
     .map((log) => ({
       weekKey,
       dayIndex: typeof log.day_index === "number" ? log.day_index : null,
-      completed: Boolean(log.completed),
+      completed: log.completed === true,
       durationSec: (log as { duration_sec?: number | null }).duration_sec ?? null,
     }));
 

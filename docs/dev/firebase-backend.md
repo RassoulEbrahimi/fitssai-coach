@@ -613,3 +613,37 @@ project selected.
   capability table above.
 * No Firestore migration or backfill of any kind.
 * No Firebase Functions deployment from CI.
+
+## What counts as a completed workout day
+
+`users/{uid}/workout_logs` holds two families of document in one collection,
+and they share most of their field names:
+
+| | day session | exercise position |
+| --- | --- | --- |
+| written by | `useWorkoutLogs.toggleDay`, the `TOGGLE_DAY` offline handler, `recordSessionDuration` | `useWeekCompletion.toggleExercise`, `useSetTracking.toggleSet`, both offline handlers |
+| identity | `planId` + `workoutDay`, plus `weekKey` + `dayIndex` on newer writes | `planId` + `weekKey` + `dayIndex` + `exerciseIndex` |
+| `completed: true` means | the training day was finished | that one exercise was ticked off |
+| carries | `durationSec` when a session was measured | `durationMinutes`, `caloriesBurned`, and a `workout_set_logs` subcollection |
+
+Both carry `weekKey`, `dayIndex` and `completed`, so those three fields cannot
+tell them apart. `exerciseIndex` can: every exercise-position path writes it
+and no day path does.
+
+**The rule, in `shared/workoutCompletion.ts` and applied by client and backend
+alike: a workout day is completed only when its day session record says
+`completed: true`.** A completed exercise, all sets of an exercise, a measured
+duration, the existence of logs and any percentage of progress are explicitly
+not evidence of a completed day. A row that cannot be proven to be a completed
+day session is reported as not completed rather than guessed at.
+
+Consumers — the dashboard, the weekly review on both sides of the wire, the
+activity chart and the insight cards — read that module rather than the raw
+fields, so the same history cannot produce different completion counts on
+different surfaces. Placing a completion in a plan week additionally requires
+`weekKey` + `dayIndex`; a pre-PR48 day log carrying only a date stays
+uncounted, because that date can be derived from the plan's creation date
+rather than its start Monday.
+
+Nothing is migrated or rewritten: this is a read contract over the documents
+the app already writes.

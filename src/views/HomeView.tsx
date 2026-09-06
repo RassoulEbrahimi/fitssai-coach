@@ -28,6 +28,11 @@ import {
   readPlanWeekDays,
 } from "@/lib/coaching";
 import { resolvePlanDay } from "@/lib/planLifecycle";
+import {
+  filterDaySessionLogs,
+  readCompletedDayDates,
+  readCompletedDays,
+} from "@/lib/workoutCompletion";
 
 interface HomeViewProps {
   generatingPlans: boolean;
@@ -113,22 +118,16 @@ const HomeView: React.FC<HomeViewProps> = ({
 
   // Compute Smart Insight
   const activeInsight = useMemo(() => {
-    // Derived stats from workoutLogs (Plan Context)
-    const totalPlanWorkouts = workoutLogs.length;
-
-    // Find last completed workout date
-    // workoutLogs are usually not sorted by date guaranteed, but often are.
-    // Let's sort to be safe or find max.
-    let lastWorkoutDateStr: string | null = null;
-    if (workoutLogs.length > 0) {
-      const sortedLogs = [...workoutLogs].sort((a, b) =>
-        new Date(b.workout_day).getTime() - new Date(a.workout_day).getTime()
-      );
-      const lastLog = sortedLogs.find(l => l.completed); // Ensure completed
-      if (lastLog) {
-        lastWorkoutDateStr = lastLog.workout_day;
-      }
-    }
+    /*
+      Completed training days, from the day session records only — the same
+      rule the dashboard and the weekly review apply. This used to be
+      `workoutLogs.length`, which counted every exercise row and every
+      unfinished day, so the milestone card congratulated people on trainings
+      they had not done.
+    */
+    const completedDays = readCompletedDayDates(workoutLogs).sort();
+    const totalPlanWorkouts = completedDays.length;
+    const lastWorkoutDateStr = completedDays.length > 0 ? completedDays[completedDays.length - 1] : null;
 
     return generateInsights(weeklyActivity, profile, totalPlanWorkouts, lastWorkoutDateStr);
   }, [weeklyActivity, workoutLogs, profile]);
@@ -148,19 +147,18 @@ const HomeView: React.FC<HomeViewProps> = ({
     const planDays = readPlanWeekDays(workoutPlan, weekKey);
 
     /*
-      Completion comes from weekKey + dayIndex only. A day log written before
-      PR47 can carry a date derived from the plan's creation date rather than
-      its start Monday, so using that date here would turn a known-bad value
-      into a confident weekly claim.
+      Completion comes from the day session record and from weekKey + dayIndex
+      only — the shared rule in `shared/workoutCompletion.ts`, so this card,
+      the dashboard and the backend agree. An exercise row carries the same
+      three fields, so reading them alone counted one ticked exercise as a
+      finished training day. A day log written before PR47 can carry a date
+      derived from the plan's creation date rather than its start Monday, so
+      that date is not a fallback either.
     */
-    const weekLogs = workoutLogs.filter((log) => log.week_key === weekKey);
-    const completions = weekLogs
-      .filter((log) => typeof log.day_index === "number")
-      .map((log) => ({
-        weekKey,
-        dayIndex: log.day_index as number,
-        completed: Boolean(log.completed),
-      }));
+    const weekLogs = filterDaySessionLogs(workoutLogs).filter((log) => log.week_key === weekKey);
+    const completions = readCompletedDays(workoutLogs)
+      .filter((day) => day.weekKey === weekKey)
+      .map((day) => ({ ...day, completed: true }));
 
     return buildWeeklyFacts({
       weekKey,
@@ -170,7 +168,7 @@ const HomeView: React.FC<HomeViewProps> = ({
         weekKey: log.week_key as string | null,
         dayIndex: log.day_index as number | null,
         workoutDay: log.workout_day,
-        completed: log.completed,
+        completed: log.completed === true,
         durationSec: (log as { duration_sec?: number | null }).duration_sec ?? null,
       })),
       preferences: {

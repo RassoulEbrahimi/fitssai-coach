@@ -7,3 +7,4 @@
  */
 export * from "./workoutPlan";
 export * from "./weeklyRecommendation";
+export * from "./workoutCompletion";
