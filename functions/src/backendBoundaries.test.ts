@@ -268,6 +268,7 @@ describe("weekly-review input is minimised", () => {
       "category",
       "completedDays",
       "completionPercent",
+      "durationCoverage",
       "experienceLevel",
       "focus",
       "goal",

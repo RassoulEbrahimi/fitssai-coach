@@ -78,8 +78,19 @@ export const durationText = (coverage: DurationCoverage): string => {
   }
 };
 
-export const durationCaption = (coverage: DurationCoverage): string | null =>
-  coverage.state === "partial" ? "Dauer teilweise erfasst" : null;
+/**
+ * How much of the week the duration above actually covers.
+ *
+ * Only shown when it is a floor. Naming both counts is what turns "teilweise
+ * erfasst" from a disclaimer into a number the reader can act on — a week with
+ * one of three sessions timed reads very differently from two of three, and
+ * the tile above cannot show the difference on its own.
+ */
+export const durationCaption = (coverage: DurationCoverage): string | null => {
+  if (coverage.state !== "partial") return null;
+  const total = coverage.measuredSessionCount + coverage.unmeasuredSessionCount;
+  return `${coverage.measuredSessionCount} von ${total} Einheiten erfasst`;
+};
 
 /**
  * A note about incomplete older records, in plain German.

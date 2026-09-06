@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { CoachingRecommendation } from "./CoachingRecommendation";
 import {
@@ -120,7 +120,9 @@ describe("the recommendation is there before any backend is", () => {
     render(<CoachingRecommendation metrics={metrics({ completions: done([0, 2, 4]) })} />);
 
     expect(screen.getByText("Woche vollständig abgeschlossen")).toBeInTheDocument();
-    expect(screen.getByText(/Halte diesen Umfang zunächst bei/)).toBeInTheDocument();
+    expect(screen.getByText(/alle 3 geplanten Einheiten dieser Woche abgeschlossen/)).toBeInTheDocument();
+    // Named as a reason to change nothing, never as room for more.
+    expect(screen.getByText(/ein guter Grund, nichts zu ändern/)).toBeInTheDocument();
   });
 
   it("does not tell the reader to train more after two full weeks", () => {
@@ -139,7 +141,10 @@ describe("the recommendation is there before any backend is", () => {
     );
 
     expect(screen.getByText("Zwei vollständige Wochen")).toBeInTheDocument();
-    expect(screen.getByText(/entscheidest du selbst/)).toBeInTheDocument();
+    expect(screen.getByText(/kannst du selbst entscheiden/)).toBeInTheDocument();
+    // Progression is conditional on how training feels — which the app admits
+    // it does not know, in the same sentence.
+    expect(screen.getByText(/weiterhin gut anfühlt/)).toBeInTheDocument();
     expect(screen.getByText(/kann nicht beurteilen, wie sich dein Training anfühlt/)).toBeInTheDocument();
     expect(container.textContent ?? "").not.toMatch(/bereit für|steigere |trainiere mehr|zeit für mehr/i);
   });
@@ -294,6 +299,97 @@ describe("asking the coach to phrase it", () => {
     resolve(aiResponse());
     expect(await screen.findByText("Zwei von drei")).toBeInTheDocument();
     expect(fetchWeeklyReview).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("one click, one unit of quota", () => {
+  /*
+    Every accepted explanation spends one unit of the month's weekly-summary
+    budget. So the cost of a duplicate request is not a wasted round trip — it
+    is one of a small number of explanations the user gets this month, spent on
+    a sentence they already have on screen.
+
+    The button being disabled while a call is in flight is the visible half.
+    The other half is that the handler refuses to start a second call at all,
+    which is what covers the window between the click and the re-render.
+  */
+
+  it("starts one request even when the handler fires twice before a re-render", async () => {
+    let resolve: (value: unknown) => void = () => undefined;
+    fetchWeeklyReview.mockReturnValue(new Promise((r) => { resolve = r; }));
+    render(<CoachingRecommendation metrics={metrics({ completions: done([0, 2]) })} />);
+
+    const button = screen.getByRole("button", { name: /Vom KI-Coach erklären lassen/ });
+
+    // Both clicks land inside one act, so React has not re-rendered between
+    // them and `disabled` cannot be what stops the second one.
+    await act(async () => {
+      fireEvent.click(button);
+      fireEvent.click(button);
+    });
+
+    expect(fetchWeeklyReview).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      resolve(aiResponse());
+    });
+    expect(fetchWeeklyReview).toHaveBeenCalledTimes(1);
+  });
+
+  it("disables the button and says what it is doing while the call is open", async () => {
+    fetchWeeklyReview.mockReturnValue(new Promise(() => undefined));
+    render(<CoachingRecommendation metrics={metrics({ completions: done([0, 2]) })} />);
+
+    await userEvent.click(screen.getByRole("button", { name: /Vom KI-Coach erklären lassen/ }));
+
+    const button = screen.getByRole("button", { name: /Wird formuliert/ });
+    expect(button).toBeDisabled();
+  });
+
+  it("offers a retry after a failure, and spends exactly one more unit on it", async () => {
+    fetchWeeklyReview.mockRejectedValueOnce(new WeeklyReviewError("UNAVAILABLE"));
+    render(<CoachingRecommendation metrics={metrics({ completions: done([0, 2]) })} />);
+
+    await userEvent.click(screen.getByRole("button", { name: /Vom KI-Coach erklären lassen/ }));
+
+    // The failure is named, and the button says what pressing it now does.
+    expect(await screen.findByText(/gerade nicht verfügbar/)).toBeInTheDocument();
+    const retry = await screen.findByRole("button", { name: "Erneut versuchen" });
+
+    fetchWeeklyReview.mockResolvedValueOnce(aiResponse());
+    await userEvent.click(retry);
+
+    expect(await screen.findByText("Zwei von drei")).toBeInTheDocument();
+    expect(fetchWeeklyReview).toHaveBeenCalledTimes(2);
+  });
+
+  it("stops offering the call once the monthly budget is gone", async () => {
+    fetchWeeklyReview.mockResolvedValue(
+      aiResponse({
+        aiStatus: "quota_exceeded",
+        recommendation: { ...aiResponse().recommendation, source: "deterministic" },
+        quota: { remaining: 0, limit: 8, period: "2026-09" },
+      })
+    );
+    render(<CoachingRecommendation metrics={metrics({ completions: done([0, 2]) })} />);
+
+    await userEvent.click(screen.getByRole("button", { name: /Vom KI-Coach erklären lassen/ }));
+    expect(await screen.findByText(/keine KI-Erklärungen mehr verfügbar/)).toBeInTheDocument();
+
+    /*
+      A retry cannot succeed until the month turns over, so offering one would
+      only invite a user to press a button that does nothing.
+    */
+    expect(screen.queryByRole("button", { name: /KI-Coach|Erneut versuchen/ })).toBeNull();
+    expect(fetchWeeklyReview).toHaveBeenCalledTimes(1);
+  });
+
+  it("asks nothing of the backend until the user asks for it", async () => {
+    render(<CoachingRecommendation metrics={metrics({ completions: done([0, 2]) })} />);
+
+    // No call on mount, on render, or on a timer: the deterministic
+    // recommendation is already on screen and costs nothing.
+    await waitFor(() => expect(fetchWeeklyReview).not.toHaveBeenCalled());
   });
 });
 

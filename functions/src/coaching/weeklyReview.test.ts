@@ -60,6 +60,10 @@ interface HarnessOptions {
    * training days.
    */
   completedExercises?: Array<[string, number, number]>;
+  /** Extra log documents, written verbatim. Exercise rows, junk, anything. */
+  rawLogs?: Record<string, unknown>[];
+  /** When the review runs. Defaults to a Thursday in Week 2. */
+  at?: Date;
 }
 
 const harness = (options: HarnessOptions = {}) => {
@@ -114,14 +118,19 @@ const harness = (options: HarnessOptions = {}) => {
     });
   }
 
-  const quota = createFirestoreQuotaStore({ firestore: db, now: () => DURING_WEEK_2 });
+  (options.rawLogs ?? []).forEach((log, index) => {
+    store.docs.set(`users/${UID}/workout_logs/raw-${index}`, { planId: PLAN_ID, ...log });
+  });
+
+  const at = options.at ?? DURING_WEEK_2;
+  const quota = createFirestoreQuotaStore({ firestore: db, now: () => at });
   const logs: WeeklyReviewLogEntry[] = [];
   const providerCalls: unknown[] = [];
 
   const deps: WeeklyReviewDeps = {
     firestore: db,
     quota,
-    now: () => DURING_WEEK_2,
+    now: () => at,
     log: async (entry) => {
       logs.push(entry);
     },
@@ -429,6 +438,258 @@ describe("D. duration is never invented", () => {
   });
 });
 
+describe("B2. every completion ratio, end to end", () => {
+  /*
+    The same states the shared rules are tested against, but travelling the
+    whole path: Firestore documents in, metrics and a recommendation out. What
+    is checked is that nothing between the two invents, rounds away or loses a
+    session.
+  */
+
+  const ratios: ReadonlyArray<{
+    label: string;
+    completed: Array<[string, number]>;
+    completedDays: number;
+    percent: number;
+    category: string;
+    focus: string;
+  }> = [
+    /*
+      Week 1 is untouched in this fixture, so a second low week is exactly what
+      the rules see — and `schedule-fit` is the wording that goes with it: a
+      question about whether the plan fits the person's week, never a verdict
+      that they trained too much.
+    */
+    { label: "1 of 3", completed: [["Week 2", 0]], completedDays: 1, percent: 33, category: "consistency", focus: "schedule-fit" },
+    { label: "2 of 3", completed: [["Week 2", 0], ["Week 2", 2]], completedDays: 2, percent: 67, category: "maintain", focus: "on-track" },
+    { label: "3 of 3", completed: [["Week 2", 0], ["Week 2", 2], ["Week 2", 4]], completedDays: 3, percent: 100, category: "maintain", focus: "week-complete" },
+  ];
+
+  ratios.forEach((ratio) => {
+    it(`reports ${ratio.label} exactly, and advises without prescribing`, async () => {
+      const { result, providerCalls } = await run({ completed: ratio.completed });
+
+      expect(result.metrics.completedDays).toBe(ratio.completedDays);
+      expect(result.metrics.scheduledDays).toBe(3);
+      expect(result.metrics.completionPercent).toBe(ratio.percent);
+      expect(result.recommendation.category).toBe(ratio.category);
+      // The model is asked to phrase the conclusion the rules already reached.
+      expect(providerCalls[0]).toMatchObject({
+        completedDays: ratio.completedDays,
+        completionPercent: ratio.percent,
+        category: ratio.category,
+        focus: ratio.focus,
+      });
+    });
+  });
+
+  it("reports 1 of 3 after a strong week as catch-up, not as a schedule problem", async () => {
+    const { result, providerCalls } = await run({
+      completed: [["Week 1", 0], ["Week 1", 2], ["Week 1", 4], ["Week 2", 0]],
+    });
+
+    expect(result.metrics.completionPercent).toBe(33);
+    expect(providerCalls[0]).toMatchObject({ focus: "catch-up", category: "consistency" });
+    // One quiet week is not evidence the plan is wrong, and is not read as it.
+    expect(result.recommendation.message).toMatch(/entscheidest du/);
+  });
+
+  it("reports 3 of 4 as on track, on a four-day week", async () => {
+    const fourDayWeek = () =>
+      Array.from({ length: 7 }, (_, index) => (index < 4 ? trainingDay() : restDay()));
+    const { result } = await run({
+      content: planContent(fourDayWeek),
+      completed: [["Week 2", 0], ["Week 2", 1], ["Week 2", 2]],
+    });
+
+    expect(result.metrics).toMatchObject({
+      scheduledDays: 4,
+      completedDays: 3,
+      missedDays: 1,
+      completionPercent: 75,
+    });
+    expect(result.recommendation.category).toBe("maintain");
+  });
+
+  it("keeps two full weeks running on maintain", async () => {
+    const { result, providerCalls } = await run({
+      completed: [
+        ["Week 1", 0], ["Week 1", 2], ["Week 1", 4],
+        ["Week 2", 0], ["Week 2", 2], ["Week 2", 4],
+      ],
+    });
+
+    expect(result.metrics.completionPercent).toBe(100);
+    expect(result.metrics.previousWeek).toEqual({ weekKey: "Week 1", completionPercent: 100 });
+    expect(result.recommendation.category).toBe("maintain");
+    expect(providerCalls[0]).toMatchObject({ focus: "week-complete-repeat" });
+    // Progression appears as the reader's own decision or not at all.
+    expect(result.recommendation.message).toMatch(/kannst du selbst entscheiden/);
+  });
+});
+
+describe("B3. weeks do not bleed into each other", () => {
+  /*
+    The failure this guards against is silent: a review that counts last week's
+    sessions as this week's is still a plausible-looking screen. The plan is
+    anchored on the Monday of its creation week, so these dates are chosen to
+    sit either side of a real boundary.
+  */
+
+  /** Sunday of Week 1, and the Monday of Week 2 one day later. */
+  const SUNDAY_WEEK_1 = new Date("2026-08-09T18:00:00Z");
+  const MONDAY_WEEK_2 = new Date("2026-08-10T07:00:00Z");
+
+  const bothWeeks: Array<[string, number]> = [
+    ["Week 1", 0], ["Week 1", 2], ["Week 1", 4],
+    ["Week 2", 0],
+  ];
+
+  it("reads Sunday as the end of Week 1", async () => {
+    const { result } = await run({ completed: bothWeeks, at: SUNDAY_WEEK_1 });
+
+    expect(result.metrics.weekKey).toBe("Week 1");
+    expect(result.metrics.completedDays).toBe(3);
+    // Week 2's single completion is not in this week's numbers.
+    expect(result.metrics.completionPercent).toBe(100);
+    expect(result.metrics.previousWeek).toBeNull();
+  });
+
+  it("reads the next morning as the start of Week 2", async () => {
+    const { result } = await run({ completed: bothWeeks, at: MONDAY_WEEK_2 });
+
+    expect(result.metrics.weekKey).toBe("Week 2");
+    // One day into the new week: one of three, not four of six.
+    expect(result.metrics.completedDays).toBe(1);
+    expect(result.metrics.completionPercent).toBe(33);
+  });
+
+  it("keeps the finished week available as history, not as this week", async () => {
+    const { result } = await run({ completed: bothWeeks, at: MONDAY_WEEK_2 });
+
+    expect(result.metrics.previousWeek).toEqual({ weekKey: "Week 1", completionPercent: 100 });
+    // History shapes the wording; it never joins the current week's fraction.
+    expect(result.metrics.completedDays).toBe(1);
+  });
+
+  it("starts a fresh week at zero rather than carrying anything over", async () => {
+    const { result } = await run({
+      completed: [["Week 1", 0], ["Week 1", 2], ["Week 1", 4]],
+      at: MONDAY_WEEK_2,
+    });
+
+    expect(result.metrics).toMatchObject({
+      weekKey: "Week 2",
+      completedDays: 0,
+      completionPercent: 0,
+      measuredDurationSec: null,
+    });
+    expect(result.recommendation.category).toBe("consistency");
+  });
+
+  it("reviews a historical week without inventing a current one", async () => {
+    // Thursday of Week 4, with Week 3 completed and Week 4 untouched.
+    const { result } = await run({
+      completed: [["Week 3", 0], ["Week 3", 2], ["Week 3", 4]],
+      at: new Date("2026-08-27T18:00:00Z"),
+    });
+
+    expect(result.metrics.weekKey).toBe("Week 4");
+    expect(result.metrics.completedDays).toBe(0);
+    expect(result.metrics.previousWeek).toEqual({ weekKey: "Week 3", completionPercent: 100 });
+  });
+
+  it("stops rather than wrapping once the four weeks are over", async () => {
+    const { result, providerCalls } = await run({
+      completed: [["Week 4", 0], ["Week 4", 2], ["Week 4", 4]],
+      at: new Date("2026-09-01T09:00:00Z"),
+    });
+
+    // Not Week 5, and above all not Week 1 with a month-old set of logs.
+    expect(result.metrics.hasPlan).toBe(false);
+    expect(result.planFinished).toBe(true);
+    expect(result.aiStatus).toBe("not_applicable");
+    // Nothing to phrase means nothing to pay for.
+    expect(providerCalls).toHaveLength(0);
+  });
+});
+
+describe("D2. a week is measured in sessions, not in log rows", () => {
+  /*
+    Production writes one day document per training day and one document per
+    exercise. Counting rows made a fully timed week call its own total a floor
+    — a small untruth on a screen whose entire promise is that it does not tell
+    small untruths.
+  */
+
+  /** Four exercise rows per completed day, as ticking sets produces. */
+  const exerciseRows = (weekKey: string, dayIndexes: number[]) =>
+    dayIndexes.flatMap((dayIndex) =>
+      Array.from({ length: 4 }, (_, exerciseIndex) => ({
+        weekKey,
+        dayIndex,
+        exerciseIndex,
+        completed: true,
+      }))
+    );
+
+  it("calls a fully timed week full despite a dozen exercise rows", async () => {
+    const { result } = await run({
+      completed: [["Week 2", 0], ["Week 2", 2], ["Week 2", 4]],
+      durations: { 0: 3600, 2: 2700, 4: 3300 },
+      rawLogs: exerciseRows("Week 2", [0, 2, 4]),
+    });
+
+    expect(result.metrics.measuredSessionCount).toBe(3);
+    expect(result.metrics.unmeasuredSessionCount).toBe(0);
+    expect(result.metrics.durationCoverage).toBe("full");
+    expect(result.metrics.measuredDurationSec).toBe(9600);
+    expect(result.recommendation.reason).not.toMatch(/mindestens/);
+  });
+
+  it("tells the model the coverage, not just the minutes", async () => {
+    const { providerCalls } = await run({
+      completed: [["Week 2", 0], ["Week 2", 2]],
+      durations: { 0: 3600 },
+      rawLogs: exerciseRows("Week 2", [0, 2]),
+    });
+
+    expect(providerCalls[0]).toMatchObject({
+      measuredDurationMinutes: 60,
+      measuredSessionCount: 1,
+      durationCoverage: "partial",
+    });
+  });
+
+  it("sends no duration at all when nothing was measured", async () => {
+    const { providerCalls } = await run({
+      completed: [["Week 2", 0], ["Week 2", 2]],
+      rawLogs: exerciseRows("Week 2", [0, 2]),
+    });
+
+    const input = providerCalls[0] as Record<string, unknown>;
+    expect(input.measuredDurationMinutes).toBeUndefined();
+    expect(input.durationCoverage).toBeUndefined();
+  });
+
+  it("discards a malformed legacy duration instead of counting it", async () => {
+    const { result } = await run({
+      completed: [["Week 2", 0]],
+      rawLogs: [
+        { weekKey: "Week 2", dayIndex: 2, completed: true, durationSec: "2700" },
+        { weekKey: "Week 2", dayIndex: 4, completed: true, durationSec: -60 },
+        { weekKey: "Week 2", dayIndex: 4, completed: true, durationSec: 20 * 60 * 60 },
+      ],
+    });
+
+    // Three completed days, none of them with a duration this app will state.
+    expect(result.metrics.completedDays).toBe(3);
+    expect(result.metrics.measuredDurationSec).toBeNull();
+    expect(result.metrics.durationCoverage).toBe("none");
+    expect(result.recommendation.reason).not.toMatch(/Trainingszeit/);
+  });
+});
+
 describe("E. the provider is not the review", () => {
   it("still reports the metrics when the provider throws", async () => {
     const { result } = await run({
@@ -500,6 +761,89 @@ describe("E. the provider is not the review", () => {
   });
 });
 
+describe("E2. unsupported claims never reach the screen", () => {
+  /*
+    The prompt forbids these. This is the layer that assumes it did not work —
+    because a prompt is an instruction and a guard is a guarantee, and the
+    difference matters most in exactly the state that most invites the claim:
+    a completed week, twice running, with a model asked to sound encouraging.
+
+    In every case the user still gets a review. The wording falls back to the
+    app's own, the reservation is refunded because nothing was delivered, and
+    the log records which rule tripped rather than the sentence that tripped it.
+  */
+
+  const fullWeek: Array<[string, number]> = [["Week 2", 0], ["Week 2", 2], ["Week 2", 4]];
+
+  const unsafe = (message: string) => ({
+    category: "maintain",
+    headline: "Starke Woche",
+    message,
+    reason: "3 von 3 Trainingstagen abgeschlossen (100 %).",
+  });
+
+  const cases: ReadonlyArray<{ label: string; message: string }> = [
+    {
+      label: "a readiness claim",
+      message: "Du hast alle Einheiten geschafft — du bist bereit für mehr Umfang.",
+    },
+    {
+      label: "a progression instruction",
+      message: "Starke Woche. Steigere im nächsten Block dein Trainingsvolumen.",
+    },
+    {
+      label: "a recovery claim",
+      message: "Starke Woche. Achte jetzt auf ausreichend Regeneration, dein Körper braucht das.",
+    },
+    {
+      label: "a fatigue reading",
+      message: "Starke Woche, auch wenn du nach so viel Training sicher erschöpft bist.",
+    },
+    {
+      label: "a claim that the plan changed",
+      message: "Weil du alles geschafft hast, wurde dein Plan automatisch angepasst.",
+    },
+  ];
+
+  cases.forEach(({ label, message }) => {
+    it(`rejects ${label} and shows the app's own wording instead`, async () => {
+      const { result, logs } = await run({ completed: fullWeek, response: unsafe(message) });
+
+      expect(result.recommendation.source).toBe("deterministic");
+      expect(result.aiStatus).toBe("unavailable");
+      expect(result.recommendation.message).not.toBe(message);
+      expect(logs[0]).toMatchObject({ status: "error", errorCategory: "invalid_output", rejection: "unsafe-text" });
+    });
+
+    it(`does not charge the user for ${label}`, async () => {
+      const { deps, result } = await run({ completed: fullWeek, response: unsafe(message) });
+
+      // Reserved before the call, released after the refusal: the user is not
+      // billed a unit of their monthly budget for a sentence they never saw.
+      expect(await deps.quota.getUsage(UID, "weekly_summary")).toBe(0);
+      expect(result.quota.remaining).toBe(DEFAULT_QUOTA_LIMITS.weekly_summary);
+    });
+  });
+
+  it("keeps the numbers intact when the wording is refused", async () => {
+    const { result } = await run({
+      completed: fullWeek,
+      response: unsafe("Du bist bereit für mehr."),
+    });
+
+    // The metrics were computed before the call and are unaffected by it.
+    expect(result.metrics).toMatchObject({ completedDays: 3, scheduledDays: 3, completionPercent: 100 });
+  });
+
+  it("logs which rule tripped, never the sentence that tripped it", async () => {
+    const message = "Du bist bereit für mehr Umfang.";
+    const { logs } = await run({ completed: fullWeek, response: unsafe(message) });
+
+    expect(JSON.stringify(logs)).not.toContain(message);
+    expect(JSON.stringify(logs)).not.toContain("bereit");
+  });
+});
+
 describe("F. a review never touches a workout plan", () => {
   const cases: Array<[string, HarnessOptions]> = [
     ["with a model answer", { completed: [["Week 2", 0]], response: aiAnswer("consistency") }],
@@ -510,6 +854,49 @@ describe("F. a review never touches a workout plan", () => {
     ["with a full week", {
       completed: [["Week 2", 0], ["Week 2", 2], ["Week 2", 4]],
       response: aiAnswer("maintain"),
+    }],
+    /*
+      The states this PR added. Two full weeks running is the one a plan-
+      adjusting product would act on, and a seven-day plan is the one a
+      well-meaning one would "fix" — so both are pinned here, alongside the
+      partial states and the two sides of a week boundary.
+    */
+    ["with a partly completed week", {
+      completed: [["Week 2", 0], ["Week 2", 2]],
+      response: aiAnswer("maintain"),
+    }],
+    ["with two full weeks running", {
+      completed: [
+        ["Week 1", 0], ["Week 1", 2], ["Week 1", 4],
+        ["Week 2", 0], ["Week 2", 2], ["Week 2", 4],
+      ],
+      response: aiAnswer("maintain"),
+    }],
+    ["with a seven-day plan fully completed", {
+      content: planContent(everyDayWeek),
+      completed: [0, 1, 2, 3, 4, 5, 6].map((day) => ["Week 2", day] as [string, number]),
+      response: aiAnswer("dense-schedule"),
+    }],
+    ["on the last day of Week 1", {
+      completed: [["Week 1", 0], ["Week 1", 2], ["Week 1", 4]],
+      at: new Date("2026-08-09T18:00:00Z"),
+    }],
+    ["on the first day of Week 2", {
+      completed: [["Week 1", 0], ["Week 1", 2], ["Week 1", 4]],
+      at: new Date("2026-08-10T07:00:00Z"),
+    }],
+    ["after the four weeks are over", {
+      completed: [["Week 4", 0]],
+      at: new Date("2026-09-01T09:00:00Z"),
+    }],
+    ["with a model trying to prescribe progression", {
+      completed: [["Week 2", 0], ["Week 2", 2], ["Week 2", 4]],
+      response: {
+        category: "maintain",
+        headline: "Starke Woche",
+        message: "Du bist bereit für mehr — steigere dein Volumen im nächsten Block.",
+        reason: "3 von 3 Trainingstagen abgeschlossen.",
+      },
     }],
   ];
 
@@ -687,6 +1074,7 @@ describe("what the model is told", () => {
       completedDays: 2,
       missedDays: 1,
       completionPercent: 67,
+      durationCoverage: "full",
       measuredDurationMinutes: 90,
       measuredSessionCount: 2,
       previousWeekCompletionPercent: 0,

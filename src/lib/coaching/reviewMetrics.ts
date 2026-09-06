@@ -6,7 +6,7 @@ import {
   type WeeklyReviewMetrics,
 } from "@shared/weeklyRecommendation";
 import { isRestDayContent } from "@/lib/planLifecycle";
-import { filterDaySessionLogs, readCompletedDays } from "@/lib/workoutCompletion";
+import { readCompletedDays } from "@/lib/workoutCompletion";
 import type { WorkoutLog, WorkoutPlan } from "@/lib/types";
 
 /**
@@ -61,16 +61,21 @@ export const readCompletions = (logs: readonly WorkoutLog[]): ReviewCompletion[]
   readCompletedDays(logs).map((day) => ({ ...day, completed: true }));
 
 /**
- * The week's sessions, for the duration figures.
+ * The week's logs, for the duration figures.
  *
- * Day sessions only: an exercise row is not a session, and counting one as
- * "unmeasured" would report more sessions than the week has training days.
+ * Every row of the week is passed through, exercise positions included, and
+ * that is deliberate: `computeWeeklyReviewMetrics` groups them by day, takes
+ * the longest usable measurement any of a day's documents carries, and counts
+ * coverage over the days the week actually completed. Filtering here would
+ * take that tolerance away without changing a single count — a row's presence
+ * no longer inflates the session count, and only the completions above decide
+ * which days are done.
  */
 export const readWeekLogs = (
   logs: readonly WorkoutLog[],
   weekKey: string
 ): ReviewLog[] =>
-  filterDaySessionLogs(logs)
+  logs
     .filter((log) => log.week_key === weekKey)
     .map((log) => ({
       weekKey,

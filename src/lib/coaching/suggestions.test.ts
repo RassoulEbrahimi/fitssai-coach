@@ -120,7 +120,9 @@ describe("preference alignment rules", () => {
       })
     ).find((entry) => entry.code === "session-length-mismatch");
 
-    expect(suggestion?.params).toMatchObject({ preferred: 45, measured: 90, coverage: "full" });
+    // Three completed sessions, one timed: the 90-minute average is over the
+    // measured subset, and the coverage says so rather than implying a total.
+    expect(suggestion?.params).toMatchObject({ preferred: 45, measured: 90, coverage: "partial" });
   });
 
   it("makes no duration claim when nothing was measured", () => {

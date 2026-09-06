@@ -28,11 +28,7 @@ import {
   readPlanWeekDays,
 } from "@/lib/coaching";
 import { resolvePlanDay } from "@/lib/planLifecycle";
-import {
-  filterDaySessionLogs,
-  readCompletedDayDates,
-  readCompletedDays,
-} from "@/lib/workoutCompletion";
+import { readCompletedDayDates, readCompletedDays } from "@/lib/workoutCompletion";
 
 interface HomeViewProps {
   generatingPlans: boolean;
@@ -154,8 +150,14 @@ const HomeView: React.FC<HomeViewProps> = ({
       finished training day. A day log written before PR47 can carry a date
       derived from the plan's creation date rather than its start Monday, so
       that date is not a fallback either.
+
+      The week's logs are handed over unfiltered: `buildWeeklyFacts` reduces
+      them to one entry per completed day (taking the longest measurement any
+      of a day's documents carries) and reads their metadata for history
+      coverage. Only the completions above decide which days are done, so an
+      exercise row here inflates nothing.
     */
-    const weekLogs = filterDaySessionLogs(workoutLogs).filter((log) => log.week_key === weekKey);
+    const weekLogs = workoutLogs.filter((log) => log.week_key === weekKey);
     const completions = readCompletedDays(workoutLogs)
       .filter((day) => day.weekKey === weekKey)
       .map((day) => ({ ...day, completed: true }));

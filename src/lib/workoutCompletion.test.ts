@@ -185,8 +185,18 @@ describe("E. partial session", () => {
   });
 
   it("does not let a measured duration stand in for completion", () => {
-    expect(weekOne(logs).measuredSessionCount).toBe(1);
-    expect(weekOne(logs).completedDays).toBe(0);
+    const metrics = weekOne(logs);
+
+    /*
+      The day was timed, and it still did not happen. Duration coverage counts
+      over *completed* training days, so a measurement on an unfinished day
+      neither completes it nor appears as a session: `none`, not `full`.
+    */
+    expect(metrics.completedDays).toBe(0);
+    expect(metrics.measuredSessionCount).toBe(0);
+    expect(metrics.unmeasuredSessionCount).toBe(0);
+    expect(metrics.durationCoverage).toBe("none");
+    expect(metrics.measuredDurationSec).toBeNull();
   });
 });
 
@@ -267,6 +277,73 @@ describe("G. a three-day plan week counts true sessions only", () => {
 
     expect(metrics.completedDays).toBeLessThanOrEqual(metrics.scheduledDays);
     expect(metrics.completedDays).toBe(1);
+  });
+});
+
+describe("duration coverage under both rules", () => {
+  /*
+    The two rules meet here. PR59 counts coverage over *completed training
+    days*, taking the longest usable measurement any of that day's documents
+    carries; PR60 decides which documents may say a day was completed. Neither
+    weakens the other, and this pins that.
+  */
+  const day = (dayIndex: number, over: Record<string, unknown> = {}) =>
+    daySession({
+      id: `day-${dayIndex}`,
+      day_index: dayIndex,
+      workout_day: `2026-08-${String(3 + dayIndex).padStart(2, "0")}`,
+      ...over,
+    });
+
+  it("reports one measured session for a timed day buried in exercise rows", () => {
+    const metrics = weekOne([
+      day(0, { duration_sec: 3_600 }),
+      ...[0, 1, 2, 3].map((index) => exerciseLog({ id: `ex-${index}`, exercise_index: index })),
+    ]);
+
+    expect(metrics.completedDays).toBe(1);
+    expect(metrics.measuredSessionCount).toBe(1);
+    expect(metrics.unmeasuredSessionCount).toBe(0);
+    expect(metrics.durationCoverage).toBe("full");
+    expect(metrics.measuredDurationSec).toBe(3_600);
+  });
+
+  it("still reads a day's length from any of that day's documents", () => {
+    // PR59's tolerance: the measurement is whichever document carries it, and
+    // the longest one wins. An exercise row may hold a duration; it still
+    // cannot complete the day, which is what the completion above is for.
+    const metrics = weekOne([
+      day(0),
+      exerciseLog({ id: "ex-0", exercise_index: 0, duration_sec: 2_400 }),
+      exerciseLog({ id: "ex-1", exercise_index: 1, duration_sec: 1_200 }),
+    ]);
+
+    expect(metrics.completedDays).toBe(1);
+    expect(metrics.measuredDurationSec).toBe(2_400);
+    expect(metrics.measuredSessionCount).toBe(1);
+  });
+
+  it("keeps measured + unmeasured equal to the completed days", () => {
+    const metrics = weekOne([
+      day(0, { duration_sec: 3_000 }),
+      day(2),
+      ...[0, 1, 2].map((index) =>
+        exerciseLog({ id: `ex-${index}`, day_index: 4, exercise_index: index })
+      ),
+    ]);
+
+    expect(metrics.completedDays).toBe(2);
+    expect(metrics.measuredSessionCount + metrics.unmeasuredSessionCount).toBe(2);
+    expect(metrics.durationCoverage).toBe("partial");
+  });
+
+  it("counts no session at all for a timed day that was never completed", () => {
+    const metrics = weekOne([day(0, { completed: false, duration_sec: 3_000 })]);
+
+    expect(metrics.completedDays).toBe(0);
+    expect(metrics.measuredSessionCount).toBe(0);
+    expect(metrics.unmeasuredSessionCount).toBe(0);
+    expect(metrics.durationCoverage).toBe("none");
   });
 });
 
