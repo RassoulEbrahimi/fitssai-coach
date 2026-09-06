@@ -409,7 +409,9 @@ describe("buildWeeklyFacts", () => {
     const facts = buildWeeklyFacts({ ...base, preferences: { daysPerWeek: 4, sessionMinutes: 45 } });
 
     expect(facts.adherence.completedDays).toBe(2);
-    expect(facts.duration.state).toBe("full");
+    // Two completed sessions, one of them timed. Coverage is counted over the
+    // sessions the week completed, so this is a floor and says so.
+    expect(facts.duration.state).toBe("partial");
     expect(facts.history.state).toBe("complete");
     expect(facts.alignment.frequency?.matches).toBe(false);
     expect(facts.hasAnyData).toBe(true);

@@ -95,7 +95,8 @@ describe("duration copy", () => {
     const partial = computeDurationCoverage([{ durationSec: 2700 }, { durationSec: null }]);
 
     expect(durationText(partial)).toBe("mind. 45 Min.");
-    expect(durationCaption(partial)).toBe("Dauer teilweise erfasst");
+    // Both counts, so the reader can see how much of the week the floor covers.
+    expect(durationCaption(partial)).toBe("1 von 2 Einheiten erfasst");
   });
 
   it("shows a full measured total without qualification", () => {

@@ -112,7 +112,12 @@ export const buildWeeklyReviewInput = (
     completionPercent: metrics.completionPercent,
     ...(minutes === undefined
       ? {}
-      : { measuredDurationMinutes: minutes, measuredSessionCount: metrics.measuredSessionCount }),
+      : {
+          measuredDurationMinutes: minutes,
+          measuredSessionCount: metrics.measuredSessionCount,
+          // "none" cannot reach here: minutes are absent exactly then.
+          durationCoverage: metrics.durationCoverage === "partial" ? "partial" : "full",
+        }),
     ...(typeof previous === "number" ? { previousWeekCompletionPercent: previous } : {}),
     ...(profile.goal ? { goal: profile.goal } : {}),
     ...(profile.experienceLevel ? { experienceLevel: profile.experienceLevel } : {}),

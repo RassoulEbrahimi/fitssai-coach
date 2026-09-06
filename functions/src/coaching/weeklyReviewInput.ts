@@ -35,6 +35,14 @@ export const weeklyReviewInputSchema = z
     /** Only when sessions actually carried a measured length. */
     measuredDurationMinutes: z.number().int().min(0).max(2000).optional(),
     measuredSessionCount: z.number().int().min(0).max(7).optional(),
+    /**
+     * Whether that measurement covers every completed session or only some.
+     *
+     * Sent alongside the minutes rather than left implicit: a partly measured
+     * week's total is a floor, and a model that is not told so will present it
+     * as the week's training time. Absent exactly when the minutes are.
+     */
+    durationCoverage: z.enum(["partial", "full"]).optional(),
     /** Only when the plan has a preceding week. */
     previousWeekCompletionPercent: z.number().int().min(0).max(100).optional(),
     goal: z.enum(FITNESS_GOALS).optional(),

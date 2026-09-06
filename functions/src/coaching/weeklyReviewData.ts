@@ -6,7 +6,7 @@ import {
   type ReviewPlanDay,
   type WeeklyReviewMetrics,
 } from "../../../shared/weeklyRecommendation";
-import { PLAN_TOTAL_WEEKS } from "../../../shared/workoutPlan";
+import { resolvePlanWeek, type ResolvedPlanWeek } from "../../../shared/planWeek";
 import { normaliseFitnessGoal } from "./profileInput";
 import { EXPERIENCE_LEVELS, type ExperienceLevel, type FitnessGoal } from "./planGenerationInput";
 
@@ -24,73 +24,19 @@ import { EXPERIENCE_LEVELS, type ExperienceLevel, type FitnessGoal } from "./pla
  * not to be.
  */
 
-/** Users train in Germany; the plan's weeks are Berlin calendar weeks. */
-const PLAN_TIMEZONE = "Europe/Berlin";
-
-const berlinDayFormatter = new Intl.DateTimeFormat("en-CA", {
-  timeZone: PLAN_TIMEZONE,
-  year: "numeric",
-  month: "2-digit",
-  day: "2-digit",
-});
-
-/**
- * Whole days since the epoch for the Berlin calendar day of `date`.
- *
- * Formatting to a Berlin wall-clock date and re-reading it as UTC midnight is
- * what makes the arithmetic below a *calendar* difference rather than a
- * duration: 23-hour and 25-hour days at the DST boundaries would otherwise
- * shift a week by one. The client reaches the same number through date-fns-tz,
- * and a test pins the two together.
+/*
+ * The plan-week arithmetic now lives in `shared/planWeek.ts` so the backend
+ * and the client agree on it by construction rather than by review. It is
+ * re-exported here because that is where the rest of this feature imports it
+ * from, and because a Berlin week boundary is precisely the thing this module
+ * must not get wrong twice.
  */
-export const berlinDayNumber = (date: Date): number =>
-  Math.floor(Date.parse(`${berlinDayFormatter.format(date)}T00:00:00Z`) / 86_400_000);
+export { berlinDayNumber, mondayIndex } from "../../../shared/planWeek";
 
-/** Monday-based weekday index (0 = Monday) for an epoch day number. */
-export const mondayIndex = (dayNumber: number): number =>
-  // 1970-01-01 was a Thursday, i.e. index 3.
-  (((dayNumber + 3) % 7) + 7) % 7;
+export type ResolvedReviewWeek = ResolvedPlanWeek;
 
-export interface ResolvedReviewWeek {
-  /** `"Week 1".."Week 4"`, or null when the date is outside the programme. */
-  weekKey: string | null;
-  weekNumber: number | null;
-  /** The preceding week, when there is one inside the programme. */
-  previousWeekKey: string | null;
-  /** True once the date is past Week 4. */
-  planFinished: boolean;
-}
-
-/**
- * Which week of the programme a date falls in.
- *
- * Anchored on the Monday of the week the plan was created, exactly as the
- * client's `resolvePlanDay` is: a plan created on a Wednesday still starts its
- * Week 1 on the Monday before. Deliberately clamped rather than wrapped — a
- * four-week plan has no Week 5, and a date past it resolves to nothing rather
- * than silently to Week 1 again.
- */
-export const resolveReviewWeek = (planCreatedAt: Date, at: Date): ResolvedReviewWeek => {
-  const created = berlinDayNumber(planCreatedAt);
-  const planStart = created - mondayIndex(created);
-  const dayOffset = berlinDayNumber(at) - planStart;
-
-  if (dayOffset < 0) {
-    return { weekKey: null, weekNumber: null, previousWeekKey: null, planFinished: false };
-  }
-
-  const weekNumber = Math.floor(dayOffset / 7) + 1;
-  if (weekNumber > PLAN_TOTAL_WEEKS) {
-    return { weekKey: null, weekNumber: null, previousWeekKey: null, planFinished: true };
-  }
-
-  return {
-    weekKey: `Week ${weekNumber}`,
-    weekNumber,
-    previousWeekKey: weekNumber > 1 ? `Week ${weekNumber - 1}` : null,
-    planFinished: false,
-  };
-};
+/** Which week of the programme a date falls in. See `shared/planWeek.ts`. */
+export const resolveReviewWeek = resolvePlanWeek;
 
 /* ------------------------------------------------------------------ *
  * Reading the stored documents
