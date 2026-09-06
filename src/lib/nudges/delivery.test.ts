@@ -28,6 +28,7 @@ import type { TrainingNudge } from "./eligibility";
 const nudge: TrainingNudge = {
   type: "planned-session-today",
   key: "plan-1|Week 1|0|planned-session-today",
+  dayKey: "plan-1|Week 1|0",
   title: "Heute ist eine Trainingseinheit geplant.",
   body: "Wenn es heute für dich passt, kannst du deinen Plan öffnen.",
   browserDeliverable: true,
@@ -131,8 +132,9 @@ describe("showing a browser nudge", () => {
 
     expect(showNotification).toHaveBeenCalledWith(nudge.title, expect.objectContaining({
       body: nudge.body,
-      // One tag per training day, so a re-show replaces instead of stacking.
-      tag: nudge.key,
+      // Tagged by training day, not by wording, so a re-show replaces instead
+      // of stacking a second reminder for the same session.
+      tag: nudge.dayKey,
     }));
   });
 

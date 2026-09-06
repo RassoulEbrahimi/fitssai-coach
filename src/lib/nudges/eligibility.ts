@@ -72,11 +72,24 @@ export interface NudgeContext {
 export interface TrainingNudge {
   type: NudgeType;
   /**
-   * Stable identity of this nudge for this training day, and the key the
-   * anti-spam record is written under. Carries the plan id, so a new plan is
-   * a new nudge, and the plan position, so tomorrow is eligible again.
+   * Identity of this *nudge*, wording included. Render identity only — it
+   * changes when the day's wording changes, so it must never be what delivery
+   * or dismissal is remembered under. Use `dayKey` for that.
    */
   key: string;
+  /**
+   * Identity of the *training day*: plan, week and day position, and nothing
+   * else. This is the anti-spam key.
+   *
+   * It deliberately excludes the nudge type. The same day moves from
+   * "planned-session-today" to "unfinished-session" the moment one exercise is
+   * ticked off, and a key carrying the type would read that transition as a
+   * second, unseen nudge and raise a second notification on the same training
+   * day. The product rule is one browser notification per planned training
+   * day, whatever the app ends up calling it. A new plan or the next day is a
+   * different position, so both are eligible again.
+   */
+  dayKey: string;
   title: string;
   body: string;
   /**
@@ -167,15 +180,25 @@ const readWeekCounts = (
   };
 };
 
-/** The per-training-day identity a nudge is remembered under. */
+/**
+ * The training day a nudge belongs to: `planId|weekKey|dayIndex`.
+ *
+ * Everything the anti-spam record is keyed on, and nothing that can change
+ * while the day is still the same day.
+ */
+export const trainingDayKey = (context: NudgeContext): string =>
+  [context.planId ?? "no-plan", context.weekKey, context.dayIndex].join("|");
+
+/** The render identity of one nudge — the training day plus its wording. */
 export const nudgeKey = (context: NudgeContext, type: NudgeType): string =>
-  [context.planId ?? "no-plan", context.weekKey, context.dayIndex, type].join("|");
+  [trainingDayKey(context), type].join("|");
 
 const buildDayNudge = (kind: DayNudgeKind, context: NudgeContext): TrainingNudge => {
   const text = dayNudgeText(kind);
   return {
     type: kind,
     key: nudgeKey(context, kind),
+    dayKey: trainingDayKey(context),
     title: text.title,
     body: text.body,
     browserDeliverable: true,
@@ -195,6 +218,8 @@ const buildWeeklyNudge = (context: NudgeContext): TrainingNudge | null => {
   return {
     type: "weekly-consistency",
     key: nudgeKey(context, "weekly-consistency"),
+    /* Same day identity as the day nudge, so one dismissal closes the day. */
+    dayKey: trainingDayKey(context),
     title: text.title,
     body: text.body,
     /* In-app only: a count is context, never a reason to interrupt somebody. */

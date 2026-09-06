@@ -209,8 +209,12 @@ export const showBrowserNudge = async (
 
   const options: NotificationOptions = {
     body: nudge.body,
-    /* Same tag per training day: a re-show replaces, never stacks. */
-    tag: nudge.key,
+    /*
+      Day-scoped, like the delivery record: if a notification for this training
+      day is somehow raised twice, the second replaces the first instead of
+      stacking a second reminder for the same session.
+    */
+    tag: nudge.dayKey,
     icon: "/fitssai-coach/icons/fitssai-192.png",
     badge: "/fitssai-coach/icons/fitssai-192.png",
     silent: true,

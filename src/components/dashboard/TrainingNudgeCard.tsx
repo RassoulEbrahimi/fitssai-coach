@@ -87,7 +87,8 @@ export const TrainingNudgeCard: React.FC<TrainingNudgeCardProps> = ({
               size="icon"
               className="h-7 w-7 shrink-0 text-muted-foreground"
               aria-label="Hinweis ausblenden"
-              onClick={() => onDismiss(primary.key)}
+              /* The day, not the wording: see TrainingNudge.dayKey. */
+              onClick={() => onDismiss(primary.dayKey)}
             >
               <X className="h-4 w-4" aria-hidden="true" />
             </Button>

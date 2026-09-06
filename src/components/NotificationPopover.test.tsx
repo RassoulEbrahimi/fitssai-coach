@@ -29,6 +29,7 @@ const renderPopover = (nudges: TrainingNudge[] = []) =>
 const openNudge: TrainingNudge = {
   type: "planned-session-today",
   key: "plan-1|Week 1|0|planned-session-today",
+  dayKey: "plan-1|Week 1|0",
   title: "Heute ist eine Trainingseinheit geplant.",
   body: "Wenn es heute für dich passt, kannst du deinen Plan öffnen.",
   browserDeliverable: true,

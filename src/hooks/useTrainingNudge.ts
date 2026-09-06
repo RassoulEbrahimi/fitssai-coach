@@ -90,10 +90,16 @@ export const useTrainingNudge = ({
   /*
     One browser notification per training day, at most.
 
+    Keyed on `dayKey` — the plan position — and never on the nudge type. The
+    day's wording changes as soon as one exercise is ticked off
+    ("planned-session-today" becomes "unfinished-session"), and a type-scoped
+    key would treat that as a fresh nudge and interrupt the same person about
+    the same session twice.
+
     The record is written *before* the notification is raised, so a re-render,
     a StrictMode double-invoke or a reload cannot produce a second one: the
     next pass sees the delivery already recorded. A completed day never gets
-    here at all — it is not eligible — and a dismissed nudge is treated as
+    here at all — it is not eligible — and a dismissed day is treated as
     already answered.
   */
   useEffect(() => {
@@ -102,15 +108,23 @@ export const useTrainingNudge = ({
 
     const target = evaluation.nudges.find((nudge) => nudge.browserDeliverable);
     if (!target) return;
-    if (isNudgeDelivered(record, target.key) || isNudgeDismissed(record, target.key)) return;
+    if (isNudgeDelivered(record, target.dayKey) || isNudgeDismissed(record, target.dayKey)) return;
 
-    setRecord((current) => persistNudgeRecord(markNudgeDelivered(current, target.key, day)));
+    setRecord((current) => persistNudgeRecord(markNudgeDelivered(current, target.dayKey, day)));
     void showBrowserNudge(target);
   }, [enabled, channelState, evaluation, record, day]);
 
+  /**
+   * Close today's nudge.
+   *
+   * Takes a `dayKey`, so a dismissal covers the training day rather than one
+   * phrasing of it: dismissing before the first exercise must not come back as
+   * "noch offen" after it. Writes to this device's nudge record and to nothing
+   * else — no completion, no log, no plan.
+   */
   const dismiss = useCallback(
-    (key: string) => {
-      setRecord((current) => persistNudgeRecord(markNudgeDismissed(current, key, day)));
+    (dayKey: string) => {
+      setRecord((current) => persistNudgeRecord(markNudgeDismissed(current, dayKey, day)));
     },
     [day]
   );
@@ -122,15 +136,15 @@ export const useTrainingNudge = ({
   }, []);
 
   /*
-    Dismissing the day nudge dismisses the day. The weekly count is context for
-    that nudge rather than a nudge of its own, so leaving it behind would mean
-    the user closes a card and a card stays.
+    Dismissing the day dismisses every nudge on it — the weekly count is
+    context for the day nudge rather than a nudge of its own, so leaving it
+    behind would mean the user closes a card and a card stays. Both carry the
+    same `dayKey`, so this is one filter rather than a special case.
   */
-  const nudges = useMemo(() => {
-    const dayNudge = evaluation.nudges.find((nudge) => nudge.browserDeliverable);
-    if (dayNudge && isNudgeDismissed(record, dayNudge.key)) return [];
-    return evaluation.nudges.filter((nudge) => !isNudgeDismissed(record, nudge.key));
-  }, [evaluation, record]);
+  const nudges = useMemo(
+    () => evaluation.nudges.filter((nudge) => !isNudgeDismissed(record, nudge.dayKey)),
+    [evaluation, record]
+  );
 
   return { nudges, evaluation, channelState, requestPermission, dismiss };
 };

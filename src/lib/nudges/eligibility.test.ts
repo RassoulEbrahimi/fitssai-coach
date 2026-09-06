@@ -150,6 +150,33 @@ describe("nudge eligibility", () => {
     );
   });
 
+  it("G2. keeps one training-day identity across the wording change", () => {
+    /*
+      The delivery key must not move when the day's wording does. Ticking one
+      exercise renames the nudge; a key carrying that name would look like a
+      second nudge and interrupt the same session twice.
+    */
+    const untouched = evaluateTrainingNudges({ plan: plan(), date: MONDAY_WEEK_1, logs: [] });
+    const started = evaluateTrainingNudges({
+      plan: plan(),
+      date: MONDAY_WEEK_1,
+      logs: [exerciseLog("Week 1", 0, 0)],
+    });
+
+    expect(untouched.nudges[0].type).toBe("planned-session-today");
+    expect(started.nudges[0].type).toBe("unfinished-session");
+    expect(started.nudges[0].key).not.toBe(untouched.nudges[0].key);
+    expect(started.nudges[0].dayKey).toBe(untouched.nudges[0].dayKey);
+    expect(started.nudges[0].dayKey).toBe("plan-1|Week 1|0");
+  });
+
+  it("G3. gives every nudge on one day the same day identity", () => {
+    // One dismissal has to be able to close the day, weekly line included.
+    const result = evaluateTrainingNudges({ plan: plan(), date: MONDAY_WEEK_1, logs: [] });
+
+    expect(new Set(result.nudges.map((nudge) => nudge.dayKey)).size).toBe(1);
+  });
+
   it("G. produces the same nudge key for the same training day", () => {
     // The key is what the delivery record dedupes on across reloads.
     const first = evaluateTrainingNudges({ plan: plan(), date: MONDAY_WEEK_1, logs: [] });
@@ -166,6 +193,8 @@ describe("nudge eligibility", () => {
     expect(wednesday.eligible).toBe(true);
     expect(wednesday.context?.dayIndex).toBe(2);
     expect(wednesday.nudges[0].key).not.toBe(monday.nudges[0].key);
+    // And a different training day, so the delivery record cannot suppress it.
+    expect(wednesday.nudges[0].dayKey).not.toBe(monday.nudges[0].dayKey);
   });
 
   it("ignores logs that cannot be placed in either family", () => {

@@ -8,6 +8,7 @@ import type { TrainingNudge } from "@/lib/nudges";
 const dayNudge: TrainingNudge = {
   type: "planned-session-today",
   key: "plan-1|Week 1|0|planned-session-today",
+  dayKey: "plan-1|Week 1|0",
   title: "Heute ist eine Trainingseinheit geplant.",
   body: "Wenn es heute für dich passt, kannst du deinen Plan öffnen.",
   browserDeliverable: true,
@@ -16,6 +17,8 @@ const dayNudge: TrainingNudge = {
 const weeklyNudge: TrainingNudge = {
   type: "weekly-consistency",
   key: "plan-1|Week 1|0|weekly-consistency",
+  /* Same training day as the day nudge above — one dismissal closes both. */
+  dayKey: "plan-1|Week 1|0",
   title: "Diese Woche sind noch 2 von 3 geplanten Einheiten offen.",
   body: "Gezählt werden abgeschlossene Einheiten aus deinem Plan.",
   browserDeliverable: false,
@@ -55,11 +58,17 @@ describe("TrainingNudgeCard", () => {
     expect(screen.queryByRole("button", { name: "Plan öffnen" })).not.toBeInTheDocument();
   });
 
-  it("dismisses by the day nudge's key", async () => {
+  it("dismisses the training day, not one phrasing of it", async () => {
+    /*
+      The card hands back `dayKey`, so a dismissal covers the day however its
+      wording changes later — dismissing "geplant" must not come back as "noch
+      offen" once an exercise is ticked off.
+    */
     const onDismiss = vi.fn();
     render(<TrainingNudgeCard nudges={[dayNudge, weeklyNudge]} onDismiss={onDismiss} />);
 
     await userEvent.click(screen.getByRole("button", { name: "Hinweis ausblenden" }));
-    expect(onDismiss).toHaveBeenCalledWith(dayNudge.key);
+    expect(onDismiss).toHaveBeenCalledWith(dayNudge.dayKey);
+    expect(onDismiss).not.toHaveBeenCalledWith(dayNudge.key);
   });
 });
