@@ -40,10 +40,9 @@ export type SessionRecordOutcome =
 /**
  * Record the measured length of a finished session.
  *
- * Ending a session is **not** the same as completing the workout: the user can
- * finish at any point, and `handleCloseSummary` fires either way. So this
- * writes `durationSec` and the day's identity — and never touches `completed`.
- * Only an explicit day/session completion can complete the workout day.
+ * Duration alone never completes a workout. Callers recording only a duration
+ * retain this contract; the explicit successful finish action below opts into
+ * completion in the same guarded write.
  *
  * The write is idempotent by construction: `durationSec` is set to an absolute
  * value, never incremented, so replaying it (a double-tap, a retry) stores the
@@ -52,6 +51,21 @@ export type SessionRecordOutcome =
  */
 export const recordSessionDuration = async (
   input: SessionRecordInput
+): Promise<SessionRecordOutcome> => writeSessionRecord(input, false);
+
+/**
+ * The summary's deliberate save-and-finish action. A written result acknowledges
+ * duration AND completion together. PR #62's skipped result still means terminal
+ * closure without saved-training success, so it writes neither. No checked-set
+ * threshold, timer callback or duration-only caller can invoke completion.
+ */
+export const recordSuccessfulWorkoutFinish = async (
+  input: SessionRecordInput
+): Promise<SessionRecordOutcome> => writeSessionRecord(input, true);
+
+const writeSessionRecord = async (
+  input: SessionRecordInput,
+  completeWorkout: boolean,
 ): Promise<SessionRecordOutcome> => {
   const { uid, planId, weekKey, dayIndex, workoutDay, startedAt, endedAt } = input;
 
@@ -74,7 +88,8 @@ export const recordSessionDuration = async (
     dayIndex,
     durationSec,
     durationMeasuredAt: Timestamp.now(),
-    // Finishing records duration only; explicit day completion is separate.
+    // Replays use the frozen first finish instant, never the retry clock.
+    ...(completeWorkout ? { completed: true, completedAt: Timestamp.fromMillis(endedAt) } : {}),
   });
 
   return { status: "written", durationSec };

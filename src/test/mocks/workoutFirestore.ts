@@ -2,7 +2,7 @@ import { vi } from "vitest";
 
 type Row = Record<string, unknown>;
 type Ref = { path: string };
-type Filter = { field: string; value: unknown };
+type Filter = { field: string; op: string; value: unknown };
 
 /** In-memory Firestore boundary: production queries and writers remain real. */
 export const rows = new Map<string, Row>();
@@ -30,12 +30,15 @@ const snapshot = (path: string) => ({
 export const firestore = {
   collection: ref,
   doc: ref,
-  where: (field: string, _op: string, value: unknown): Filter => ({ field, value }),
+  where: (field: string, op: string, value: unknown): Filter => ({ field, op, value }),
   query: (source: Ref, ...filters: Filter[]) => ({ source, filters }),
   getDocs: vi.fn(async ({ source, filters }: { source: Ref; filters: Filter[] }) => {
     const docs = [...rows.entries()].filter(([path, data]) =>
       path.startsWith(`${source.path}/`) && path.split("/").length === source.path.split("/").length + 1 &&
-      filters.every(f => data[f.field] === f.value)
+      filters.every(f => f.op === '==' ? data[f.field] === f.value :
+        typeof data[f.field] === 'string' && typeof f.value === 'string' &&
+        (f.op === '>=' ? (data[f.field] as string) >= f.value :
+          f.op === '<=' && (data[f.field] as string) <= f.value))
     ).map(([path]) => snapshot(path));
     return { docs, empty: docs.length === 0 };
   }),
@@ -65,8 +68,11 @@ export const firestore = {
     await task;
   }),
   Timestamp: class {
-    static now() { return new this(); }
-    toDate() { return new Date(); }
+    constructor(private millis: number = Date.now()) {}
+    static now() { return new this(Date.now()); }
+    static fromMillis(millis: number) { return new this(millis); }
+    toDate() { return new Date(this.millis); }
+    toMillis() { return this.millis; }
   },
 };
 

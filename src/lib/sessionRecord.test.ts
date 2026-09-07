@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { rows, writes, control, resetWorkoutFirestore, logPath } from "@/test/mocks/workoutFirestore";
 
 vi.mock("firebase/firestore", async () => (await import("@/test/mocks/workoutFirestore")).firestore);
-import { recordSessionDuration } from "./sessionRecord";
+import { recordSessionDuration, recordSuccessfulWorkoutFinish } from "./sessionRecord";
 import { isCompletedDayLog } from "./workoutCompletion";
 import { MAX_SESSION_SEC } from "./workoutLog";
 
@@ -10,6 +10,69 @@ const STARTED = Date.parse("2026-03-10T18:00:00Z");
 const identity = { planId: "plan-1", weekKey: "Week 2", dayIndex: 1, workoutDay: "2026-03-10" };
 const input = (overrides: Partial<Parameters<typeof recordSessionDuration>[0]> = {}) => ({
   uid: "u1", ...identity, startedAt: STARTED, endedAt: STARTED + 2700_000, ...overrides,
+});
+
+describe('explicit successful workout finish', () => {
+  it('atomically completes a new day with its measured duration and frozen finish timestamp', async () => {
+    await recordSuccessfulWorkoutFinish(input());
+    expect(writes).toHaveLength(1);
+    expect(writes[0].data).toMatchObject({ ...identity, durationSec: 2700, completed: true });
+    expect(writes[0].data.completedAt).toEqual(expect.objectContaining({ millis: input().endedAt }));
+    expect([...rows.values()].filter(isCompletedDayLog)).toHaveLength(1);
+  });
+
+  it('updates the existing day without touching exercise parents or sets', async () => {
+    rows.set(logPath('a-exercise'), exercise);
+    rows.set(logPath('a-exercise/workout_set_logs/set-1'), { repsCompleted: 10 });
+    rows.set(logPath('z-day'), { ...identity, completed: false });
+    await recordSuccessfulWorkoutFinish(input());
+    expect(writes.map(w => w.path)).toEqual([logPath('z-day')]);
+    expect(rows.get(logPath('z-day'))).toMatchObject({ completed: true, durationSec: 2700 });
+    expect(rows.get(logPath('a-exercise'))).toEqual(exercise);
+    expect(rows.get(logPath('a-exercise/workout_set_logs/set-1'))).toEqual({ repsCompleted: 10 });
+  });
+
+  it('converges simultaneous finishes and retries on one completed day', async () => {
+    await Promise.all([recordSuccessfulWorkoutFinish(input()), recordSuccessfulWorkoutFinish(input())]);
+    await recordSuccessfulWorkoutFinish(input());
+    expect(rows.size).toBe(1);
+    expect([...rows.values()].filter(isCompletedDayLog)).toHaveLength(1);
+    expect(new Set(writes.map(w => w.path)).size).toBe(1);
+    expect(writes.every(w => (w.data.completedAt as { toMillis(): number }).toMillis() === input().endedAt)).toBe(true);
+  });
+
+  it('leaves an existing incomplete day unchanged on rejection, then retries coherently', async () => {
+    const original = { ...identity, completed: false, durationSec: 120 };
+    rows.set(logPath('day'), original);
+    control.rejectNext = true;
+    await expect(recordSuccessfulWorkoutFinish(input())).rejects.toThrow('Persistence rejected');
+    expect(writes).toHaveLength(0);
+    expect(rows.get(logPath('day'))).toEqual(original);
+    expect([...rows.values()].some(isCompletedDayLog)).toBe(false);
+    await recordSuccessfulWorkoutFinish(input());
+    expect(rows.get(logPath('day'))).toMatchObject({ completed: true, durationSec: 2700 });
+  });
+
+  it.each([0, '0', -1, {}, false])('cannot complete an exercise at the target address with index %j', async exerciseIndex => {
+    const original = { ...exercise, exerciseIndex };
+    rows.set(logPath('day-session_plan-1_2026-03-10'), original);
+    await expect(recordSuccessfulWorkoutFinish(input())).rejects.toThrow('identity conflict');
+    expect(writes).toHaveLength(0);
+    expect([...rows.values()]).toEqual([original]);
+    expect([...rows.values()].some(isCompletedDayLog)).toBe(false);
+  });
+
+  it.each([null, STARTED + 3000_000, STARTED - MAX_SESSION_SEC * 1000])(
+    'preserves terminal skipped-duration semantics for start %s', async startedAt => {
+      expect(await recordSuccessfulWorkoutFinish(input({ startedAt }))).toEqual({ status: 'skipped', reason: 'no-duration' });
+      expect(writes).toHaveLength(0);
+      expect([...rows.values()].some(isCompletedDayLog)).toBe(false);
+    },
+  );
+  it('does not complete when metadata is skipped', async () => {
+    expect(await recordSuccessfulWorkoutFinish(input({ weekKey: '' }))).toEqual({ status: 'skipped', reason: 'incomplete-metadata' });
+    expect(writes).toHaveLength(0);
+  });
 });
 const exercise = { ...identity, exerciseIndex: 0, completed: true };
 beforeEach(resetWorkoutFirestore);
