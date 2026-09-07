@@ -1,5 +1,6 @@
 import { Timestamp } from "firebase/firestore";
 import { writeDaySessionRecord } from "@/lib/daySessionRecord";
+import { isBerlinFuture } from "@/lib/dateUtils";
 import {
   computeDurationSec,
   isWorkoutDayString,
@@ -36,6 +37,13 @@ export type SessionRecordOutcome =
   | { status: "skipped"; reason: "no-duration" }
   /** The metadata was incomplete, so there was no document to write to. */
   | { status: "skipped"; reason: "incomplete-metadata" };
+
+export class FutureWorkoutDayError extends Error {
+  constructor() {
+    super("Future workout days cannot be completed");
+    this.name = "FutureWorkoutDayError";
+  }
+}
 
 /**
  * Record the measured length of a finished session.
@@ -75,6 +83,11 @@ const writeSessionRecord = async (
   if (!Number.isInteger(dayIndex) || dayIndex < 0 || dayIndex > 6) {
     return { status: "skipped", reason: "incomplete-metadata" };
   }
+
+  // Use the same current Berlin day as Dashboard.toggleDayComplete. Check the
+  // bound date, not the selected UI day or a supplied/frozen finish timestamp.
+  // Reject before any duration or completion write, even for hydrated sessions.
+  if (completeWorkout && isBerlinFuture(workoutDay)) throw new FutureWorkoutDayError();
 
   const durationSec = computeDurationSec(startedAt, endedAt);
   if (durationSec === null) {

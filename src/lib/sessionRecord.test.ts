@@ -1,8 +1,8 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { rows, writes, control, resetWorkoutFirestore, logPath } from "@/test/mocks/workoutFirestore";
 
 vi.mock("firebase/firestore", async () => (await import("@/test/mocks/workoutFirestore")).firestore);
-import { recordSessionDuration, recordSuccessfulWorkoutFinish } from "./sessionRecord";
+import { FutureWorkoutDayError, recordSessionDuration, recordSuccessfulWorkoutFinish } from "./sessionRecord";
 import { isCompletedDayLog } from "./workoutCompletion";
 import { MAX_SESSION_SEC } from "./workoutLog";
 
@@ -75,7 +75,50 @@ describe('explicit successful workout finish', () => {
   });
 });
 const exercise = { ...identity, exerciseIndex: 0, completed: true };
-beforeEach(resetWorkoutFirestore);
+beforeEach(() => {
+  resetWorkoutFirestore();
+  vi.useFakeTimers({ toFake: ['Date'] });
+  vi.setSystemTime(STARTED + 2700_000);
+});
+afterEach(() => vi.useRealTimers());
+
+describe('future-day successful finish guard', () => {
+  it.each([false, true])('rejects before any write (existing future day: %s)', async existing => {
+    const future = input({ workoutDay: '2026-03-11', dayIndex: 2 });
+    const original = { ...identity, workoutDay: future.workoutDay, dayIndex: 2, completed: false };
+    if (existing) rows.set(logPath('future-day'), original);
+    rows.set(logPath('exercise'), { ...original, exerciseIndex: 0, completed: true });
+    rows.set(logPath('exercise/workout_set_logs/set-1'), { repsCompleted: 10 });
+    const before = [...rows.entries()];
+    // Even a supplied future finish instant must not advance the eligibility clock.
+    await expect(recordSuccessfulWorkoutFinish({ ...future,
+      startedAt: STARTED + 86400_000, endedAt: STARTED + 86400_000 + 2700_000,
+    })).rejects.toBeInstanceOf(FutureWorkoutDayError);
+    expect(writes).toHaveLength(0);
+    expect([...rows.entries()]).toEqual(before);
+    expect([...rows.values()].some(isCompletedDayLog)).toBe(false);
+  });
+
+  it.each([
+    ['2026-09-07T21:59:59Z', '2026-09-08', true],
+    ['2026-09-07T22:00:00Z', '2026-09-08', false],
+    ['2026-01-07T22:59:59Z', '2026-01-08', true],
+    ['2026-01-07T23:00:00Z', '2026-01-08', false],
+    ['2026-09-08T10:00:00Z', '2026-09-07', false],
+  ])('uses Berlin calendar eligibility at %s for %s', async (now, workoutDay, future) => {
+    const endedAt = Date.parse(now);
+    vi.setSystemTime(endedAt);
+    const result = recordSuccessfulWorkoutFinish(input({ workoutDay, startedAt: endedAt - 600_000, endedAt }));
+    if (future) {
+      await expect(result).rejects.toBeInstanceOf(FutureWorkoutDayError);
+      expect(writes).toHaveLength(0);
+    } else {
+      await expect(result).resolves.toEqual({ status: 'written', durationSec: 600 });
+      expect(writes).toHaveLength(1);
+      expect(writes[0].data).toMatchObject({ workoutDay, completed: true, durationSec: 600 });
+    }
+  });
+});
 
 describe("recordSessionDuration with real mixed-row selection", () => {
   it("creates a day session when an exercise row exists first, without touching its sets", async () => {

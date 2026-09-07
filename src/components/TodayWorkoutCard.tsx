@@ -26,7 +26,7 @@ import { useTraining } from "@/contexts/TrainingContext";
 import { useFocusMode } from "@/contexts/FocusModeContext";
 import { useSetTracking } from "@/hooks/useSetTracking";
 import { getWorkoutDateString } from "@/lib/workoutDateUtils";
-import { recordSuccessfulWorkoutFinish, type SessionRecordOutcome } from "@/lib/sessionRecord";
+import { FutureWorkoutDayError, recordSuccessfulWorkoutFinish, type SessionRecordOutcome } from "@/lib/sessionRecord";
 import { useRestTimer } from "@/hooks/useRestTimer";
 import ExerciseWithSets from "@/components/workout/ExerciseWithSets";
 import workoutHeroBg from "@/assets/workout-hero-bg.jpg";
@@ -362,8 +362,11 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
         dayIndex: session?.dayIndex,
         message: error instanceof Error ? error.message : String(error),
       });
-      setFinishError(FINISH_RETRY_MESSAGE);
-      showToast(FINISH_RETRY_MESSAGE, 'error');
+      const message = error instanceof FutureWorkoutDayError
+        ? t('dashboard.futureDay.locked')
+        : FINISH_RETRY_MESSAGE;
+      setFinishError(message);
+      showToast(message, 'error');
       return;
     } finally {
       savingSessionRef.current = false;
@@ -400,6 +403,10 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
 
   // Handle starting training - also enables fullscreen
   const handleStartTraining = () => {
+    if (isBerlinFuture(selectedDateStr)) {
+      showToast(t('dashboard.futureDay.locked'), 'info');
+      return;
+    }
     // Bind the session to this exact plan day so a reload resumes the same
     // workout instead of re-attaching to whatever day is shown.
     if (workoutPlan?.id) {
@@ -548,12 +555,16 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
                   {/* Start Training Button */}
                   <Button
                     onClick={handleStartTraining}
+                    disabled={isFuture}
                     className="w-full mt-4 h-14 text-lg font-semibold gap-2"
                     size="lg"
                   >
                     <Play className="w-5 h-5" />
                     {t('todayWorkout.startTraining')}
                   </Button>
+                  {isFuture && <p className="mt-2 text-sm text-muted-foreground">
+                    {t('dashboard.futureDay.locked')}
+                  </p>}
                 </motion.div>
               ) : (
                 /* Started view: set-based exercise list */

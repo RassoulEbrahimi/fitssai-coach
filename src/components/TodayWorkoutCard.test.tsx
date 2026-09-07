@@ -166,14 +166,14 @@ describe('session finish persistence across selected-day navigation', () => {
     } } as unknown as WorkoutPlan;
     // Real query adapters and consumer calculations stay mounted with fresh
     // five-minute caches. A finish must refresh them from the committed row.
-    const ProgressConsumers = () => {
+    const ProgressConsumers = ({ workoutDay = A.workoutDay }: { workoutDay?: string }) => {
         const { data: logs = [], isLoading } = useWorkoutLogs(A.planId);
         const activity = useWeeklyActivity();
         const review = buildWeeklyReviewMetrics({ plan, weekKey: A.weekKey, weekNumber: 1, logs });
-        const nudge = evaluateTrainingNudges({ plan, date: props.selectedDate, logs });
+        const nudge = evaluateTrainingNudges({ plan, date: new Date(`${workoutDay}T12:00:00`), logs });
         if (isLoading || activity.isLoading) return <output data-testid="progress">loading</output>;
         return <output data-testid="progress">{JSON.stringify({
-            calendar: isCalendarDayComplete(logs, A.workoutDay),
+            calendar: isCalendarDayComplete(logs, workoutDay),
             weeklyProgress: readCompletedDayDates(logs).length,
             completedDays: review.completedDays, scheduledDays: review.scheduledDays,
             percent: review.completionPercent, coverage: review.durationCoverage,
@@ -228,6 +228,52 @@ describe('session finish persistence across selected-day navigation', () => {
         expect(writes[0].data.completedAt).toEqual(expect.objectContaining({ millis: STARTED + 2700_000 }));
         expect(readCompletedDays([...rows.values()])).toEqual([{ weekKey: A.weekKey, dayIndex: A.dayIndex }]);
     };
+
+    it('disables Start for a future selected day without binding a session', () => {
+        render(card(true));
+        const button = screen.getByRole('button', { name: /Training starten/i });
+        expect(button).toBeDisabled();
+        expect(screen.getByText('Nur für heutige oder vergangene Tage verfügbar')).toBeInTheDocument();
+        fireEvent.click(button);
+        expect(storedSession()).toBeNull();
+        expect(screen.queryByRole('button', { name: /^Training beenden/i })).not.toBeInTheDocument();
+        expect(writes).toHaveLength(0);
+    });
+
+    it.each([true, false])('rejects a hydrated future session without changing consumers (captured date: %s)', async capturedDate => {
+        const future = { ...A, dayIndex: 2, workoutDay: '2026-09-09' };
+        const planBefore = JSON.stringify(props.workoutPlan);
+        const rowsBefore = [...rows.entries()];
+        localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify({ version: 1,
+            planId: future.planId, weekKey: future.weekKey, dayIndex: future.dayIndex,
+            ...(capturedDate ? { workoutDay: future.workoutDay } : {}), startedAt: STARTED,
+        }));
+        vi.mocked(Date.now).mockReturnValue(STARTED + 2700_000);
+        // The selected day is eligible A; only the bound future date must decide.
+        render(<>{card()}<ProgressConsumers workoutDay={future.workoutDay} /></>);
+        await waitFor(() => expect(progress()).toMatchObject({ calendar: false, completedDays: 0,
+            activeDays: 0, minutes: 0, nudgeEligible: true }));
+        fireEvent.click(await openSummary());
+        expect(await screen.findByRole('alert')).toHaveTextContent('Nur für heutige oder vergangene Tage verfügbar');
+        expect(storedSession()).toMatchObject({ planId: future.planId, dayIndex: 2 });
+        expect(writes).toHaveLength(0);
+        expect([...rows.entries()]).toEqual(rowsBefore);
+        expect(progress()).toMatchObject({ calendar: false, completedDays: 0, weeklyProgress: 0,
+            activeDays: 0, minutes: 0, nudgeEligible: true });
+        expect(showToast).toHaveBeenCalledWith('Nur für heutige oder vergangene Tage verfügbar', 'error');
+        expect(showToast.mock.calls.every(call => call[1] === 'error')).toBe(true);
+        expect(JSON.stringify(props.workoutPlan)).toBe(planBefore);
+    });
+
+    it('still starts and completes an eligible past day', async () => {
+        vi.setSystemTime(new Date('2026-09-08T10:00:00Z'));
+        render(card());
+        expect(screen.getByRole('button', { name: /Training starten/i })).toBeEnabled();
+        await start();
+        fireEvent.click(await openSummary());
+        await waitFor(() => expect(storedSession()).toBeNull());
+        assertSafeSave();
+    });
 
     it.each([false, true])('saves A after navigating to B (return to A: %s)', async returnToA => {
         const view = render(card());
@@ -414,7 +460,11 @@ describe('session finish persistence across selected-day navigation', () => {
         expect(new Set(writes.map(w => w.path)).size).toBe(1);
         expect(progress().completedDays).toBe(1);
         for (const [dayIndex, count, percent] of [[2, 2, 67], [4, 3, 100]]) {
-            await recordSuccessfulWorkoutFinish({ ...finish, dayIndex, workoutDay: `2026-09-${String(7 + dayIndex).padStart(2, '0')}` });
+            // These workouts become eligible as the Berlin calendar advances.
+            const workoutDay = `2026-09-${String(7 + dayIndex).padStart(2, '0')}`;
+            const endedAt = Date.parse(`${workoutDay}T10:00:00Z`);
+            vi.setSystemTime(endedAt);
+            await recordSuccessfulWorkoutFinish({ ...finish, dayIndex, workoutDay, startedAt: endedAt - 2700_000, endedAt });
             await act(async () => {
                 await queryClient.invalidateQueries({ queryKey: queryKeys.logs.byPlan(A.planId, 'u1') });
                 await queryClient.invalidateQueries({ queryKey: ['weekly-activity', 'u1'] });
@@ -427,7 +477,7 @@ describe('session finish persistence across selected-day navigation', () => {
         expect(writes.every(w => w.path.startsWith('users/u1/workout_logs/day-session_'))).toBe(true);
         expect(JSON.stringify(plan)).toBe(originalPlan);
         expect(queryClient.getQueryState(queryKeys.plans.byUser('u1'))?.isInvalidated).toBe(false);
-        expect(generateInsights({ activeDays: progress().activeDays }, null, 3, A.workoutDay)).toMatchObject({
+        expect(generateInsights({ activeDays: progress().activeDays }, null, 3, '2026-09-11')).toMatchObject({
             type: 'streak', payload: { activeDays: 3 },
         });
     });

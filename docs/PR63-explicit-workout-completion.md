@@ -19,6 +19,35 @@ message explicitly says the workout is complete. The modal's `onClose`, back
 button and dismissal call `handleCloseSummary(false)`, clear any finish-attempt
 stamp and return to training without a persistence write or session close.
 
+### Future-day completion guard (independent review follow-up)
+
+For v1.1, only today's or past training days may be completed. Start is disabled
+for a future selected date, with the existing `dashboard.futureDay.locked` copy
+shown below it: "Nur für heutige oder vergangene Tage verfügbar". The Start
+handler also checks the date before binding a session.
+
+The explicit successful-finish persistence path independently checks the bound
+`workoutDay` using `isBerlinFuture`, the same helper as
+`Dashboard.toggleDayComplete`. It compares against the current Berlin calendar
+day, not a supplied/frozen finish timestamp or the currently selected UI date.
+For a future date it throws `FutureWorkoutDayError` before the guarded writer
+can write duration, completion, or timestamps. The card displays the same
+existing future-day message inline and as an error toast, retains the session,
+and does not publish success or invalidate progress queries.
+
+This also protects legacy/hydrated future sessions, including those whose date
+is resolved from their bound plan position while an eligible day is selected.
+It does not alter the duration-only API, offline queue, plan-date clamping, or
+any exercise/set/plan writes. Future-date rejection precedes skipped-duration
+handling; the skipped contract below is unchanged for eligible dates.
+
+Eleven additional cases cover disabled Start without session binding, captured
+and legacy hydrated future sessions with unchanged downstream consumers, no
+future-day write for new or existing rows, untrusted future finish timestamps,
+eligible past-day start/finish, and summer/winter Berlin midnight boundaries.
+The three-day progress fixture now advances the calendar as each day becomes
+eligible and uses the last completed day for its streak assertion.
+
 Successful finish now calls `recordSuccessfulWorkoutFinish`. Its acknowledged
 `written` result means the authoritative day row holds `completed: true`,
 `completedAt` and the measured `durationSec`. Only then does the card clear the
@@ -137,8 +166,9 @@ No merge or deployment is part of this PR.
 
 ## Validation
 
-- Focused finish/persistence tests: 2 files, 47 tests passed.
-- Full client suite: 67 files, 1,131 tests passed (16 additional cases).
+- Focused finish/persistence tests: 2 files, 58 tests passed.
+- Full client suite: 67 files, 1,142 tests passed (27 additional cases, including
+  11 future-day guard cases from the independent review follow-up).
 - Client typecheck: both app and node configurations passed.
 - Client production Vite/PWA build passed. Existing large-chunk advisory remains.
 - Mojibake guard passed (292 files); placeholder guard passed (330 files).
