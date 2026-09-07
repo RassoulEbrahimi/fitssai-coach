@@ -24,7 +24,7 @@ import { useTraining } from "@/contexts/TrainingContext";
 import { useFocusMode } from "@/contexts/FocusModeContext";
 import { useSetTracking } from "@/hooks/useSetTracking";
 import { getWorkoutDateString } from "@/lib/workoutDateUtils";
-import { recordSessionDuration } from "@/lib/sessionRecord";
+import { recordSessionDuration, type SessionRecordOutcome } from "@/lib/sessionRecord";
 import { useRestTimer } from "@/hooks/useRestTimer";
 import ExerciseWithSets from "@/components/workout/ExerciseWithSets";
 import workoutHeroBg from "@/assets/workout-hero-bg.jpg";
@@ -77,6 +77,17 @@ interface Exercise {
   rest?: string;
 }
 
+/*
+  Finishing has three outcomes and they are not interchangeable: the duration
+  was stored, there was no trustworthy duration to store, or the write itself
+  never landed. Only the last is worth retrying, and only the first may be
+  reported as a saved training.
+*/
+const FINISH_RETRY_MESSAGE =
+  'Training konnte nicht gespeichert werden. Deine Session bleibt aktiv. Bitte erneut versuchen.';
+const FINISH_WITHOUT_DURATION_MESSAGE =
+  'Training beendet. Die Dauer konnte nicht gemessen werden und wurde nicht gespeichert.';
+
 const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
   selectedDate,
   weekKey,
@@ -101,12 +112,24 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
     duration,
     session,
     startSession,
-    endSession
+    endSession,
+    markFinishAttempt,
+    clearFinishAttempt
   } = useTraining();
 
   const DEFAULT_DURATION = 10;
   // Use current live duration unless we need to freeze it (handled by modal now)
   const currentDuration = duration;
+
+  /*
+    Once the finish instant is stamped the summary shows what will actually be
+    persisted, not a timer still running through a failed save and its retry.
+    Before that it is the live duration, so the modal keeps ticking for anyone
+    who opens it and goes back to training.
+  */
+  const summaryDuration = session?.endedAt !== undefined
+    ? Math.max(0, Math.floor((session.endedAt - session.startedAt) / 1000))
+    : currentDuration;
 
   // Format selected date for storage key
   const selectedDateStr = format(selectedDate, 'yyyy-MM-dd');
@@ -287,6 +310,10 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
   const handleCloseSummary = async (shouldEndSession: boolean = false) => {
     if (savingSessionRef.current) return;
     if (!shouldEndSession) {
+      // Back to training. The stamped finish instant goes with it, or the next
+      // finish would be capped at the moment they first thought about stopping.
+      clearFinishAttempt();
+      setFinishError(null);
       setShowSummary(false);
       return;
     }
@@ -294,9 +321,18 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
     savingSessionRef.current = true;
     setIsSavingSession(true);
     setFinishError(null);
+    let outcome: SessionRecordOutcome;
     try {
-      if (!isOnline || !navigator.onLine) throw new Error("Offline");
       if (!user?.uid || !session) throw new Error("Missing session identity");
+      /*
+        Stamp when the user stopped training before anything can fail. A finish
+        that is retried after a reconnect — or after a reload — then measures
+        the workout instead of the wait, because every attempt reuses this same
+        instant.
+      */
+      const endedAt = markFinishAttempt();
+      if (endedAt === null) throw new Error("Missing session identity");
+      if (!isOnline || !navigator.onLine) throw new Error("Offline");
       // Older bound sessions have a plan position but no captured date. Resolve
       // only against that same plan, never against the selected UI day.
       const workoutDay = session.workoutDay ?? (
@@ -305,35 +341,54 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
           : undefined
       );
       if (!workoutDay) throw new Error("Missing session date");
-      const result = await recordSessionDuration({
+      outcome = await recordSessionDuration({
         uid: user.uid,
         planId: session.planId,
         weekKey: session.weekKey,
         dayIndex: session.dayIndex,
         workoutDay,
         startedAt: session.startedAt,
-        endedAt: Date.now(),
+        endedAt,
       });
-      if (result.status !== "written") throw new Error(result.reason);
     } catch (error) {
+      // The write did not land — a rejection, or no connection to attempt it
+      // over. Session, timer and stamped finish instant all stay put so the
+      // same finish can be retried, and nothing claims to have been saved.
       logEvent('session_duration_write_failed', {
         weekKey: session?.weekKey,
         dayIndex: session?.dayIndex,
         message: error instanceof Error ? error.message : String(error),
       });
-      const message = 'Training konnte nicht gespeichert werden. Deine Session bleibt aktiv. Bitte erneut versuchen.';
-      setFinishError(message);
-      showToast(message, 'error');
+      setFinishError(FINISH_RETRY_MESSAGE);
+      showToast(FINISH_RETRY_MESSAGE, 'error');
       return;
     } finally {
       savingSessionRef.current = false;
       setIsSavingSession(false);
     }
 
+    /*
+      Both outcomes that get here are terminal. `written` stored the
+      measurement; `skipped` established there was no measurement worth
+      storing — a session left running past MAX_SESSION_SEC, or metadata the
+      writer will not accept. Neither improves by being retried, and holding
+      the session open for a retry that cannot succeed would strand the user in
+      a workout they can never end. So the session ends either way, and only a
+      written duration is reported as one.
+    */
     endSession();
     setShowSummary(false);
     setFocusMode(false);
-    showToast(t('todayWorkout.finishMessage'));
+    if (outcome.status === "written") {
+      showToast(t('todayWorkout.finishMessage'));
+      return;
+    }
+    logEvent('session_ended_without_duration', {
+      weekKey: session?.weekKey,
+      dayIndex: session?.dayIndex,
+      reason: outcome.reason,
+    });
+    showToast(FINISH_WITHOUT_DURATION_MESSAGE, 'info');
   };
 
   // Handle starting training - also enables fullscreen
@@ -561,7 +616,7 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
                     onClose={() => handleCloseSummary(false)} // User dismissed without finishing
                     onFinish={() => handleCloseSummary(true)} // User clicked "Terminate/Save" in modal
                     exercises={exercises}
-                    duration={currentDuration}
+                    duration={summaryDuration}
                     workoutName={workoutName}
                     selectedDate={selectedDate}
                     getCompletedSetsCount={getCompletedSetsCount}

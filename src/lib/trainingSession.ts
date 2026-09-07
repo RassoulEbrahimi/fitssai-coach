@@ -30,6 +30,19 @@ export interface TrainingSessionPayload {
   workoutDay?: string;
   /** Epoch milliseconds. */
   startedAt: number;
+  /**
+   * Epoch milliseconds the user first pressed finish, stamped once and kept
+   * until the finish resolves.
+   *
+   * Finishing can fail (offline, a rejected write) and be retried minutes or
+   * hours later. Measuring `Date.now()` again on the retry would bill the wait
+   * to the workout, so the instant the user actually stopped training is
+   * frozen here on the first attempt and reused by every retry — including
+   * after a reload, which is why it lives in the stored payload rather than in
+   * component state. Cleared when the user dismisses the summary and carries
+   * on training, so the next finish measures the longer session honestly.
+   */
+  endedAt?: number;
 }
 
 /** Why a stored session could not be resumed — used to explain it to the user. */
@@ -59,6 +72,7 @@ export const parseSessionPayload = (raw: string | null): TrainingSessionPayload 
     if (!isPositiveInt(parsed.dayIndex) || parsed.dayIndex > 6) return null;
     if (!isPositiveInt(parsed.startedAt) || parsed.startedAt === 0) return null;
     if (parsed.workoutDay !== undefined && !isWorkoutDayString(parsed.workoutDay)) return null;
+    if (parsed.endedAt !== undefined && (!isPositiveInt(parsed.endedAt) || parsed.endedAt === 0)) return null;
     if (typeof parsed.version !== "number") return null;
     return parsed as TrainingSessionPayload;
   } catch {
@@ -161,6 +175,32 @@ export const describeSessionRejection = (
     default:
       return null;
   }
+};
+
+/**
+ * Stamp the moment the user stopped training, once.
+ *
+ * Returns the session unchanged once it carries an `endedAt`, so a retry after
+ * a failed save reuses the original instant instead of re-measuring. This is
+ * the whole freeze rule; the context and the card only route around it.
+ */
+export const withFinishAttempt = (
+  session: TrainingSessionPayload,
+  endedAt: number
+): TrainingSessionPayload =>
+  session.endedAt !== undefined ? session : { ...session, endedAt };
+
+/**
+ * Drop a stamped finish instant, for a user who dismissed the summary and went
+ * back to training. Keeping it would silently cap the next finish at the
+ * moment they first thought about stopping.
+ */
+export const withoutFinishAttempt = (
+  session: TrainingSessionPayload
+): TrainingSessionPayload => {
+  if (session.endedAt === undefined) return session;
+  const { endedAt: _dropped, ...rest } = session;
+  return rest;
 };
 
 export const createSessionPayload = (

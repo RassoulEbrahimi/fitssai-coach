@@ -7,6 +7,7 @@ import React from 'react';
 import { rows, writes, control, resetWorkoutFirestore, logPath } from '@/test/mocks/workoutFirestore';
 import { isCompletedDayLog } from '@/lib/workoutCompletion';
 import { SESSION_STORAGE_KEY } from '@/lib/trainingSession';
+import { MAX_SESSION_SEC } from '@/lib/workoutLog';
 const showToast = vi.hoisted(() => vi.fn());
 vi.mock('firebase/firestore', async () => (await import('@/test/mocks/workoutFirestore')).firestore);
 
@@ -165,6 +166,17 @@ describe('session finish persistence across selected-day navigation', () => {
         fireEvent.click(await screen.findByRole('button', { name: /^Training beenden/i }));
         return screen.findByRole('button', { name: /Training speichern & beenden/i });
     };
+    const storedSession = () => {
+        const raw = localStorage.getItem(SESSION_STORAGE_KEY);
+        return raw === null ? null : JSON.parse(raw) as Record<string, unknown>;
+    };
+    /** The bound identity, without the finish stamp that a save attempt adds. */
+    const boundIdentity = () => {
+        const stored = storedSession();
+        if (!stored) return null;
+        const { endedAt: _stamp, ...identity } = stored;
+        return identity;
+    };
     const assertSafeSave = () => {
         expect(rows.get(logPath('a-exercise'))).toEqual(exercise);
         expect(rows.get(logPath('b-day'))).toEqual(selectedDay);
@@ -189,21 +201,29 @@ describe('session finish persistence across selected-day navigation', () => {
     it('keeps the session and timer on rejection, survives remount, and retries successfully', async () => {
         let view = render(card());
         await start();
-        const bound = localStorage.getItem(SESSION_STORAGE_KEY);
+        const bound = boundIdentity();
         view.rerender(card(true));
         control.rejectNext = true;
         fireEvent.click(await openSummary());
         expect(await screen.findByRole('alert')).toHaveTextContent('Deine Session bleibt aktiv');
-        expect(localStorage.getItem(SESSION_STORAGE_KEY)).toBe(bound);
+        expect(boundIdentity()).toEqual(bound);
+        // The finish instant is frozen at the first attempt, and it is stored,
+        // so the retry below cannot re-measure and inflate the duration.
+        expect(storedSession()?.endedAt).toBe(STARTED + 2700_000);
         expect(showToast.mock.calls.every(call => call[1] === 'error')).toBe(true);
         expect(writes).toHaveLength(0);
         expect(screen.getByRole('button', { name: /Erneut speichern/i })).toBeEnabled();
         view.unmount();
+        // A remount reads the stamp back from storage rather than restarting it.
         view = render(card(true));
+        expect(storedSession()?.endedAt).toBe(STARTED + 2700_000);
+        vi.mocked(Date.now).mockReturnValue(STARTED + 2700_000 + 5400_000);
         fireEvent.click(await openSummary());
         await waitFor(() => expect(localStorage.getItem(SESSION_STORAGE_KEY)).toBeNull());
+        // 2700s: the workout, not the 90 minutes spent getting back to it.
         assertSafeSave();
         expect(showToast.mock.calls.filter(call => call[1] !== 'error')).toHaveLength(1);
+        expect(showToast.mock.calls.at(-1)).toEqual([expect.any(String)]);
     });
 
     it('waits for acknowledgement and ignores repeated save clicks', async () => {
@@ -232,21 +252,68 @@ describe('session finish persistence across selected-day navigation', () => {
         expect(writes).toHaveLength(0);
         expect(localStorage.getItem(SESSION_STORAGE_KEY)).not.toBeNull();
         expect(showToast.mock.calls.every(call => call[1] === 'error')).toBe(true);
+        expect(storedSession()?.endedAt).toBe(STARTED + 2700_000);
+        // Reconnecting an hour later must not bill that hour to the workout.
         view.rerender(card(false, true));
+        vi.mocked(Date.now).mockReturnValue(STARTED + 2700_000 + 3600_000);
         fireEvent.click(screen.getByRole('button', { name: /Erneut speichern/i }));
         await waitFor(() => expect(localStorage.getItem(SESSION_STORAGE_KEY)).toBeNull());
         assertSafeSave();
     });
 
-    it('does not report success when the duration cannot be measured', async () => {
+    /*
+      A skipped measurement is not a failed write. Holding the session open for
+      a retry would trap the user: past MAX_SESSION_SEC every future attempt
+      skips for the same reason, so there is nothing a retry could fix.
+    */
+    it.each([
+        ['left running past the plausible maximum', STARTED + (MAX_SESSION_SEC + 60) * 1000],
+        ['ended before it started', STARTED - 1000],
+    ])('ends the session truthfully when the duration is unmeasurable: %s', async (_case, finishAt) => {
         render(card());
         await start();
-        vi.mocked(Date.now).mockReturnValue(STARTED - 1000);
+        vi.mocked(Date.now).mockReturnValue(finishAt);
         fireEvent.click(await openSummary());
-        expect(await screen.findByRole('alert')).toBeInTheDocument();
+
+        // Terminal, not retryable: the session is gone and the user is back at
+        // a card they can start again.
+        await waitFor(() => expect(localStorage.getItem(SESSION_STORAGE_KEY)).toBeNull());
+        expect(await screen.findByRole('button', { name: /Training starten/i })).toBeInTheDocument();
+        expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+        expect(screen.queryByRole('button', { name: /Erneut speichern/i })).not.toBeInTheDocument();
+
+        // Nothing invented: no duration, no completion, no row touched.
         expect(writes).toHaveLength(0);
-        expect(localStorage.getItem(SESSION_STORAGE_KEY)).not.toBeNull();
-        expect(showToast.mock.calls.every(call => call[1] === 'error')).toBe(true);
+        expect(rows.get(logPath('a-exercise'))).toEqual(exercise);
+        expect(rows.get(logPath('b-day'))).toEqual(selectedDay);
+        expect([...rows.values()].some(isCompletedDayLog)).toBe(false);
+
+        // Truthful: neither a saved-training success nor a save error.
+        expect(showToast).toHaveBeenCalledTimes(1);
+        expect(showToast).toHaveBeenCalledWith(
+            expect.stringContaining('Dauer konnte nicht gemessen werden'), 'info');
+    });
+
+    it('reopens a still-running session for a longer finish after going back', async () => {
+        render(card());
+        await start();
+        control.rejectNext = true;
+        fireEvent.click(await openSummary());
+        await screen.findByRole('alert');
+        expect(storedSession()?.endedAt).toBe(STARTED + 2700_000);
+
+        // Going back is a decision to keep training, so the stamp goes with it.
+        // Reusing it would cap the real finish at the moment they first thought
+        // about stopping — the mirror image of the inflation it prevents.
+        fireEvent.click(screen.getByRole('button', { name: /Zur.ck zum Training/i }));
+        await waitFor(() => expect(storedSession()?.endedAt).toBeUndefined());
+
+        vi.mocked(Date.now).mockReturnValue(STARTED + 3600_000);
+        fireEvent.click(await openSummary());
+        await waitFor(() => expect(localStorage.getItem(SESSION_STORAGE_KEY)).toBeNull());
+        expect(writes).toHaveLength(1);
+        expect(writes[0].data).toMatchObject({ ...A, durationSec: 3600 });
+        expect(rows.get(logPath('a-exercise'))).toEqual(exercise);
     });
 
     it('resolves an older session from its bound plan position after navigation', async () => {
