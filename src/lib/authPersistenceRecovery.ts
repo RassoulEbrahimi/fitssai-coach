@@ -16,22 +16,55 @@
  * means a reload.
  *
  * A reload alone would rejoin the same corrupt persisted state, so the Auth
- * store is cleared first — and only the Auth store. Everything this app owns is
- * left alone, so the same user gets their own workout state back the moment
- * they sign in again.
+ * store is cleared first — and only the four records belonging to this one
+ * Firebase app.
  *
- * The key format below is Firebase's, not ours: `_persistenceKeyName` builds
- * `firebase:<name>:<apiKey>:<appName>`, and `firebaseLocalStorageDb` is the
- * IndexedDB database `indexedDBLocalPersistence` keeps. That is the only
- * Firebase-internal knowledge in this codebase, and it lives here so an SDK
- * upgrade has one place to check. The probe fails loudly if the version moves.
+ * The key format below is Firebase's, not ours. This is the only
+ * Firebase-internal knowledge in the codebase, and it lives here so an SDK
+ * upgrade has one place to check; the probe fails loudly if the version moves.
  */
 
-/** `firebase:<authUser|persistence|pendingRedirect>:<apiKey>:<appName>` */
-const FIREBASE_AUTH_KEY = /^firebase:(authUser|persistence|pendingRedirect):/;
+/**
+ * Every name `_persistenceKeyName` is called with in the pinned SDK:
+ * `authUser` (PersistenceUserManager.create's default userKey), `persistence`
+ * (its fullPersistenceKey), `redirectUser` (the redirect manager's userKey) and
+ * `pendingRedirect` (_getPendingRedirectKey). Confirmed by reading every call
+ * site; the probe asserts the pinned version so a new name cannot slip in
+ * silently.
+ */
+export const FIREBASE_AUTH_PERSISTENCE_NAMES = [
+  'authUser',
+  'persistence',
+  'redirectUser',
+  'pendingRedirect',
+] as const;
 
-/** The database `indexedDBLocalPersistence` owns outright. */
+/** The database `indexedDBLocalPersistence` uses — shared across every app on the origin. */
 const FIREBASE_AUTH_DB = 'firebaseLocalStorageDb';
+const FIREBASE_AUTH_STORE = 'firebaseLocalStorage';
+
+/** Enough of an Auth instance to name its own records. Both fields are public API. */
+export interface AuthIdentity {
+  name: string;
+  config: { apiKey?: string };
+}
+
+/**
+ * The exact keys this Firebase app owns.
+ *
+ * `_persistenceKeyName` interpolates literally — `firebase:<name>:<apiKey>:<appName>`,
+ * no encoding — so these are compared by equality and never by prefix. A second
+ * Firebase app on the same origin differs in apiKey or appName and is therefore
+ * simply not in this list, which is what keeps its records out of the cleanup.
+ */
+export const firebaseAuthPersistenceKeys = (auth: AuthIdentity): string[] => {
+  const apiKey = auth?.config?.apiKey;
+  const appName = auth?.name;
+  // Without both halves of the scope there is no way to name this app's records
+  // without risking someone else's, so nothing is targeted at all.
+  if (!apiKey || !appName) return [];
+  return FIREBASE_AUTH_PERSISTENCE_NAMES.map(name => `firebase:${name}:${apiKey}:${appName}`);
+};
 
 /**
  * One automatic repair per tab, so a store that cannot be repaired reloads once
@@ -40,92 +73,240 @@ const FIREBASE_AUTH_DB = 'firebaseLocalStorageDb';
  */
 export const AUTH_RECOVERY_MARKER = 'fitssai.auth.recoveryAttempted';
 
-/** How long to wait on IndexedDB before reloading anyway. */
-const DELETE_DB_TIMEOUT_MS = 2_000;
+/** How long to wait on IndexedDB before giving up on it. */
+const INDEXED_DB_TIMEOUT_MS = 2_000;
 
-const safely = (operation: () => void): void => {
+export type StorageOutcome = 'cleared' | 'unavailable' | 'failed';
+export type IndexedDbOutcome =
+  | 'cleared' | 'unavailable' | 'database-absent' | 'store-absent' | 'failed';
+
+export interface AuthPersistenceCleanupReport {
+  local: StorageOutcome;
+  session: StorageOutcome;
+  indexedDb: IndexedDbOutcome;
+  /** The keys actually removed, for diagnostics. */
+  removed: string[];
+}
+
+/**
+ * Reaching a storage area can itself throw.
+ *
+ * `window.localStorage` is a getter, and it raises SecurityError outright when
+ * the browser blocks site data — before any method is called on it. So the
+ * lookup lives inside the boundary too, and the two failures are reported
+ * apart: storage that is not there is not the same as storage that refused a
+ * write, and a caller deciding whether a reload could help needs to tell them
+ * apart.
+ */
+const reachStorage = (read: () => Storage | undefined): Storage | null => {
   try {
-    operation();
+    return read() ?? null;
   } catch {
-    /* Blocked storage must not stop the rest of the repair. */
+    return null;
   }
 };
 
-export const hasAttemptedAuthRecovery = (): boolean => {
+const removeKeysFrom = (read: () => Storage | undefined, keys: string[], removed: string[]): StorageOutcome => {
+  const store = reachStorage(read);
+  if (!store) return 'unavailable';
+  let failed = false;
+  for (const key of keys) {
+    try {
+      // Only remove what is there, so the diagnostics say what was really found.
+      if (store.getItem(key) !== null) {
+        store.removeItem(key);
+        removed.push(key);
+      }
+    } catch {
+      failed = true;
+    }
+  }
+  return failed ? 'failed' : 'cleared';
+};
+
+/**
+ * Delete this app's records from the shared Auth object store, one key at a
+ * time.
+ *
+ * Never `deleteDatabase` and never `store.clear()`: `firebaseLocalStorageDb` is
+ * one database per origin, and every Firebase app on that origin keeps its
+ * records in the same `firebaseLocalStorage` store, keyed by the same
+ * `fbase_key` strings used in web storage. Dropping the database would sign the
+ * user out of unrelated applications that merely happen to share the host.
+ */
+const removeIndexedDbRecords = (keys: string[], removed: string[]): Promise<IndexedDbOutcome> =>
+  new Promise(resolve => {
+    let factory: IDBFactory | null = null;
+    try {
+      factory = typeof indexedDB === 'undefined' ? null : indexedDB;
+    } catch {
+      factory = null;
+    }
+    if (!factory || keys.length === 0) return resolve('unavailable');
+
+    let settled = false;
+    const finish = (outcome: IndexedDbOutcome) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolve(outcome);
+    };
+    // A blocked open or a wedged transaction must not hold recovery open.
+    const timer = setTimeout(() => finish('failed'), INDEXED_DB_TIMEOUT_MS);
+
+    try {
+      // Opened without a version so an existing database is never forced
+      // through an upgrade it did not ask for.
+      const request = factory.open(FIREBASE_AUTH_DB);
+      // Fires only when the database was absent, which means this call created
+      // an empty one. That is cleaned up rather than left behind, since a
+      // storeless database of this name is itself something the SDK has to
+      // recover from.
+      let createdByUs = false;
+      request.onupgradeneeded = () => { createdByUs = true; };
+      request.onblocked = () => finish('failed');
+      request.onerror = () => finish('failed');
+      request.onsuccess = () => {
+        const db = request.result;
+        try {
+          if (!db.objectStoreNames.contains(FIREBASE_AUTH_STORE)) {
+            db.close();
+            if (createdByUs) {
+              try { factory!.deleteDatabase(FIREBASE_AUTH_DB); } catch { /* nothing to undo */ }
+              return finish('database-absent');
+            }
+            return finish('store-absent');
+          }
+
+          const transaction = db.transaction(FIREBASE_AUTH_STORE, 'readwrite');
+          const store = transaction.objectStore(FIREBASE_AUTH_STORE);
+          for (const key of keys) {
+            // Individual record deletes. `delete` on an absent key succeeds, so
+            // a get-first round trip would only add failure modes.
+            const deletion = store.delete(key);
+            deletion.onsuccess = () => { removed.push(`idb:${key}`); };
+          }
+          transaction.oncomplete = () => { db.close(); finish('cleared'); };
+          transaction.onerror = () => { db.close(); finish('failed'); };
+          transaction.onabort = () => { db.close(); finish('failed'); };
+        } catch {
+          try { db.close(); } catch { /* already closing */ }
+          finish('failed');
+        }
+      };
+    } catch {
+      finish('failed');
+    }
+  });
+
+/**
+ * Remove this Firebase app's persisted auth state, and nothing else.
+ *
+ * Explicitly untouched: another Firebase app's records in the same stores,
+ * every `fitssai.*` key, the per-UID query caches, training sessions, training
+ * caches and nudge history, the theme and the other device preferences, and
+ * anything on this origin the app does not own.
+ */
+export const clearFirebaseAuthPersistence = async (
+  auth: AuthIdentity,
+): Promise<AuthPersistenceCleanupReport> => {
+  const keys = firebaseAuthPersistenceKeys(auth);
+  const removed: string[] = [];
+  const local = removeKeysFrom(() => window.localStorage, keys, removed);
+  const session = removeKeysFrom(() => window.sessionStorage, keys, removed);
+  const indexedDb = await removeIndexedDbRecords(keys, removed);
+  return { local, session, indexedDb, removed };
+};
+
+export type MarkerState = 'present' | 'absent' | 'unreadable';
+
+export const readRecoveryMarker = (): MarkerState => {
+  const store = reachStorage(() => window.sessionStorage);
+  if (!store) return 'unreadable';
   try {
-    return sessionStorage.getItem(AUTH_RECOVERY_MARKER) !== null;
+    return store.getItem(AUTH_RECOVERY_MARKER) === null ? 'absent' : 'present';
   } catch {
-    // Without readable session storage there is no loop guard, so treat the
-    // repair as already spent rather than risk reloading forever.
-    return true;
+    return 'unreadable';
+  }
+};
+
+/**
+ * Write the loop guard and prove it stuck.
+ *
+ * The write is read back on purpose. A quota error is not the only way a
+ * `setItem` can fail to persist, and an automatic reload on the strength of a
+ * guard that is not really there is an automatic reload that repeats forever.
+ */
+export const persistRecoveryMarker = (): boolean => {
+  const store = reachStorage(() => window.sessionStorage);
+  if (!store) return false;
+  try {
+    store.setItem(AUTH_RECOVERY_MARKER, String(Date.now()));
+    return store.getItem(AUTH_RECOVERY_MARKER) !== null;
+  } catch {
+    return false;
   }
 };
 
 export const clearAuthRecoveryMarker = (): void => {
-  safely(() => sessionStorage.removeItem(AUTH_RECOVERY_MARKER));
-};
-
-const purgeKeysFrom = (store: Storage): void => {
-  safely(() => {
-    const doomed: string[] = [];
-    for (let i = 0; i < store.length; i += 1) {
-      const key = store.key(i);
-      if (key && FIREBASE_AUTH_KEY.test(key)) doomed.push(key);
-    }
-    for (const key of doomed) store.removeItem(key);
-  });
-};
-
-const deleteAuthDatabase = (): Promise<void> => new Promise(resolve => {
-  if (typeof indexedDB === 'undefined') return resolve();
-  let settled = false;
-  const finish = () => { if (!settled) { settled = true; resolve(); } };
-  // A delete blocked by the failed instance's own open connection still ends
-  // with a reload, which closes it; waiting forever would help nobody.
-  const timer = setTimeout(finish, DELETE_DB_TIMEOUT_MS);
-  const done = () => { clearTimeout(timer); finish(); };
+  const store = reachStorage(() => window.sessionStorage);
+  if (!store) return;
   try {
-    const request = indexedDB.deleteDatabase(FIREBASE_AUTH_DB);
-    request.onsuccess = done;
-    request.onerror = done;
-    request.onblocked = done;
+    store.removeItem(AUTH_RECOVERY_MARKER);
   } catch {
-    done();
+    /* Nothing to undo if it cannot be reached. */
   }
-});
-
-/**
- * Remove Firebase Auth's persisted state, and nothing else.
- *
- * Explicitly untouched: every `fitssai.*` key, the per-UID query caches,
- * training sessions, training caches and nudge history, the theme and the other
- * device preferences, and anything on this origin the app does not own.
- */
-export const clearFirebaseAuthPersistence = async (): Promise<void> => {
-  purgeKeysFrom(localStorage);
-  purgeKeysFrom(sessionStorage);
-  await deleteAuthDatabase();
 };
 
-export type AuthRecoveryResult = 'reloading' | 'already-attempted';
+export type AuthRecoveryOutcome =
+  /** State cleared and the page is being reloaded into a fresh Auth instance. */
+  | { status: 'reloading'; report: AuthPersistenceCleanupReport }
+  /** This tab already spent its one automatic repair. */
+  | { status: 'already-attempted' }
+  /** The loop guard could not be persisted, so no automatic reload is allowed. */
+  | { status: 'guard-unavailable' }
+  /** Nothing could be reached, so a reload could not change anything. */
+  | { status: 'failed'; report: AuthPersistenceCleanupReport };
+
+const reachedSomething = (report: AuthPersistenceCleanupReport): boolean =>
+  report.local === 'cleared' || report.session === 'cleared' ||
+  report.indexedDb === 'cleared' || report.indexedDb === 'store-absent' ||
+  report.indexedDb === 'database-absent';
 
 /**
- * Clear the failed instance's persisted state and reload into a fresh one.
+ * Clear this app's failed auth state and reload into a fresh instance.
  *
- * `force` is the difference between the app deciding and the user deciding:
- * automatic recovery runs at most once per tab, while a person pressing "try
- * again" is a deliberate act and is always honoured.
+ * `force` is the difference between the app deciding and the user deciding.
+ * Automatic recovery must first prove it has a durable per-tab guard, because
+ * a reload it cannot remember is a reload it will perform again on the next
+ * load, and the one after that. A person pressing "try again" is their own
+ * bound on repetition, so that path proceeds whether or not the guard sticks.
+ *
+ * Always resolves. The caller decides what the UI does next, and it cannot do
+ * that from a rejection it has to guess the meaning of.
  */
 export const attemptAuthPersistenceRecovery = async (
-  { force = false, reload = () => window.location.reload() }: {
+  { auth, force = false, reload = () => window.location.reload() }: {
+    auth: AuthIdentity;
     force?: boolean;
     reload?: () => void;
-  } = {},
-): Promise<AuthRecoveryResult> => {
-  if (!force && hasAttemptedAuthRecovery()) return 'already-attempted';
+  },
+): Promise<AuthRecoveryOutcome> => {
+  if (!force) {
+    const marker = readRecoveryMarker();
+    if (marker === 'present') return { status: 'already-attempted' };
+    if (marker === 'unreadable' || !persistRecoveryMarker()) return { status: 'guard-unavailable' };
+  } else {
+    // Best effort: a manual retry is allowed without it, but recording it keeps
+    // a later automatic attempt from spending a repair that just happened.
+    persistRecoveryMarker();
+  }
 
-  safely(() => sessionStorage.setItem(AUTH_RECOVERY_MARKER, String(Date.now())));
-  await clearFirebaseAuthPersistence();
+  const report = await clearFirebaseAuthPersistence(auth);
+  // If not one store could be reached, the reload would land on exactly the
+  // state that just failed. Say so instead, and leave the user in control.
+  if (!reachedSomething(report)) return { status: 'failed', report };
+
   reload();
-  return 'reloading';
+  return { status: 'reloading', report };
 };

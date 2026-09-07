@@ -40,6 +40,27 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [user, setUser] = useState<AppUser | null>(null);
   const [gate, setGate] = useState<AuthGate>({ status: 'pending' });
 
+  /*
+    Every way this can end has to leave a usable screen.
+
+    `repairing` is only true while a reload is genuinely on its way. Anything
+    else — the guard that could not be stored, storage that cannot be reached,
+    IndexedDB that would not open, a repair already spent, or an error nobody
+    anticipated — puts the retry button back and keeps the recovery mode. An
+    unhandled rejection here would leave a spinner over an app the user has no
+    way out of, so the whole promise is caught, not just its known outcomes.
+  */
+  const runRecovery = useCallback((cause: AuthInitFailure, { force }: { force: boolean }) => {
+    const stop = (detail: unknown) => {
+      if (detail) console.error('[Auth] Recovery did not complete.', detail);
+      setGate({ status: 'unavailable', cause, repairing: false });
+    };
+    return attemptAuthPersistenceRecovery({ auth, force }).then(
+      outcome => { if (outcome.status !== 'reloading') stop(outcome); },
+      error => stop(error),
+    );
+  }, []);
+
   useEffect(() => {
     /*
       Two ways out of the gate, and only the observer can publish a user.
@@ -75,11 +96,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         return;
       }
       setGate({ status: 'unavailable', cause, repairing: true });
-      void attemptAuthPersistenceRecovery().then(result => {
-        if (result === 'already-attempted') {
-          setGate({ status: 'unavailable', cause, repairing: false });
-        }
-      });
+      void runRecovery(cause, { force: false });
     });
 
     const unsub = onAuthStateChanged(auth, (firebaseUser) => {
@@ -96,13 +113,16 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       stopWatchingInit();
       unsub();
     };
-  }, []);
+    // runRecovery is stable, so listing it re-subscribes nothing.
+  }, [runRecovery]);
 
   const retryRecovery = useCallback(() => {
-    setGate(current => current.status === 'unavailable' ? { ...current, repairing: true } : current);
-    // Asked for by hand, so it is honoured even after the automatic attempt.
-    void attemptAuthPersistenceRecovery({ force: true });
-  }, []);
+    if (gate.status !== 'unavailable') return;
+    setGate({ ...gate, repairing: true });
+    // Asked for by hand, so it is honoured even after the automatic attempt and
+    // even where the loop guard cannot be stored: the click is the bound.
+    void runRecovery(gate.cause, { force: true });
+  }, [gate, runRecovery]);
 
   return (
     <AuthContext.Provider value={{

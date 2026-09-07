@@ -174,29 +174,56 @@ Recovery is therefore: clear Firebase Auth's persisted state, reload, and let a
 fresh instance initialize. A reload alone would rejoin the same corrupt store.
 
 `src/lib/authPersistenceRecovery.ts` holds the only Firebase-internal knowledge
-in the codebase — `firebase:<authUser|persistence|pendingRedirect>:<apiKey>:<appName>`
-from `_persistenceKeyName`, and the `firebaseLocalStorageDb` database that
-`indexedDBLocalPersistence` owns — so an SDK upgrade has one place to check, and
-the probe's version assertions fail loudly if it moves. It removes those keys
-from local and session storage and deletes that database, bounded by a short
-timeout so a delete blocked by the dying instance's own connection still ends in
-the reload that closes it. Nothing else is touched: every `fitssai.*` key, the
-per-UID query caches, training sessions, training caches and nudge history, the
-theme and the other device preferences, and anything on the origin this app does
-not own all survive — so the same user gets their own state back the moment they
-sign in again.
+in the codebase, so an SDK upgrade has one place to check and the probe's version
+assertions fail loudly if it moves.
 
-The two failure signals are no longer treated alike. A rejection is proof, so
-repair runs automatically. A bounded wait elapsing is not proof — it may be a
-slow restore — so it destroys nothing and offers the repair instead; the
-observer stays subscribed and still outranks the recovery state if it lands.
+**Cleanup is scoped to this Firebase app, not to the origin.** `_persistenceKeyName`
+builds `firebase:<name>:<apiKey>:<appName>` by literal interpolation, and every
+call site in the pinned SDK passes one of four names: `authUser`, `persistence`,
+`redirectUser`, `pendingRedirect`. Those four are combined with `auth.config.apiKey`
+and `auth.name` — both public Auth fields, so the scope comes from the app
+configuration rather than a second copy of the credentials — into an exact
+allowlist. Keys are compared by equality; there is no prefix match and no regex
+sweep. If either half of the scope is missing, nothing is targeted at all.
 
-Loop prevention is a session-scoped marker: one automatic repair per tab, so a
-store that cannot be repaired reloads once and then says so, with a manual "try
-again" that is honoured because a person asking is bounded by itself. The marker
-is cleared when authentication next succeeds, so a later genuine failure may try
-again. It also had to be exempted from `clearSignOutSensitiveStorage`'s
-`fitssai.` sessionStorage sweep, which runs on every resolved auth transition —
+**IndexedDB is cleaned record by record.** `firebaseLocalStorageDb` is one
+database per *origin*, and every Firebase app on that origin keeps its rows in
+the same `firebaseLocalStorage` store under the same `fbase_key` strings. So the
+earlier `deleteDatabase` call would have signed the user out of unrelated
+applications that merely share the host. The store is now opened without a
+version, and each allowlisted key is removed with an individual
+`objectStore.delete`; every other row is left in place. Absent database, absent
+store, open error, blocked open, aborted transaction and an open that never
+settles are each handled and reported, bounded by a two-second timeout. An empty
+database created by the open itself is removed again rather than left behind,
+since a storeless database of that name is one of the states the SDK has to
+recover from.
+
+**Automatic recovery requires a loop guard that provably persisted.** The marker
+is written and then read back — a `setItem` can fail without throwing, and an
+automatic reload on the strength of a guard that is not really there is an
+automatic reload that repeats on every load. If the marker cannot be written or
+even read, no cleanup and no reload happen at all; the recovery screen simply
+offers the repair. Manual retry is different: a person pressing the button is
+their own bound on repetition, so it proceeds whether or not the guard sticks.
+
+**Reaching a storage area is itself inside the boundary.** `window.localStorage`
+is a getter that throws SecurityError outright when the browser blocks site data,
+before any method is called on it, so the lookup is guarded too. Unavailable
+storage, a failed write, and an IndexedDB open or transaction failure are
+reported apart rather than collapsed, because the caller decides whether a reload
+could help. Recovery always resolves to an explicit outcome rather than
+rejecting, and the provider catches the promise either way.
+
+**No path can strand the UI.** `repairing` is true only while a reload is
+genuinely on its way. A guard that could not be stored, storage that cannot be
+reached, IndexedDB that would not open, a repair already spent, or an error
+nobody anticipated all put the retry button back and keep the recovery mode —
+never a spinner over an app with no way out, and never a sign-in offered against
+an instance that cannot publish the result.
+
+The marker also had to be exempted from `clearSignOutSensitiveStorage`'s
+`fitssai.` sessionStorage sweep, which runs on every resolved auth transition
 including the failure one. Without that exemption each failure erased the
 evidence of the last and the page reloaded forever; the test that reloads a
 still-broken store twice is what caught it.

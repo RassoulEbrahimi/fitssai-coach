@@ -22,6 +22,9 @@ import { useIsRestoring, useQuery, useQueryClient } from '@tanstack/react-query'
 */
 const identity = vi.hoisted(() => {
   const state = {
+    // The scope the cleanup builds its keys from; both are public Auth fields.
+    name: '[DEFAULT]',
+    config: { apiKey: 'probe-api-key' },
     currentUser: null as { uid: string } | null,
     _isInitialized: false,
     _initializationPromise: null as Promise<void> | null,
@@ -42,6 +45,7 @@ const identity = vi.hoisted(() => {
   return state;
 });
 const reloads = vi.hoisted(() => ({ count: 0 }));
+const recovery = vi.hoisted(() => ({ override: null as null | (() => Promise<unknown>) }));
 
 vi.mock('@/lib/firebase', () => ({ auth: identity, db: {} }));
 vi.mock('firebase/auth', () => ({
@@ -68,9 +72,14 @@ vi.mock('@/lib/authPersistenceRecovery', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/lib/authPersistenceRecovery')>();
   return {
     ...actual,
-    // Everything real except the navigation, which jsdom cannot perform.
-    attemptAuthPersistenceRecovery: (options: { force?: boolean } = {}) =>
-      actual.attemptAuthPersistenceRecovery({ ...options, reload: () => { reloads.count += 1; } }),
+    // Everything real except the navigation, which jsdom cannot perform. Tests
+    // that need a specific ending set `recovery.override`.
+    attemptAuthPersistenceRecovery: (options: Parameters<typeof actual.attemptAuthPersistenceRecovery>[0]) => {
+      if (recovery.override) return recovery.override();
+      return actual.attemptAuthPersistenceRecovery({
+        ...options, reload: () => { reloads.count += 1; },
+      });
+    },
   };
 });
 
@@ -150,6 +159,7 @@ beforeEach(() => {
   identity.currentUser = null;
   mounts.length = 0;
   reloads.count = 0;
+  recovery.override = null;
   vi.clearAllMocks();
   pendingInitialization();
   Object.defineProperty(navigator, 'onLine', { configurable: true, value: false });
@@ -264,6 +274,98 @@ describe('initialization rejects', () => {
     await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Erneut versuchen' })); });
 
     await waitFor(() => expect(reloads.count).toBe(1));
+  });
+});
+
+describe('recovery that cannot finish still leaves a usable screen', () => {
+  const retryButton = () => screen.queryByRole('button', { name: 'Erneut versuchen' });
+
+  const failAuthWith = async (override: () => Promise<unknown>) => {
+    recovery.override = override;
+    render(<Harness />);
+    await act(async () => { identity.fail!(new Error('initialization failure')); });
+  };
+
+  it.each([
+    ['the loop guard could not be persisted', async () => ({ status: 'guard-unavailable' as const })],
+    ['no storage could be reached', async () => ({ status: 'failed' as const, report: {
+      local: 'unavailable' as const, session: 'unavailable' as const,
+      indexedDb: 'unavailable' as const, removed: [] } })],
+    ['the repair was already spent', async () => ({ status: 'already-attempted' as const })],
+    ['recovery rejected outright', async () => { throw new Error('unexpected'); }],
+  ])('offers the retry again when %s', async (_case, override) => {
+    await failAuthWith(override);
+
+    // The spinner must not be the last thing the user ever sees.
+    await waitFor(() => expect(retryButton()).toBeInTheDocument());
+    expect(screen.getByText('Anmeldung nicht verfügbar')).toBeInTheDocument();
+    expect(screen.queryByText('Anmeldung wird wiederhergestellt')).toBeNull();
+    // Still no account-scoped subtree, and no sign-in offered.
+    expect(screen.queryByTestId('uid')).toBeNull();
+    expect(mounts).toEqual([]);
+    expect(reloads.count).toBe(0);
+  });
+
+  it('recovers the screen when the sessionStorage getter itself throws SecurityError', async () => {
+    const real = window.sessionStorage;
+    Object.defineProperty(window, 'sessionStorage', {
+      configurable: true,
+      get() { throw new DOMException('blocked', 'SecurityError'); },
+    });
+    try {
+      render(<Harness />);
+      await act(async () => { identity.fail!(new Error('initialization failure')); });
+
+      await waitFor(() => expect(retryButton()).toBeInTheDocument());
+      // Unreadable guard means no automatic reload at all.
+      expect(reloads.count).toBe(0);
+      expect(screen.queryByTestId('uid')).toBeNull();
+    } finally {
+      Object.defineProperty(window, 'sessionStorage', { configurable: true, value: real, writable: true });
+    }
+  });
+
+  it('still repairs from the stores it can reach when localStorage throws and IndexedDB is gone', async () => {
+    const real = window.localStorage;
+    const idb = Object.getOwnPropertyDescriptor(globalThis, 'indexedDB');
+    Object.defineProperty(window, 'localStorage', {
+      configurable: true,
+      get() { throw new DOMException('blocked', 'SecurityError'); },
+    });
+    delete (globalThis as { indexedDB?: unknown }).indexedDB;
+    try {
+      render(<Harness />);
+      await act(async () => { identity.fail!(new Error('initialization failure')); });
+
+      // sessionStorage still works, so the guard persists and the one repair is spent.
+      await waitFor(() => expect(reloads.count).toBe(1));
+      expect(screen.queryByTestId('uid')).toBeNull();
+    } finally {
+      Object.defineProperty(window, 'localStorage', { configurable: true, value: real, writable: true });
+      if (idb) Object.defineProperty(globalThis, 'indexedDB', idb);
+    }
+  });
+
+  it('still lets the user retry by hand after an automatic attempt was refused', async () => {
+    await failAuthWith(async () => ({ status: 'guard-unavailable' as const }));
+    await waitFor(() => expect(retryButton()).toBeInTheDocument());
+
+    // The manual path is not bound by the guard, so it proceeds.
+    recovery.override = null;
+    await act(async () => { fireEvent.click(retryButton()!); });
+
+    await waitFor(() => expect(reloads.count).toBe(1));
+  });
+
+  it('returns the retry when a manual attempt also fails, rather than spinning', async () => {
+    await failAuthWith(async () => ({ status: 'guard-unavailable' as const }));
+    await waitFor(() => expect(retryButton()).toBeInTheDocument());
+
+    recovery.override = async () => { throw new Error('still broken'); };
+    await act(async () => { fireEvent.click(retryButton()!); });
+
+    await waitFor(() => expect(retryButton()).toBeInTheDocument());
+    expect(reloads.count).toBe(0);
   });
 });
 
