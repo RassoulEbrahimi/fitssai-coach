@@ -1,141 +1,102 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { rows, writes, control, resetWorkoutFirestore, logPath } from "@/test/mocks/workoutFirestore";
 
-/*
-  Firestore is mocked so the write payload can be inspected directly. Nothing
-  here touches a real project, and no credentials are needed.
-*/
-const addDoc = vi.fn(async (_ref: unknown, _data: Record<string, unknown>) => ({ id: "new-log" }));
-const updateDoc = vi.fn(async (_ref: unknown, _data: Record<string, unknown>) => undefined);
-const getDocs = vi.fn(async (_query?: unknown) => ({ empty: true, docs: [] as { id: string }[] }));
-
-vi.mock("firebase/firestore", () => ({
-  collection: (...path: unknown[]) => ({ path }),
-  doc: (...path: unknown[]) => ({ path }),
-  query: (...args: unknown[]) => args,
-  where: (field: string, op: string, value: unknown) => ({ field, op, value }),
-  addDoc: (ref: unknown, data: Record<string, unknown>) => addDoc(ref, data),
-  updateDoc: (ref: unknown, data: Record<string, unknown>) => updateDoc(ref, data),
-  getDocs: (...args: unknown[]) => getDocs(args),
-  Timestamp: { now: () => ({ __ts: true }) },
-}));
-
+vi.mock("firebase/firestore", async () => (await import("@/test/mocks/workoutFirestore")).firestore);
 import { recordSessionDuration } from "./sessionRecord";
+import { isCompletedDayLog } from "./workoutCompletion";
 import { MAX_SESSION_SEC } from "./workoutLog";
 
-const AT = (iso: string) => new Date(iso).getTime();
-const STARTED = AT("2026-03-10T18:00:00Z");
-
+const STARTED = Date.parse("2026-03-10T18:00:00Z");
+const identity = { planId: "plan-1", weekKey: "Week 2", dayIndex: 1, workoutDay: "2026-03-10" };
 const input = (overrides: Partial<Parameters<typeof recordSessionDuration>[0]> = {}) => ({
-  uid: "u1",
-  planId: "plan-1",
-  weekKey: "Week 2",
-  dayIndex: 3,
-  workoutDay: "2026-03-10",
-  startedAt: STARTED,
-  endedAt: AT("2026-03-10T18:45:00Z"),
-  ...overrides,
+  uid: "u1", ...identity, startedAt: STARTED, endedAt: STARTED + 2700_000, ...overrides,
 });
+const exercise = { ...identity, exerciseIndex: 0, completed: true };
+beforeEach(resetWorkoutFirestore);
 
-const payloadOf = (mock: typeof addDoc | typeof updateDoc): Record<string, unknown> =>
-  mock.mock.calls[0][1];
-
-beforeEach(() => {
-  vi.clearAllMocks();
-  getDocs.mockResolvedValue({ empty: true, docs: [] });
-});
-
-describe("recordSessionDuration", () => {
-  it("writes the real measured duration", async () => {
-    const result = await recordSessionDuration(input());
-
-    expect(result).toEqual({ status: "written", durationSec: 2700 });
-    expect(payloadOf(addDoc).durationSec).toBe(2700);
+describe("recordSessionDuration with real mixed-row selection", () => {
+  it("creates a day session when an exercise row exists first, without touching its sets", async () => {
+    rows.set(logPath("first-exercise"), exercise);
+    rows.set(logPath("first-exercise/workout_set_logs/set-1"), { repsCompleted: 10 });
+    expect(await recordSessionDuration(input())).toEqual({ status: "written", durationSec: 2700 });
+    expect(rows.get(logPath("first-exercise"))).toEqual(exercise);
+    expect(rows.get(logPath("first-exercise/workout_set_logs/set-1"))).toEqual({ repsCompleted: 10 });
+    expect(writes).toHaveLength(1);
+    expect(writes[0].data).toMatchObject({ ...identity, durationSec: 2700 });
+    expect(writes[0].data).not.toHaveProperty("completed");
+    expect([...rows.values()].some(isCompletedDayLog)).toBe(false);
   });
 
-  it("writes the full joinable metadata", async () => {
+  it("updates only an existing day session and preserves its explicit completion", async () => {
+    rows.set(logPath("a-exercise"), exercise);
+    rows.set(logPath("z-day"), { ...identity, completed: true });
     await recordSessionDuration(input());
-    const payload = payloadOf(addDoc);
-
-    expect(payload.planId).toBe("plan-1");
-    expect(payload.weekKey).toBe("Week 2");
-    expect(payload.dayIndex).toBe(3);
-    expect(payload.workoutDay).toBe("2026-03-10");
+    expect(writes.map(w => w.path)).toEqual([logPath("z-day")]);
+    expect(rows.get(logPath("a-exercise"))).toEqual(exercise);
+    expect(rows.get(logPath("z-day"))).toMatchObject({ completed: true, durationSec: 2700 });
+    expect(writes[0].data).not.toHaveProperty("completed");
   });
 
-  it("records the explicitly selected day, not today", async () => {
-    await recordSessionDuration(input({ workoutDay: "2025-12-31" }));
-
-    expect(payloadOf(addDoc).workoutDay).toBe("2025-12-31");
-  });
-
-  it("never claims the workout was completed", async () => {
-    // Ending a session says nothing about finishing the workout; completion
-    // stays owned by the per-exercise logs.
+  it.each(["0", -1, {}, false])("does not upgrade malformed exerciseIndex %j", async exerciseIndex => {
+    const legacy = { ...identity, exerciseIndex, completed: true };
+    rows.set(logPath("legacy"), legacy);
     await recordSessionDuration(input());
-
-    expect(payloadOf(addDoc)).not.toHaveProperty("completed");
-    expect(payloadOf(addDoc)).not.toHaveProperty("completedAt");
+    expect(rows.get(logPath("legacy"))).toEqual(legacy);
+    expect(writes[0].path).not.toBe(logPath("legacy"));
+    expect([...rows.values()].some(isCompletedDayLog)).toBe(false);
   });
 
-  it("updates the existing day log rather than adding a second one", async () => {
-    getDocs.mockResolvedValue({ empty: false, docs: [{ id: "existing-log" }] });
-
+  it("leaves unidentified legacy rows alone", async () => {
+    rows.set(logPath("junk"), { planId: identity.planId, completed: true });
     await recordSessionDuration(input());
-
-    expect(addDoc).not.toHaveBeenCalled();
-    expect(updateDoc).toHaveBeenCalledTimes(1);
-    expect(payloadOf(updateDoc).durationSec).toBe(2700);
-    // The day's completion state on that document is left untouched.
-    expect(payloadOf(updateDoc)).not.toHaveProperty("completed");
+    expect(rows.get(logPath("junk"))).toEqual({ planId: identity.planId, completed: true });
   });
 
-  it("does not double-count when the end is replayed", async () => {
+  it("converges concurrent first saves and repeated retries on one day record", async () => {
+    await Promise.all([recordSessionDuration(input()), recordSessionDuration(input())]);
     await recordSessionDuration(input());
-    getDocs.mockResolvedValue({ empty: false, docs: [{ id: "new-log" }] });
+    expect(rows.size).toBe(1);
+    expect([...rows.values()][0]).toMatchObject({ ...identity, durationSec: 2700 });
+    expect(new Set(writes.map(w => w.path)).size).toBe(1);
+    expect([...rows.values()].some(isCompletedDayLog)).toBe(false);
+  });
+
+  it("refuses an occupied deterministic address instead of overwriting an exercise", async () => {
+    const path = logPath("day-session_plan-1_2026-03-10");
+    rows.set(path, exercise);
+    await expect(recordSessionDuration(input())).rejects.toThrow("identity conflict");
+    expect(rows.get(path)).toEqual(exercise);
+    expect(writes).toHaveLength(0);
+  });
+
+  it("rechecks identity at commit if a selected day row changes after lookup", async () => {
+    rows.set(logPath("day"), identity);
+    control.beforeCommit = async () => { rows.set(logPath("day"), exercise); };
+    await expect(recordSessionDuration(input())).rejects.toThrow("identity conflict");
+    expect(rows.get(logPath("day"))).toEqual(exercise);
+    expect(writes).toHaveLength(0);
+  });
+
+  it("propagates persistence failure and can retry without duplicate corruption", async () => {
+    rows.set(logPath("exercise"), exercise);
+    control.rejectNext = true;
+    await expect(recordSessionDuration(input())).rejects.toThrow("Persistence rejected");
+    expect(writes).toHaveLength(0);
     await recordSessionDuration(input());
-
-    // Absolute value, written twice — not accumulated.
-    expect(payloadOf(addDoc).durationSec).toBe(2700);
-    expect(payloadOf(updateDoc).durationSec).toBe(2700);
+    expect(writes).toHaveLength(1);
+    expect(rows.get(logPath("exercise"))).toEqual(exercise);
   });
 
-  it("writes nothing when the start time is missing", async () => {
-    const result = await recordSessionDuration(input({ startedAt: null }));
-
-    expect(result).toEqual({ status: "skipped", reason: "no-duration" });
-    expect(addDoc).not.toHaveBeenCalled();
-    expect(updateDoc).not.toHaveBeenCalled();
-  });
-
-  it("writes nothing when the start time is in the future", async () => {
-    const result = await recordSessionDuration(
-      input({ startedAt: AT("2026-03-10T20:00:00Z"), endedAt: AT("2026-03-10T18:00:00Z") })
-    );
-
-    expect(result).toEqual({ status: "skipped", reason: "no-duration" });
-    expect(addDoc).not.toHaveBeenCalled();
-  });
-
-  it("writes nothing for an implausibly long session", async () => {
-    const result = await recordSessionDuration(
-      input({ endedAt: STARTED + (MAX_SESSION_SEC + 60) * 1000 })
-    );
-
-    expect(result).toEqual({ status: "skipped", reason: "no-duration" });
-    expect(addDoc).not.toHaveBeenCalled();
-  });
-
-  it.each([
-    ["uid", { uid: "" }],
-    ["planId", { planId: "" }],
-    ["weekKey", { weekKey: "" }],
-    ["workoutDay", { workoutDay: "10.03.2026" }],
-    ["dayIndex", { dayIndex: 9 }],
-  ])("writes nothing when %s is unusable", async (_name, overrides) => {
-    const result = await recordSessionDuration(input(overrides));
-
-    expect(result).toEqual({ status: "skipped", reason: "incomplete-metadata" });
-    expect(addDoc).not.toHaveBeenCalled();
-    expect(updateDoc).not.toHaveBeenCalled();
-  });
+  it.each([null, STARTED + 3000_000, STARTED - MAX_SESSION_SEC * 1000])(
+    "does not fabricate missing or implausible duration for start %s", async startedAt => {
+      expect(await recordSessionDuration(input({ startedAt }))).toEqual({ status: "skipped", reason: "no-duration" });
+      expect(writes).toHaveLength(0);
+    },
+  );
+  it.each([{ uid: "" }, { planId: "" }, { weekKey: "" }, { workoutDay: "10.03.2026" }, { dayIndex: 9 }])(
+    "rejects incomplete metadata %j", async overrides => {
+      expect(await recordSessionDuration(input(overrides))).toEqual({ status: "skipped", reason: "incomplete-metadata" });
+      expect(writes).toHaveLength(0);
+    },
+  );
 });

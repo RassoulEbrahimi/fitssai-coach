@@ -24,6 +24,8 @@ interface Exercise {
 
 interface WorkoutSummaryModalProps {
   open: boolean;
+  isSaving?: boolean;
+  error?: string | null;
   onClose: () => void;   // Dismiss without saving/finishing (go back)
   onFinish?: () => void; // Actually finish/save the workout
   exercises: Exercise[];
@@ -138,6 +140,8 @@ const StatCard: React.FC<StatCardProps> = ({ icon, label, value, unit, delay = 0
 
 const WorkoutSummaryModal: React.FC<WorkoutSummaryModalProps> = ({
   open,
+  isSaving = false,
+  error,
   onClose,
   onFinish,
   exercises,
@@ -254,16 +258,19 @@ const WorkoutSummaryModal: React.FC<WorkoutSummaryModalProps> = ({
               transition={{ delay: 0.4, duration: 0.3 }}
               className="w-full flex flex-col gap-3"
             >
+              {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
               <Button
+                disabled={isSaving}
                 onClick={handleFinish}
                 className="w-full h-12 text-base font-bold shadow-md"
                 size="lg"
               >
                 <Save className="w-4 h-4 mr-2" />
-                Training speichern & beenden
+                {isSaving ? 'Training wird gespeichert…' : error ? 'Erneut speichern & beenden' : 'Training speichern & beenden'}
               </Button>
 
               <Button
+                disabled={isSaving}
                 onClick={onClose}
                 variant="ghost"
                 className="w-full text-muted-foreground hover:text-foreground"
