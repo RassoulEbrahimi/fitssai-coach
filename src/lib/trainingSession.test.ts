@@ -5,6 +5,8 @@ import {
   LEGACY_SESSION_START_TIME_KEY,
   SESSION_PAYLOAD_VERSION,
   createSessionPayload,
+  withFinishAttempt,
+  withoutFinishAttempt,
   clearStoredSession,
   describeSessionRejection,
   migrateLegacySession,
@@ -178,5 +180,55 @@ describe("legacy key migration", () => {
 
     expect(localStorage.getItem("fitssai.theme")).toBe("dark");
     expect(localStorage.getItem("fitssai.training.cache")).toBe("{}");
+  });
+});
+
+describe("the frozen finish instant", () => {
+  const T1 = 1_700_000_100_000;
+  const T2 = T1 + 3_600_000;
+
+  it("stamps the first finish attempt", () => {
+    expect(withFinishAttempt(validSession, T1).endedAt).toBe(T1);
+  });
+
+  it("keeps the first stamp when a retry attempts again later", () => {
+    const first = withFinishAttempt(validSession, T1);
+
+    // The value a retry reuses, so the wait is never billed to the workout.
+    expect(withFinishAttempt(first, T2).endedAt).toBe(T1);
+    expect(withFinishAttempt(first, T2)).toBe(first);
+  });
+
+  it("survives a round trip through storage", () => {
+    writeStoredSession(withFinishAttempt(validSession, T1));
+
+    expect(readStoredSession()?.endedAt).toBe(T1);
+  });
+
+  it("drops the stamp when the user goes back to training", () => {
+    const resumed = withoutFinishAttempt(withFinishAttempt(validSession, T1));
+
+    expect(resumed.endedAt).toBeUndefined();
+    expect("endedAt" in resumed).toBe(false);
+    expect(resumed).toEqual(validSession);
+  });
+
+  it("leaves an unstamped session alone", () => {
+    expect(withoutFinishAttempt(validSession)).toBe(validSession);
+  });
+
+  it("rejects a stored session whose stamp is unusable", () => {
+    localStorage.setItem(
+      SESSION_STORAGE_KEY,
+      JSON.stringify({ ...validSession, endedAt: "later" })
+    );
+
+    expect(readStoredSession()).toBeNull();
+  });
+
+  it("still reads a pre-PR62 session that carries no stamp", () => {
+    writeStoredSession(validSession);
+
+    expect(readStoredSession()).toEqual(validSession);
   });
 });
