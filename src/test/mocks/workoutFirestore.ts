@@ -44,6 +44,10 @@ export const firestore = {
     writes.push({ path, data });
     return { id: `auto-${autoId}`, path };
   }),
+  setDoc: vi.fn(async (target: Ref, data: Row) => {
+    rows.set(target.path, { ...data });
+    writes.push({ path: target.path, data });
+  }),
   updateDoc: vi.fn(async (target: Ref, data: Row) => {
     rows.set(target.path, { ...rows.get(target.path), ...data });
     writes.push({ path: target.path, data });

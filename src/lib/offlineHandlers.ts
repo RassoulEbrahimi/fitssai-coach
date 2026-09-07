@@ -1,7 +1,7 @@
 import { assertAccountOwner } from "@/lib/accountIdentity";
 import { db } from "@/lib/firebase";
 import {
-  collection, getDocs, query, where, doc, addDoc, deleteDoc, updateDoc, Timestamp,
+  collection, getDocs, query, where, doc, setDoc, deleteDoc, updateDoc, Timestamp,
 } from "firebase/firestore";
 import { writeDaySessionRecord } from "@/lib/daySessionRecord";
 import { queryKeys } from "@/lib/queryKeys";
@@ -19,8 +19,14 @@ type ToggleExercisePayload = {
   completed: boolean; durationMinutes?: number; caloriesBurned?: number;
 };
 
+// Same existing position identity; only new replay documents get stable IDs.
+// Existing auto-ID documents remain in place. No historical identity migration.
+const replayLogId = (payload: ToggleExercisePayload | ToggleSetPayload) =>
+  `offline-exercise_${encodeURIComponent(JSON.stringify([payload.planId, payload.weekKey, payload.dayIndex, payload.exerciseIndex]))}`;
+
 export const handlers = {
-  TOGGLE_SET: async (payload: ToggleSetPayload, ownerUid: string) => {
+  TOGGLE_SET: async (payload: ToggleSetPayload, ownerUid: string, checkpoint?: () => void) => {
+    const assertCanWrite = () => { assertAccountOwner(ownerUid); checkpoint?.(); };
     const uid = assertAccountOwner(ownerUid);
     const logsRef = collection(db, "users", uid, "workout_logs");
     const logSnap = await getDocs(query(logsRef,
@@ -30,23 +36,23 @@ export const handlers = {
       where("exerciseIndex", "==", payload.exerciseIndex),
     ));
     let logId: string;
-    if (!logSnap.empty) { logId = logSnap.docs[0].id; }
+    if (!logSnap.empty) { logId = [...logSnap.docs].sort((a, b) => a.id.localeCompare(b.id))[0].id; }
     else {
-      assertAccountOwner(ownerUid);
-      const newLog = await addDoc(logsRef, {
+      assertCanWrite();
+      logId = replayLogId(payload);
+      await setDoc(doc(logsRef, logId), {
         planId: payload.planId, weekKey: payload.weekKey,
         dayIndex: payload.dayIndex, exerciseIndex: payload.exerciseIndex,
         ...(isWorkoutDayString(payload.workoutDay) ? { workoutDay: payload.workoutDay } : {}),
         completed: false, createdAt: Timestamp.now(),
       });
-      logId = newLog.id;
     }
-    assertAccountOwner(ownerUid);
+    assertCanWrite();
     const setsRef = collection(db, "users", uid, "workout_logs", logId, "workout_set_logs");
     const setSnap = await getDocs(query(setsRef, where("setNumber", "==", payload.setNumber)));
-    assertAccountOwner(ownerUid);
+    assertCanWrite();
     if (payload.completed) {
-      if (setSnap.empty) await addDoc(setsRef, { setNumber: payload.setNumber, repsCompleted: payload.repsCompleted, weightUsed: payload.weightUsed ?? null, completedAt: Timestamp.now() });
+      if (setSnap.empty) await setDoc(doc(setsRef, `set_${payload.setNumber}`), { setNumber: payload.setNumber, repsCompleted: payload.repsCompleted, weightUsed: payload.weightUsed ?? null, completedAt: Timestamp.now() });
     } else {
       if (!setSnap.empty) await deleteDoc(doc(db, "users", uid, "workout_logs", logId, "workout_set_logs", setSnap.docs[0].id));
     }
@@ -66,7 +72,7 @@ export const handlers = {
    * plan position from that payload, and guessing one would attach the user's
    * completion to a day they never trained — so the entry is dropped, loudly.
    */
-  TOGGLE_DAY_COMPLETION: async (payload: ToggleExercisePayload, ownerUid: string) => {
+  TOGGLE_DAY_COMPLETION: async (payload: ToggleExercisePayload, ownerUid: string, checkpoint?: () => void) => {
     assertAccountOwner(ownerUid);
     // Bound to a boolean on purpose: as a type predicate this would narrow the
     // remaining branch to `never`, since the two shapes are disjoint.
@@ -88,12 +94,13 @@ export const handlers = {
       where("exerciseIndex", "==", payload.exerciseIndex),
     ));
     assertAccountOwner(ownerUid);
+    checkpoint?.();
     if (!snap.empty) {
-      await updateDoc(doc(db, "users", uid, "workout_logs", snap.docs[0].id), {
+      await updateDoc(doc(db, "users", uid, "workout_logs", [...snap.docs].sort((a, b) => a.id.localeCompare(b.id))[0].id), {
         completed: payload.completed, completedAt: payload.completed ? Timestamp.now() : null,
       });
     } else {
-      await addDoc(logsRef, {
+      await setDoc(doc(logsRef, replayLogId(payload)), {
         planId: payload.planId, weekKey: payload.weekKey, dayIndex: payload.dayIndex,
         exerciseIndex: payload.exerciseIndex, completed: payload.completed,
         completedAt: payload.completed ? Timestamp.now() : null, createdAt: Timestamp.now(),
@@ -114,7 +121,7 @@ export const handlers = {
    * The date travels in the payload, so a Tuesday queued offline still writes
    * Tuesday when it replays on Thursday. Nothing here reads a clock.
    */
-  TOGGLE_DAY: async (payload: ToggleDayPayload, ownerUid: string) => {
+  TOGGLE_DAY: async (payload: ToggleDayPayload, ownerUid: string, checkpoint?: () => void) => {
     const uid = assertAccountOwner(ownerUid);
     if (!payload.planId || !isWorkoutDayString(payload.workoutDay)) {
       console.warn('[OfflineQueue] Dropping a day completion with unusable metadata.', payload);
@@ -126,7 +133,7 @@ export const handlers = {
       dayIndex: payload.dayIndex,
       completed: payload.completed,
       completedAt: payload.completed ? Timestamp.now() : null,
-    });
+    }, checkpoint);
 
     return [
       queryKeys.logs.byPlan(payload.planId),

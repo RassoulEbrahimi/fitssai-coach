@@ -44,6 +44,7 @@ export interface ToggleDayPayload {
 }
 
 export interface ToggleSetPayload {
+    workoutDay?: string;
     planId: string;
     weekKey: string;
     dayIndex: number;
@@ -93,16 +94,30 @@ export interface OfflineMutationEntry<T extends OfflineMutationType = OfflineMut
     status: 'pending' | 'syncing' | 'synced' | 'failed' | 'quarantined';
     attempts: number;
     lastError?: string;
+    claimId?: string;
+    claimedAt?: number;
+    leaseUntil?: number;
+    nextAttemptAt?: number;
 }
 
 const STORAGE_KEY = 'FITSSAI_OFFLINE_QUEUE';
+export const QUEUE_CHANGED_EVENT = 'fitssai:offline-queue-changed';
+export const CLAIM_LEASE_MS = 60_000;
+export const MAX_RETRY_DELAY_MS = 60_000;
+
+export class QueueStorageError extends Error {
+    constructor(public readonly operation: 'read' | 'write' | 'clear', public readonly originalError: unknown) {
+        super(`Offline-Speicher nicht verfügbar (${operation}). Bitte erneut versuchen.`);
+        this.name = 'QueueStorageError';
+    }
+}
 
 export const loadQueue = (): OfflineMutationEntry[] => {
     if (typeof window === 'undefined') return [];
     try {
         const raw = localStorage.getItem(STORAGE_KEY);
         const parsed: OfflineMutationEntry[] = raw ? JSON.parse(raw) : [];
-        if (!Array.isArray(parsed)) return [];
+        if (!Array.isArray(parsed)) throw new Error('Invalid offline queue');
         let changed = false;
         const queue = parsed.filter(entry => entry && typeof entry === 'object').map(entry => {
             if (typeof entry.ownerUid === 'string' && entry.ownerUid.trim()) return entry;
@@ -118,17 +133,18 @@ export const loadQueue = (): OfflineMutationEntry[] => {
         return queue;
     } catch (error) {
         console.error('Failed to load offline queue:', error);
-        return [];
+        throw error instanceof QueueStorageError ? error : new QueueStorageError('read', error);
     }
 };
 
 export const saveQueue = (queue: OfflineMutationEntry[]): void => {
-    if (typeof window === 'undefined') return;
     try {
         localStorage.setItem(STORAGE_KEY, JSON.stringify(queue));
     } catch (error) {
         console.error('Failed to save offline queue:', error);
+        throw new QueueStorageError('write', error);
     }
+    window.dispatchEvent(new Event(QUEUE_CHANGED_EVENT));
 };
 
 export const enqueue = <T extends OfflineMutationType>(
@@ -160,7 +176,7 @@ export const enqueue = <T extends OfflineMutationType>(
 
 export const updateEntry = (
     id: string,
-    patch: Partial<Pick<OfflineMutationEntry, 'status' | 'attempts' | 'lastError'>>
+    patch: Partial<Pick<OfflineMutationEntry, 'status' | 'attempts' | 'lastError' | 'claimId' | 'claimedAt' | 'leaseUntil' | 'nextAttemptAt'>>
 ): OfflineMutationEntry[] => {
     const queue = loadQueue();
     const newQueue = queue.map((entry) =>
@@ -181,5 +197,40 @@ export const removeEntry = (
 
 export const clearAll = (): void => {
     if (typeof window === 'undefined') return;
-    localStorage.removeItem(STORAGE_KEY);
+    try {
+        localStorage.removeItem(STORAGE_KEY);
+    } catch (error) {
+        throw new QueueStorageError('clear', error);
+    }
+    window.dispatchEvent(new Event(QUEUE_CHANGED_EVENT));
+};
+
+/** Missing timestamps on pre-lease syncing entries mean interrupted legacy work. */
+export const isReplayEligible = (entry: OfflineMutationEntry, now = Date.now()): boolean => {
+    if (!entry.ownerUid || entry.status === 'quarantined' || entry.status === 'synced') return false;
+    if (entry.status === 'syncing') {
+        return !entry.leaseUntil || entry.leaseUntil <= now || entry.leaseUntil > now + CLAIM_LEASE_MS;
+    }
+    return !entry.nextAttemptAt || entry.nextAttemptAt <= now || entry.nextAttemptAt > now + MAX_RETRY_DELAY_MS;
+};
+
+export const claimEntry = (id: string, ownerUid: string, now = Date.now()): OfflineMutationEntry | undefined => {
+    assertAccountOwner(ownerUid);
+    const entry = loadQueue().find(item => item.id === id);
+    if (!entry || entry.ownerUid !== ownerUid || !isReplayEligible(entry, now)) return;
+    const claimId = crypto.randomUUID();
+    return updateEntry(id, {
+        status: 'syncing', claimId, claimedAt: now, leaseUntil: now + CLAIM_LEASE_MS,
+    }).find(item => item.id === id);
+};
+
+export class QueueClaimLostError extends Error {
+    constructor() { super('Offline replay claim expired or was replaced.'); }
+}
+
+export const assertQueueClaim = (entry: OfflineMutationEntry): void => {
+    assertAccountOwner(entry.ownerUid);
+    const current = loadQueue().find(item => item.id === entry.id);
+    if (!current || current.claimId !== entry.claimId || current.status !== 'syncing' ||
+        !current.leaseUntil || current.leaseUntil <= Date.now()) throw new QueueClaimLostError();
 };

@@ -4,9 +4,9 @@ import { WifiOff } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 export const OfflineBanner: React.FC<{ className?: string }> = ({ className }) => {
-  const { isOnline } = useOfflineQueue();
+  const { isOnline, pendingCount, failedCount, storageError } = useOfflineQueue();
 
-  if (isOnline) return null;
+  if (isOnline && !pendingCount && !storageError) return null;
 
   return (
     <div
@@ -18,7 +18,10 @@ export const OfflineBanner: React.FC<{ className?: string }> = ({ className }) =
       aria-live="polite"
     >
       <WifiOff className="h-4 w-4" />
-      <span>Offline-Modus aktiv - Änderungen werden lokal gespeichert.</span>
+      <span>{storageError ? 'Offline-Speicher nicht verfügbar. Bitte erneut versuchen.'
+        : failedCount ? `${pendingCount} Änderungen lokal gespeichert. Synchronisierung wird erneut versucht.`
+        : pendingCount ? `${pendingCount} Änderungen lokal gespeichert. Synchronisierung ausstehend.`
+        : 'Offline-Modus aktiv. Erfolgreiches lokales Speichern wird bestätigt.'}</span>
     </div>
   );
 };

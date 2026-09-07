@@ -6,7 +6,6 @@ import { db } from "@/lib/firebase";
 import { useAuth } from "@/hooks/useAuth";
 import { beginAccountOperation } from "@/lib/accountIdentity";
 import { useSupabaseAction } from "@/hooks/useSupabaseAction";
-import { useOfflineQueue } from "./useOfflineQueue";
 import { queryKeys } from "@/lib/queryKeys";
 import { isWorkoutDayString } from "@/lib/workoutLog";
 
@@ -33,7 +32,6 @@ interface ToggleSetContext { previousSets: SetsMap | undefined; }
 export function useSetTracking(planId: string | undefined, weekKey: string, dayIndex: number) {
   const { user } = useAuth();
   const queryClient = useQueryClient();
-  const { isOnline } = useOfflineQueue();
   const queryKey = queryKeys.sets.byDay(planId, weekKey, dayIndex);
 
   const { data: completedSets, isLoading: isLoadingSets, refetch: refetchSets } = useQuery({
@@ -56,7 +54,7 @@ export function useSetTracking(planId: string | undefined, weekKey: string, dayI
         const setsSnap = await getDocs(setsRef);
         if (!setsMap[exerciseIndex]) setsMap[exerciseIndex] = {};
         setsSnap.docs.forEach(sd => {
-          const sd_ = sd.data() as any;
+          const sd_ = sd.data();
           setsMap[exerciseIndex][sd_.setNumber] = {
             id: sd.id, workout_log_id: logDoc.id,
             set_number: sd_.setNumber, reps_completed: sd_.repsCompleted,
@@ -71,7 +69,7 @@ export function useSetTracking(planId: string | undefined, weekKey: string, dayI
     staleTime: 30_000,
   });
 
-  const toggleSetMutation = useSupabaseAction<any, ToggleSetParams, ToggleSetContext>({
+  const toggleSetMutation = useSupabaseAction<{ success: boolean; queued?: boolean }, ToggleSetParams, ToggleSetContext>({
     action: async (params: ToggleSetParams) => {
       if (!user) throw new Error("Not authenticated");
       // Every await below is a chance for authentication to change underneath
@@ -128,7 +126,7 @@ export function useSetTracking(planId: string | undefined, weekKey: string, dayI
       const previousSets = queryClient.getQueryData<SetsMap>(queryKey);
       queryClient.setQueryData(queryKey, (old: SetsMap | undefined) => {
         const newData = { ...(old || {}) };
-        if (!newData[params.exerciseIndex]) newData[params.exerciseIndex] = {};
+        newData[params.exerciseIndex] = { ...newData[params.exerciseIndex] };
         if (params.completed) {
           newData[params.exerciseIndex][params.setNumber] = {
             id: "optimistic", workout_log_id: "optimistic",
@@ -144,8 +142,8 @@ export function useSetTracking(planId: string | undefined, weekKey: string, dayI
       });
       return { previousSets };
     },
-    onError: (_err: any, params: ToggleSetParams, context: ToggleSetContext | undefined) => {
-      if (context?.previousSets && isOnline) queryClient.setQueryData(queryKey, context.previousSets);
+    onError: (_err: unknown, params: ToggleSetParams, context: ToggleSetContext | undefined) => {
+      if (context) queryClient.setQueryData(queryKey, context.previousSets ?? {});
     },
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.completion.byWeek(planId, weekKey) });

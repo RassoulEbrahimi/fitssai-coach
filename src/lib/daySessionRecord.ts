@@ -25,10 +25,11 @@ export const writeDaySessionRecord = async (
   { uid, planId, workoutDay }: DaySessionIdentity,
   changes: { weekKey?: string; dayIndex?: number; durationSec?: number; durationMeasuredAt?: Timestamp;
     completed?: boolean; completedAt?: Timestamp | null },
+  replayCheckpoint?: () => void,
 ): Promise<void> => {
   if (!uid || !planId || !isWorkoutDayString(workoutDay)) throw new Error("Invalid day session identity");
 
-  const assertCanWrite = () => { assertAccountOwner(uid); };
+  const assertCanWrite = () => { assertAccountOwner(uid); replayCheckpoint?.(); };
   assertCanWrite();
   const logs = collection(db, "users", uid, "workout_logs");
   const matches = await getDocs(query(logs, where("planId", "==", planId), where("workoutDay", "==", workoutDay)));
