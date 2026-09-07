@@ -15,7 +15,7 @@ import { recordSuccessfulWorkoutFinish } from '@/lib/sessionRecord';
 import { generateInsights } from '@/lib/insights/engine';
 import { queryKeys } from '@/lib/queryKeys';
 import type { WorkoutPlan } from '@/lib/types';
-import { SESSION_STORAGE_KEY } from '@/lib/trainingSession';
+const SESSION_STORAGE_KEY = 'fitssai.training.session:u1';
 import { MAX_SESSION_SEC } from '@/lib/workoutLog';
 const showToast = vi.hoisted(() => vi.fn());
 let queryClient: QueryClient;
@@ -78,7 +78,7 @@ vi.mock('canvas-confetti', () => ({
   from localStorage. Seeding it drives the real provider rather than mocking
   the thing under test; with no exercises the card renders the rest-day view.
 */
-const WORKOUT_STORAGE_KEY = 'fitssai.training.cache';
+const WORKOUT_STORAGE_KEY = 'fitssai.training.cache:u1';
 const SEEDED_EXERCISES = [
     { id: 'e1', name: 'Bankdrücken', sets: 3, reps: '10', rest: '90s', weight: '', weekKey: 'week1', dayIndex: 0, exerciseIndex: 0 },
     { id: 'e2', name: 'Klimmzüge', sets: 3, reps: '8', rest: '90s', weight: '', weekKey: 'week1', dayIndex: 1, exerciseIndex: 1 },

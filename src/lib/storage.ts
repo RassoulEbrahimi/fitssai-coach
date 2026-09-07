@@ -18,14 +18,17 @@ import {
 export const FITSSAI_KEY_PREFIX = "fitssai.";
 
 /**
- * Account-scoped keys, cleared on sign-out so the next account never sees the
- * previous one's data.
+ * Legacy ownerless keys. Clear on every resolved auth transition as well as
+ * explicit sign-out. New UID-suffixed caches/sessions stay isolated for their
+ * original owner, and the offline queue retains its immutable entry owners.
  */
 export const SIGN_OUT_CLEARED_KEYS: readonly string[] = [
   SESSION_STORAGE_KEY,
   LEGACY_SESSION_STARTED_KEY,
   LEGACY_SESSION_START_TIME_KEY,
   "fitssai.training.cache",
+  "fitssai.nudges.v1",
+  "REACT_QUERY_OFFLINE_CACHE",
 ];
 
 /**
@@ -59,9 +62,8 @@ export const clearSignOutSensitiveStorage = (): void => {
     }
   });
 
-  // sessionStorage holds only derived, per-tab caches (AI nudges), all
-  // namespaced — dropping them is safe and keeps stale content out of the
-  // next session.
+  // Remove any legacy per-tab derived caches. There are currently no active
+  // sessionStorage writers, but older clients used this namespaced storage.
   safely(() => {
     const doomed: string[] = [];
     for (let i = 0; i < sessionStorage.length; i += 1) {

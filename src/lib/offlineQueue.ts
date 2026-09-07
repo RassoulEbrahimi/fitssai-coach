@@ -1,4 +1,7 @@
 
+import { auth } from '@/lib/firebase';
+import { assertAccountOwner } from '@/lib/accountIdentity';
+
 export type OfflineMutationType = 'TOGGLE_DAY_COMPLETION' | 'TOGGLE_SET' | 'TOGGLE_DAY';
 
 /**
@@ -82,10 +85,12 @@ export const isLegacyDayCompletionPayload = (
 
 export interface OfflineMutationEntry<T extends OfflineMutationType = OfflineMutationType> {
     id: string;
+    /** Absent only on quarantined legacy entries. Never reassigned. */
+    readonly ownerUid?: string;
     type: T;
     payload: OfflineMutationPayloads[T];
     createdAt: number;
-    status: 'pending' | 'syncing' | 'synced' | 'failed';
+    status: 'pending' | 'syncing' | 'synced' | 'failed' | 'quarantined';
     attempts: number;
     lastError?: string;
 }
@@ -96,7 +101,21 @@ export const loadQueue = (): OfflineMutationEntry[] => {
     if (typeof window === 'undefined') return [];
     try {
         const raw = localStorage.getItem(STORAGE_KEY);
-        return raw ? JSON.parse(raw) : [];
+        const parsed: OfflineMutationEntry[] = raw ? JSON.parse(raw) : [];
+        if (!Array.isArray(parsed)) return [];
+        let changed = false;
+        const queue = parsed.filter(entry => entry && typeof entry === 'object').map(entry => {
+            if (typeof entry.ownerUid === 'string' && entry.ownerUid.trim()) return entry;
+            if (entry.status === 'quarantined') return entry;
+            changed = true;
+            return { ...entry, status: 'quarantined' as const,
+                lastError: 'Missing original account ownership; this entry cannot be replayed.' };
+        });
+        if (changed) {
+            console.warn('[OfflineQueue] Ownerless entries quarantined; no ownership was inferred.');
+            saveQueue(queue);
+        }
+        return queue;
     } catch (error) {
         console.error('Failed to load offline queue:', error);
         return [];
@@ -114,11 +133,14 @@ export const saveQueue = (queue: OfflineMutationEntry[]): void => {
 
 export const enqueue = <T extends OfflineMutationType>(
     type: T,
-    payload: OfflineMutationPayloads[T]
+    payload: OfflineMutationPayloads[T],
+    expectedOwnerUid: string | null | undefined = auth.currentUser?.uid,
 ): { queue: OfflineMutationEntry[]; entry: OfflineMutationEntry<T> } => {
+    const ownerUid = assertAccountOwner(expectedOwnerUid);
     const queue = loadQueue();
     const entry: OfflineMutationEntry<T> = {
         id: crypto.randomUUID(),
+        ownerUid,
         type,
         payload,
         createdAt: Date.now(),
@@ -138,11 +160,11 @@ export const enqueue = <T extends OfflineMutationType>(
 
 export const updateEntry = (
     id: string,
-    patch: Partial<OfflineMutationEntry>
+    patch: Partial<Pick<OfflineMutationEntry, 'status' | 'attempts' | 'lastError'>>
 ): OfflineMutationEntry[] => {
     const queue = loadQueue();
     const newQueue = queue.map((entry) =>
-        entry.id === id ? { ...entry, ...patch } : entry
+        entry.id === id ? { ...entry, ...patch, ownerUid: entry.ownerUid } : entry
     );
     saveQueue(newQueue);
     return newQueue;

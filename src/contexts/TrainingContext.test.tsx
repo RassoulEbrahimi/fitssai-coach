@@ -1,3 +1,4 @@
+vi.mock('@/hooks/useAuth', () => ({ useAuth: () => ({ user: { uid: 'u1', id: 'u1' } }) }));
 import { renderHook, act } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { TrainingProvider, useTraining } from '../contexts/TrainingContext';
@@ -54,7 +55,7 @@ describe('TrainingContext', () => {
 
         expect(result.current.isStarted).toBe(true);
 
-        const stored = JSON.parse(localStorage.getItem('fitssai.training.session') as string);
+        const stored = JSON.parse(localStorage.getItem('fitssai.training.session:u1') as string);
         expect(stored.planId).toBe('plan-1');
         expect(stored.weekKey).toBe('Week 2');
         expect(stored.dayIndex).toBe(3);
@@ -85,12 +86,12 @@ describe('TrainingContext', () => {
 
         expect(result.current.isStarted).toBe(false);
         expect(result.current.duration).toBe(0);
-        expect(localStorage.getItem('fitssai.training.session')).toBeNull();
+        expect(localStorage.getItem('fitssai.training.session:u1')).toBeNull();
     });
 
     it('persists a bound session across reloads (simulated)', () => {
         const startedAt = Date.now() - 10000; // Started 10s ago
-        localStorage.setItem('fitssai.training.session', JSON.stringify({
+        localStorage.setItem('fitssai.training.session:u1', JSON.stringify({
             version: 1,
             planId: 'plan-1',
             weekKey: 'Week 3',
@@ -122,7 +123,7 @@ describe('TrainingContext', () => {
     });
 
     it('discards a stale session instead of rebinding it to today', () => {
-        localStorage.setItem('fitssai.training.session', JSON.stringify({
+        localStorage.setItem('fitssai.training.session:u1', JSON.stringify({
             version: 1,
             planId: 'old-plan',
             weekKey: 'Week 2',
@@ -144,6 +145,6 @@ describe('TrainingContext', () => {
         expect(result.current.isStarted).toBe(false);
         expect(result.current.session).toBeNull();
         expect(result.current.rejectionNotice).toBeTruthy();
-        expect(localStorage.getItem('fitssai.training.session')).toBeNull();
+        expect(localStorage.getItem('fitssai.training.session:u1')).toBeNull();
     });
 });

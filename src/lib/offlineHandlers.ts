@@ -1,4 +1,4 @@
-import { auth } from "@/lib/firebase";
+import { assertAccountOwner } from "@/lib/accountIdentity";
 import { db } from "@/lib/firebase";
 import {
   collection, getDocs, query, where, doc, addDoc, deleteDoc, updateDoc, Timestamp,
@@ -20,9 +20,8 @@ type ToggleExercisePayload = {
 };
 
 export const handlers = {
-  TOGGLE_SET: async (payload: ToggleSetPayload) => {
-    const uid = auth.currentUser?.uid;
-    if (!uid) throw new Error("Not authenticated");
+  TOGGLE_SET: async (payload: ToggleSetPayload, ownerUid: string) => {
+    const uid = assertAccountOwner(ownerUid);
     const logsRef = collection(db, "users", uid, "workout_logs");
     const logSnap = await getDocs(query(logsRef,
       where("planId",        "==", payload.planId),
@@ -33,6 +32,7 @@ export const handlers = {
     let logId: string;
     if (!logSnap.empty) { logId = logSnap.docs[0].id; }
     else {
+      assertAccountOwner(ownerUid);
       const newLog = await addDoc(logsRef, {
         planId: payload.planId, weekKey: payload.weekKey,
         dayIndex: payload.dayIndex, exerciseIndex: payload.exerciseIndex,
@@ -41,8 +41,10 @@ export const handlers = {
       });
       logId = newLog.id;
     }
+    assertAccountOwner(ownerUid);
     const setsRef = collection(db, "users", uid, "workout_logs", logId, "workout_set_logs");
     const setSnap = await getDocs(query(setsRef, where("setNumber", "==", payload.setNumber)));
+    assertAccountOwner(ownerUid);
     if (payload.completed) {
       if (setSnap.empty) await addDoc(setsRef, { setNumber: payload.setNumber, repsCompleted: payload.repsCompleted, weightUsed: payload.weightUsed ?? null, completedAt: Timestamp.now() });
     } else {
@@ -64,7 +66,8 @@ export const handlers = {
    * plan position from that payload, and guessing one would attach the user's
    * completion to a day they never trained — so the entry is dropped, loudly.
    */
-  TOGGLE_DAY_COMPLETION: async (payload: ToggleExercisePayload) => {
+  TOGGLE_DAY_COMPLETION: async (payload: ToggleExercisePayload, ownerUid: string) => {
+    assertAccountOwner(ownerUid);
     // Bound to a boolean on purpose: as a type predicate this would narrow the
     // remaining branch to `never`, since the two shapes are disjoint.
     const isLegacyDayEntry: boolean = isLegacyDayCompletionPayload(payload);
@@ -76,8 +79,7 @@ export const handlers = {
       return [];
     }
 
-    const uid = auth.currentUser?.uid;
-    if (!uid) throw new Error("Not authenticated");
+    const uid = assertAccountOwner(ownerUid);
     const logsRef = collection(db, "users", uid, "workout_logs");
     const snap = await getDocs(query(logsRef,
       where("planId",        "==", payload.planId),
@@ -85,6 +87,7 @@ export const handlers = {
       where("dayIndex",      "==", payload.dayIndex),
       where("exerciseIndex", "==", payload.exerciseIndex),
     ));
+    assertAccountOwner(ownerUid);
     if (!snap.empty) {
       await updateDoc(doc(db, "users", uid, "workout_logs", snap.docs[0].id), {
         completed: payload.completed, completedAt: payload.completed ? Timestamp.now() : null,
@@ -111,9 +114,8 @@ export const handlers = {
    * The date travels in the payload, so a Tuesday queued offline still writes
    * Tuesday when it replays on Thursday. Nothing here reads a clock.
    */
-  TOGGLE_DAY: async (payload: ToggleDayPayload) => {
-    const uid = auth.currentUser?.uid;
-    if (!uid) throw new Error("Not authenticated");
+  TOGGLE_DAY: async (payload: ToggleDayPayload, ownerUid: string) => {
+    const uid = assertAccountOwner(ownerUid);
     if (!payload.planId || !isWorkoutDayString(payload.workoutDay)) {
       console.warn('[OfflineQueue] Dropping a day completion with unusable metadata.', payload);
       return [];
@@ -124,7 +126,7 @@ export const handlers = {
       dayIndex: payload.dayIndex,
       completed: payload.completed,
       completedAt: payload.completed ? Timestamp.now() : null,
-    });
+    }, () => { assertAccountOwner(ownerUid); });
 
     return [
       queryKeys.logs.byPlan(payload.planId),

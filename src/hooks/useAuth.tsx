@@ -1,7 +1,9 @@
-import { useState, useEffect, createContext, useContext } from "react";
+import { useState, useEffect, createContext, useContext, Fragment } from "react";
 import { User as FirebaseUser } from "firebase/auth";
 import { auth } from "@/lib/firebase";
-import { onAuthStateChanged, signOut as firebaseSignOut } from "firebase/auth";
+import { onAuthStateChanged } from "firebase/auth";
+import { signOutAccount } from '@/lib/signOut';
+import { clearSignOutSensitiveStorage } from '@/lib/storage';
 
 // AppUser extends FirebaseUser with `.id` alias to `.uid`
 // so all existing `user?.id` references continue to work.
@@ -26,19 +28,17 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (firebaseUser) => {
+      clearSignOutSensitiveStorage();
       setUser(wrapUser(firebaseUser));
       setLoading(false);
     });
     return unsub;
   }, []);
 
-  const signOut = async () => {
-    await firebaseSignOut(auth);
-  };
-
   return (
-    <AuthContext.Provider value={{ user, loading, signOut }}>
-      {children}
+    <AuthContext.Provider value={{ user, loading, signOut: signOutAccount }}>
+      {/* Never hydrate before identity resolves; replace mounted account state on UID change. */}
+      {!loading && <Fragment key={user?.uid ?? 'signed-out'}>{children}</Fragment>}
     </AuthContext.Provider>
   );
 };

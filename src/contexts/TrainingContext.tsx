@@ -1,3 +1,4 @@
+import { useAuth } from '@/hooks/useAuth';
 import React, { ReactNode } from 'react';
 import { TrainingDataProvider, useTrainingData, WorkoutItem } from './TrainingDataContext';
 import { TrainingSessionProvider, useTrainingSession } from './TrainingSessionContext';
@@ -8,8 +9,9 @@ export { useTrainingSession } from './TrainingSessionContext';
 export type { WorkoutItem } from './TrainingDataContext';
 
 export function TrainingProvider({ children }: { children: ReactNode }) {
+    const { user } = useAuth();
     return (
-        <TrainingDataProvider>
+        <TrainingDataProvider key={user?.uid ?? 'signed-out'}>
             <TrainingSessionProvider>
                 {children}
             </TrainingSessionProvider>

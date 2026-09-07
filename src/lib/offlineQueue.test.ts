@@ -1,4 +1,5 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+vi.mock("@/lib/firebase", () => ({ auth: { currentUser: { uid: "u1" } } }));
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import {
     OfflineMutationEntry,
     enqueue,
@@ -86,7 +87,7 @@ describe('offlineQueue', () => {
             completed: true
         });
 
-        let queue = loadQueue();
+        const queue = loadQueue();
         expect(queue).toHaveLength(1);
 
         const updatedQueue = removeEntry(entry.id);

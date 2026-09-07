@@ -1,3 +1,5 @@
+import { useAuth } from '@/hooks/useAuth';
+import { accountStorageKey } from '@/lib/accountIdentity';
 import React, {
     createContext,
     useContext,
@@ -53,6 +55,8 @@ interface TrainingSessionContextValue {
 const TrainingSessionContext = createContext<TrainingSessionContextValue | undefined>(undefined);
 
 export function TrainingSessionProvider({ children }: { children: ReactNode }) {
+    const { user } = useAuth();
+    const ownerUid = user?.uid;
     /**
      * The live session, mirrored into a ref.
      *
@@ -67,7 +71,7 @@ export function TrainingSessionProvider({ children }: { children: ReactNode }) {
         // The legacy keys carried no plan binding, so there is nothing safe to
         // resume from them; migrateLegacySession clears them.
         migrateLegacySession();
-        const stored = readStoredSession();
+        const stored = ownerUid ? readStoredSession(ownerUid) : null;
         sessionRef.current = stored;
         return stored;
     });
@@ -97,14 +101,14 @@ export function TrainingSessionProvider({ children }: { children: ReactNode }) {
     // Keep other tabs in sync.
     useEffect(() => {
         const handleStorageChange = (e: StorageEvent) => {
-            if (e.key !== SESSION_STORAGE_KEY) return;
+            if (!ownerUid || e.key !== accountStorageKey(SESSION_STORAGE_KEY, ownerUid)) return;
             const next = parseSessionPayload(e.newValue);
             setSession(next);
             setStartedAt(next ? next.startedAt : null);
         };
         window.addEventListener('storage', handleStorageChange);
         return () => window.removeEventListener('storage', handleStorageChange);
-    }, [setSession]);
+    }, [setSession, ownerUid]);
 
     useEffect(() => {
         let interval: ReturnType<typeof setInterval>;
@@ -124,11 +128,12 @@ export function TrainingSessionProvider({ children }: { children: ReactNode }) {
 
     const startSession = useCallback(
         (binding?: { planId: string; weekKey: string; dayIndex: number; workoutDay?: string }) => {
+            if (!ownerUid) return;
             if (!binding) {
                 // Without a plan day there is nothing to resume into later, so
                 // nothing is persisted — the session runs in memory only.
                 setSession(null);
-                clearStoredSession();
+                if (ownerUid) clearStoredSession(ownerUid);
                 setStartedAt(Date.now());
                 return;
             }
@@ -136,9 +141,9 @@ export function TrainingSessionProvider({ children }: { children: ReactNode }) {
             validatedForRef.current = `${payload.planId}|${payload.weekKey}|${payload.dayIndex}`;
             setSession(payload);
             setStartedAt(payload.startedAt);
-            writeStoredSession(payload);
+            writeStoredSession(payload, ownerUid);
         },
-        [setSession]
+        [setSession, ownerUid]
     );
 
     const endSession = useCallback(() => {
@@ -146,8 +151,8 @@ export function TrainingSessionProvider({ children }: { children: ReactNode }) {
         setSession(null);
         setStartedAt(null);
         setDuration(0);
-        clearStoredSession();
-    }, [setSession]);
+        if (ownerUid) clearStoredSession(ownerUid);
+    }, [setSession, ownerUid]);
 
     /*
       The frozen finish instant lives in the stored payload, so a reload or a
@@ -161,10 +166,10 @@ export function TrainingSessionProvider({ children }: { children: ReactNode }) {
         const stamped = withFinishAttempt(current, endedAt);
         if (stamped !== current) {
             setSession(stamped);
-            writeStoredSession(stamped);
+            writeStoredSession(stamped, ownerUid);
         }
         return stamped.endedAt ?? null;
-    }, [setSession]);
+    }, [setSession, ownerUid]);
 
     const clearFinishAttempt = useCallback(() => {
         const current = sessionRef.current;
@@ -172,8 +177,8 @@ export function TrainingSessionProvider({ children }: { children: ReactNode }) {
         const resumed = withoutFinishAttempt(current);
         if (resumed === current) return;
         setSession(resumed);
-        writeStoredSession(resumed);
-    }, [setSession]);
+        writeStoredSession(resumed, ownerUid);
+    }, [setSession, ownerUid]);
 
     const validateSessionAgainstPlan = useCallback((plan: SessionPlanContext) => {
         const current = sessionRef.current;
@@ -190,12 +195,12 @@ export function TrainingSessionProvider({ children }: { children: ReactNode }) {
         }
 
         // Stale: end it. Never silently rebind to today's workout.
-        clearStoredSession();
+        if (ownerUid) clearStoredSession(ownerUid);
         validatedForRef.current = null;
         setStartedAt(null);
         setSession(null);
         setRejectionNotice(describeSessionRejection(reason as SessionRejectionReason));
-    }, [setSession]);
+    }, [setSession, ownerUid]);
 
     const clearRejectionNotice = useCallback(() => setRejectionNotice(null), []);
 

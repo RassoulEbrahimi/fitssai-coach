@@ -14,9 +14,11 @@ export const writeDaySessionRecord = async (
   { uid, planId, workoutDay }: DaySessionIdentity,
   changes: { weekKey?: string; dayIndex?: number; durationSec?: number; durationMeasuredAt?: Timestamp;
     completed?: boolean; completedAt?: Timestamp | null },
+  assertCanWrite: () => void = () => {},
 ): Promise<void> => {
   if (!uid || !planId || !isWorkoutDayString(workoutDay)) throw new Error("Invalid day session identity");
 
+  assertCanWrite();
   const logs = collection(db, "users", uid, "workout_logs");
   const matches = await getDocs(query(logs, where("planId", "==", planId), where("workoutDay", "==", workoutDay)));
   // PR #60's existing discriminator also excludes unreadable exercise indices.
@@ -26,8 +28,10 @@ export const writeDaySessionRecord = async (
   // documents keep their IDs; no rows are moved, deleted or reclassified.
   const id = existing?.id ?? `day-session_${encodeURIComponent(planId)}_${workoutDay}`;
   const ref = doc(logs, id);
+  assertCanWrite();
   await runTransaction(db, async transaction => {
     const current = await transaction.get(ref);
+    assertCanWrite();
     if (current.exists()) {
       const data = current.data();
       if (data.planId !== planId || data.workoutDay !== workoutDay || !isDaySessionLog(data)) {
