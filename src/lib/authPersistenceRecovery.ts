@@ -17,7 +17,8 @@
  *
  * A reload alone would rejoin the same corrupt persisted state, so the Auth
  * store is cleared first — and only the four records belonging to this one
- * Firebase app.
+ * Firebase app. Nothing here ever deletes a database or clears an object
+ * store; both are shared by every Firebase app on the origin.
  *
  * The key format below is Firebase's, not ours. This is the only
  * Firebase-internal knowledge in the codebase, and it lives here so an SDK
@@ -78,7 +79,7 @@ const INDEXED_DB_TIMEOUT_MS = 2_000;
 
 export type StorageOutcome = 'cleared' | 'unavailable' | 'failed';
 export type IndexedDbOutcome =
-  | 'cleared' | 'unavailable' | 'database-absent' | 'store-absent' | 'failed';
+  | 'cleared' | 'unavailable' | 'database-absent' | 'store-absent' | 'failed' | 'timed-out';
 
 export interface AuthPersistenceCleanupReport {
   local: StorageOutcome;
@@ -128,11 +129,22 @@ const removeKeysFrom = (read: () => Storage | undefined, keys: string[], removed
  * Delete this app's records from the shared Auth object store, one key at a
  * time.
  *
- * Never `deleteDatabase` and never `store.clear()`: `firebaseLocalStorageDb` is
- * one database per origin, and every Firebase app on that origin keeps its
- * records in the same `firebaseLocalStorage` store, keyed by the same
- * `fbase_key` strings used in web storage. Dropping the database would sign the
- * user out of unrelated applications that merely happen to share the host.
+ * `objectStore.delete(exactKey)` is the only destructive operation here. Never
+ * `deleteDatabase`, never `store.clear()`: `firebaseLocalStorageDb` is one
+ * database per *origin*, and every Firebase app on that origin keeps its
+ * records in the same `firebaseLocalStorage` store under the same `fbase_key`
+ * strings. Dropping the database would sign the user out of unrelated
+ * applications that merely happen to share the host.
+ *
+ * That holds even when the database turns out to be absent. Opening it creates
+ * one, and deleting the empty result afterwards is a race, not a cleanup:
+ * between the close and the delete another consumer can create the store and
+ * commit its own records, which the delete then destroys. Instead the
+ * versionchange transaction is aborted from inside `upgradeneeded`, which rolls
+ * the creation back before anything is committed — verified in Chromium, where
+ * the open then fails with AbortError and `indexedDB.databases()` is left
+ * empty, while a concurrently queued open still creates the store and commits
+ * its record untouched.
  */
 const removeIndexedDbRecords = (keys: string[], removed: string[]): Promise<IndexedDbOutcome> =>
   new Promise(resolve => {
@@ -144,53 +156,102 @@ const removeIndexedDbRecords = (keys: string[], removed: string[]): Promise<Inde
     }
     if (!factory || keys.length === 0) return resolve('unavailable');
 
+    /*
+      Once this has settled the caller has its answer, so nothing after that
+      point may touch a record or the diagnostics. Every asynchronous callback
+      below checks it before doing any work, because a slow open can still
+      succeed long after the timeout returned.
+    */
     let settled = false;
+    let liveDb: IDBDatabase | null = null;
+    let liveTransaction: IDBTransaction | null = null;
+
+    const closeQuietly = () => {
+      try { liveTransaction?.abort(); } catch { /* already finishing */ }
+      try { liveDb?.close(); } catch { /* already closing */ }
+      liveTransaction = null;
+      liveDb = null;
+    };
+
     const finish = (outcome: IndexedDbOutcome) => {
       if (settled) return;
       settled = true;
       clearTimeout(timer);
       resolve(outcome);
     };
-    // A blocked open or a wedged transaction must not hold recovery open.
-    const timer = setTimeout(() => finish('failed'), INDEXED_DB_TIMEOUT_MS);
+
+    // A blocked open or a wedged transaction must not hold recovery open. The
+    // in-flight work is abandoned rather than left to finish unobserved.
+    const timer = setTimeout(() => {
+      finish('timed-out');
+      closeQuietly();
+    }, INDEXED_DB_TIMEOUT_MS);
 
     try {
       // Opened without a version so an existing database is never forced
       // through an upgrade it did not ask for.
       const request = factory.open(FIREBASE_AUTH_DB);
-      // Fires only when the database was absent, which means this call created
-      // an empty one. That is cleaned up rather than left behind, since a
-      // storeless database of this name is itself something the SDK has to
-      // recover from.
-      let createdByUs = false;
-      request.onupgradeneeded = () => { createdByUs = true; };
+      let creating = false;
+
+      request.onupgradeneeded = () => {
+        // Reached only when the database was absent and this open is creating
+        // it. Roll that back rather than committing an empty database that
+        // would later have to be deleted by shared name.
+        creating = true;
+        try { request.transaction?.abort(); } catch { /* nothing was committed */ }
+      };
+
       request.onblocked = () => finish('failed');
-      request.onerror = () => finish('failed');
+
+      request.onerror = event => {
+        // The AbortError below is this code's own rollback, not a fault.
+        event.preventDefault?.();
+        finish(creating ? 'database-absent' : 'failed');
+      };
+
       request.onsuccess = () => {
         const db = request.result;
+        // Timed out while the open was in flight: take nothing further.
+        if (settled) {
+          try { db.close(); } catch { /* already closing */ }
+          return;
+        }
+        liveDb = db;
         try {
           if (!db.objectStoreNames.contains(FIREBASE_AUTH_STORE)) {
-            db.close();
-            if (createdByUs) {
-              try { factory!.deleteDatabase(FIREBASE_AUTH_DB); } catch { /* nothing to undo */ }
-              return finish('database-absent');
-            }
+            // An existing database without the store. Nothing of this app's is
+            // in it, and it belongs to the origin, so it is left exactly as is.
+            closeQuietly();
             return finish('store-absent');
           }
 
           const transaction = db.transaction(FIREBASE_AUTH_STORE, 'readwrite');
+          liveTransaction = transaction;
           const store = transaction.objectStore(FIREBASE_AUTH_STORE);
+          /*
+            Held back until the transaction commits. A delete request can
+            succeed and still be rolled back with the rest of the transaction,
+            so reporting one as removed at request time would claim a durability
+            the store never granted.
+          */
+          const deletedInTransaction: string[] = [];
           for (const key of keys) {
-            // Individual record deletes. `delete` on an absent key succeeds, so
-            // a get-first round trip would only add failure modes.
+            // `delete` on an absent key succeeds, so a get-first round trip
+            // would only add failure modes.
             const deletion = store.delete(key);
-            deletion.onsuccess = () => { removed.push(`idb:${key}`); };
+            deletion.onsuccess = () => { deletedInTransaction.push(`idb:${key}`); };
           }
-          transaction.oncomplete = () => { db.close(); finish('cleared'); };
-          transaction.onerror = () => { db.close(); finish('failed'); };
-          transaction.onabort = () => { db.close(); finish('failed'); };
+          transaction.oncomplete = () => {
+            liveTransaction = null;
+            closeQuietly();
+            if (settled) return;
+            removed.push(...deletedInTransaction);
+            finish('cleared');
+          };
+          transaction.onerror = () => { liveTransaction = null; closeQuietly(); finish('failed'); };
+          transaction.onabort = () => { liveTransaction = null; closeQuietly(); finish('failed'); };
         } catch {
-          try { db.close(); } catch { /* already closing */ }
+          closeQuietly();
           finish('failed');
         }
       };

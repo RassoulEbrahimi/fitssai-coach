@@ -186,18 +186,44 @@ configuration rather than a second copy of the credentials — into an exact
 allowlist. Keys are compared by equality; there is no prefix match and no regex
 sweep. If either half of the scope is missing, nothing is targeted at all.
 
-**IndexedDB is cleaned record by record.** `firebaseLocalStorageDb` is one
-database per *origin*, and every Firebase app on that origin keeps its rows in
-the same `firebaseLocalStorage` store under the same `fbase_key` strings. So the
-earlier `deleteDatabase` call would have signed the user out of unrelated
-applications that merely share the host. The store is now opened without a
-version, and each allowlisted key is removed with an individual
-`objectStore.delete`; every other row is left in place. Absent database, absent
-store, open error, blocked open, aborted transaction and an open that never
-settles are each handled and reported, bounded by a two-second timeout. An empty
-database created by the open itself is removed again rather than left behind,
-since a storeless database of that name is one of the states the SDK has to
-recover from.
+**IndexedDB is cleaned record by record, and no database is ever deleted.**
+`firebaseLocalStorageDb` is one database per *origin*, and every Firebase app on
+that origin keeps its rows in the same `firebaseLocalStorage` store under the
+same `fbase_key` strings. `objectStore.delete(exactKey)` is the only destructive
+operation; there is no `deleteDatabase` and no `store.clear()` on this path at
+all.
+
+That holds even when the database turns out to be absent. Opening it creates
+one, and deleting the empty result afterwards is a race rather than a cleanup:
+between the close and the delete, another consumer can create the store and
+commit its own records, which the delete then destroys. So the versionchange
+transaction is aborted from inside `upgradeneeded` instead, rolling the creation
+back before anything is committed.
+
+Measured in Chromium against a page on a real origin, rather than assumed:
+
+| Probe | Result |
+| --- | --- |
+| Open absent DB, abort in `upgradeneeded` | `{created: true, ended: "error", name: "AbortError"}` |
+| `indexedDB.databases()` afterwards | `[]` — nothing was committed |
+| Same, with a second consumer's open queued concurrently | recovery `AbortError`; the other consumer `committed` |
+| That consumer's record afterwards | `{uid: "B"}` — survived |
+| `indexedDB.databases()` afterwards | `["probeAuthDb"]` — the other consumer's database stands |
+
+An existing database that has no store is left exactly as found. Open error,
+blocked open, aborted transaction and an open that never settles are each
+reported distinctly, bounded by a two-second timeout.
+
+**Settling cancels everything still in flight.** A slow open can succeed long
+after the timeout returned an answer, so a settled flag is checked in every
+asynchronous callback before any destructive work, and the timeout aborts the
+in-flight transaction and closes the connection. After settlement no record is
+touched and no diagnostic changes.
+
+**`removed` reports only what committed.** A delete request can succeed and
+still be rolled back with the rest of its transaction, so requested deletions
+are held back and appended to the report in `oncomplete` alone. An abort reports
+`failed` with nothing removed, and the records are still there.
 
 **Automatic recovery requires a loop guard that provably persisted.** The marker
 is written and then read back — a `setItem` can fail without throwing, and an

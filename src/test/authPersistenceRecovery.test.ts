@@ -146,12 +146,79 @@ describe('cleanup is scoped to this Firebase app', () => {
     expect(idb.recordsIn(DB, STORE).size).toBeGreaterThan(0);
   });
 
-  it('does not leave behind a storeless database it created while looking', async () => {
-    // No firebaseLocalStorageDb on this origin yet.
+  it('never deletes the shared database even when it has to create one to look', async () => {
+    // No firebaseLocalStorageDb on this origin yet: the open creates one.
     const report = await clearFirebaseAuthPersistence(fitssai);
 
+    // Rolled back from inside upgradeneeded, so nothing was committed and
+    // nothing has to be deleted by shared name afterwards.
     expect(report.indexedDb).toBe('database-absent');
+    expect(idb.control.deletedDatabases).toEqual([]);
     expect(idb.control.databases.has(DB)).toBe(false);
+  });
+
+  it('leaves another app\'s concurrently created database and record alone', async () => {
+    // Recovery starts against an absent database.
+    const recovering = clearFirebaseAuthPersistence(fitssai);
+
+    // A second consumer queues its own open, creates the store and commits.
+    const appBRecord = key('authUser', otherApp);
+    idb.seed(DB, STORE, { [appBRecord]: { uid: 'B' } });
+
+    const report = await recovering;
+
+    /*
+      Which of the two got there first is the platform's business, and this
+      double cannot schedule real connections — the browser probe recorded in
+      docs/PR64-account-lifecycle.md is what establishes that. What must hold
+      under every interleaving is asserted here: the old implementation deleted
+      the database it had just created, taking App B's store and record with it.
+    */
+    expect(idb.control.deletedDatabases).toEqual([]);
+    expect(idb.control.databases.has(DB)).toBe(true);
+    expect(idb.recordsIn(DB, STORE).get(appBRecord)).toEqual({ uid: 'B' });
+    expect(['database-absent', 'cleared']).toContain(report.indexedDb);
+    // Whatever happened, nothing of App B's was reported as removed.
+    expect(report.removed.some(entry => entry.includes(appBRecord))).toBe(false);
+  });
+
+  it('leaves an existing storeless database exactly as it found it', async () => {
+    idb.control.databases.set(DB, { stores: new Map() });
+
+    const report = await clearFirebaseAuthPersistence(fitssai);
+
+    expect(report.indexedDb).toBe('store-absent');
+    expect(idb.control.deletedDatabases).toEqual([]);
+    expect(idb.control.databases.has(DB)).toBe(true);
+  });
+});
+
+describe('what counts as removed', () => {
+  it('reports only deletions the transaction actually committed', async () => {
+    seedOrigin();
+
+    const report = await clearFirebaseAuthPersistence(fitssai);
+
+    expect(report.indexedDb).toBe('cleared');
+    expect(report.removed).toEqual(expect.arrayContaining(
+      FIREBASE_AUTH_PERSISTENCE_NAMES.map(name => `idb:${key(name, fitssai)}`)));
+    // Only this app's records, never another's.
+    expect(report.removed.some(entry => entry.includes(String(otherApp.config.apiKey)))).toBe(false);
+  });
+
+  it('reports nothing removed when the transaction aborts after the deletes succeed', async () => {
+    seedOrigin();
+    idb.control.abortTransactionAfterDeletes = true;
+
+    const report = await clearFirebaseAuthPersistence(fitssai);
+
+    expect(report.indexedDb).toBe('failed');
+    // The requests succeeded, but the rollback means nothing was durable, and
+    // the diagnostics must not claim otherwise.
+    expect(report.removed.filter(entry => entry.startsWith('idb:'))).toEqual([]);
+    for (const name of FIREBASE_AUTH_PERSISTENCE_NAMES) {
+      expect(idb.recordsIn(DB, STORE).has(key(name, fitssai))).toBe(true);
+    }
   });
 });
 
@@ -192,19 +259,33 @@ describe('storage that cannot be reached', () => {
 
     idb.control.blockOpen = false;
     seedOrigin();
-    idb.control.failTransaction = true;
+    idb.control.abortTransactionAfterDeletes = true;
     expect((await clearFirebaseAuthPersistence(fitssai)).indexedDb).toBe('failed');
     // An aborted transaction changed nothing.
     expect(idb.recordsIn(DB, STORE).has(key('authUser', fitssai))).toBe(true);
   });
 
-  it('gives up on a hanging open rather than waiting forever', async () => {
+  it('gives up on a hanging open, and a late success changes nothing', async () => {
     vi.useFakeTimers();
+    seedOrigin();
     idb.control.hangOpen = true;
+
     const pending = clearFirebaseAuthPersistence(fitssai);
     await vi.advanceTimersByTimeAsync(2_500);
+    const report = await pending;
+    expect(report.indexedDb).toBe('timed-out');
+    const reportedAtSettlement = [...report.removed];
 
-    expect((await pending).indexedDb).toBe('failed');
+    // The open the caller stopped waiting for now succeeds.
+    idb.control.releaseHungOpen!();
+    await vi.advanceTimersByTimeAsync(1_000);
+
+    // No record was touched, and the answer already given did not change.
+    for (const name of FIREBASE_AUTH_PERSISTENCE_NAMES) {
+      expect(idb.recordsIn(DB, STORE).has(key(name, fitssai))).toBe(true);
+    }
+    expect(report.removed).toEqual(reportedAtSettlement);
+    expect(report.removed.filter(entry => entry.startsWith('idb:'))).toEqual([]);
     vi.useRealTimers();
   });
 });
