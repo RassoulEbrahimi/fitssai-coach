@@ -1,4 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useAuth } from '@/hooks/useAuth';
+import { accountStorageKey } from '@/lib/accountIdentity';
+import { NUDGE_RECORD_STORAGE_KEY } from '@/lib/nudges/delivery';
 import {
   evaluateTrainingNudges,
   isNudgeDelivered,
@@ -59,12 +62,14 @@ export const useTrainingNudge = ({
   date,
   enabled = true,
 }: UseTrainingNudgeInput): TrainingNudgeState => {
+  const { user } = useAuth();
+  const storageKey = user?.uid ? accountStorageKey(NUDGE_RECORD_STORAGE_KEY, user.uid) : null;
   const evaluation = useMemo(
     () => evaluateTrainingNudges({ plan, date, logs }),
     [plan, date, logs]
   );
 
-  const [record, setRecord] = useState(readNudgeRecord);
+  const [record, setRecord] = useState(() => readNudgeRecord(storageKey));
   const [channelState, setChannelState] = useState<NotificationChannelState>(
     readNotificationChannelState
   );
@@ -103,16 +108,16 @@ export const useTrainingNudge = ({
     already answered.
   */
   useEffect(() => {
-    if (!enabled) return;
+    if (!enabled || !storageKey) return;
     if (channelState !== "granted") return;
 
     const target = evaluation.nudges.find((nudge) => nudge.browserDeliverable);
     if (!target) return;
     if (isNudgeDelivered(record, target.dayKey) || isNudgeDismissed(record, target.dayKey)) return;
 
-    setRecord((current) => persistNudgeRecord(markNudgeDelivered(current, target.dayKey, day)));
+    setRecord((current) => persistNudgeRecord(markNudgeDelivered(current, target.dayKey, day), storageKey));
     void showBrowserNudge(target);
-  }, [enabled, channelState, evaluation, record, day]);
+  }, [enabled, channelState, evaluation, record, day, storageKey]);
 
   /**
    * Close today's nudge.
@@ -124,9 +129,9 @@ export const useTrainingNudge = ({
    */
   const dismiss = useCallback(
     (dayKey: string) => {
-      setRecord((current) => persistNudgeRecord(markNudgeDismissed(current, dayKey, day)));
+      setRecord((current) => persistNudgeRecord(markNudgeDismissed(current, dayKey, day), storageKey));
     },
-    [day]
+    [day, storageKey]
   );
 
   const requestPermission = useCallback(async () => {

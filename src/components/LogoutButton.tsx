@@ -2,14 +2,12 @@ import React, { useState } from "react";
 import { motion } from "framer-motion";
 import { LogOut } from "lucide-react";
 import { useNavigate } from "react-router-dom";
-import { signOut } from "firebase/auth";
-import { auth } from "@/lib/firebase";
+import { signOutAccount } from '@/lib/signOut';
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
-import { clearSignOutSensitiveStorage } from "@/lib/storage";
 
 export const LogoutButton: React.FC = () => {
   const [showConfirm, setShowConfirm] = useState(false);
@@ -20,10 +18,7 @@ export const LogoutButton: React.FC = () => {
   const handleLogout = async () => {
     try {
       setIsLoggingOut(true);
-      await signOut(auth);
-      // Only account-scoped keys: preferences such as the theme belong to the
-      // device and must survive signing out.
-      clearSignOutSensitiveStorage();
+      await signOutAccount();
       toast({ title: "Erfolgreich abgemeldet", description: "Du wurdest erfolgreich abgemeldet." });
       setTimeout(() => navigate("/auth/sign-in"), 300);
     } catch (error) {

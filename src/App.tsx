@@ -1,8 +1,6 @@
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { QueryClient } from "@tanstack/react-query";
-import { PersistQueryClientProvider } from "@tanstack/react-query-persist-client";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { useEffect } from "react";
 import { useTranslation } from "react-i18next";
@@ -48,12 +46,12 @@ const App = () => {
   }, []);
 
   return (
-    <QueryProvider>
-      <ThemeProvider>
-        <PreferencesProvider>
-          <FocusModeProvider>
-            <TrainingProvider>
-              <AuthProvider>
+    <AuthProvider>
+      <QueryProvider>
+        <ThemeProvider>
+          <PreferencesProvider>
+            <FocusModeProvider>
+              <TrainingProvider>
                 <TooltipProvider>
                   <div className="sr-only focus-within:not-sr-only focus-within:absolute focus-within:top-0 focus-within:left-0 focus-within:p-2 focus-within:bg-background focus-within:z-50">
                     <a href="#main-content" className="mr-4">Zum Hauptinhalt springen</a>
@@ -80,12 +78,12 @@ const App = () => {
                     </Suspense>
                   </BrowserRouter>
                 </TooltipProvider>
-              </AuthProvider>
-            </TrainingProvider>
-          </FocusModeProvider>
-        </PreferencesProvider>
-      </ThemeProvider>
-    </QueryProvider>
+              </TrainingProvider>
+            </FocusModeProvider>
+          </PreferencesProvider>
+        </ThemeProvider>
+      </QueryProvider>
+    </AuthProvider>
   );
 };
 

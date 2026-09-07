@@ -1,3 +1,4 @@
+import { accountStorageKey } from "@/lib/accountIdentity";
 import { isWorkoutDayString } from "@/lib/workoutLog";
 
 /**
@@ -103,28 +104,28 @@ export const migrateLegacySession = (): boolean => {
   }
 };
 
-export const readStoredSession = (): TrainingSessionPayload | null => {
+export const readStoredSession = (ownerUid?: string): TrainingSessionPayload | null => {
   if (typeof window === "undefined") return null;
   try {
-    return parseSessionPayload(window.localStorage.getItem(SESSION_STORAGE_KEY));
+    return parseSessionPayload(window.localStorage.getItem(ownerUid ? accountStorageKey(SESSION_STORAGE_KEY, ownerUid) : SESSION_STORAGE_KEY));
   } catch {
     return null;
   }
 };
 
-export const writeStoredSession = (session: TrainingSessionPayload): void => {
+export const writeStoredSession = (session: TrainingSessionPayload, ownerUid?: string): void => {
   if (typeof window === "undefined") return;
   try {
-    window.localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(session));
+    window.localStorage.setItem(ownerUid ? accountStorageKey(SESSION_STORAGE_KEY, ownerUid) : SESSION_STORAGE_KEY, JSON.stringify(session));
   } catch {
     // Persisting is best-effort; the in-memory session still runs.
   }
 };
 
-export const clearStoredSession = (): void => {
+export const clearStoredSession = (ownerUid?: string): void => {
   if (typeof window === "undefined") return;
   try {
-    window.localStorage.removeItem(SESSION_STORAGE_KEY);
+    window.localStorage.removeItem(ownerUid ? accountStorageKey(SESSION_STORAGE_KEY, ownerUid) : SESSION_STORAGE_KEY);
   } catch {
     // Ignore blocked storage.
   }

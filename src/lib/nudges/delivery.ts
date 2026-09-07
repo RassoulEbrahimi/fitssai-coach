@@ -84,18 +84,18 @@ export const requestNotificationPermission = async (): Promise<NotificationChann
   }
 };
 
-const safeRead = (): string | null => {
+const safeRead = (storageKey: string | null): string | null => {
   try {
-    return localStorage.getItem(NUDGE_RECORD_STORAGE_KEY);
+    return storageKey ? localStorage.getItem(storageKey) : null;
   } catch {
     /* Private mode or blocked storage: behave as if nothing was remembered. */
     return null;
   }
 };
 
-const safeWrite = (record: NudgeRecord): void => {
+const safeWrite = (record: NudgeRecord, storageKey: string | null): void => {
   try {
-    localStorage.setItem(NUDGE_RECORD_STORAGE_KEY, JSON.stringify(record));
+    if (storageKey) localStorage.setItem(storageKey, JSON.stringify(record));
   } catch {
     /* Storage full or blocked. The nudge still shows; it just repeats later. */
   }
@@ -111,8 +111,8 @@ const readEntries = (value: unknown): Record<string, string> => {
 };
 
 /** The stored record, or an empty one for anything unreadable. */
-export const readNudgeRecord = (): NudgeRecord => {
-  const raw = safeRead();
+export const readNudgeRecord = (storageKey: string | null = NUDGE_RECORD_STORAGE_KEY): NudgeRecord => {
+  const raw = safeRead(storageKey);
   if (!raw) return emptyNudgeRecord();
   try {
     const parsed = JSON.parse(raw) as Partial<NudgeRecord> | null;
@@ -163,8 +163,8 @@ export const isNudgeDismissed = (record: NudgeRecord, key: string): boolean =>
   Object.prototype.hasOwnProperty.call(record.dismissed, key);
 
 /** Read, update and persist in one step, returning the new record. */
-export const persistNudgeRecord = (record: NudgeRecord): NudgeRecord => {
-  safeWrite(record);
+export const persistNudgeRecord = (record: NudgeRecord, storageKey: string | null = NUDGE_RECORD_STORAGE_KEY): NudgeRecord => {
+  safeWrite(record, storageKey);
   return record;
 };
 

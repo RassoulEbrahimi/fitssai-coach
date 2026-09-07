@@ -2,6 +2,10 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { rows, writes, control, resetWorkoutFirestore, logPath } from "@/test/mocks/workoutFirestore";
 
 vi.mock("firebase/firestore", async () => (await import("@/test/mocks/workoutFirestore")).firestore);
+/* The account these writes belong to. Declared, never assumed: every write here
+   is addressed to u1's subtree and must be made while u1 is signed in. */
+const account = vi.hoisted(() => ({ currentUser: { uid: "u1" } as { uid: string } | null }));
+vi.mock("@/lib/firebase", () => ({ db: {}, auth: account }));
 import { FutureWorkoutDayError, recordSessionDuration, recordSuccessfulWorkoutFinish } from "./sessionRecord";
 import { isCompletedDayLog } from "./workoutCompletion";
 import { MAX_SESSION_SEC } from "./workoutLog";

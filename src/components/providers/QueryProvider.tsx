@@ -1,38 +1,35 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { QueryClient } from '@tanstack/react-query';
 import { PersistQueryClientProvider } from '@tanstack/react-query-persist-client';
 import { createSyncStoragePersister } from '@tanstack/query-sync-storage-persister';
-
-const queryClient = new QueryClient({
-    defaultOptions: {
-        queries: {
-            gcTime: 1000 * 60 * 60 * 24, // 24 hours
-            staleTime: 1000 * 60 * 5, // 5 minutes
-            retry: 1,
-        },
-    },
-});
-
-const persister = createSyncStoragePersister({
-    storage: window.localStorage,
-    key: 'REACT_QUERY_OFFLINE_CACHE',
-});
+import { useAuth } from '@/hooks/useAuth';
+import { accountStorageKey } from '@/lib/accountIdentity';
 
 export function QueryProvider({ children }: { children: React.ReactNode }) {
-    return (
-        <PersistQueryClientProvider
-            client={queryClient}
-            persistOptions={{ persister }}
-            onSuccess={() => {
-                if (import.meta.env.DEV) {
-                    const cache = queryClient.getQueryCache().getAll();
-                    if (import.meta.env.DEV) {
-                        console.log(`[QueryProvider] Cache restored. Queries: ${cache.length}`, cache.map(q => q.queryKey));
-                    }
-                }
-            }}
-        >
-            {children}
-        </PersistQueryClientProvider>
-    );
+    const { user, loading } = useAuth();
+    if (loading) return null;
+    return <AccountQueryProvider key={user?.uid ?? 'signed-out'} ownerUid={user?.uid ?? null}>
+        {children}
+    </AccountQueryProvider>;
+}
+
+function AccountQueryProvider({ children, ownerUid }: { children: React.ReactNode; ownerUid: string | null }) {
+    const [queryClient] = useState(() => new QueryClient({
+        defaultOptions: {
+            queries: { gcTime: 1000 * 60 * 60 * 24, staleTime: 1000 * 60 * 5, retry: 1 },
+        },
+    }));
+    const [persister] = useState(() => createSyncStoragePersister({
+        storage: ownerUid ? window.localStorage : undefined,
+        key: ownerUid ? accountStorageKey('REACT_QUERY_OFFLINE_CACHE', ownerUid) : undefined,
+    }));
+
+    useEffect(() => () => {
+        void queryClient.cancelQueries();
+    }, [queryClient]);
+
+    return <PersistQueryClientProvider client={queryClient} persistOptions={{
+        persister,
+        buster: 'account-owned-v1',
+    }}>{children}</PersistQueryClientProvider>;
 }

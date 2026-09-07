@@ -4,6 +4,7 @@ import {
 } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { useAuth } from "@/hooks/useAuth";
+import { beginAccountOperation } from "@/lib/accountIdentity";
 import { useSupabaseAction } from "@/hooks/useSupabaseAction";
 import { useOfflineQueue } from "./useOfflineQueue";
 import { queryKeys } from "@/lib/queryKeys";
@@ -73,6 +74,9 @@ export function useSetTracking(planId: string | undefined, weekKey: string, dayI
   const toggleSetMutation = useSupabaseAction<any, ToggleSetParams, ToggleSetContext>({
     action: async (params: ToggleSetParams) => {
       if (!user) throw new Error("Not authenticated");
+      // Every await below is a chance for authentication to change underneath
+      // this write. The owner is fixed here and re-checked at each of them.
+      const stillOwner = beginAccountOperation(user.uid);
       const logsRef = collection(db, "users", user.uid, "workout_logs");
       // Find or create workout_log for this exercise position
       const logSnap = await getDocs(query(logsRef,
@@ -81,6 +85,7 @@ export function useSetTracking(planId: string | undefined, weekKey: string, dayI
         where("dayIndex",      "==", params.dayIndex),
         where("exerciseIndex", "==", params.exerciseIndex),
       ));
+      stillOwner();
       let logId: string;
       if (!logSnap.empty) {
         logId = logSnap.docs[0].id;
@@ -96,8 +101,10 @@ export function useSetTracking(planId: string | undefined, weekKey: string, dayI
         logId = newLog.id;
       }
       // Find existing set_log
+      stillOwner();
       const setsRef = collection(db, "users", user.uid, "workout_logs", logId, "workout_set_logs");
       const setSnap = await getDocs(query(setsRef, where("setNumber", "==", params.setNumber)));
+      stillOwner();
 
       if (params.completed) {
         if (setSnap.empty) {

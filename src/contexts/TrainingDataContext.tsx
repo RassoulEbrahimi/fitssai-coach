@@ -1,3 +1,5 @@
+import { useAuth } from '@/hooks/useAuth';
+import { accountStorageKey } from '@/lib/accountIdentity';
 import React, { createContext, useContext, useState, useEffect, ReactNode, useCallback } from 'react';
 import { Exercise } from '@/hooks/useExerciseEditor';
 
@@ -24,9 +26,11 @@ interface TrainingDataContextValue {
 const TrainingDataContext = createContext<TrainingDataContextValue | undefined>(undefined);
 
 export function TrainingDataProvider({ children }: { children: ReactNode }) {
+    const { user } = useAuth();
+    const storageKey = user?.uid ? accountStorageKey(WORKOUT_STORAGE_KEY, user.uid) : null;
     const [todayWorkouts, setTodayWorkouts] = useState<WorkoutItem[]>(() => {
         try {
-            const stored = localStorage.getItem(WORKOUT_STORAGE_KEY);
+            const stored = storageKey ? localStorage.getItem(storageKey) : null;
             if (stored) {
                 const parsed = JSON.parse(stored);
                 return Array.isArray(parsed) ? parsed : [];
@@ -39,17 +43,17 @@ export function TrainingDataProvider({ children }: { children: ReactNode }) {
 
     useEffect(() => {
         try {
-            localStorage.setItem(WORKOUT_STORAGE_KEY, JSON.stringify(todayWorkouts));
+            if (storageKey) localStorage.setItem(storageKey, JSON.stringify(todayWorkouts));
         } catch (error) {
             console.error('Failed to save training cache:', error);
         }
-    }, [todayWorkouts]);
+    }, [todayWorkouts, storageKey]);
 
     useEffect(() => {
         const handleStorageChange = (e: StorageEvent) => {
-            if (e.key === WORKOUT_STORAGE_KEY && e.newValue) {
+            if (storageKey && e.key === storageKey) {
                 try {
-                    const parsed = JSON.parse(e.newValue);
+                    const parsed = JSON.parse(e.newValue ?? '[]');
                     setTodayWorkouts(Array.isArray(parsed) ? parsed : []);
                 } catch (error) {
                     console.error('Failed to sync training data from storage event:', error);
@@ -58,7 +62,7 @@ export function TrainingDataProvider({ children }: { children: ReactNode }) {
         };
         window.addEventListener('storage', handleStorageChange);
         return () => window.removeEventListener('storage', handleStorageChange);
-    }, []);
+    }, [storageKey]);
 
     const addWorkout = useCallback((item: WorkoutItem) => {
         setTodayWorkouts(prev => {

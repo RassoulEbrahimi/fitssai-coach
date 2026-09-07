@@ -55,8 +55,8 @@ describe("day writes across online and offline handlers", () => {
     const malformed = { ...identity, exerciseIndex: "bad", completed: false };
     rows.set(logPath("b-malformed"), malformed);
     if (existingDay) rows.set(logPath("z-day"), { ...identity, completed: false });
-    await handlers.TOGGLE_DAY({ ...identity, completed: true });
-    await handlers.TOGGLE_DAY({ ...identity, completed: true });
+    await handlers.TOGGLE_DAY({ ...identity, completed: true }, "u1");
+    await handlers.TOGGLE_DAY({ ...identity, completed: true }, "u1");
     expect(rows.get(logPath("a-exercise"))).toEqual(exercise);
     expect(rows.get(logPath("b-malformed"))).toEqual(malformed);
     expect(rows.size).toBe(3);

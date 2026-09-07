@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+vi.mock('@/hooks/useAuth', () => ({ useAuth: () => ({ user: { uid: 'u1', id: 'u1' } }) }));
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { useTrainingNudge } from "./useTrainingNudge";
 import type { AnyWorkoutLogShape } from "@/lib/workoutCompletion";
@@ -312,6 +313,6 @@ describe("dismissal", () => {
     expect(JSON.stringify(source)).toBe(planBefore);
     expect(JSON.stringify(logs)).toBe(logsBefore);
     // The one key it may touch, and nothing else on the origin.
-    expect(Object.keys(localStorage)).toEqual(["fitssai.nudges.v1"]);
+    expect(Object.keys(localStorage)).toEqual(["fitssai.nudges.v1:u1"]);
   });
 });

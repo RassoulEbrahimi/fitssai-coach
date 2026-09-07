@@ -1,6 +1,8 @@
-import { useMutation, UseMutationOptions, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useOfflineQueue } from './useOfflineQueue';
-import type { OfflineMutationType } from '@/lib/offlineQueue';
+import { useAuth } from '@/hooks/useAuth';
+import { AccountChangedError, assertAccountOwner } from '@/lib/accountIdentity';
+import type { OfflineMutationPayloads, OfflineMutationType } from '@/lib/offlineQueue';
 import { logEvent, logError, logRetry } from '@/lib/telemetryClient';
 import { toastError, toastOffline } from '@/lib/toastWithIcon';
 
@@ -54,13 +56,18 @@ export const retryWithBackoff = async <T,>(
     fn: () => Promise<T>,
     config: RetryConfig
 ): Promise<T> => {
-    let lastError: any;
+    let lastError: unknown;
 
     for (let attempt = 0; attempt <= config.retries; attempt++) {
         try {
             return await fn();
         } catch (error) {
             lastError = error;
+
+            // Retrying an account change is pointless and harmful: identity will
+            // not revert, and each backoff holds the caller open — a finish that
+            // waits seven seconds to report a failure it already knew about.
+            if (error instanceof AccountChangedError) throw error;
 
             if (attempt < config.retries) {
                 const delay = config.initialDelay * Math.pow(2, attempt);
@@ -86,6 +93,8 @@ export const useSupabaseAction = <TData = unknown, TVariables = void, TContext =
     toOfflinePayload
 }: UseSupabaseActionOptions<TData, TVariables, TContext>) => {
     const queryClient = useQueryClient();
+    const { user } = useAuth();
+    const ownerUid = user?.uid;
     const { isOnline, enqueue } = useOfflineQueue();
 
     /**
@@ -98,13 +107,15 @@ export const useSupabaseAction = <TData = unknown, TVariables = void, TContext =
 
     return useMutation<TData, Error, TVariables, TContext>({
         mutationFn: async (variables: TVariables) => {
+            // The mounted action belongs to this account, including delayed retries.
+            assertAccountOwner(ownerUid);
             // 1. Offline Check (Immediate)
             if (!isOnline && offlineActionType) {
                 const payload = buildOfflinePayload(variables);
                 if (payload === null) {
                     throw new Error('Offline-Speichern ist für diese Aktion nicht möglich.');
                 }
-                enqueue(offlineActionType, payload as any);
+                enqueue(offlineActionType, payload as OfflineMutationPayloads[OfflineMutationType]);
                 if (messages?.offlineQueued) {
                     // Optional: toastOffline(messages.offlineQueued); 
                     // Strategy: Let the caller decide or use a default toast here?
@@ -115,8 +126,13 @@ export const useSupabaseAction = <TData = unknown, TVariables = void, TContext =
 
             // 2. Online Execution with Retry
             try {
-                return await retryWithBackoff(() => action(variables), retryConfig);
-            } catch (error: any) {
+                return await retryWithBackoff(() => {
+                    assertAccountOwner(ownerUid);
+                    return action(variables);
+                }, retryConfig);
+            } catch (caught: unknown) {
+                assertAccountOwner(ownerUid);
+                const error = caught instanceof Error ? caught : new Error(String(caught));
                 // 3. Network Error during Execution -> Queue if applicable
                 const isNetworkError =
                     error.message?.includes('Failed to fetch') ||
@@ -128,7 +144,7 @@ export const useSupabaseAction = <TData = unknown, TVariables = void, TContext =
                         : null;
 
                 if (queuedPayload !== null && offlineActionType) {
-                    enqueue(offlineActionType, queuedPayload as any);
+                    enqueue(offlineActionType, queuedPayload as OfflineMutationPayloads[OfflineMutationType]);
 
                     toastOffline(
                         'Offline gespeichert',
@@ -149,22 +165,23 @@ export const useSupabaseAction = <TData = unknown, TVariables = void, TContext =
             if (onMutate) return onMutate(variables);
             return undefined as unknown as TContext;
         },
-        onSuccess: (data: any, variables, context) => {
+        onSuccess: (data, variables, context) => {
+            const queued = !!data && typeof data === 'object' && 'queued' in data && data.queued;
             // Invalidate queries if provided
-            if (queryKey && !data?.queued) {
+            if (queryKey && !queued) {
                 queryClient.invalidateQueries({ queryKey });
             }
 
             // Standard logging
             logEvent('action_success', { offlineActionType });
 
-            if (messages?.success && !data?.queued) {
+            if (messages?.success && !queued) {
                 // toast.success(messages.success); // Use generic toast if needed
             }
 
             if (onSuccess) onSuccess(data, variables, context);
         },
-        onError: (error: any, variables, context) => {
+        onError: (error, variables, context) => {
             console.error('Action failed:', error);
             logError(error, `action_failed: ${offlineActionType}`);
 

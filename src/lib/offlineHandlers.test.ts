@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
+const identity = vi.hoisted(() => ({ currentUser: { uid: 'u1' } }));
 
 const addDoc = vi.fn(async (_ref: unknown, _data: Record<string, unknown>) => ({ id: "log-1" }));
 const updateDoc = vi.fn(async (_ref: unknown, _data: Record<string, unknown>) => undefined);
@@ -26,7 +27,7 @@ vi.mock("firebase/firestore", () => ({
 }));
 
 vi.mock("@/lib/firebase", () => ({
-  auth: { currentUser: { uid: "u1" } },
+  auth: identity,
   db: {},
 }));
 
@@ -49,21 +50,45 @@ const setPayload = (overrides: Record<string, unknown> = {}) => ({
 const parentLogPayload = (): Record<string, unknown> => addDoc.mock.calls[0][1];
 
 beforeEach(() => {
+  identity.currentUser = { uid: 'u1' };
   vi.clearAllMocks();
   getDocs.mockResolvedValue({ empty: true, docs: [] });
+});
+
+describe('account changes during an awaited handler read', () => {
+  it.each(['TOGGLE_SET', 'TOGGLE_DAY_COMPLETION'] as const)('%s stops before its first write', async type => {
+    getDocs.mockImplementationOnce(async () => {
+      identity.currentUser = { uid: 'other-account' };
+      return { empty: true, docs: [] };
+    });
+    await expect(handlers[type](setPayload(), 'u1')).rejects.toThrow(/account/);
+    expect(addDoc).not.toHaveBeenCalled();
+    expect(updateDoc).not.toHaveBeenCalled();
+  });
+
+  it('stops before changing a set when identity changes during the second read', async () => {
+    getDocs.mockResolvedValueOnce({ empty: false, docs: [{ id: 'existing', data: () => ({}) }] });
+    getDocs.mockImplementationOnce(async () => {
+      identity.currentUser = { uid: 'other-account' };
+      return { empty: true, docs: [] };
+    });
+    await expect(handlers.TOGGLE_SET(setPayload(), 'u1')).rejects.toThrow(/account/);
+    expect(addDoc).not.toHaveBeenCalled();
+    expect(updateDoc).not.toHaveBeenCalled();
+  });
 });
 
 describe("offline replay — set logging", () => {
   it("dates a newly created parent log with the queued workout day", async () => {
     // A set queued offline on Tuesday and replayed on Thursday must still be
     // recorded against Tuesday.
-    await handlers.TOGGLE_SET(setPayload());
+    await handlers.TOGGLE_SET(setPayload(), "u1");
 
     expect(parentLogPayload().workoutDay).toBe("2026-03-10");
   });
 
   it("keeps the plan position alongside the date", async () => {
-    await handlers.TOGGLE_SET(setPayload());
+    await handlers.TOGGLE_SET(setPayload(), "u1");
     const payload = parentLogPayload();
 
     expect(payload.planId).toBe("plan-1");
@@ -75,7 +100,7 @@ describe("offline replay — set logging", () => {
   it("still writes a valid log when an older queue entry has no date", async () => {
     // Entries queued before this change carry no workoutDay. They must replay
     // rather than fail, and must not invent a date.
-    await handlers.TOGGLE_SET(setPayload({ workoutDay: undefined }));
+    await handlers.TOGGLE_SET(setPayload({ workoutDay: undefined }), "u1");
     const payload = parentLogPayload();
 
     expect(payload.planId).toBe("plan-1");
@@ -83,7 +108,7 @@ describe("offline replay — set logging", () => {
   });
 
   it("does not accept a malformed date into the document", async () => {
-    await handlers.TOGGLE_SET(setPayload({ workoutDay: "10.03.2026" }));
+    await handlers.TOGGLE_SET(setPayload({ workoutDay: "10.03.2026" }), "u1");
 
     expect(parentLogPayload()).not.toHaveProperty("workoutDay");
   });
@@ -100,7 +125,7 @@ describe("offline replay — day completion", () => {
   });
 
   it("writes the same semantic document as the online day write", async () => {
-    await handlers.TOGGLE_DAY(dayPayload() as never);
+    await handlers.TOGGLE_DAY(dayPayload() as never, "u1");
     const payload = addDoc.mock.calls[0][1];
 
     // Matches useWorkoutLogs.toggleDay: identified by planId + workoutDay,
@@ -113,7 +138,7 @@ describe("offline replay — day completion", () => {
   });
 
   it("carries no exerciseIndex — a day is not an exercise", async () => {
-    await handlers.TOGGLE_DAY(dayPayload() as never);
+    await handlers.TOGGLE_DAY(dayPayload() as never, "u1");
 
     expect(addDoc.mock.calls[0][1]).not.toHaveProperty("exerciseIndex");
   });
@@ -121,13 +146,13 @@ describe("offline replay — day completion", () => {
   it("preserves the queued day when replayed on a later day", async () => {
     // Queued Tuesday, replayed Thursday: still Tuesday. The date travels in
     // the payload and nothing here reads a clock.
-    await handlers.TOGGLE_DAY(dayPayload({ workoutDay: "2026-03-10" }) as never);
+    await handlers.TOGGLE_DAY(dayPayload({ workoutDay: "2026-03-10" }) as never, "u1");
 
     expect(addDoc.mock.calls[0][1].workoutDay).toBe("2026-03-10");
   });
 
   it("keeps a December date across the year boundary", async () => {
-    await handlers.TOGGLE_DAY(dayPayload({ workoutDay: "2025-12-31" }) as never);
+    await handlers.TOGGLE_DAY(dayPayload({ workoutDay: "2025-12-31" }) as never, "u1");
 
     expect(addDoc.mock.calls[0][1].workoutDay).toBe("2025-12-31");
   });
@@ -135,15 +160,15 @@ describe("offline replay — day completion", () => {
   it("updates an existing day log instead of duplicating it", async () => {
     getDocs.mockResolvedValue({ empty: false, docs: [{ id: "existing", data: () => ({ planId: "plan-1", workoutDay: "2026-03-10" }) }] });
 
-    await handlers.TOGGLE_DAY(dayPayload() as never);
+    await handlers.TOGGLE_DAY(dayPayload() as never, "u1");
 
     expect(addDoc).not.toHaveBeenCalled();
     expect(updateDoc.mock.calls[0][1].completed).toBe(true);
   });
 
   it("writes nothing when the metadata is unusable", async () => {
-    await handlers.TOGGLE_DAY(dayPayload({ workoutDay: "10.03.2026" }) as never);
-    await handlers.TOGGLE_DAY(dayPayload({ planId: "" }) as never);
+    await handlers.TOGGLE_DAY(dayPayload({ workoutDay: "10.03.2026" }) as never, "u1");
+    await handlers.TOGGLE_DAY(dayPayload({ planId: "" }) as never, "u1");
 
     expect(addDoc).not.toHaveBeenCalled();
     expect(updateDoc).not.toHaveBeenCalled();
@@ -159,7 +184,7 @@ describe("offline replay — legacy day-completion entries", () => {
     const keys = await handlers.TOGGLE_DAY_COMPLETION({
       workoutDateStr: "2026-03-10",
       completed: true,
-    } as never);
+    } as never, "u1");
 
     expect(addDoc).not.toHaveBeenCalled();
     expect(updateDoc).not.toHaveBeenCalled();
@@ -178,7 +203,7 @@ describe("offline replay — legacy day-completion entries", () => {
       dayIndex: 3,
       exerciseIndex: 1,
       completed: true,
-    } as never);
+    } as never, "u1");
 
     const payload = addDoc.mock.calls[0][1];
     expect(payload.planId).toBe("plan-1");
