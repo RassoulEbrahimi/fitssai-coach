@@ -1,14 +1,31 @@
-import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
+import { render as testingRender, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import '@/lib/i18n';
 import TodayWorkoutCard from '../components/TodayWorkoutCard';
 import { TrainingProvider } from '../contexts/TrainingContext';
 import React from 'react';
 import { rows, writes, control, resetWorkoutFirestore, logPath } from '@/test/mocks/workoutFirestore';
-import { isCompletedDayLog } from '@/lib/workoutCompletion';
+import { isCalendarDayComplete, isCompletedDayLog, readCompletedDays, readCompletedDayDates } from '@/lib/workoutCompletion';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { useWorkoutLogs } from '@/hooks/queries/useWorkoutLogs';
+import { useWeeklyActivity } from '@/hooks/useWeeklyActivity';
+import { buildWeeklyReviewMetrics } from '@/lib/coaching/reviewMetrics';
+import { evaluateTrainingNudges } from '@/lib/nudges/eligibility';
+import { recordSuccessfulWorkoutFinish } from '@/lib/sessionRecord';
+import { generateInsights } from '@/lib/insights/engine';
+import { queryKeys } from '@/lib/queryKeys';
+import type { WorkoutPlan } from '@/lib/types';
 import { SESSION_STORAGE_KEY } from '@/lib/trainingSession';
 import { MAX_SESSION_SEC } from '@/lib/workoutLog';
 const showToast = vi.hoisted(() => vi.fn());
+let queryClient: QueryClient;
+beforeEach(() => {
+    queryClient = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
+});
+afterEach(() => queryClient.clear());
+const render = (ui: React.ReactNode) => testingRender(ui, {
+    wrapper: ({ children }) => <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>,
+});
 vi.mock('firebase/firestore', async () => (await import('@/test/mocks/workoutFirestore')).firestore);
 
 // Mocks
@@ -142,6 +159,30 @@ describe('session finish persistence across selected-day navigation', () => {
         workoutPlan: { id: A.planId, created_at: '2026-09-07T08:00:00Z', content: { name: 'Test Workout' } },
         completionMap: {}, isLoading: false, toggleExercise: vi.fn(), isToggling: false,
     };
+    const plan = { ...props.workoutPlan, content: {
+        'Week 1': Array.from({ length: 7 }, (_, i) => ({
+            day: `Day ${i}`, exercises: [0, 2, 4].includes(i) ? [{ name: 'Squat', sets: 3, reps: '8' }] : [],
+        })),
+    } } as unknown as WorkoutPlan;
+    // Real query adapters and consumer calculations stay mounted with fresh
+    // five-minute caches. A finish must refresh them from the committed row.
+    const ProgressConsumers = ({ workoutDay = A.workoutDay }: { workoutDay?: string }) => {
+        const { data: logs = [], isLoading } = useWorkoutLogs(A.planId);
+        const activity = useWeeklyActivity();
+        const review = buildWeeklyReviewMetrics({ plan, weekKey: A.weekKey, weekNumber: 1, logs });
+        const nudge = evaluateTrainingNudges({ plan, date: new Date(`${workoutDay}T12:00:00`), logs });
+        if (isLoading || activity.isLoading) return <output data-testid="progress">loading</output>;
+        return <output data-testid="progress">{JSON.stringify({
+            calendar: isCalendarDayComplete(logs, workoutDay),
+            weeklyProgress: readCompletedDayDates(logs).length,
+            completedDays: review.completedDays, scheduledDays: review.scheduledDays,
+            percent: review.completionPercent, coverage: review.durationCoverage,
+            measured: review.measuredSessionCount, unmeasured: review.unmeasuredSessionCount,
+            activeDays: activity.activeDays, workouts: activity.totalWorkouts,
+            minutes: activity.measuredMinutes, nudgeEligible: nudge.eligible,
+        })}</output>;
+    };
+    const progress = () => JSON.parse(screen.getByTestId('progress').textContent!);
     beforeEach(() => {
         vi.clearAllMocks();
         resetWorkoutFirestore();
@@ -149,9 +190,11 @@ describe('session finish persistence across selected-day navigation', () => {
         localStorage.setItem(WORKOUT_STORAGE_KEY, JSON.stringify(SEEDED_EXERCISES));
         rows.set(logPath('a-exercise'), exercise);
         rows.set(logPath('b-day'), selectedDay);
+        vi.useFakeTimers({ toFake: ['Date'] });
+        vi.setSystemTime(STARTED);
         vi.spyOn(Date, 'now').mockReturnValue(STARTED);
     });
-    afterEach(() => vi.restoreAllMocks());
+    afterEach(() => { vi.restoreAllMocks(); vi.useRealTimers(); });
     const card = (dayB = false, isOnline = true) => <TrainingProvider>
         <TodayWorkoutCard {...props} isOnline={isOnline} {...(dayB ? {
             selectedDate: new Date('2026-09-08T12:00:00'), dayIndex: 1,
@@ -181,9 +224,56 @@ describe('session finish persistence across selected-day navigation', () => {
         expect(rows.get(logPath('a-exercise'))).toEqual(exercise);
         expect(rows.get(logPath('b-day'))).toEqual(selectedDay);
         expect(writes).toHaveLength(1);
-        expect(writes[0].data).toMatchObject({ ...A, durationSec: 2700 });
-        expect([...rows.values()].some(isCompletedDayLog)).toBe(false);
+        expect(writes[0].data).toMatchObject({ ...A, durationSec: 2700, completed: true });
+        expect(writes[0].data.completedAt).toEqual(expect.objectContaining({ millis: STARTED + 2700_000 }));
+        expect(readCompletedDays([...rows.values()])).toEqual([{ weekKey: A.weekKey, dayIndex: A.dayIndex }]);
     };
+
+    it('disables Start for a future selected day without binding a session', () => {
+        render(card(true));
+        const button = screen.getByRole('button', { name: /Training starten/i });
+        expect(button).toBeDisabled();
+        expect(screen.getByText('Nur für heutige oder vergangene Tage verfügbar')).toBeInTheDocument();
+        fireEvent.click(button);
+        expect(storedSession()).toBeNull();
+        expect(screen.queryByRole('button', { name: /^Training beenden/i })).not.toBeInTheDocument();
+        expect(writes).toHaveLength(0);
+    });
+
+    it.each([true, false])('rejects a hydrated future session without changing consumers (captured date: %s)', async capturedDate => {
+        const future = { ...A, dayIndex: 2, workoutDay: '2026-09-09' };
+        const planBefore = JSON.stringify(props.workoutPlan);
+        const rowsBefore = [...rows.entries()];
+        localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify({ version: 1,
+            planId: future.planId, weekKey: future.weekKey, dayIndex: future.dayIndex,
+            ...(capturedDate ? { workoutDay: future.workoutDay } : {}), startedAt: STARTED,
+        }));
+        vi.mocked(Date.now).mockReturnValue(STARTED + 2700_000);
+        // The selected day is eligible A; only the bound future date must decide.
+        render(<>{card()}<ProgressConsumers workoutDay={future.workoutDay} /></>);
+        await waitFor(() => expect(progress()).toMatchObject({ calendar: false, completedDays: 0,
+            activeDays: 0, minutes: 0, nudgeEligible: true }));
+        fireEvent.click(await openSummary());
+        expect(await screen.findByRole('alert')).toHaveTextContent('Nur für heutige oder vergangene Tage verfügbar');
+        expect(storedSession()).toMatchObject({ planId: future.planId, dayIndex: 2 });
+        expect(writes).toHaveLength(0);
+        expect([...rows.entries()]).toEqual(rowsBefore);
+        expect(progress()).toMatchObject({ calendar: false, completedDays: 0, weeklyProgress: 0,
+            activeDays: 0, minutes: 0, nudgeEligible: true });
+        expect(showToast).toHaveBeenCalledWith('Nur für heutige oder vergangene Tage verfügbar', 'error');
+        expect(showToast.mock.calls.every(call => call[1] === 'error')).toBe(true);
+        expect(JSON.stringify(props.workoutPlan)).toBe(planBefore);
+    });
+
+    it('still starts and completes an eligible past day', async () => {
+        vi.setSystemTime(new Date('2026-09-08T10:00:00Z'));
+        render(card());
+        expect(screen.getByRole('button', { name: /Training starten/i })).toBeEnabled();
+        await start();
+        fireEvent.click(await openSummary());
+        await waitFor(() => expect(storedSession()).toBeNull());
+        assertSafeSave();
+    });
 
     it.each([false, true])('saves A after navigating to B (return to A: %s)', async returnToA => {
         const view = render(card());
@@ -212,6 +302,7 @@ describe('session finish persistence across selected-day navigation', () => {
         expect(storedSession()?.endedAt).toBe(STARTED + 2700_000);
         expect(showToast.mock.calls.every(call => call[1] === 'error')).toBe(true);
         expect(writes).toHaveLength(0);
+        expect([...rows.values()].some(isCompletedDayLog)).toBe(false);
         expect(screen.getByRole('button', { name: /Erneut speichern/i })).toBeEnabled();
         view.unmount();
         // A remount reads the stamp back from storage rather than restarting it.
@@ -238,6 +329,7 @@ describe('session finish persistence across selected-day navigation', () => {
         expect(save).toBeDisabled();
         expect(localStorage.getItem(SESSION_STORAGE_KEY)).not.toBeNull();
         expect(showToast).not.toHaveBeenCalled();
+        expect([...rows.values()].some(isCompletedDayLog)).toBe(false);
         await act(async () => release());
         await waitFor(() => expect(localStorage.getItem(SESSION_STORAGE_KEY)).toBeNull());
         assertSafeSave();
@@ -289,6 +381,7 @@ describe('session finish persistence across selected-day navigation', () => {
         expect([...rows.values()].some(isCompletedDayLog)).toBe(false);
 
         // Truthful: neither a saved-training success nor a save error.
+        expect(evaluateTrainingNudges({ plan, date: props.selectedDate, logs: [...rows.values()] }).eligible).toBe(true);
         expect(showToast).toHaveBeenCalledTimes(1);
         expect(showToast).toHaveBeenCalledWith(
             expect.stringContaining('Dauer konnte nicht gemessen werden'), 'info');
@@ -307,12 +400,15 @@ describe('session finish persistence across selected-day navigation', () => {
         // about stopping — the mirror image of the inflation it prevents.
         fireEvent.click(screen.getByRole('button', { name: /Zur.ck zum Training/i }));
         await waitFor(() => expect(storedSession()?.endedAt).toBeUndefined());
+        expect(writes).toHaveLength(0);
+        expect([...rows.values()].some(isCompletedDayLog)).toBe(false);
 
         vi.mocked(Date.now).mockReturnValue(STARTED + 3600_000);
         fireEvent.click(await openSummary());
         await waitFor(() => expect(localStorage.getItem(SESSION_STORAGE_KEY)).toBeNull());
         expect(writes).toHaveLength(1);
-        expect(writes[0].data).toMatchObject({ ...A, durationSec: 3600 });
+        expect(writes[0].data).toMatchObject({ ...A, durationSec: 3600, completed: true });
+        expect(writes[0].data.completedAt).toEqual(expect.objectContaining({ millis: STARTED + 3600_000 }));
         expect(rows.get(logPath('a-exercise'))).toEqual(exercise);
     });
 
@@ -325,5 +421,78 @@ describe('session finish persistence across selected-day navigation', () => {
         fireEvent.click(await openSummary());
         await waitFor(() => expect(localStorage.getItem(SESSION_STORAGE_KEY)).toBeNull());
         assertSafeSave();
+    });
+
+    it('does not complete on checked exercises, elapsed time, summary open or back-to-training', async () => {
+        render(<>{card()}<ProgressConsumers /></>);
+        await waitFor(() => expect(progress()).toMatchObject({ calendar: false, completedDays: 0, activeDays: 0, nudgeEligible: true }));
+        await start();
+        await openSummary();
+        expect(writes).toHaveLength(0);
+        fireEvent.click(screen.getByRole('button', { name: /Zur.ck zum Training/i }));
+        expect(writes).toHaveLength(0);
+        expect(storedSession()).not.toBeNull();
+        expect(storedSession()?.endedAt).toBeUndefined();
+        expect(progress()).toMatchObject({ calendar: false, completedDays: 0, activeDays: 0, nudgeEligible: true });
+    });
+
+    it('refreshes calendar, activity, review and nudge from one acknowledged finish and counts retries once', async () => {
+        const originalPlan = JSON.stringify(plan);
+        queryClient.setQueryData(queryKeys.plans.byUser('u1'), plan);
+        render(<>{card()}<ProgressConsumers /></>);
+        await waitFor(() => expect(progress()).toMatchObject({ calendar: false, weeklyProgress: 0, completedDays: 0, nudgeEligible: true }));
+        await start();
+        control.rejectNext = true;
+        fireEvent.click(await openSummary());
+        await screen.findByRole('alert');
+        expect(progress()).toMatchObject({ calendar: false, completedDays: 0, activeDays: 0, nudgeEligible: true });
+        expect(writes).toHaveLength(0);
+        fireEvent.click(screen.getByRole('button', { name: /Erneut speichern/i }));
+        await waitFor(() => expect(progress()).toEqual({ calendar: true, weeklyProgress: 1,
+            completedDays: 1, scheduledDays: 3, percent: 33, coverage: 'full', measured: 1,
+            unmeasured: 0, activeDays: 1, workouts: 1, minutes: 45, nudgeEligible: false }));
+        assertSafeSave();
+        // Replay the same frozen finish after acknowledgement (e.g. another tab).
+        const finish = { uid: 'u1', ...A, startedAt: STARTED, endedAt: STARTED + 2700_000 };
+        await recordSuccessfulWorkoutFinish(finish);
+        await recordSuccessfulWorkoutFinish(finish);
+        expect(readCompletedDays([...rows.values()])).toHaveLength(1);
+        expect(new Set(writes.map(w => w.path)).size).toBe(1);
+        expect(progress().completedDays).toBe(1);
+        for (const [dayIndex, count, percent] of [[2, 2, 67], [4, 3, 100]]) {
+            // These workouts become eligible as the Berlin calendar advances.
+            const workoutDay = `2026-09-${String(7 + dayIndex).padStart(2, '0')}`;
+            const endedAt = Date.parse(`${workoutDay}T10:00:00Z`);
+            vi.setSystemTime(endedAt);
+            await recordSuccessfulWorkoutFinish({ ...finish, dayIndex, workoutDay, startedAt: endedAt - 2700_000, endedAt });
+            await act(async () => {
+                await queryClient.invalidateQueries({ queryKey: queryKeys.logs.byPlan(A.planId, 'u1') });
+                await queryClient.invalidateQueries({ queryKey: ['weekly-activity', 'u1'] });
+            });
+            await waitFor(() => expect(progress()).toMatchObject({ completedDays: count, percent,
+                scheduledDays: 3, activeDays: count, workouts: count, measured: count, coverage: 'full' }));
+        }
+        expect(rows.get(logPath('a-exercise'))).toEqual(exercise);
+        expect(rows.get(logPath('b-day'))).toEqual(selectedDay);
+        expect(writes.every(w => w.path.startsWith('users/u1/workout_logs/day-session_'))).toBe(true);
+        expect(JSON.stringify(plan)).toBe(originalPlan);
+        expect(queryClient.getQueryState(queryKeys.plans.byUser('u1'))?.isInvalidated).toBe(false);
+        expect(generateInsights({ activeDays: progress().activeDays }, null, 3, '2026-09-11')).toMatchObject({
+            type: 'streak', payload: { activeDays: 3 },
+        });
+    });
+
+    it('keeps zero-second duration coverage truthful after an explicit successful finish', async () => {
+        render(<>{card()}<ProgressConsumers /></>);
+        await waitFor(() => expect(progress().completedDays).toBe(0));
+        await start();
+        // PR #62 accepts zero elapsed seconds as written; readers correctly
+        // count it as unmeasured rather than claiming measured training time.
+        vi.mocked(Date.now).mockReturnValue(STARTED);
+        fireEvent.click(await openSummary());
+        await waitFor(() => expect(progress()).toMatchObject({ calendar: true, completedDays: 1,
+            activeDays: 1, minutes: 0, measured: 0, unmeasured: 1, coverage: 'none', nudgeEligible: false }));
+        expect(writes).toHaveLength(1);
+        expect(writes[0].data).toMatchObject({ completed: true, durationSec: 0 });
     });
 });

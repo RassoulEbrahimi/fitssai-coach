@@ -1,5 +1,6 @@
 import { Timestamp } from "firebase/firestore";
 import { writeDaySessionRecord } from "@/lib/daySessionRecord";
+import { isBerlinFuture } from "@/lib/dateUtils";
 import {
   computeDurationSec,
   isWorkoutDayString,
@@ -37,13 +38,19 @@ export type SessionRecordOutcome =
   /** The metadata was incomplete, so there was no document to write to. */
   | { status: "skipped"; reason: "incomplete-metadata" };
 
+export class FutureWorkoutDayError extends Error {
+  constructor() {
+    super("Future workout days cannot be completed");
+    this.name = "FutureWorkoutDayError";
+  }
+}
+
 /**
  * Record the measured length of a finished session.
  *
- * Ending a session is **not** the same as completing the workout: the user can
- * finish at any point, and `handleCloseSummary` fires either way. So this
- * writes `durationSec` and the day's identity — and never touches `completed`.
- * Only an explicit day/session completion can complete the workout day.
+ * Duration alone never completes a workout. Callers recording only a duration
+ * retain this contract; the explicit successful finish action below opts into
+ * completion in the same guarded write.
  *
  * The write is idempotent by construction: `durationSec` is set to an absolute
  * value, never incremented, so replaying it (a double-tap, a retry) stores the
@@ -52,6 +59,21 @@ export type SessionRecordOutcome =
  */
 export const recordSessionDuration = async (
   input: SessionRecordInput
+): Promise<SessionRecordOutcome> => writeSessionRecord(input, false);
+
+/**
+ * The summary's deliberate save-and-finish action. A written result acknowledges
+ * duration AND completion together. PR #62's skipped result still means terminal
+ * closure without saved-training success, so it writes neither. No checked-set
+ * threshold, timer callback or duration-only caller can invoke completion.
+ */
+export const recordSuccessfulWorkoutFinish = async (
+  input: SessionRecordInput
+): Promise<SessionRecordOutcome> => writeSessionRecord(input, true);
+
+const writeSessionRecord = async (
+  input: SessionRecordInput,
+  completeWorkout: boolean,
 ): Promise<SessionRecordOutcome> => {
   const { uid, planId, weekKey, dayIndex, workoutDay, startedAt, endedAt } = input;
 
@@ -61,6 +83,11 @@ export const recordSessionDuration = async (
   if (!Number.isInteger(dayIndex) || dayIndex < 0 || dayIndex > 6) {
     return { status: "skipped", reason: "incomplete-metadata" };
   }
+
+  // Use the same current Berlin day as Dashboard.toggleDayComplete. Check the
+  // bound date, not the selected UI day or a supplied/frozen finish timestamp.
+  // Reject before any duration or completion write, even for hydrated sessions.
+  if (completeWorkout && isBerlinFuture(workoutDay)) throw new FutureWorkoutDayError();
 
   const durationSec = computeDurationSec(startedAt, endedAt);
   if (durationSec === null) {
@@ -74,7 +101,8 @@ export const recordSessionDuration = async (
     dayIndex,
     durationSec,
     durationMeasuredAt: Timestamp.now(),
-    // Finishing records duration only; explicit day completion is separate.
+    // Replays use the frozen first finish instant, never the retry clock.
+    ...(completeWorkout ? { completed: true, completedAt: Timestamp.fromMillis(endedAt) } : {}),
   });
 
   return { status: "written", durationSec };

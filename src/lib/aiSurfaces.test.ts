@@ -1,6 +1,10 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { readFileSync, existsSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
+import { resetWorkoutFirestore, writes } from '@/test/mocks/workoutFirestore';
+import { recordSessionDuration } from '@/lib/sessionRecord';
+
+vi.mock('firebase/firestore', async () => (await import('@/test/mocks/workoutFirestore')).firestore);
 
 /**
  * Source-level guards for the AI honesty cleanup.
@@ -153,11 +157,18 @@ describe("new log writes carry a calendar day", () => {
         expect(source).toMatch(/workoutDay/);
     });
 
-    it('the session record writes a duration but never a completion claim', () => {
-        const source = stripComments(readFileSync(join(SRC, 'lib/sessionRecord.ts'), 'utf-8'));
-
-        expect(source).toMatch(/durationSec/);
-        expect(source).not.toMatch(/completed:\s*true/);
+    it('recording duration alone never writes a completion claim', async () => {
+        // PR #63 adds a separate explicit finish action in the same module.
+        // Protect the duration-only behavior, not a module-wide text ban that
+        // would also forbid deliberate, authoritative completion.
+        resetWorkoutFirestore();
+        const startedAt = Date.parse('2026-09-07T10:00:00Z');
+        await recordSessionDuration({ uid: 'u1', planId: 'plan1', weekKey: 'Week 1',
+            dayIndex: 0, workoutDay: '2026-09-07', startedAt, endedAt: startedAt + 600_000 });
+        expect(writes).toHaveLength(1);
+        expect(writes[0].data.durationSec).toBe(600);
+        expect(writes[0].data).not.toHaveProperty('completed');
+        expect(writes[0].data).not.toHaveProperty('completedAt');
     });
 });
 

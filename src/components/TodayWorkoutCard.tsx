@@ -8,6 +8,8 @@ import WorkoutSummaryModal from "@/components/workout/WorkoutSummaryModal";
 import { motion, AnimatePresence } from "framer-motion";
 import { useTranslation } from "react-i18next";
 import { useAuth } from "@/hooks/useAuth";
+import { useQueryClient } from "@tanstack/react-query";
+import { queryKeys } from "@/lib/queryKeys";
 import { format } from "date-fns";
 import { de } from "date-fns/locale";
 import { isBerlinPast, isBerlinFuture } from "@/lib/dateUtils";
@@ -24,7 +26,7 @@ import { useTraining } from "@/contexts/TrainingContext";
 import { useFocusMode } from "@/contexts/FocusModeContext";
 import { useSetTracking } from "@/hooks/useSetTracking";
 import { getWorkoutDateString } from "@/lib/workoutDateUtils";
-import { recordSessionDuration, type SessionRecordOutcome } from "@/lib/sessionRecord";
+import { FutureWorkoutDayError, recordSuccessfulWorkoutFinish, type SessionRecordOutcome } from "@/lib/sessionRecord";
 import { useRestTimer } from "@/hooks/useRestTimer";
 import ExerciseWithSets from "@/components/workout/ExerciseWithSets";
 import workoutHeroBg from "@/assets/workout-hero-bg.jpg";
@@ -104,6 +106,7 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
 }) => {
   const { t } = useTranslation();
   const { user } = useAuth();
+  const queryClient = useQueryClient();
   const { showToast } = useThrottledToast();
   const { isFocusMode, setFocusMode } = useFocusMode();
   const {
@@ -341,7 +344,7 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
           : undefined
       );
       if (!workoutDay) throw new Error("Missing session date");
-      outcome = await recordSessionDuration({
+      outcome = await recordSuccessfulWorkoutFinish({
         uid: user.uid,
         planId: session.planId,
         weekKey: session.weekKey,
@@ -359,8 +362,11 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
         dayIndex: session?.dayIndex,
         message: error instanceof Error ? error.message : String(error),
       });
-      setFinishError(FINISH_RETRY_MESSAGE);
-      showToast(FINISH_RETRY_MESSAGE, 'error');
+      const message = error instanceof FutureWorkoutDayError
+        ? t('dashboard.futureDay.locked')
+        : FINISH_RETRY_MESSAGE;
+      setFinishError(message);
+      showToast(message, 'error');
       return;
     } finally {
       savingSessionRef.current = false;
@@ -368,8 +374,8 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
     }
 
     /*
-      Both outcomes that get here are terminal. `written` stored the
-      measurement; `skipped` established there was no measurement worth
+      Both outcomes that get here are terminal. `written` atomically stored
+      completion and measurement; `skipped` established there was no measurement worth
       storing — a session left running past MAX_SESSION_SEC, or metadata the
       writer will not accept. Neither improves by being retried, and holding
       the session open for a retry that cannot succeed would strand the user in
@@ -380,6 +386,10 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
     setShowSummary(false);
     setFocusMode(false);
     if (outcome.status === "written") {
+      // Read the acknowledged record through the existing consumers. Never
+      // optimistically complete a day or refetch/regenerate the workout plan.
+      void queryClient.invalidateQueries({ queryKey: queryKeys.logs.byPlan(session.planId, user.id) });
+      void queryClient.invalidateQueries({ queryKey: ['weekly-activity', user.id] });
       showToast(t('todayWorkout.finishMessage'));
       return;
     }
@@ -393,6 +403,10 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
 
   // Handle starting training - also enables fullscreen
   const handleStartTraining = () => {
+    if (isBerlinFuture(selectedDateStr)) {
+      showToast(t('dashboard.futureDay.locked'), 'info');
+      return;
+    }
     // Bind the session to this exact plan day so a reload resumes the same
     // workout instead of re-attaching to whatever day is shown.
     if (workoutPlan?.id) {
@@ -541,12 +555,16 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
                   {/* Start Training Button */}
                   <Button
                     onClick={handleStartTraining}
+                    disabled={isFuture}
                     className="w-full mt-4 h-14 text-lg font-semibold gap-2"
                     size="lg"
                   >
                     <Play className="w-5 h-5" />
                     {t('todayWorkout.startTraining')}
                   </Button>
+                  {isFuture && <p className="mt-2 text-sm text-muted-foreground">
+                    {t('dashboard.futureDay.locked')}
+                  </p>}
                 </motion.div>
               ) : (
                 /* Started view: set-based exercise list */
