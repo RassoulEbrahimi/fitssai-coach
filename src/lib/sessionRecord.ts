@@ -1,7 +1,5 @@
-import {
-  collection, getDocs, query, where, addDoc, updateDoc, doc, Timestamp,
-} from "firebase/firestore";
-import { db } from "@/lib/firebase";
+import { Timestamp } from "firebase/firestore";
+import { writeDaySessionRecord } from "@/lib/daySessionRecord";
 import {
   computeDurationSec,
   isWorkoutDayString,
@@ -45,8 +43,7 @@ export type SessionRecordOutcome =
  * Ending a session is **not** the same as completing the workout: the user can
  * finish at any point, and `handleCloseSummary` fires either way. So this
  * writes `durationSec` and the day's identity — and never touches `completed`.
- * Completion stays owned by the per-exercise logs, which record what was
- * actually done.
+ * Only an explicit day/session completion can complete the workout day.
  *
  * The write is idempotent by construction: `durationSec` is set to an absolute
  * value, never incremented, so replaying it (a double-tap, a retry) stores the
@@ -72,31 +69,13 @@ export const recordSessionDuration = async (
     return { status: "skipped", reason: "no-duration" };
   }
 
-  const logsRef = collection(db, "users", uid, "workout_logs");
-  const existing = await getDocs(
-    query(logsRef, where("planId", "==", planId), where("workoutDay", "==", workoutDay))
-  );
-
-  if (!existing.empty) {
-    await updateDoc(doc(db, "users", uid, "workout_logs", existing.docs[0].id), {
-      weekKey,
-      dayIndex,
-      durationSec,
-      durationMeasuredAt: Timestamp.now(),
-    });
-  } else {
-    await addDoc(logsRef, {
-      planId,
-      weekKey,
-      dayIndex,
-      workoutDay,
-      durationSec,
-      durationMeasuredAt: Timestamp.now(),
-      createdAt: Timestamp.now(),
-      // Deliberately absent: `completed`. Ending a session says nothing about
-      // whether the workout was finished.
-    });
-  }
+  await writeDaySessionRecord({ uid, planId, workoutDay }, {
+    weekKey,
+    dayIndex,
+    durationSec,
+    durationMeasuredAt: Timestamp.now(),
+    // Finishing records duration only; explicit day completion is separate.
+  });
 
   return { status: "written", durationSec };
 };

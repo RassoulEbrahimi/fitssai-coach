@@ -30,7 +30,7 @@ interface TrainingSessionContextValue {
     /** Set when a stored session had to be discarded; cleared once shown. */
     rejectionNotice: string | null;
     clearRejectionNotice: () => void;
-    startSession: (binding?: { planId: string; weekKey: string; dayIndex: number }) => void;
+    startSession: (binding?: { planId: string; weekKey: string; dayIndex: number; workoutDay?: string }) => void;
     endSession: () => void;
     /**
      * Validate any stored session against the loaded plan. Called once the plan
@@ -95,7 +95,7 @@ export function TrainingSessionProvider({ children }: { children: ReactNode }) {
     }, [startedAt]);
 
     const startSession = useCallback(
-        (binding?: { planId: string; weekKey: string; dayIndex: number }) => {
+        (binding?: { planId: string; weekKey: string; dayIndex: number; workoutDay?: string }) => {
             if (!binding) {
                 // Without a plan day there is nothing to resume into later, so
                 // nothing is persisted — the session runs in memory only.
@@ -104,7 +104,7 @@ export function TrainingSessionProvider({ children }: { children: ReactNode }) {
                 setStartedAt(Date.now());
                 return;
             }
-            const payload = createSessionPayload(binding.planId, binding.weekKey, binding.dayIndex);
+            const payload = createSessionPayload(binding.planId, binding.weekKey, binding.dayIndex, Date.now(), binding.workoutDay);
             validatedForRef.current = `${payload.planId}|${payload.weekKey}|${payload.dayIndex}`;
             setSession(payload);
             setStartedAt(payload.startedAt);

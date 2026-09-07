@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 
 const addDoc = vi.fn(async (_ref: unknown, _data: Record<string, unknown>) => ({ id: "log-1" }));
 const updateDoc = vi.fn(async (_ref: unknown, _data: Record<string, unknown>) => undefined);
-const getDocs = vi.fn(async (_query?: unknown) => ({ empty: true, docs: [] as { id: string }[] }));
+const getDocs = vi.fn(async (_query?: unknown) => ({ empty: true, docs: [] as { id: string; data: () => Record<string, unknown> }[] }));
 
 vi.mock("firebase/firestore", () => ({
   collection: (...path: unknown[]) => ({ path }),
@@ -13,6 +13,15 @@ vi.mock("firebase/firestore", () => ({
   deleteDoc: vi.fn(),
   updateDoc: (ref: unknown, data: Record<string, unknown>) => updateDoc(ref, data),
   getDocs: (...args: unknown[]) => getDocs(args),
+  runTransaction: async (_db: unknown, callback: (tx: unknown) => Promise<void>) => {
+    const result = await getDocs();
+    const row = result.docs[0];
+    return callback({
+      get: async () => ({ exists: () => !!row, data: () => row?.data() }),
+      update: updateDoc,
+      set: addDoc,
+    });
+  },
   Timestamp: { now: () => ({ __ts: true }) },
 }));
 
@@ -124,7 +133,7 @@ describe("offline replay — day completion", () => {
   });
 
   it("updates an existing day log instead of duplicating it", async () => {
-    getDocs.mockResolvedValue({ empty: false, docs: [{ id: "existing" }] });
+    getDocs.mockResolvedValue({ empty: false, docs: [{ id: "existing", data: () => ({ planId: "plan-1", workoutDay: "2026-03-10" }) }] });
 
     await handlers.TOGGLE_DAY(dayPayload() as never);
 

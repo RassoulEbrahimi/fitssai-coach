@@ -3,6 +3,7 @@ import { db } from "@/lib/firebase";
 import {
   collection, getDocs, query, where, doc, addDoc, deleteDoc, updateDoc, Timestamp,
 } from "firebase/firestore";
+import { writeDaySessionRecord } from "@/lib/daySessionRecord";
 import { queryKeys } from "@/lib/queryKeys";
 import { isWorkoutDayString } from "@/lib/workoutLog";
 import { isLegacyDayCompletionPayload, type ToggleDayPayload } from "@/lib/offlineQueue";
@@ -104,8 +105,8 @@ export const handlers = {
 
   /**
    * A whole plan day, replayed with the same semantics as the online write in
-   * `useWorkoutLogs.toggleDay`: find the day log by planId + workoutDay, then
-   * update it or create it.
+   * `useWorkoutLogs.toggleDay`: use the guarded day/session writer to update or create
+   * a day record without selecting an exercise row.
    *
    * The date travels in the payload, so a Tuesday queued offline still writes
    * Tuesday when it replays on Thursday. Nothing here reads a clock.
@@ -118,27 +119,12 @@ export const handlers = {
       return [];
     }
 
-    const logsRef = collection(db, "users", uid, "workout_logs");
-    const snap = await getDocs(query(logsRef,
-      where("planId",     "==", payload.planId),
-      where("workoutDay", "==", payload.workoutDay),
-    ));
-
-    const position = { weekKey: payload.weekKey, dayIndex: payload.dayIndex };
-    if (!snap.empty) {
-      await updateDoc(doc(db, "users", uid, "workout_logs", snap.docs[0].id), {
-        ...position,
-        completed: payload.completed,
-        completedAt: payload.completed ? Timestamp.now() : null,
-      });
-    } else {
-      await addDoc(logsRef, {
-        planId: payload.planId, workoutDay: payload.workoutDay, ...position,
-        completed: payload.completed,
-        completedAt: payload.completed ? Timestamp.now() : null,
-        createdAt: Timestamp.now(),
-      });
-    }
+    await writeDaySessionRecord({ uid, planId: payload.planId, workoutDay: payload.workoutDay }, {
+      weekKey: payload.weekKey,
+      dayIndex: payload.dayIndex,
+      completed: payload.completed,
+      completedAt: payload.completed ? Timestamp.now() : null,
+    });
 
     return [
       queryKeys.logs.byPlan(payload.planId),

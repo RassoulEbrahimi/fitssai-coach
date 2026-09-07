@@ -1,3 +1,5 @@
+import { isWorkoutDayString } from "@/lib/workoutLog";
+
 /**
  * Persistence for a running workout session.
  *
@@ -24,6 +26,8 @@ export interface TrainingSessionPayload {
   planId: string;
   weekKey: string;
   dayIndex: number;
+  /** Calendar day captured at start; absent on pre-PR62 sessions. */
+  workoutDay?: string;
   /** Epoch milliseconds. */
   startedAt: number;
 }
@@ -54,6 +58,7 @@ export const parseSessionPayload = (raw: string | null): TrainingSessionPayload 
     if (typeof parsed.weekKey !== "string" || parsed.weekKey === "") return null;
     if (!isPositiveInt(parsed.dayIndex) || parsed.dayIndex > 6) return null;
     if (!isPositiveInt(parsed.startedAt) || parsed.startedAt === 0) return null;
+    if (parsed.workoutDay !== undefined && !isWorkoutDayString(parsed.workoutDay)) return null;
     if (typeof parsed.version !== "number") return null;
     return parsed as TrainingSessionPayload;
   } catch {
@@ -162,11 +167,13 @@ export const createSessionPayload = (
   planId: string,
   weekKey: string,
   dayIndex: number,
-  startedAt: number = Date.now()
+  startedAt: number = Date.now(),
+  workoutDay?: string,
 ): TrainingSessionPayload => ({
   version: SESSION_PAYLOAD_VERSION,
   planId,
   weekKey,
   dayIndex,
   startedAt,
+  ...(workoutDay !== undefined ? { workoutDay } : {}),
 });
