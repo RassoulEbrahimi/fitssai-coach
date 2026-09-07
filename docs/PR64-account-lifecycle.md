@@ -108,6 +108,68 @@ No Firestore rules, backend functions, server ownership schema, or workout-plan
 mutation code changes. Tests exercise client enforcement without bypassing rules;
 they are not an emulator proof of server authorization.
 
+## Live writes, not only replay (review follow-up)
+
+Replay was guarded; live writes were not. Four production paths verified identity
+only on the way in, so an operation begun by A could await a read, have
+authentication switch to B underneath it, and carry on to its write. No A-to-B
+write or rules bypass was demonstrated, but the invariant was not held.
+
+`beginAccountOperation(uid)` now fixes the expected owner at the start of an
+operation and returns a checkpoint closed over it. The checkpoint compares only
+against the captured UID and cannot be re-pointed at whoever is signed in now:
+the operation finishes as the account that began it or it does not finish.
+
+| Path | Checkpoints added |
+| --- | --- |
+| `useSetTracking` toggle | After the parent-log lookup, before the set lookup, and after it — so neither `addDoc` nor `deleteDoc` runs for a changed account |
+| `useWeekCompletion` toggle | After the exercise lookup, before `updateDoc`/`addDoc` |
+| `useWorkoutLogs.toggleDay` | Captured at the action boundary; the writer re-checks |
+| `recordSessionDuration` / `recordSuccessfulWorkoutFinish` | After the metadata outcomes, before the future-day guard, duration and write |
+| `writeDaySessionRecord` | Before the query, before the transaction, and inside the transaction callback after `transaction.get` |
+
+`writeDaySessionRecord`'s optional `assertCanWrite` default no-op is gone. A
+guard a caller can decline is not a safe default, and every caller would have
+passed the same closure anyway. The check is now intrinsic: `uid` is both the
+subtree the write is addressed to and the account it must still belong to, so
+there is no way to call this writer without it.
+
+A finish that hits an account change throws rather than returning an outcome.
+Both `SessionRecordOutcome` values are terminal to `TodayWorkoutCard` — it ends
+the session and drops the frozen `endedAt` on either. Throwing keeps the
+session, timer and stamped finish instant recoverable, reports no success and
+completes nothing. Unusable metadata still reports `incomplete-metadata`,
+because the owner check sits after those outcomes.
+
+`retryWithBackoff` no longer retries `AccountChangedError`. Identity will not
+revert, and the default 3-retry backoff held a finish open for seven seconds
+before reporting a failure it already knew about.
+
+## Authentication that fails to initialize (review follow-up)
+
+The root gate held every route — sign-in and password reset included — until
+identity resolved. An initialization failure left it held forever.
+
+Reading @firebase/auth, `AuthImpl.registerStateListener` attaches the observer
+as `promise.then(() => cb(this.currentUser))` on `_initializationPromise`, with
+no rejection handler. `_initializeWithPersistence` awaits
+`PersistenceUserManager.create` and `initializeCurrentUser` without catching
+either, so a blocked or corrupt persistence store — or a persisted user that
+will not parse — rejects that promise and the callback is never invoked. The
+`error` argument of `onAuthStateChanged` does not fire: it is wired to the
+subscription's observer list, not to that promise. `authStateReady()` is built
+on the same call and hangs identically. There is no public signal.
+
+So the rejection is read from the promise the SDK keeps on the instance, with a
+bounded wait behind it for the case where that internal field is absent or
+initialization simply never answers. The wait is not a way of guessing the auth
+state. The only state either signal resolves to is signed-out, which mounts no
+account-scoped anything, persists through a no-op persister, and is corrected by
+the observer if it ever does fire — the same UID transition as any sign-in.
+`authUnavailable` distinguishes this from a resolved signed-out state, and a
+one-line banner says so rather than leaving a returning user to conclude they
+were silently logged out.
+
 ## Deliberately deferred to PR #65
 
 No redesign of TanStack offline mutation execution, syncing leases, interrupted

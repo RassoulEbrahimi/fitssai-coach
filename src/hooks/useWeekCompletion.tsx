@@ -4,6 +4,7 @@ import {
 } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { useAuth } from "./useAuth";
+import { beginAccountOperation } from "@/lib/accountIdentity";
 import { useOfflineQueue } from "./useOfflineQueue";
 import { logEvent, logError } from "@/lib/telemetryClient";
 import { toastError } from "@/lib/toastWithIcon";
@@ -103,6 +104,9 @@ export const useWeekCompletion = ({ planId, weekKey, enabled = true, availableWe
   const { mutate: toggleExercise, isPending: isToggling } = useSupabaseAction<any, ToggleExerciseParams, ToggleExerciseContext>({
     action: async (params: ToggleExerciseParams) => {
       if (!user) throw new Error("Not authenticated");
+      // Fixed here, re-checked after the lookup: a completion started by A must
+      // not finish writing once authentication has moved on to B.
+      const stillOwner = beginAccountOperation(user.uid);
       const logsRef = collection(db, "users", user.uid, "workout_logs");
       // Find existing log for this exact exercise position
       const snap = await getDocs(query(logsRef,
@@ -111,6 +115,7 @@ export const useWeekCompletion = ({ planId, weekKey, enabled = true, availableWe
         where("dayIndex",       "==", params.dayIndex),
         where("exerciseIndex",  "==", params.exerciseIndex),
       ));
+      stillOwner();
       if (!snap.empty) {
         await updateDoc(doc(db, "users", user.uid, "workout_logs", snap.docs[0].id), {
           completed: params.completed,

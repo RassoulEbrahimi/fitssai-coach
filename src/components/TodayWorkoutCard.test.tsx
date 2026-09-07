@@ -27,6 +27,9 @@ const render = (ui: React.ReactNode) => testingRender(ui, {
     wrapper: ({ children }) => <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>,
 });
 vi.mock('firebase/firestore', async () => (await import('@/test/mocks/workoutFirestore')).firestore);
+// Firebase identity must agree with the mocked useAuth below: the finish writer
+// checks the live account, not the React one.
+vi.mock('@/lib/firebase', () => ({ db: {}, auth: { currentUser: { uid: 'u1' } } }));
 
 // Mocks
 vi.mock('@/hooks/useAuth', () => ({

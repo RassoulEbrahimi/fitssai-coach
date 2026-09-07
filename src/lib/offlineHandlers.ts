@@ -126,7 +126,7 @@ export const handlers = {
       dayIndex: payload.dayIndex,
       completed: payload.completed,
       completedAt: payload.completed ? Timestamp.now() : null,
-    }, () => { assertAccountOwner(ownerUid); });
+    });
 
     return [
       queryKeys.logs.byPlan(payload.planId),

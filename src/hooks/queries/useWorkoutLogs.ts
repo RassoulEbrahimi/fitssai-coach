@@ -4,6 +4,7 @@ import {
 } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { useAuth } from "@/hooks/useAuth";
+import { beginAccountOperation } from "@/lib/accountIdentity";
 import { useSupabaseAction } from "@/hooks/useSupabaseAction";
 import { queryKeys } from "@/lib/queryKeys";
 import { WorkoutLog } from "@/lib/types";
@@ -63,6 +64,9 @@ export const useWorkoutLogs = (planId?: string) => {
   const toggleDayMutation = useSupabaseAction({
     action: async ({ workoutDateStr, completed, weekKey, dayIndex }: ToggleDayParams) => {
       if (!user || !planId) throw new Error("Missing user or plan");
+      // Captured at the action boundary; the guarded writer re-checks it either
+      // side of its lookup and inside the transaction before committing.
+      beginAccountOperation(user.uid);
       const position =
         weekKey !== undefined && dayIndex !== undefined ? { weekKey, dayIndex } : {};
       await writeDaySessionRecord({ uid: user.uid, planId, workoutDay: workoutDateStr }, {

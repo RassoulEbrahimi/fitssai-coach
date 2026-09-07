@@ -1,5 +1,6 @@
 import { Timestamp } from "firebase/firestore";
 import { writeDaySessionRecord } from "@/lib/daySessionRecord";
+import { beginAccountOperation } from "@/lib/accountIdentity";
 import { isBerlinFuture } from "@/lib/dateUtils";
 import {
   computeDurationSec,
@@ -83,6 +84,20 @@ const writeSessionRecord = async (
   if (!Number.isInteger(dayIndex) || dayIndex < 0 || dayIndex > 6) {
     return { status: "skipped", reason: "incomplete-metadata" };
   }
+
+  /*
+    A finish belongs to the account that trained. Checked after the metadata
+    outcomes above, so an unusable input still reports why it was unusable, and
+    before anything that could complete a day.
+
+    If authentication has moved on since the session started this throws rather
+    than returning an outcome: both outcomes are terminal to the caller, and a
+    "skipped" result would end the session and discard the frozen finish
+    instant. Throwing keeps the session, its timer and its stamped endedAt
+    recoverable, reports no success and completes nothing. The writer re-checks
+    the same owner either side of its lookup and again inside the transaction.
+  */
+  beginAccountOperation(uid);
 
   // Use the same current Berlin day as Dashboard.toggleDayComplete. Check the
   // bound date, not the selected UI day or a supplied/frozen finish timestamp.

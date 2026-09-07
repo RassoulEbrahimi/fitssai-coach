@@ -1,3 +1,4 @@
+import { AuthUnavailableBanner } from "@/components/AuthUnavailableBanner";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -57,6 +58,7 @@ const App = () => {
                     <a href="#main-content" className="mr-4">Zum Hauptinhalt springen</a>
                     <a href="#navigation">Zur Navigation springen</a>
                   </div>
+                  <AuthUnavailableBanner />
                   <Toaster />
                   <Sonner />
                   <PWAInstallPrompt />

@@ -9,10 +9,12 @@ export const rows = new Map<string, Row>();
 export const writes: { path: string; data: Row }[] = [];
 export const control = { rejectNext: false, beforeCommit: undefined as (() => Promise<void>) | undefined };
 let serial = Promise.resolve();
+let autoId = 0;
 
 export const resetWorkoutFirestore = () => {
   rows.clear();
   writes.length = 0;
+  autoId = 0;
   control.rejectNext = false;
   control.beforeCommit = undefined;
   serial = Promise.resolve();
@@ -30,6 +32,26 @@ const snapshot = (path: string) => ({
 export const firestore = {
   collection: ref,
   doc: ref,
+  /*
+    The direct document writers, alongside the transactional one below. The
+    online set/exercise writers reach Firestore through these, so leaving them
+    off the boundary would make those paths untestable rather than safe.
+  */
+  addDoc: vi.fn(async (target: Ref, data: Row) => {
+    autoId += 1;
+    const path = `${target.path}/auto-${autoId}`;
+    rows.set(path, { ...data });
+    writes.push({ path, data });
+    return { id: `auto-${autoId}`, path };
+  }),
+  updateDoc: vi.fn(async (target: Ref, data: Row) => {
+    rows.set(target.path, { ...rows.get(target.path), ...data });
+    writes.push({ path: target.path, data });
+  }),
+  deleteDoc: vi.fn(async (target: Ref) => {
+    rows.delete(target.path);
+    writes.push({ path: target.path, data: { __deleted: true } });
+  }),
   where: (field: string, op: string, value: unknown): Filter => ({ field, op, value }),
   query: (source: Ref, ...filters: Filter[]) => ({ source, filters }),
   getDocs: vi.fn(async ({ source, filters }: { source: Ref; filters: Filter[] }) => {

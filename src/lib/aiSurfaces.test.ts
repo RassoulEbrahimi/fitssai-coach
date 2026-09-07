@@ -5,6 +5,7 @@ import { resetWorkoutFirestore, writes } from '@/test/mocks/workoutFirestore';
 import { recordSessionDuration } from '@/lib/sessionRecord';
 
 vi.mock('firebase/firestore', async () => (await import('@/test/mocks/workoutFirestore')).firestore);
+vi.mock('@/lib/firebase', () => ({ db: {}, auth: { currentUser: { uid: 'u1' } } }));
 
 /**
  * Source-level guards for the AI honesty cleanup.

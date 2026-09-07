@@ -1,7 +1,7 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useOfflineQueue } from './useOfflineQueue';
 import { useAuth } from '@/hooks/useAuth';
-import { assertAccountOwner } from '@/lib/accountIdentity';
+import { AccountChangedError, assertAccountOwner } from '@/lib/accountIdentity';
 import type { OfflineMutationPayloads, OfflineMutationType } from '@/lib/offlineQueue';
 import { logEvent, logError, logRetry } from '@/lib/telemetryClient';
 import { toastError, toastOffline } from '@/lib/toastWithIcon';
@@ -63,6 +63,11 @@ export const retryWithBackoff = async <T,>(
             return await fn();
         } catch (error) {
             lastError = error;
+
+            // Retrying an account change is pointless and harmful: identity will
+            // not revert, and each backoff holds the caller open — a finish that
+            // waits seven seconds to report a failure it already knew about.
+            if (error instanceof AccountChangedError) throw error;
 
             if (attempt < config.retries) {
                 const delay = config.initialDelay * Math.pow(2, attempt);
