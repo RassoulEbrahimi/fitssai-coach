@@ -2,30 +2,41 @@
  * Detecting a Firebase Auth initialization that will never resolve.
  *
  * `onAuthStateChanged` does not report initialization failure. Reading the SDK
- * (@firebase/auth, `AuthImpl.registerStateListener`), the observer is attached
- * as:
+ * (@firebase/auth 1.7.9, `AuthImpl.registerStateListener`), the observer is
+ * attached as:
  *
  *     const promise = this._isInitialized ? Promise.resolve() : this._initializationPromise;
  *     promise.then(() => { if (isUnsubscribed) return; cb(this.currentUser); });
  *
  * There is no rejection handler on that `then`. `_initializeWithPersistence`
  * awaits `PersistenceUserManager.create` and `initializeCurrentUser` without
- * catching either, so a blocked or corrupt persistence store — or a persisted
- * user record that will not parse — rejects the promise and the callback is
- * simply never invoked. The `error` argument of `onAuthStateChanged` does not
- * fire either: it is wired to the subscription's observer list, not to that
- * promise. `authStateReady()` is built on the same call and hangs identically.
+ * catching either, so a blocked or corrupt persistence store rejects the
+ * promise and the callback is simply never invoked. The `error` argument of
+ * `onAuthStateChanged` does not fire either: it is wired to the subscription's
+ * observer list, not to that promise. `authStateReady()` is built on the same
+ * call and hangs identically.
  *
  * So the rejection is read from the promise itself, which the SDK keeps on the
- * instance. That is an internal field, so its absence is tolerated and a
- * bounded wait backs it up. The fallback is not a way of guessing the auth
- * state: the only state it ever resolves to is "initialization did not
- * complete", which mounts no account-scoped anything and stays correctable by
- * the observer if it does eventually fire.
+ * instance. `src/test/firebaseAuthLifecycle.probe.test.ts` verifies all of this
+ * against the real SDK.
  */
 
-/** How long initialization may take before it is treated as failed. */
+/** How long initialization may take before it is treated as unresponsive. */
 export const AUTH_INIT_TIMEOUT_MS = 15_000;
+
+/**
+ * Why authentication never resolved, which decides what may be done about it.
+ *
+ * `initialization-failed` is proof: the promise rejected, so `_isInitialized`
+ * will never be set and the instance can no longer publish anything. Clearing
+ * its persisted state and reloading is the only way forward, and is safe to do
+ * automatically.
+ *
+ * `unresponsive` is not proof — only that nothing arrived in time. It may still
+ * be a slow restore that succeeds a moment later, so it resolves the gate
+ * without destroying anything, and repair is left to the user to ask for.
+ */
+export type AuthInitFailure = 'initialization-failed' | 'unresponsive';
 
 type MaybeInitializingAuth = { _initializationPromise?: Promise<unknown> | null };
 
@@ -36,18 +47,18 @@ type MaybeInitializingAuth = { _initializationPromise?: Promise<unknown> | null 
  */
 export const observeAuthInitializationFailure = (
   authInstance: unknown,
-  onFailure: (reason: unknown) => void,
+  onFailure: (failure: AuthInitFailure, reason?: unknown) => void,
   timeoutMs: number = AUTH_INIT_TIMEOUT_MS,
 ): (() => void) => {
   let done = false;
-  const fail = (reason: unknown) => {
+  const fail = (failure: AuthInitFailure, reason?: unknown) => {
     if (done) return;
     done = true;
-    onFailure(reason);
+    onFailure(failure, reason);
   };
 
   const timer = setTimeout(
-    () => fail(new Error(`Firebase Auth did not initialize within ${timeoutMs}ms.`)),
+    () => fail('unresponsive', new Error(`Firebase Auth did not initialize within ${timeoutMs}ms.`)),
     timeoutMs,
   );
 
@@ -55,7 +66,7 @@ export const observeAuthInitializationFailure = (
   if (pending && typeof pending.then === 'function') {
     // Only the rejection matters. Success arrives through the auth observer,
     // which is the sole thing allowed to publish an identity.
-    pending.then(undefined, fail);
+    pending.then(undefined, (reason: unknown) => fail('initialization-failed', reason));
   }
 
   return () => {

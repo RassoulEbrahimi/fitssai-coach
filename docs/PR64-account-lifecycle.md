@@ -147,28 +147,64 @@ before reporting a failure it already knew about.
 
 ## Authentication that fails to initialize (review follow-up)
 
-The root gate held every route — sign-in and password reset included — until
-identity resolved. An initialization failure left it held forever.
+Verified against the installed SDK — firebase 10.14.1, @firebase/auth 1.7.9 — by
+`src/test/firebaseAuthLifecycle.probe.test.ts`, which drives the real library
+rather than a mock:
 
-Reading @firebase/auth, `AuthImpl.registerStateListener` attaches the observer
-as `promise.then(() => cb(this.currentUser))` on `_initializationPromise`, with
-no rejection handler. `_initializeWithPersistence` awaits
-`PersistenceUserManager.create` and `initializeCurrentUser` without catching
-either, so a blocked or corrupt persistence store — or a persisted user that
-will not parse — rejects that promise and the callback is never invoked. The
-`error` argument of `onAuthStateChanged` does not fire: it is wired to the
-subscription's observer list, not to that promise. `authStateReady()` is built
-on the same call and hangs identically. There is no public signal.
+- `AuthImpl.registerStateListener` attaches the observer as
+  `promise.then(() => cb(this.currentUser))` on `_initializationPromise`, with no
+  rejection handler. `_initializeWithPersistence` awaits
+  `PersistenceUserManager.create` and `initializeCurrentUser` catching neither.
+  A rejection therefore reaches neither the `next` callback nor the `error` one,
+  and `authStateReady()` hangs on the same call. Each subscriber is also left
+  holding a derived promise nothing will settle; the probe asserts those leaks.
+- `_isInitialized = true` is assigned in exactly one place, at the tail of the
+  queued task that just threw, so it stays false for the life of the instance.
+- `notifyAuthListeners()` opens with `if (!this._isInitialized) { return; }`.
 
-So the rejection is read from the promise the SDK keeps on the instance, with a
-bounded wait behind it for the case where that internal field is absent or
-initialization simply never answers. The wait is not a way of guessing the auth
-state. The only state either signal resolves to is signed-out, which mounts no
-account-scoped anything, persists through a no-op persister, and is corrected by
-the observer if it ever does fire — the same UID transition as any sign-in.
-`authUnavailable` distinguishes this from a resolved signed-out state, and a
-one-line banner says so rather than leaving a returning user to conclude they
-were silently logged out.
+That last line is the reason exposing the sign-in routes was not a fix. Signing
+in against a failed instance succeeds at the server and sets `auth.currentUser`,
+and every publication of it is dropped — for observers registered before the
+failure and after it alike. The app would stay `user = null`, report a
+successful sign-in, and bounce off the dashboard. The probe reproduces exactly
+that. No public API sets `_isInitialized`, and `getAuth(app)` returns the same
+object, so the instance cannot be repaired in place.
+
+Recovery is therefore: clear Firebase Auth's persisted state, reload, and let a
+fresh instance initialize. A reload alone would rejoin the same corrupt store.
+
+`src/lib/authPersistenceRecovery.ts` holds the only Firebase-internal knowledge
+in the codebase — `firebase:<authUser|persistence|pendingRedirect>:<apiKey>:<appName>`
+from `_persistenceKeyName`, and the `firebaseLocalStorageDb` database that
+`indexedDBLocalPersistence` owns — so an SDK upgrade has one place to check, and
+the probe's version assertions fail loudly if it moves. It removes those keys
+from local and session storage and deletes that database, bounded by a short
+timeout so a delete blocked by the dying instance's own connection still ends in
+the reload that closes it. Nothing else is touched: every `fitssai.*` key, the
+per-UID query caches, training sessions, training caches and nudge history, the
+theme and the other device preferences, and anything on the origin this app does
+not own all survive — so the same user gets their own state back the moment they
+sign in again.
+
+The two failure signals are no longer treated alike. A rejection is proof, so
+repair runs automatically. A bounded wait elapsing is not proof — it may be a
+slow restore — so it destroys nothing and offers the repair instead; the
+observer stays subscribed and still outranks the recovery state if it lands.
+
+Loop prevention is a session-scoped marker: one automatic repair per tab, so a
+store that cannot be repaired reloads once and then says so, with a manual "try
+again" that is honoured because a person asking is bounded by itself. The marker
+is cleared when authentication next succeeds, so a later genuine failure may try
+again. It also had to be exempted from `clearSignOutSensitiveStorage`'s
+`fitssai.` sessionStorage sweep, which runs on every resolved auth transition —
+including the failure one. Without that exemption each failure erased the
+evidence of the last and the page reloaded forever; the test that reloads a
+still-broken store twice is what caught it.
+
+While authentication is unavailable, `AuthRecoveryScreen` stands in place of the
+children — not merely alongside them. No account-scoped provider mounts, and no
+sign-in form is offered against an instance that cannot publish the result.
+
 
 ## Deliberately deferred to PR #65
 

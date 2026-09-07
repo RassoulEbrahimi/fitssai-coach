@@ -1,10 +1,12 @@
-import { useState, useEffect, createContext, useContext, Fragment } from "react";
+import { useState, useEffect, useCallback, createContext, useContext, Fragment } from "react";
 import { User as FirebaseUser } from "firebase/auth";
 import { auth } from "@/lib/firebase";
 import { onAuthStateChanged } from "firebase/auth";
 import { signOutAccount } from '@/lib/signOut';
 import { clearSignOutSensitiveStorage } from '@/lib/storage';
-import { observeAuthInitializationFailure } from '@/lib/authInitialization';
+import { observeAuthInitializationFailure, type AuthInitFailure } from '@/lib/authInitialization';
+import { attemptAuthPersistenceRecovery, clearAuthRecoveryMarker } from '@/lib/authPersistenceRecovery';
+import { AuthRecoveryScreen } from '@/components/AuthRecoveryScreen';
 
 // AppUser extends FirebaseUser with `.id` alias to `.uid`
 // so all existing `user?.id` references continue to work.
@@ -19,9 +21,9 @@ interface AuthContextType {
   user: AppUser | null;
   loading: boolean;
   /**
-   * Authentication could not be initialized, so there is no identity to be had
-   * on this load. Consumers are mounted signed-out; nothing account-scoped
-   * hydrates. Distinct from a resolved signed-out state so the UI can say so.
+   * Authentication could not be started on this load, so there is no identity
+   * to be had from this Auth instance and none can arrive later. Consumers are
+   * never mounted in this state; the recovery screen stands in their place.
    */
   authUnavailable: boolean;
   signOut: () => Promise<void>;
@@ -29,55 +31,91 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+type AuthGate =
+  | { status: 'pending' }
+  | { status: 'ready' }
+  | { status: 'unavailable'; cause: AuthInitFailure; repairing: boolean };
+
 export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
-  const [user, setUser]       = useState<AppUser | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [authUnavailable, setAuthUnavailable] = useState(false);
+  const [user, setUser] = useState<AppUser | null>(null);
+  const [gate, setGate] = useState<AuthGate>({ status: 'pending' });
 
   useEffect(() => {
     /*
-      Two ways out of the gate, and only one of them can publish a user.
+      Two ways out of the gate, and only the observer can publish a user.
 
       The observer is authoritative: it resolves the gate with whatever identity
-      Firebase restored, including none. The failure signal only ever resolves
-      it to signed-out, because an initialization that rejected has no identity
-      to offer and a malformed persisted user is not a signed-in one. Holding
-      the gate instead would leave the whole app — sign-in and password reset
-      included — behind a permanently blank frame.
+      Firebase restored, including none. Failure resolves it only to "no
+      identity is coming", because an initialization that rejected has none to
+      offer. Holding the gate instead would leave the whole app behind a
+      permanently blank frame.
 
-      Whichever arrives first wins, and the loser is disconnected. If the
-      observer somehow fires after a failure was declared, it is still the
-      authority and promotes the app to the real account; that transition is
-      the same UID change every other sign-in goes through, so it remounts
-      cleanly rather than looping.
+      Whichever arrives first wins and the loser is disconnected. The observer
+      still outranks a declared failure if it somehow fires afterwards — a slow
+      restore that eventually lands is a real identity and is not thrown away.
     */
-    // Armed before subscribing, so an observer that reports synchronously can
-    // still disarm it rather than leaving a watchdog running behind a resolved
-    // identity.
-    const stopWatchingInit = observeAuthInitializationFailure(auth, (reason) => {
-      console.error('[Auth] Initialization failed; continuing signed out.', reason);
+    const stopWatchingInit = observeAuthInitializationFailure(auth, (cause, reason) => {
+      console.error('[Auth] Initialization did not resolve.', cause, reason);
       clearSignOutSensitiveStorage();
       setUser(null);
-      setAuthUnavailable(true);
-      setLoading(false);
+
+      /*
+        A rejected initialization is proof: `_isInitialized` will never be set,
+        so this instance drops every publication for the rest of its life —
+        signing in against it would report success and leave the app signed
+        out. Only a fresh instance can help, which means clearing the persisted
+        auth state that broke it and reloading. Once per tab, so a store that
+        cannot be repaired does not reload forever.
+
+        An unresponsive initialization proves nothing, so nothing is destroyed
+        for it; the user is offered the repair instead of having it done to them.
+      */
+      if (cause !== 'initialization-failed') {
+        setGate({ status: 'unavailable', cause, repairing: false });
+        return;
+      }
+      setGate({ status: 'unavailable', cause, repairing: true });
+      void attemptAuthPersistenceRecovery().then(result => {
+        if (result === 'already-attempted') {
+          setGate({ status: 'unavailable', cause, repairing: false });
+        }
+      });
     });
+
     const unsub = onAuthStateChanged(auth, (firebaseUser) => {
       stopWatchingInit();
       clearSignOutSensitiveStorage();
-      setAuthUnavailable(false);
+      // Authentication works here, so a repair is no longer owed and the next
+      // genuine failure — this visit or a later one — may try again.
+      clearAuthRecoveryMarker();
       setUser(wrapUser(firebaseUser));
-      setLoading(false);
+      setGate({ status: 'ready' });
     });
+
     return () => {
       stopWatchingInit();
       unsub();
     };
   }, []);
 
+  const retryRecovery = useCallback(() => {
+    setGate(current => current.status === 'unavailable' ? { ...current, repairing: true } : current);
+    // Asked for by hand, so it is honoured even after the automatic attempt.
+    void attemptAuthPersistenceRecovery({ force: true });
+  }, []);
+
   return (
-    <AuthContext.Provider value={{ user, loading, authUnavailable, signOut: signOutAccount }}>
+    <AuthContext.Provider value={{
+      user,
+      loading: gate.status === 'pending',
+      authUnavailable: gate.status === 'unavailable',
+      signOut: signOutAccount,
+    }}>
       {/* Never hydrate before identity resolves; replace mounted account state on UID change. */}
-      {!loading && <Fragment key={user?.uid ?? 'signed-out'}>{children}</Fragment>}
+      {gate.status === 'ready' && <Fragment key={user?.uid ?? 'signed-out'}>{children}</Fragment>}
+      {gate.status === 'unavailable' && (
+        <AuthRecoveryScreen cause={gate.cause} repairing={gate.repairing} onRetry={retryRecovery} />
+      )}
     </AuthContext.Provider>
   );
 };

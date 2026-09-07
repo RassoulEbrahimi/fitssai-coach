@@ -7,6 +7,7 @@
  * are named explicitly here and everything else is left alone.
  */
 
+import { AUTH_RECOVERY_MARKER } from "@/lib/authPersistenceRecovery";
 import { THEME_STORAGE_KEY } from "@/lib/theme";
 import {
   SESSION_STORAGE_KEY,
@@ -62,13 +63,20 @@ export const clearSignOutSensitiveStorage = (): void => {
     }
   });
 
-  // Remove any legacy per-tab derived caches. There are currently no active
-  // sessionStorage writers, but older clients used this namespaced storage.
+  /*
+    Remove any legacy per-tab derived caches. There are currently no active
+    sessionStorage writers, but older clients used this namespaced storage.
+
+    The auth recovery marker shares the prefix and must survive: this runs on
+    every resolved auth transition, including the failure one, so sweeping the
+    marker away would let each failed initialization believe it was the first
+    and reload the page forever.
+  */
   safely(() => {
     const doomed: string[] = [];
     for (let i = 0; i < sessionStorage.length; i += 1) {
       const key = sessionStorage.key(i);
-      if (key && key.startsWith(FITSSAI_KEY_PREFIX)) doomed.push(key);
+      if (key && key.startsWith(FITSSAI_KEY_PREFIX) && key !== AUTH_RECOVERY_MARKER) doomed.push(key);
     }
     for (const key of doomed) sessionStorage.removeItem(key);
   });

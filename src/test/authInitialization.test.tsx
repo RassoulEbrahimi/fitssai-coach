@@ -1,53 +1,86 @@
 import React from 'react';
-import { act, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useIsRestoring, useQuery, useQueryClient } from '@tanstack/react-query';
 
 /*
-  The Firebase boundary is reproduced from the SDK's own lifecycle rather than
-  approximated: `registerStateListener` attaches the observer to
-  `_initializationPromise` with a fulfillment handler only, so a rejected
-  initialization calls neither the next callback nor the error callback. The
-  mock below does exactly that, which is what makes the blank-forever failure
-  reproducible here at all.
-*/
-const identity = vi.hoisted(() => ({
-  currentUser: null as { uid: string } | null,
-  _initializationPromise: null as Promise<void> | null,
-  settle: null as ((user: { uid: string } | null) => void) | null,
-  fail: null as ((reason: unknown) => void) | null,
-}));
-const listeners = vi.hoisted(() => new Set<(user: { uid: string } | null) => void>());
+  The Firebase boundary here reproduces the pinned SDK's lifecycle rather than
+  approximating it, because the previous version of this file proved the wrong
+  thing: it hand-delivered an observer callback after a rejected initialization,
+  which @firebase/auth 1.7.9 never emits. `src/test/firebaseAuthLifecycle.probe.test.ts`
+  establishes the real behaviour against the real SDK; this mock obeys it:
 
-vi.mock('@/lib/firebase', () => ({
-  auth: identity,
-  get db() { return {}; },
-}));
+    - the observer is attached to `_initializationPromise` with a fulfillment
+      handler only, so a rejection reaches neither `next` nor `error`;
+    - `_isInitialized` is set only when initialization completes;
+    - `notifyAuthListeners` drops every publication while it is false, so
+      signing in on a failed instance cannot restore identity.
+
+  `signIn` below therefore does exactly what the SDK does, and the app has to
+  earn its way back through recovery rather than through a callback that only a
+  mock would produce.
+*/
+const identity = vi.hoisted(() => {
+  const state = {
+    currentUser: null as { uid: string } | null,
+    _isInitialized: false,
+    _initializationPromise: null as Promise<void> | null,
+    listeners: new Set<(user: { uid: string } | null) => void>(),
+    settle: null as ((user: { uid: string } | null) => void) | null,
+    fail: null as ((reason: unknown) => void) | null,
+    /** The SDK's own gate: nothing is published before initialization lands. */
+    notifyAuthListeners() {
+      if (!state._isInitialized) return;
+      state.listeners.forEach(listener => listener(state.currentUser));
+    },
+    /** Stands in for signInWithEmailAndPassword: sets the user, then publishes. */
+    signIn(uid: string) {
+      state.currentUser = { uid };
+      state.notifyAuthListeners();
+    },
+  };
+  return state;
+});
+const reloads = vi.hoisted(() => ({ count: 0 }));
+
+vi.mock('@/lib/firebase', () => ({ auth: identity, db: {} }));
 vi.mock('firebase/auth', () => ({
   onAuthStateChanged: (
     authInstance: typeof identity,
     callback: (user: { uid: string } | null) => void,
   ) => {
-    listeners.add(callback);
-    // Only ever resolves. A rejection is never routed anywhere — the defect.
-    void authInstance._initializationPromise?.then(() => { callback(authInstance.currentUser); }, () => {});
-    return () => listeners.delete(callback);
+    authInstance.listeners.add(callback);
+    void authInstance._initializationPromise?.then(
+      () => { callback(authInstance.currentUser); },
+      () => {}, // The rejection reaches no callback. This is the defect.
+    );
+    return () => authInstance.listeners.delete(callback);
   },
   signOut: vi.fn(async () => {
     identity.currentUser = null;
-    listeners.forEach(listener => listener(null));
+    identity.notifyAuthListeners();
   }),
 }));
 vi.mock('firebase/firestore', async () => (await import('@/test/mocks/workoutFirestore')).firestore);
 vi.mock('@/lib/telemetryClient', () => ({ logEvent: vi.fn(), logError: vi.fn(), logRetry: vi.fn() }));
 vi.mock('@/lib/toastWithIcon', () => ({ toastWithIcon: vi.fn(), toastOffline: vi.fn(), toastError: vi.fn() }));
+vi.mock('@/lib/authPersistenceRecovery', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/authPersistenceRecovery')>();
+  return {
+    ...actual,
+    // Everything real except the navigation, which jsdom cannot perform.
+    attemptAuthPersistenceRecovery: (options: { force?: boolean } = {}) =>
+      actual.attemptAuthPersistenceRecovery({ ...options, reload: () => { reloads.count += 1; } }),
+  };
+});
 
 import { AuthProvider, useAuth } from '@/hooks/useAuth';
-import { AuthUnavailableBanner } from '@/components/AuthUnavailableBanner';
 import { QueryProvider } from '@/components/providers/QueryProvider';
 import { TrainingProvider, useTraining } from '@/contexts/TrainingContext';
 import { AUTH_INIT_TIMEOUT_MS } from '@/lib/authInitialization';
+import { AUTH_RECOVERY_MARKER } from '@/lib/authPersistenceRecovery';
 import { accountStorageKey } from '@/lib/accountIdentity';
+import { SIGN_OUT_PRESERVED_KEYS } from '@/lib/storage';
 
 let current: {
   client: ReturnType<typeof useQueryClient>;
@@ -56,11 +89,6 @@ let current: {
   authUnavailable: boolean;
 };
 const mounts: (string | undefined)[] = [];
-
-/** Stands in for the sign-in and reset routes: proof the router got to render. */
-function AuthRoutes() {
-  return <span data-testid="auth-routes">sign-in / reset</span>;
-}
 
 function Probe() {
   const { user, authUnavailable } = useAuth();
@@ -73,35 +101,55 @@ function Probe() {
   return <>
     <span data-testid="uid">{user?.uid ?? 'signed-out'}</span>
     <span data-testid="profile">{String(profile ?? '')}</span>
-    {!user && <AuthRoutes />}
   </>;
 }
 
 function Harness() {
   return <AuthProvider>
-    <AuthUnavailableBanner />
     <QueryProvider><TrainingProvider><Probe /></TrainingProvider></QueryProvider>
   </AuthProvider>;
 }
 
-/** Initialization that the test decides the fate of, exactly once. */
+/** Initialization whose fate the test decides, exactly once. */
 const pendingInitialization = () => {
+  identity._isInitialized = false;
   identity._initializationPromise = new Promise<void>((resolve, reject) => {
-    identity.settle = (user) => { identity.currentUser = user; resolve(); };
+    identity.settle = (user) => {
+      identity.currentUser = user;
+      identity._isInitialized = true;
+      resolve();
+    };
     identity.fail = reject;
   });
-  // The provider attaches its own rejection handler; this keeps Node quiet
-  // about the copy nothing else observes.
   identity._initializationPromise.catch(() => {});
+};
+
+/** What a Firebase Auth store looks like on disk, plus this app's own state. */
+const seedStorage = () => {
+  localStorage.setItem('firebase:authUser:probe-api-key:[DEFAULT]', '{"uid":"A","corrupt":');
+  localStorage.setItem('firebase:persistence:probe-api-key:[DEFAULT]', 'local');
+  localStorage.setItem(accountStorageKey('fitssai.training.session', 'A'), JSON.stringify({
+    version: 1, planId: 'plan-A', weekKey: 'Week 1', dayIndex: 0, startedAt: Date.now(),
+  }));
+  localStorage.setItem(accountStorageKey('fitssai.training.cache', 'A'),
+    JSON.stringify([{ id: 'exercise-A', name: 'Private A', sets: 1, reps: '1', weight: '', rest: '' }]));
+  localStorage.setItem(accountStorageKey('REACT_QUERY_OFFLINE_CACHE', 'A'), JSON.stringify({
+    timestamp: Date.now(), buster: 'account-owned-v1', clientState: { mutations: [], queries: [
+      { queryKey: ['profile'], queryHash: '["profile"]',
+        state: { data: 'private-A', status: 'success', dataUpdatedAt: Date.now() } }] },
+  }));
+  for (const key of SIGN_OUT_PRESERVED_KEYS) localStorage.setItem(key, 'keep');
+  localStorage.setItem('unrelated', 'keep');
 };
 
 beforeEach(() => {
   vi.useRealTimers();
   localStorage.clear();
   sessionStorage.clear();
-  listeners.clear();
-  mounts.length = 0;
+  identity.listeners.clear();
   identity.currentUser = null;
+  mounts.length = 0;
+  reloads.count = 0;
   vi.clearAllMocks();
   pendingInitialization();
   Object.defineProperty(navigator, 'onLine', { configurable: true, value: false });
@@ -110,8 +158,9 @@ beforeEach(() => {
 afterEach(() => { vi.useRealTimers(); });
 
 const settled = () => waitFor(() => expect(current.restoring).toBe(false));
+const recoveryScreen = () => screen.queryByText(/Anmeldung (nicht verfügbar|wird wiederhergestellt)/);
 
-describe('normal authentication restore', () => {
+describe('normal authentication restore is unchanged', () => {
   it('mounts the account subtree once a signed-in identity resolves', async () => {
     render(<Harness />);
     expect(screen.queryByTestId('uid')).toBeNull();
@@ -121,104 +170,160 @@ describe('normal authentication restore', () => {
 
     expect(screen.getByTestId('uid')).toHaveTextContent('A');
     expect(current.authUnavailable).toBe(false);
-    expect(screen.queryByRole('alert')).toBeNull();
-    expect(screen.queryByTestId('auth-routes')).toBeNull();
+    expect(recoveryScreen()).toBeNull();
+    expect(reloads.count).toBe(0);
   });
 
-  it('mounts the signed-out routes once a resolved absence of identity arrives', async () => {
+  it('mounts the signed-out app once a resolved absence of identity arrives', async () => {
     render(<Harness />);
 
     await act(async () => { identity.settle!(null); });
     await settled();
 
     expect(screen.getByTestId('uid')).toHaveTextContent('signed-out');
-    expect(screen.getByTestId('auth-routes')).toBeInTheDocument();
     expect(current.authUnavailable).toBe(false);
+    expect(recoveryScreen()).toBeNull();
+    expect(reloads.count).toBe(0);
   });
 });
 
-describe('authentication that fails to initialize', () => {
-  it('leaves the gate for a recoverable signed-out state instead of staying blank', async () => {
+describe('initialization rejects', () => {
+  it('leaves the gate for a recovery state instead of staying blank', async () => {
     render(<Harness />);
     expect(screen.queryByTestId('uid')).toBeNull();
 
     await act(async () => { identity.fail!(new Error('IndexedDB is unavailable')); });
 
-    await waitFor(() => expect(screen.getByTestId('uid')).toHaveTextContent('signed-out'));
-    expect(screen.getByTestId('auth-routes')).toBeInTheDocument();
-    expect(current.authUnavailable).toBe(true);
-    expect(screen.getByRole('alert')).toBeInTheDocument();
+    await waitFor(() => expect(recoveryScreen()).toBeInTheDocument());
+    // No account consumer was ever mounted.
+    expect(screen.queryByTestId('uid')).toBeNull();
+    expect(mounts).toEqual([]);
   });
 
-  it('hydrates no previous account from a malformed persisted user', async () => {
-    // Everything a previous session left on this device, as it would be found.
-    localStorage.setItem(accountStorageKey('fitssai.training.session', 'A'), JSON.stringify({
-      version: 1, planId: 'plan-A', weekKey: 'Week 1', dayIndex: 0, startedAt: Date.now(),
-    }));
-    localStorage.setItem(accountStorageKey('fitssai.training.cache', 'A'),
-      JSON.stringify([{ id: 'private-A', name: 'Private A' }]));
-    localStorage.setItem(accountStorageKey('REACT_QUERY_OFFLINE_CACHE', 'A'), JSON.stringify({
-      timestamp: Date.now(), buster: 'account-owned-v1', clientState: { mutations: [], queries: [
-        { queryKey: ['profile'], queryHash: '["profile"]',
-          state: { data: 'private-A', status: 'success', dataUpdatedAt: Date.now() } }] },
-    }));
-
-    render(<Harness />);
-    // The persisted user will not parse, so initialization rejects.
-    await act(async () => { identity.fail!(new SyntaxError('Unexpected token in persisted user')); });
-    await waitFor(() => expect(screen.getByTestId('uid')).toHaveTextContent('signed-out'));
-
-    expect(current.training.session).toBeNull();
-    expect(current.training.todayWorkouts).toEqual([]);
-    expect(current.client.getQueryData(['profile'])).toBeUndefined();
-    expect(screen.getByTestId('profile')).toBeEmptyDOMElement();
-    expect(mounts).not.toContain('A');
-    // A's namespaces are not adopted, and the recovery route is reachable.
-    expect(screen.getByTestId('auth-routes')).toBeInTheDocument();
-  });
-
-  it('recovers into the real account if authentication resolves after the failure', async () => {
-    render(<Harness />);
-    await act(async () => { identity.fail!(new Error('transient initialization failure')); });
-    await waitFor(() => expect(current.authUnavailable).toBe(true));
-
-    // The observer is still the authority and still subscribed.
-    await act(async () => {
-      identity.currentUser = { uid: 'A' };
-      listeners.forEach(listener => listener(identity.currentUser));
-    });
-    await settled();
-
-    expect(screen.getByTestId('uid')).toHaveTextContent('A');
-    expect(current.authUnavailable).toBe(false);
-    expect(screen.queryByRole('alert')).toBeNull();
-  });
-
-  it('settles once, without remounting or retrying in a loop', async () => {
+  it('does not treat a sign-in on the broken instance as recovery', async () => {
     render(<Harness />);
     await act(async () => { identity.fail!(new Error('initialization failure')); });
-    await waitFor(() => expect(current.authUnavailable).toBe(true));
+    await waitFor(() => expect(recoveryScreen()).toBeInTheDocument());
 
-    const seen = [...mounts];
-    await act(async () => { await new Promise(resolve => setTimeout(resolve, 60)); });
+    // Exactly what signInWithEmailAndPassword does: sets currentUser, publishes.
+    await act(async () => { identity.signIn('A'); await Promise.resolve(); });
 
-    expect(mounts).toEqual(seen);
-    expect(screen.getAllByTestId('uid')).toHaveLength(1);
+    // The SDK dropped the publication, so the app must not claim an identity.
+    expect(identity.currentUser).toEqual({ uid: 'A' });
+    expect(screen.queryByTestId('uid')).toBeNull();
+    expect(mounts).toEqual([]);
+    expect(recoveryScreen()).toBeInTheDocument();
+  });
+
+  it('clears only Firebase auth persistence and reloads into a fresh instance', async () => {
+    seedStorage();
+    render(<Harness />);
+
+    await act(async () => { identity.fail!(new SyntaxError('Unexpected token in persisted user')); });
+    await waitFor(() => expect(reloads.count).toBe(1));
+
+    // Firebase's own store is gone.
+    expect(localStorage.getItem('firebase:authUser:probe-api-key:[DEFAULT]')).toBeNull();
+    expect(localStorage.getItem('firebase:persistence:probe-api-key:[DEFAULT]')).toBeNull();
+    // Everything this app owns survives, so the same user gets it back.
+    expect(localStorage.getItem(accountStorageKey('fitssai.training.session', 'A'))).toContain('plan-A');
+    expect(localStorage.getItem(accountStorageKey('fitssai.training.cache', 'A'))).toContain('exercise-A');
+    expect(localStorage.getItem(accountStorageKey('REACT_QUERY_OFFLINE_CACHE', 'A'))).toContain('private-A');
+    for (const key of SIGN_OUT_PRESERVED_KEYS) expect(localStorage.getItem(key)).toBe('keep');
+    expect(localStorage.getItem('unrelated')).toBe('keep');
+  });
+
+  it('repairs automatically at most once per tab, however many times it fails', async () => {
+    let view = render(<Harness />);
+    await act(async () => { identity.fail!(new Error('initialization failure')); });
+    await waitFor(() => expect(reloads.count).toBe(1));
+    expect(sessionStorage.getItem(AUTH_RECOVERY_MARKER)).not.toBeNull();
+
+    // The reload lands on a store that is still broken, twice over.
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      view.unmount();
+      pendingInitialization();
+      view = render(<Harness />);
+      await act(async () => { identity.fail!(new Error('still broken')); });
+      await waitFor(() => expect(recoveryScreen()).toBeInTheDocument());
+      expect(reloads.count).toBe(1);
+    }
+
+    // And it says so, rather than spinning on a repair it already spent.
+    expect(screen.getByText('Anmeldung nicht verfügbar')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Erneut versuchen' })).toBeInTheDocument();
+  });
+
+  it('honours a repair the user asks for by hand after the automatic one', async () => {
+    render(<Harness />);
+    sessionStorage.setItem(AUTH_RECOVERY_MARKER, '1');
+    await act(async () => { identity.fail!(new Error('initialization failure')); });
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Erneut versuchen' })).toBeInTheDocument());
+    expect(reloads.count).toBe(0);
+
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Erneut versuchen' })); });
+
+    await waitFor(() => expect(reloads.count).toBe(1));
   });
 });
 
-describe('authentication that never answers at all', () => {
-  it('resolves to signed-out on the bounded wait rather than blanking forever', async () => {
+describe('after recovery', () => {
+  it('completes a signed-out initialization and then signs in normally', async () => {
+    // The reload has happened; the fresh instance initializes cleanly.
+    render(<Harness />);
+    await act(async () => { identity.settle!(null); });
+    await settled();
+
+    expect(screen.getByTestId('uid')).toHaveTextContent('signed-out');
+    expect(current.authUnavailable).toBe(false);
+
+    // A real sign-in on a healthy instance: publication now reaches the app.
+    await act(async () => { identity.signIn('A'); });
+    await settled();
+
+    expect(screen.getByTestId('uid')).toHaveTextContent('A');
+    expect(mounts).toContain('A');
+    // The repair is no longer owed, so a later genuine failure may try again.
+    expect(sessionStorage.getItem(AUTH_RECOVERY_MARKER)).toBeNull();
+  });
+
+  it("returns the same user's UID-scoped state only once identity resolves", async () => {
+    seedStorage();
+    render(<Harness />);
+    await act(async () => { identity.settle!(null); });
+    await settled();
+
+    // Signed out: nothing of A's is mounted.
+    expect(current.training.session).toBeNull();
+    expect(current.training.todayWorkouts).toEqual([]);
+    expect(current.client.getQueryData(['profile'])).toBeUndefined();
+
+    await act(async () => { identity.signIn('A'); });
+    await settled();
+
+    // Signed in as A: A's own namespaces come back, untouched by the repair.
+    expect(current.training.session?.planId).toBe('plan-A');
+    expect(current.training.todayWorkouts[0]?.id).toBe('exercise-A');
+    await waitFor(() => expect(screen.getByTestId('profile')).toHaveTextContent('private-A'));
+  });
+});
+
+describe('initialization that never answers', () => {
+  it('resolves to the recovery state on the bounded wait, destroying nothing', async () => {
     vi.useFakeTimers();
-    // A promise that neither resolves nor rejects: the SDK simply never calls back.
+    seedStorage();
+    // A promise that neither resolves nor rejects.
     identity._initializationPromise = new Promise<void>(() => {});
     render(<Harness />);
     expect(screen.queryByTestId('uid')).toBeNull();
 
     await act(async () => { await vi.advanceTimersByTimeAsync(AUTH_INIT_TIMEOUT_MS + 1); });
 
-    expect(screen.getByTestId('uid')).toHaveTextContent('signed-out');
-    expect(current.authUnavailable).toBe(true);
+    expect(screen.getByText('Anmeldung nicht verfügbar')).toBeInTheDocument();
+    // Unproven, so nothing was cleared and nothing was reloaded.
+    expect(reloads.count).toBe(0);
+    expect(localStorage.getItem('firebase:authUser:probe-api-key:[DEFAULT]')).not.toBeNull();
+    expect(sessionStorage.getItem(AUTH_RECOVERY_MARKER)).toBeNull();
     vi.useRealTimers();
   });
 
@@ -230,6 +335,7 @@ describe('authentication that never answers at all', () => {
     await act(async () => { await vi.advanceTimersByTimeAsync(AUTH_INIT_TIMEOUT_MS - 1000); });
 
     expect(screen.queryByTestId('uid')).toBeNull();
+    expect(recoveryScreen()).toBeNull();
     vi.useRealTimers();
   });
 
@@ -241,33 +347,22 @@ describe('authentication that never answers at all', () => {
 
     expect(screen.getByTestId('uid')).toHaveTextContent('A');
     expect(current.authUnavailable).toBe(false);
+    expect(reloads.count).toBe(0);
     vi.useRealTimers();
   });
-});
 
-describe('isolation survives the failure path', () => {
-  it('keeps per-account query, session and cache namespaces after recovery', async () => {
+  it('lets a slow restore that eventually lands take over the recovery state', async () => {
+    vi.useFakeTimers();
     render(<Harness />);
-    await act(async () => { identity.fail!(new Error('initialization failure')); });
-    await waitFor(() => expect(current.authUnavailable).toBe(true));
+    await act(async () => { await vi.advanceTimersByTimeAsync(AUTH_INIT_TIMEOUT_MS + 1); });
+    expect(screen.getByText('Anmeldung nicht verfügbar')).toBeInTheDocument();
 
-    // Signed out, nothing account-scoped may be written at all.
-    act(() => { current.client.setQueryData(['profile'], 'while-unavailable'); });
-    await act(async () => { await new Promise(resolve => setTimeout(resolve, 1100)); });
-    expect(localStorage.getItem('REACT_QUERY_OFFLINE_CACHE')).toBeNull();
+    // The observer is still subscribed and still authoritative.
+    await act(async () => { identity.settle!({ uid: 'A' }); await vi.advanceTimersByTimeAsync(0); });
 
-    await act(async () => {
-      identity.currentUser = { uid: 'A' };
-      listeners.forEach(listener => listener(identity.currentUser));
-    });
-    await settled();
-
-    // A fresh, A-scoped client: nothing from the unavailable phase carried over.
-    expect(current.client.getQueryData(['profile'])).toBeUndefined();
-    act(() => {
-      current.training.startSession({ planId: 'plan-A', weekKey: 'Week 1', dayIndex: 0 });
-    });
-    expect(localStorage.getItem(accountStorageKey('fitssai.training.session', 'A'))).toContain('plan-A');
-    expect(localStorage.getItem('fitssai.training.session')).toBeNull();
+    expect(screen.getByTestId('uid')).toHaveTextContent('A');
+    expect(current.authUnavailable).toBe(false);
+    expect(recoveryScreen()).toBeNull();
+    vi.useRealTimers();
   });
 });
