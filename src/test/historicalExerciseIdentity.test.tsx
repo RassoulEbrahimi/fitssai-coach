@@ -35,7 +35,7 @@ import {
   weeksDisplaying,
 } from '@/lib/exerciseHistoryGuard';
 import { toastError } from '@/lib/toastWithIcon';
-import { rows, writes, resetWorkoutFirestore } from '@/test/mocks/workoutFirestore';
+import { control, firestore, rows, writes, resetWorkoutFirestore } from '@/test/mocks/workoutFirestore';
 
 const PLAN = 'p1';
 const WEEK = 'Week 1';
@@ -398,6 +398,102 @@ describe('refusal reporting, isolation and fail-closed behaviour', () => {
     expectBlocked(await deleteAt(0), 'history-unverifiable');
     expect(storedNames()).toEqual(['Bench Press', 'Row', 'Curl']);
     expect(planWrites()).toBe(0);
+  });
+
+  /*
+    The case `navigator.onLine` cannot see.
+
+    The SDK decides on its own that it is offline - a watch stream that failed,
+    a backend that did not answer inside its timeout - while the device still
+    reports a working connection. A captive portal, a dropped VPN, a blocked
+    host. `navigator.onLine` says true throughout, so the cheap check above
+    never fires and the read is the only thing standing between the user and a
+    rewritten history.
+  */
+  describe('the server cannot answer while the device still reports a connection', () => {
+    const LOGS = 'users/u1/workout_logs';
+
+    it('blocks the edit, writes nothing, and says why', async () => {
+      seedPlan(['Bench Press', 'Row', 'Curl']);
+      await logSetAt(1);
+      client.setQueryData(['workout-plan', PLAN], { id: PLAN, content: (rows.get(PLAN_PATH) as { content: unknown }).content });
+      const before = planWrites();
+      control.serverUnavailablePaths = [LOGS];
+      vi.mocked(toastError).mockClear();
+      const started = Date.now();
+
+      expectBlocked(await deleteAt(0), 'history-unverifiable');
+
+      // The plan is untouched, in storage and in the view alike.
+      expect(storedNames()).toEqual(['Bench Press', 'Row', 'Curl']);
+      expect(planWrites()).toBe(before);
+      const cached = client.getQueryData(['workout-plan', PLAN]) as { content: Record<string, { exercises: { name: string }[] }[]> };
+      expect(cached.content[WEEK][0].exercises.map(e => e.name)).toEqual(['Bench Press', 'Row', 'Curl']);
+
+      // One refusal, in its own words - not the caller's "could not delete".
+      expect(toastError).toHaveBeenCalledTimes(1);
+      const [title, description] = vi.mocked(toastError).mock.calls[0];
+      expect(title).toBe('Änderung nicht möglich');
+      expect(description).toContain('Trainingsverlauf');
+      expect(description).not.toMatch(/Fehler beim/i);
+
+      // A decision, not a transient failure: no four attempts over seven seconds.
+      expect(Date.now() - started).toBeLessThan(2000);
+    });
+
+    /*
+      Why the read primitive is load-bearing rather than a style preference.
+
+      Both reads are issued against the same unreachable server. The cache-
+      eligible one resolves empty, which the guard would have to read as "this
+      position was never trained"; the server one rejects, which is the truth.
+      On the cache answer the delete goes through and Row's sets come to
+      describe Curl - the exact drift this module exists to prevent.
+    */
+    it('would see an empty cache answer where the server read refuses', async () => {
+      seedPlan(['Bench Press', 'Row', 'Curl']);
+      await logSetAt(1);
+      control.serverUnavailablePaths = [LOGS];
+      const logs = firestore.collection({ path: '' } as never, 'users', 'u1', 'workout_logs');
+      const historyQuery = firestore.query(logs, firestore.where('planId', '==', PLAN));
+
+      const cached = await firestore.getDocs(historyQuery);
+      expect(cached.empty).toBe(true); // the false negative, in one line
+
+      await expect(firestore.getDocsFromServer(historyQuery)).rejects.toMatchObject({ code: 'unavailable' });
+
+      // And the history really is there, once the server can be reached.
+      control.serverUnavailablePaths = [];
+      expect((await firestore.getDocsFromServer(historyQuery)).empty).toBe(false);
+    });
+
+    /*
+      A parent log with nothing recorded on it is not evidence by itself - the
+      guard has to open its set subcollection to find out. If that read cannot
+      be answered, "no sets" is a guess, and guessing is what the whole module
+      refuses to do.
+    */
+    it('does not read an unavailable set-subcollection read as "no sets"', async () => {
+      seedPlan(['Bench Press', 'Row', 'Curl']);
+      await logSetAt(1);
+      const parentId = [...rows.keys()].find(k => /workout_logs\/[^/]+$/.test(k))!.split('/').at(-1)!;
+      // The parent itself carries no evidence, so only the subcollection can answer.
+      expect((rows.get(`${LOGS}/${parentId}`) as Record<string, unknown>).completed).toBe(false);
+
+      control.serverUnavailablePaths = [`${LOGS}/${parentId}/workout_set_logs`];
+
+      expectBlocked(await deleteAt(0), 'history-unverifiable');
+      expect(storedNames()).toEqual(['Bench Press', 'Row', 'Curl']);
+      expect(planWrites()).toBe(0);
+    });
+
+    it('keeps blocking with the real reason when history exists and is readable', async () => {
+      seedPlan(['Bench Press', 'Row', 'Curl']);
+      await logSetAt(1);
+
+      // The normalisation must not swallow a genuine answer into "unverifiable".
+      expectBlocked(await deleteAt(0), 'history-exists');
+    });
   });
 
   it('refuses once instead of retrying a decision four times', async () => {

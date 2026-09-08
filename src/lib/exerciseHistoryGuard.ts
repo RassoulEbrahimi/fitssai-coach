@@ -1,4 +1,4 @@
-import { collection, getDocs, limit, query, where } from "firebase/firestore";
+import { collection, getDocsFromServer, limit, query, where } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { PLAN_TOTAL_WEEKS } from "@/lib/planLifecycle";
 import type { DayContent, Exercise, WorkoutPlanContent } from "@/lib/types";
@@ -18,11 +18,28 @@ import type { DayContent, Exercise, WorkoutPlanContent } from "@/lib/types";
  * no warning and no way to tell afterwards. This module refuses those edits
  * while such history exists.
  *
+ * Every history read here goes to the server, never the cache. `getDocs` is
+ * not usable for this question: once the SDK's own connection has failed it
+ * enters `OnlineState.Offline` and resolves reads out of the local cache
+ * instead of rejecting - and `getFirestore()` is used without persistence, so
+ * that cache is empty on every page load. A guard built on `getDocs` would
+ * therefore answer "no history" for a user whose device still reports
+ * `navigator.onLine === true` but whose SDK cannot reach Firestore: a captive
+ * portal, a dropped VPN, a blocked host. The edit would go through, the plan
+ * write would be buffered, and reconnecting would commit exactly the drift
+ * this module exists to prevent. `getDocsFromServer` rejects in that state,
+ * which is the answer the guard needs.
+ *
  * What it deliberately does NOT do, because v1.1 is a release-safe fix: no
  * stable exercise ids, no migration, no renaming or deleting of historical
  * documents, and no remapping. History is read for existence only, and every
  * existing reader keeps interpreting it exactly as before. This stops new
  * drift; it does not rewrite the past.
+ *
+ * One residual remains and is accepted for v1.1: the check and the plan write
+ * are not atomic, so a set logged by another tab in the gap between them is
+ * still re-pointed. Closing that needs stable exercise ids; the window is one
+ * round trip and both surfaces must be open at once, so it stays out of scope.
  */
 
 /** Why an edit was refused. Each reason has its own user-facing wording. */
@@ -36,11 +53,15 @@ const REFUSAL_COPY: Record<PlanEditRefusal, { title: string; message: string }> 
       "Diese Änderung würde die gespeicherten Sätze einer anderen Übung zuordnen " +
       "und deinen bisherigen Trainingsverlauf verfälschen.",
   },
+  // Not "you are offline": the common case is a device that still reports a
+  // connection while the app cannot reach the server. The message says what is
+  // true in both - the history could not be checked, so the edit waits.
   "history-unverifiable": {
     title: "Änderung nicht möglich",
     message:
-      "Ohne Internetverbindung lässt sich nicht prüfen, ob für diese Übung bereits " +
-      "Trainingsverlauf gespeichert ist. Bitte versuche es erneut, sobald du wieder online bist.",
+      "Dein gespeicherter Trainingsverlauf lässt sich gerade nicht abrufen. " +
+      "Diese Änderung ist erst möglich, wenn geprüft werden kann, ob für diese Übung " +
+      "bereits Sätze aufgezeichnet sind. Bitte versuche es erneut, sobald die Verbindung steht.",
   },
 };
 
@@ -221,9 +242,11 @@ const hasRecordedActivity = async (
 
   // Set logs live in a subcollection, so their existence cannot be answered by
   // the parent query. One bounded read per candidate parent, and only for
-  // parents that carry no evidence of their own.
+  // parents that carry no evidence of their own. From the server: an empty
+  // cached answer here would read as "this position was never trained", which
+  // is the same false negative the parent query has to avoid.
   const setsRef = collection(db, "users", uid, "workout_logs", logId, "workout_set_logs");
-  const sets = await getDocs(query(setsRef, limit(1)));
+  const sets = await getDocsFromServer(query(setsRef, limit(1)));
   return !sets.empty;
 };
 
@@ -244,6 +267,9 @@ export interface PlanEditGuardParams {
  * shape `useSetTracking` already runs, so no new composite index is needed. A
  * day holds a handful of exercises, so this reads a handful of documents rather
  * than the user's whole history.
+ *
+ * Rejects rather than returning an incomplete answer when the server cannot be
+ * reached. Callers must treat that as "unverifiable", never as "no history".
  */
 export const findLoggedPositions = async ({
   uid,
@@ -258,7 +284,7 @@ export const findLoggedPositions = async ({
   const found: LoggedPosition[] = [];
 
   for (const week of weeksDisplaying(content, weekKey)) {
-    const snap = await getDocs(
+    const snap = await getDocsFromServer(
       query(
         logsRef,
         where("planId", "==", planId),
@@ -285,8 +311,18 @@ export const findLoggedPositions = async ({
  * Call this immediately before the write, after the plan has been read: the
  * check and the write cannot be made atomic without stable exercise ids, so
  * the smallest available protection is to leave as little as possible between
- * them. Offline the check cannot be answered truthfully at all, so it refuses
- * rather than assuming there is no history.
+ * them.
+ *
+ * There are two refusals, and they are not the same thing. "history exists" is
+ * an answer: the server was asked and said yes. "history unverifiable" is the
+ * absence of an answer, and it refuses too - a question that could not be put
+ * to the server must never be read as a no. `navigator.onLine === false` is
+ * only the cheapest of those cases; the load-bearing one is a read that
+ * reaches the SDK and fails there, which is why every failure below lands on
+ * the same refusal instead of escaping as a network error. Escaping is what
+ * would be dangerous: `useSupabaseAction` would retry it four times over seven
+ * seconds and then report the caller's generic "could not save", which tells
+ * the user nothing about why and invites them to try again into the same hole.
  */
 export const assertPlanEditPreservesHistory = async (
   params: PlanEditGuardParams
@@ -295,7 +331,20 @@ export const assertPlanEditPreservesHistory = async (
     throw new PlanEditBlockedError("history-unverifiable");
   }
 
-  const positions = await findLoggedPositions(params);
+  let positions: LoggedPosition[];
+  try {
+    positions = await findLoggedPositions(params);
+  } catch (error) {
+    // A refusal that already carries its own reason keeps it: relabelling a
+    // known "history exists" as "could not check" would understate it.
+    if (error instanceof PlanEditBlockedError) throw error;
+    // Everything else means the same thing here: nobody can say whether this
+    // position was trained. Permission, unavailability and a malformed query
+    // are indistinguishable to the user and identical in consequence, so they
+    // share one refusal rather than leaking a raw error.
+    throw new PlanEditBlockedError("history-unverifiable");
+  }
+
   if (positions.length > 0) {
     throw new PlanEditBlockedError("history-exists", positions);
   }

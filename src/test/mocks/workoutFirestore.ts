@@ -4,17 +4,38 @@ type Row = Record<string, unknown>;
 type Ref = { path: string };
 type Filter = { field: string; op: string; value: unknown };
 type Limit = { __limit: number };
+type Order = { __orderBy: string };
+type Constraint = Filter | Limit | Order;
 type Query = { source: Ref; filters: Filter[]; limit?: number };
 
-const isLimit = (constraint: Filter | Limit): constraint is Limit =>
+const isLimit = (constraint: Constraint): constraint is Limit =>
   typeof (constraint as Limit).__limit === "number";
+const isOrder = (constraint: Constraint): constraint is Order =>
+  typeof (constraint as Order).__orderBy === "string";
+const isFilter = (constraint: Constraint): constraint is Filter =>
+  !isLimit(constraint) && !isOrder(constraint);
 const isQuery = (target: Query | Ref): target is Query =>
   (target as Query).source !== undefined;
 
 /** In-memory Firestore boundary: production queries and writers remain real. */
 export const rows = new Map<string, Row>();
 export const writes: { path: string; data: Row }[] = [];
-export const control = { rejectNext: false, beforeCommit: undefined as (() => Promise<void>) | undefined };
+export const control = {
+  rejectNext: false,
+  beforeCommit: undefined as (() => Promise<void>) | undefined,
+  /**
+   * Collection paths the server cannot currently answer for, as path prefixes.
+   *
+   * This models the state the guard exists to survive: the SDK has decided it
+   * is offline while the device still reports a connection. In it the two read
+   * primitives disagree, which is the whole point of preferring one of them -
+   * `getDocsFromServer` rejects, and `getDocs` resolves out of the local cache,
+   * which without persistence is empty on every page load. A test that sets
+   * this and still sees an edit go through has found a cache-served false
+   * negative.
+   */
+  serverUnavailablePaths: [] as string[],
+};
 let serial = Promise.resolve();
 let autoId = 0;
 
@@ -24,8 +45,19 @@ export const resetWorkoutFirestore = () => {
   autoId = 0;
   control.rejectNext = false;
   control.beforeCommit = undefined;
+  control.serverUnavailablePaths = [];
   serial = Promise.resolve();
 };
+
+/** The SDK's own shape for "the backend could not be reached". */
+const unavailable = (path: string) =>
+  Object.assign(new Error(`Failed to get documents from server. (${path})`), {
+    name: "FirebaseError",
+    code: "unavailable",
+  });
+
+const serverCanAnswer = (path: string) =>
+  !control.serverUnavailablePaths.some(prefix => path === prefix || path.startsWith(`${prefix}/`));
 
 const ref = (...parts: (Ref | string)[]): Ref => ({
   path: parts.map(p => typeof p === "string" ? p : p.path).filter(Boolean).join("/"),
@@ -35,6 +67,27 @@ const snapshot = (path: string) => ({
   exists: () => rows.has(path),
   data: () => ({ ...rows.get(path) }),
 });
+
+/*
+  Shared matcher behind both read primitives. Accepts a query and a bare
+  collection reference alike: `useSetTracking` reads a set subcollection with
+  `getDocs(setsRef)` and no constraints, so a query-only double would leave
+  that production read untestable.
+*/
+const match = (target: Query | Ref) => {
+  const { source, filters, limit } = isQuery(target)
+    ? target
+    : { source: target, filters: [] as Filter[], limit: undefined };
+  const matched = [...rows.entries()].filter(([path, data]) =>
+    path.startsWith(`${source.path}/`) && path.split("/").length === source.path.split("/").length + 1 &&
+    filters.every(f => f.op === '==' ? data[f.field] === f.value :
+      typeof data[f.field] === 'string' && typeof f.value === 'string' &&
+      (f.op === '>=' ? (data[f.field] as string) >= f.value :
+        f.op === '<=' && (data[f.field] as string) <= f.value))
+  ).map(([path]) => snapshot(path));
+  const docs = limit === undefined ? matched : matched.slice(0, limit);
+  return { docs, empty: docs.length === 0 };
+};
 
 export const firestore = {
   collection: ref,
@@ -68,29 +121,34 @@ export const firestore = {
   where: (field: string, op: string, value: unknown): Filter => ({ field, op, value }),
   /** `limit(n)` is a constraint like `where`, distinguished by its own marker. */
   limit: (count: number): Limit => ({ __limit: count }),
-  query: (source: Ref, ...constraints: (Filter | Limit)[]) => ({
+  /*
+    Ordering is recorded but not applied: every caller here pairs it with
+    `limit(1)` over a single plan document, so a sort would change nothing. It
+    exists so the plan read in `AddWorkoutModal` reaches the boundary at all -
+    without it that production path could not be tested.
+  */
+  orderBy: (field: string): Order => ({ __orderBy: field }),
+  query: (source: Ref, ...constraints: Constraint[]) => ({
     source,
-    filters: constraints.filter((c): c is Filter => !isLimit(c)),
+    filters: constraints.filter(isFilter),
     limit: constraints.find(isLimit)?.__limit,
   }),
-  /*
-    Accepts a query and a bare collection reference alike. `useSetTracking`
-    reads a set subcollection with `getDocs(setsRef)` and no constraints, so a
-    query-only double would leave that production read untestable.
-  */
+  /** Cache-eligible read, as every reader outside the history guard uses. */
   getDocs: vi.fn(async (target: Query | Ref) => {
-    const { source, filters, limit } = isQuery(target)
-      ? target
-      : { source: target, filters: [] as Filter[], limit: undefined };
-    const matched = [...rows.entries()].filter(([path, data]) =>
-      path.startsWith(`${source.path}/`) && path.split("/").length === source.path.split("/").length + 1 &&
-      filters.every(f => f.op === '==' ? data[f.field] === f.value :
-        typeof data[f.field] === 'string' && typeof f.value === 'string' &&
-        (f.op === '>=' ? (data[f.field] as string) >= f.value :
-          f.op === '<=' && (data[f.field] as string) <= f.value))
-    ).map(([path]) => snapshot(path));
-    const docs = limit === undefined ? matched : matched.slice(0, limit);
-    return { docs, empty: docs.length === 0 };
+    const source = isQuery(target) ? target.source : target;
+    // Cache semantics: an unreachable server does not fail this read, it
+    // silently narrows it to whatever the local cache holds - nothing.
+    if (!serverCanAnswer(source.path)) return { docs: [], empty: true };
+    return match(target);
+  }),
+  /**
+   * Server-authoritative read. Rejects rather than falling back to the cache,
+   * which is why the history guard uses it.
+   */
+  getDocsFromServer: vi.fn(async (target: Query | Ref) => {
+    const source = isQuery(target) ? target.source : target;
+    if (!serverCanAnswer(source.path)) throw unavailable(source.path);
+    return match(target);
   }),
   runTransaction: vi.fn(async (_db: unknown, callback: (transaction: {
     get: (target: Ref) => Promise<ReturnType<typeof snapshot>>;
