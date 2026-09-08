@@ -2,9 +2,13 @@ import type { Firestore } from "firebase-admin/firestore";
 import { validateWorkoutPlanContent, type WorkoutPlanContent } from "../../../shared/workoutPlan";
 import { AiError, isAiError, type AiErrorCode } from "../errors";
 import { requireAuth, type AuthContextLike } from "../auth";
-import { requireValidRequestId, type OperationStore } from "../idempotency";
+import {
+  requireValidRequestId,
+  type OperationStore,
+  type OperationTransaction,
+} from "../idempotency";
 import { DEFAULT_QUOTA_LIMITS } from "../quota";
-import type { ReservingQuotaStore } from "../quota/firestoreQuotaStore";
+import type { ReservingQuotaStore, QuotaTransactionLike } from "../quota/firestoreQuotaStore";
 import type { PlanGenerationLogEntry } from "../logging/firestoreAiLogWriter";
 import { buildPlanGenerationInput } from "./profileInput";
 import { validatePlanSemantics } from "./semanticValidation";
@@ -17,6 +21,14 @@ import { GEMINI_MODEL_ID, GEMINI_PROVIDER_ID } from "./providers/gemini";
  * Order matters, and the order is: identity, then idempotency, then the
  * profile, then quota, and only then the provider. Everything that can refuse
  * the request for free runs before the one step that costs money.
+ *
+ * The other half of the order is what happens after the provider answers. One
+ * logical request must converge on at most one plan and at most one charge no
+ * matter where it is interrupted — the callable response can be lost, the
+ * client can time out and retry, the invocation can be duplicated, and the
+ * process can die at any line. That is only true if the plan and the record
+ * saying the plan exists commit together, and if nothing after that commit can
+ * undo either. Both properties live in `finalize` below.
  *
  * The handler takes its collaborators as arguments so the whole pipeline —
  * including the paths that must *not* call the provider — is testable without
@@ -82,43 +94,76 @@ export const handleGenerateWorkoutPlan = async (
     return { remaining: Math.max(0, limit - used), limit, period: deps.quota.currentPeriod() };
   };
 
+  /**
+   * The quota figures for a call that has already succeeded.
+   *
+   * A read that fails must not turn a committed plan into an error, so this
+   * one falls back to arithmetic rather than propagating. The plan is on disk
+   * either way; the number next to it is the only thing at stake.
+   */
+  const summaryOrEstimate = async (): Promise<QuotaSummary> =>
+    summary().catch(() => ({ remaining: 0, limit, period: deps.quota.currentPeriod() }));
+
+  /**
+   * Telemetry, which is never allowed to decide anything.
+   *
+   * `.catch()` alone is not enough: a writer that throws synchronously never
+   * returns a promise to catch, and that throw would otherwise travel into the
+   * handler's failure path and turn a finished generation into an error.
+   */
+  const logSafely = async (entry: PlanGenerationLogEntry): Promise<void> => {
+    try {
+      await deps.log(entry);
+    } catch {
+      // An observability outage is not a product failure.
+    }
+  };
+
   const fail = async (
     error: AiError,
-    context: { providerCalled: boolean; repairUsed?: boolean; usage?: TokenUsage; startedAt: number }
+    context: {
+      providerCalled: boolean;
+      repairUsed?: boolean;
+      usage?: TokenUsage;
+      startedAt: number;
+      claimToken?: string;
+    }
   ): Promise<never> => {
-    await deps.operations.fail(uid, requestId).catch(() => undefined);
-    await deps
-      .log({
+    await deps.operations
+      .fail({
         uid,
-        action: ACTION,
-        status: "error",
-        errorCategory: LOG_CATEGORY[error.code],
-        provider: context.providerCalled ? GEMINI_PROVIDER_ID : undefined,
-        model: context.providerCalled ? GEMINI_MODEL_ID : undefined,
-        providerCalled: context.providerCalled,
-        schemaRepairUsed: context.repairUsed,
-        latencyMs: Date.now() - context.startedAt,
-        inputTokens: context.usage?.inputTokens,
-        outputTokens: context.usage?.outputTokens,
-        createdAt: now().toISOString(),
+        requestId,
+        claimToken: context.claimToken,
+        releaseQuota: (tx) =>
+          deps.quota.releaseInTransaction(tx as QuotaTransactionLike, {
+            uid,
+            action: ACTION,
+            requestId,
+          }),
       })
       .catch(() => undefined);
+    await logSafely({
+      uid,
+      action: ACTION,
+      status: "error",
+      errorCategory: LOG_CATEGORY[error.code],
+      provider: context.providerCalled ? GEMINI_PROVIDER_ID : undefined,
+      model: context.providerCalled ? GEMINI_MODEL_ID : undefined,
+      providerCalled: context.providerCalled,
+      schemaRepairUsed: context.repairUsed,
+      latencyMs: Date.now() - context.startedAt,
+      inputTokens: context.usage?.inputTokens,
+      outputTokens: context.usage?.outputTokens,
+      createdAt: now().toISOString(),
+    });
     throw error;
   };
 
   const startedAt = Date.now();
 
-  // 2. Claim the request id. A replay returns the first call's plan without
-  //    calling the provider again or charging a second time.
-  const claim = await deps.operations.claim(uid, requestId);
-  if (claim.kind === "replay") {
-    return { ok: true, planId: claim.planId, quota: await summary(), replay: true };
-  }
-  if (claim.kind === "in_progress") {
-    throw new AiError("REQUEST_IN_PROGRESS", "An identical request is already running.");
-  }
-
-  // 3. The profile. Free to refuse, and refuses with the missing field names.
+  // 2. The profile, before anything is claimed or charged. It is free to
+  //    refuse and refuses with the missing field names, so a user who has not
+  //    finished onboarding never consumes one of their three generations.
   let input;
   try {
     input = await buildPlanGenerationInput(deps.firestore, uid);
@@ -129,11 +174,40 @@ export const handleGenerateWorkoutPlan = async (
     return fail(aiError, { providerCalled: false, startedAt });
   }
 
-  // 4. Reserve quota before spending money. The reservation is transactional,
-  //    so two simultaneous requests cannot both take the last one; it is given
-  //    back on every failure below, so only a persisted plan stays charged.
-  const reserved = await deps.quota.reserve(uid, ACTION, limit);
-  if (reserved === null) {
+  /*
+    3. Claim the request id and take its one quota reservation, together.
+
+    A replay returns the first call's plan without calling the provider again
+    or charging a second time. A retry of an attempt that died mid-flight
+    inherits the reservation and the plan id the dead attempt reserved, so an
+    interrupted generation costs a user one plan, not two.
+  */
+  const claim = await deps.operations.claim({
+    uid,
+    requestId,
+    mintPlanId: () => deps.newPlanId?.() ?? deps.firestore.collection("users").doc().id,
+    reserveQuota: async (tx, leaseExpiresAt) =>
+      (await deps.quota.reserveInTransaction(tx as QuotaTransactionLike, {
+        uid,
+        action: ACTION,
+        requestId,
+        limit,
+        expiresAt: leaseExpiresAt,
+      })) !== null,
+  });
+
+  if (claim.kind === "replay") {
+    /*
+      The reconciliation path: this is what a browser reaches after a response
+      it never saw. It already knows a plan exists, so a quota read that fails
+      here must not turn that plan back into an error the user has to retry.
+    */
+    return { ok: true, planId: claim.planId, quota: await summaryOrEstimate(), replay: true };
+  }
+  if (claim.kind === "in_progress") {
+    throw new AiError("REQUEST_IN_PROGRESS", "An identical request is already running.");
+  }
+  if (claim.kind === "quota_exceeded") {
     return fail(
       new AiError("QUOTA_EXCEEDED", "Monthly generation limit reached.", {
         limit,
@@ -143,15 +217,23 @@ export const handleGenerateWorkoutPlan = async (
     );
   }
 
-  const release = async () => {
-    await deps.quota.release(uid, ACTION).catch(() => undefined);
-  };
-
+  const { claimToken } = claim;
   let usage: TokenUsage = {};
   let repairUsed = false;
 
-  try {
-    // 5. Attempt one, then at most one repair. Never a loop.
+  /*
+    Everything that can still fail, in one place.
+
+    The commit is the last statement in it on purpose: what follows the
+    try/catch below runs only when the plan is on disk and paid for, and the
+    catch cannot see it. That is what keeps "a plan that exists is never
+    unmade" a property of the shape of this function rather than of a flag
+    somebody has to remember to check.
+  */
+  const generateAndCommit = async (): Promise<
+    { kind: "committed"; planId: string } | { kind: "superseded"; planId: string }
+  > => {
+    // 4. Attempt one, then at most one repair. Never a loop.
     let attempt = await deps.provider.generatePlanWithUsage(input);
     usage = attempt.usage;
     let issues = collectIssues(attempt.output, input);
@@ -164,13 +246,7 @@ export const handleGenerateWorkoutPlan = async (
     }
 
     if (issues.length > 0) {
-      await release();
-      return fail(new AiError("MODEL_OUTPUT_INVALID", "Model output failed validation."), {
-        providerCalled: true,
-        repairUsed,
-        usage,
-        startedAt,
-      });
+      throw new AiError("MODEL_OUTPUT_INVALID", "Model output failed validation.");
     }
 
     // Safe: collectIssues returns empty only when the parse succeeded.
@@ -179,59 +255,124 @@ export const handleGenerateWorkoutPlan = async (
       content: WorkoutPlanContent;
     };
 
-    // 6. Persist with the Admin SDK. The client never holds the plan and never
-    //    chooses its id, and no existing plan is touched.
-    const planId = deps.newPlanId?.() ?? deps.firestore.collection("users").doc().id;
-    try {
-      await deps.firestore
-        .collection("users")
-        .doc(uid)
-        .collection("workout_plans")
-        .doc(planId)
-        .create({
-          content: content.content,
-          createdAt: now(),
-          updatedAt: now(),
+    /*
+      5. Persist the plan and complete the operation in one transaction.
+
+      Written with `create` at the id the claim reserved, so a duplicate
+      invocation of the same request cannot add a second document, and so the
+      plan and the record that says it exists can only appear together. The
+      client never holds the plan and never chooses its id, and no existing
+      plan is touched.
+    */
+    const outcome = await commitPlan(deps, {
+      uid,
+      requestId,
+      claimToken,
+      content: content.content,
+      at: now(),
+    });
+
+    if (outcome.kind === "lost") {
+      /*
+        This invocation is no longer the one entitled to answer: either
+        another took the request over, or this claim outlived its lease and
+        the reservation behind it may already be somebody else's. Its work is
+        discarded rather than written over theirs. The browser keeps the
+        request id — the outcome is uncertain, not a refusal — so the retry
+        reaches the same record and either replays the winner's plan or
+        claims the request again and generates once.
+      */
+      throw new AiError("REQUEST_IN_PROGRESS", "This invocation no longer owns the request.");
+    }
+
+    return outcome;
+  };
+
+  let outcome: { kind: "committed" | "superseded"; planId: string };
+  try {
+    outcome = await generateAndCommit();
+  } catch (error) {
+    const aiError = isAiError(error)
+      ? error
+      : new AiError("INTERNAL", "Plan generation failed.");
+    return fail(aiError, { providerCalled: true, repairUsed, usage, startedAt, claimToken });
+  }
+
+  // 6. The plan exists and is paid for. Nothing from here on may release the
+  //    reservation, mark the operation failed, or throw — a logging outage is
+  //    not a reason to tell a user the plan they now have does not exist.
+  if (outcome.kind === "superseded") {
+    // Another invocation already finished this request. Its plan is the
+    // answer, and it is already charged for.
+    return { ok: true, planId: outcome.planId, quota: await summaryOrEstimate(), replay: true };
+  }
+
+  await logSafely({
+    uid,
+    action: ACTION,
+    status: "success",
+    provider: GEMINI_PROVIDER_ID,
+    model: GEMINI_MODEL_ID,
+    providerCalled: true,
+    schemaRepairUsed: repairUsed,
+    planId: outcome.planId,
+    latencyMs: Date.now() - startedAt,
+    inputTokens: usage.inputTokens,
+    outputTokens: usage.outputTokens,
+    createdAt: now().toISOString(),
+  });
+
+  return { ok: true, planId: outcome.planId, quota: await summaryOrEstimate(), replay: false };
+};
+
+/**
+ * Commit the plan document and the completed operation record together.
+ *
+ * A refused write means neither happened: there is no window in which a plan
+ * exists while the bookkeeping still calls the request unfinished, which is
+ * the state that let one click become two plans and two charges.
+ */
+const commitPlan = async (
+  deps: PlanGenerationDeps,
+  args: {
+    uid: string;
+    requestId: string;
+    claimToken: string;
+    content: WorkoutPlanContent;
+    at: Date;
+  }
+) => {
+  const planRef = (planId: string) =>
+    deps.firestore
+      .collection("users")
+      .doc(args.uid)
+      .collection("workout_plans")
+      .doc(planId);
+
+  try {
+    return await deps.operations.finalize({
+      uid: args.uid,
+      requestId: args.requestId,
+      claimToken: args.claimToken,
+      consumeQuota: (tx: OperationTransaction) =>
+        deps.quota.consumeInTransaction(tx as QuotaTransactionLike, {
+          uid: args.uid,
+          action: ACTION,
+          requestId: args.requestId,
+        }),
+      writeResult: (tx: OperationTransaction, planId: string) => {
+        tx.create(planRef(planId), {
+          content: args.content,
+          createdAt: args.at,
+          updatedAt: args.at,
           source: "ai",
           provider: GEMINI_PROVIDER_ID,
           model: GEMINI_MODEL_ID,
         });
-    } catch {
-      await release();
-      return fail(new AiError("PERSISTENCE_FAILED", "Failed to store the generated plan."), {
-        providerCalled: true,
-        repairUsed,
-        usage,
-        startedAt,
-      });
-    }
-
-    await deps.operations.complete(uid, requestId, planId);
-
-    await deps
-      .log({
-        uid,
-        action: ACTION,
-        status: "success",
-        provider: GEMINI_PROVIDER_ID,
-        model: GEMINI_MODEL_ID,
-        providerCalled: true,
-        schemaRepairUsed: repairUsed,
-        planId,
-        latencyMs: Date.now() - startedAt,
-        inputTokens: usage.inputTokens,
-        outputTokens: usage.outputTokens,
-        createdAt: now().toISOString(),
-      })
-      .catch(() => undefined);
-
-    return { ok: true, planId, quota: await summary(), replay: false };
-  } catch (error) {
-    await release();
-    const aiError = isAiError(error)
-      ? error
-      : new AiError("INTERNAL", "Plan generation failed.");
-    return fail(aiError, { providerCalled: true, repairUsed, usage, startedAt });
+      },
+    });
+  } catch {
+    throw new AiError("PERSISTENCE_FAILED", "Failed to store the generated plan.");
   }
 };
 

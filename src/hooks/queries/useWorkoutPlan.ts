@@ -8,9 +8,13 @@ import { WorkoutPlan } from "@/lib/types";
 import {
   PlanGenerationError,
   generateWorkoutPlan,
-  newRequestId,
   toPlanGenerationError,
 } from "@/lib/backend/planGeneration";
+import {
+  beginPlanRequest,
+  isUncertainOutcome,
+  settlePlanRequest,
+} from "@/lib/backend/planRequestId";
 import { planGenerationErrorMessage } from "@/lib/backend/planGenerationCopy";
 
 
@@ -42,24 +46,57 @@ export const useWorkoutPlan = () => {
   /*
     Real generation, server-side. The browser sends one request id and nothing
     else: goal, equipment, days and session length are read from the profile by
-    the Function, and the plan is written by the Function too. A retried click
-    reuses the same id, so a double-click cannot become two plans or two
-    charges against a three-per-month quota.
+    the Function, and the plan is written by the Function too.
+
+    The id is the whole of the duplicate protection, so it is chosen by
+    `beginPlanRequest` rather than minted here. A press whose outcome nobody
+    knows — a lost response, a callable that gave up, a server that says it is
+    still working — keeps its id, so the retry reaches the server as the same
+    request and is answered with the plan that request already produced. Only a
+    finished generation or a refusal that persisted nothing clears it, which is
+    what makes the *next* press a genuinely new plan.
   */
   const generateMutation = useMutation({
-    mutationFn: async () => generateWorkoutPlan(newRequestId()),
+    mutationFn: async () => {
+      const ownerUid = user?.uid;
+      if (!ownerUid) throw new PlanGenerationError("UNAUTHENTICATED");
+
+      try {
+        const result = await generateWorkoutPlan(beginPlanRequest(ownerUid));
+        settlePlanRequest(ownerUid);
+        return result;
+      } catch (error) {
+        const failure =
+          error instanceof PlanGenerationError ? error : toPlanGenerationError(error);
+        // An uncertain outcome keeps its id: the server may well have finished,
+        // and the next attempt has to be able to ask about this same request
+        // rather than starting a second one.
+        if (!isUncertainOutcome(failure.code)) settlePlanRequest(ownerUid);
+        throw failure;
+      }
+    },
 
     onSuccess: async (result) => {
-      // Refetch before telling the user it worked, so the new plan is what
-      // they see when the toast appears.
+      // Refetch before telling the user it worked, so the plan is what they
+      // see when the toast appears.
       await queryClient.invalidateQueries({ queryKey: queryKeys.plans.byUser(user?.id) });
 
-      toast.success("Neuer Trainingsplan erstellt", {
-        description:
-          result.quota.remaining > 0
-            ? `Noch ${result.quota.remaining} von ${result.quota.limit} Plänen diesen Monat.`
-            : "Dein letzter Plan für diesen Monat.",
-      });
+      /*
+        A replay is a success, not a duplicate-generation error: the server
+        recognised this as a request it had already completed and handed back
+        the plan it made. Saying so is more honest than announcing a new plan
+        that was not created just now — and than reporting a failure for a
+        request that succeeded.
+      */
+      toast.success(
+        result.replay ? "Dein Trainingsplan ist fertig" : "Neuer Trainingsplan erstellt",
+        {
+          description:
+            result.quota.remaining > 0
+              ? `Noch ${result.quota.remaining} von ${result.quota.limit} Plänen diesen Monat.`
+              : "Dein letzter Plan für diesen Monat.",
+        }
+      );
     },
 
     onError: (error: unknown) => {
