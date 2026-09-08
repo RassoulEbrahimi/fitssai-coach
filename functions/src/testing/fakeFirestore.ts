@@ -147,14 +147,37 @@ export class FakeFirestore {
         value: Record<string, unknown>,
         options?: { merge?: boolean }
       ) => void;
+      create: (ref: { path: string }, value: Record<string, unknown>) => void;
     }) => Promise<T>
   ): Promise<T> {
-    const run = this.lock.then(() =>
-      body({
+    /*
+      Writes are buffered until the body returns, as a real transaction's are.
+      A `create` against a document that already exists has to fail the whole
+      transaction and leave nothing behind — which is exactly the guarantee
+      plan finalisation leans on, so the fake must not fake it away.
+    */
+    const run = this.lock.then(async () => {
+      const buffered: Array<() => void> = [];
+      const result = await body({
         get: async (ref) => this.snapshot(ref.path),
-        set: (ref, value, options) => this.writeAt(ref.path, value, options?.merge === true),
-      })
-    );
+        set: (ref, value, options) =>
+          buffered.push(() => this.writeAt(ref.path, value, options?.merge === true)),
+        create: (ref, value) =>
+          buffered.push(() => {
+            if (this.docs.has(ref.path)) throw new Error("already exists");
+            this.writeAt(ref.path, value, false);
+          }),
+      });
+      const before = new Map(this.docs);
+      try {
+        for (const write of buffered) write();
+      } catch (error) {
+        this.docs.clear();
+        for (const [path, value] of before) this.docs.set(path, value);
+        throw error;
+      }
+      return result;
+    });
     this.lock = run.catch(() => undefined);
     return run;
   }

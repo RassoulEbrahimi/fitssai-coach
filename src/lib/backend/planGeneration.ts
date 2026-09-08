@@ -107,11 +107,30 @@ export const toPlanGenerationError = (error: unknown): PlanGenerationError => {
 /** A per-attempt id, so a retried click cannot become a second charge. */
 export const newRequestId = (): string => crypto.randomUUID();
 
+/**
+ * How long the browser waits for the callable.
+ *
+ * The SDK's default is 70 seconds. `generateWorkoutPlan` is deployed with a
+ * 180-second execution budget because a four-week plan takes the model a
+ * while, so the default guarantees the browser gives up on calls that are
+ * still running and about to succeed — and every one of those becomes a retry
+ * of something that already happened. This is the server's budget plus a
+ * margin for a cold start and the round trip, so the browser stops waiting
+ * only once the server itself has.
+ *
+ * It does not make the request safe on its own. A response can still be lost
+ * to a closed laptop or a dropped connection, which is why the retry sends the
+ * same request id and the server treats it as the same request — see
+ * `planRequestId.ts` and `functions/src/idempotency.ts`.
+ */
+export const CALLABLE_TIMEOUT_MS = 195_000;
+
 export const generateWorkoutPlan = async (requestId: string): Promise<PlanGenerationResult> => {
   const functions = getFunctions(getApp(), FUNCTIONS_REGION);
   const callable = httpsCallable<{ requestId: string }, PlanGenerationResult>(
     functions,
-    "generateWorkoutPlan"
+    "generateWorkoutPlan",
+    { timeout: CALLABLE_TIMEOUT_MS }
   );
 
   try {

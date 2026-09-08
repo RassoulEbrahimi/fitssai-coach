@@ -34,6 +34,19 @@ export const quotaPeriod = (now: Date): string =>
 export const quotaDocId = (uid: string, action: QuotaAction, period: string): string =>
   `${uid}__${action}__${period}`;
 
+/**
+ * The slice of a Firestore transaction the quota helpers need.
+ *
+ * Structural rather than the Admin SDK's `Transaction`, so a caller can hand
+ * over a transaction it already owns without this module knowing whose it is.
+ * That is what lets a quota reservation commit together with the operation
+ * record that owns it, instead of in a second write that can fail on its own.
+ */
+export interface QuotaTransactionLike {
+  get(ref: unknown): Promise<{ data(): FirebaseFirestore.DocumentData | undefined }>;
+  set(ref: unknown, data: Record<string, unknown>, options?: { merge?: boolean }): void;
+}
+
 export interface FirestoreQuotaStoreOptions {
   firestore: Firestore;
   /** Injected so tests are not at the mercy of the wall clock. */
@@ -58,6 +71,21 @@ export interface ReservingQuotaStore extends QuotaStore {
   release(uid: string, action: QuotaAction): Promise<void>;
   /** The period a call now would be counted against. */
   currentPeriod(): string;
+  /**
+   * Reserve inside a transaction the caller already opened.
+   *
+   * Same arithmetic as `reserve`, but it commits with whatever else that
+   * transaction writes. Plan generation uses it so one logical request can
+   * never hold two reservations, and never hold one that no record points at.
+   */
+  reserveInTransaction(
+    tx: QuotaTransactionLike,
+    uid: string,
+    action: QuotaAction,
+    limit: number
+  ): Promise<number | null>;
+  /** Give a reservation back inside a caller's transaction. Floored at zero. */
+  releaseInTransaction(tx: QuotaTransactionLike, uid: string, action: QuotaAction): Promise<void>;
 }
 
 export const createFirestoreQuotaStore = (
@@ -123,6 +151,32 @@ export const createFirestoreQuotaStore = (
         );
         return next;
       });
+    },
+
+    reserveInTransaction: async (tx, uid, action, limit) => {
+      const at = now();
+      const docRef = ref(uid, action);
+      const snap = await tx.get(docRef);
+      const used = readCount(snap.data());
+      if (used >= limit) return null;
+
+      const next = used + 1;
+      tx.set(
+        docRef,
+        { uid, action, period: quotaPeriod(at), count: next, updatedAt: at.toISOString() },
+        { merge: true }
+      );
+      return next;
+    },
+
+    releaseInTransaction: async (tx, uid, action) => {
+      const at = now();
+      const docRef = ref(uid, action);
+      const snap = await tx.get(docRef);
+      const used = readCount(snap.data());
+      // Floored at zero: a double release must not hand out a free call.
+      if (used === 0) return;
+      tx.set(docRef, { count: used - 1, updatedAt: at.toISOString() }, { merge: true });
     },
 
     release: async (uid, action) => {
