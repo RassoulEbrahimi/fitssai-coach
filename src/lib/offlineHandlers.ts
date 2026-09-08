@@ -1,7 +1,7 @@
 import { assertAccountOwner } from "@/lib/accountIdentity";
 import { db } from "@/lib/firebase";
 import {
-  collection, getDocs, query, where, doc, setDoc, deleteDoc, updateDoc, Timestamp,
+  collection, getDocs, query, where, doc, setDoc, deleteDoc, updateDoc, runTransaction, Timestamp,
 } from "firebase/firestore";
 import { writeDaySessionRecord } from "@/lib/daySessionRecord";
 import { queryKeys } from "@/lib/queryKeys";
@@ -21,6 +21,14 @@ type ToggleExercisePayload = {
 
 // Same existing position identity; only new replay documents get stable IDs.
 // Existing auto-ID documents remain in place. No historical identity migration.
+//
+// A stable ID makes two replays address one document, which is the point — and
+// the hazard. The lookup that decides "create" or "update" can report empty
+// while the document exists: `getDocs` is served from a cold in-memory cache
+// whenever the SDK considers itself offline, which is exactly the state a
+// reconnecting replay runs in. With an auto-ID that miss cost a duplicate row;
+// with this ID it would land on the real document. So neither create path here
+// writes blind — each re-reads its own address inside a transaction first.
 const replayLogId = (payload: ToggleExercisePayload | ToggleSetPayload) =>
   `offline-exercise_${encodeURIComponent(JSON.stringify([payload.planId, payload.weekKey, payload.dayIndex, payload.exerciseIndex]))}`;
 
@@ -38,13 +46,24 @@ export const handlers = {
     let logId: string;
     if (!logSnap.empty) { logId = [...logSnap.docs].sort((a, b) => a.id.localeCompare(b.id))[0].id; }
     else {
-      assertCanWrite();
+      // Create if absent, never replace. This branch exists only to give the
+      // set somewhere to hang; it has nothing to say about the exercise. An
+      // existing parent already carries the user's completion, duration and
+      // date, and `completed: false` below is an initial value, not a desired
+      // one — writing it over a finished exercise would un-complete it.
       logId = replayLogId(payload);
-      await setDoc(doc(logsRef, logId), {
-        planId: payload.planId, weekKey: payload.weekKey,
-        dayIndex: payload.dayIndex, exerciseIndex: payload.exerciseIndex,
-        ...(isWorkoutDayString(payload.workoutDay) ? { workoutDay: payload.workoutDay } : {}),
-        completed: false, createdAt: Timestamp.now(),
+      const logRef = doc(logsRef, logId);
+      assertCanWrite();
+      await runTransaction(db, async transaction => {
+        const current = await transaction.get(logRef);
+        assertCanWrite();
+        if (current.exists()) return;
+        transaction.set(logRef, {
+          planId: payload.planId, weekKey: payload.weekKey,
+          dayIndex: payload.dayIndex, exerciseIndex: payload.exerciseIndex,
+          ...(isWorkoutDayString(payload.workoutDay) ? { workoutDay: payload.workoutDay } : {}),
+          completed: false, createdAt: Timestamp.now(),
+        });
       });
     }
     assertCanWrite();
@@ -95,16 +114,38 @@ export const handlers = {
     ));
     assertAccountOwner(ownerUid);
     checkpoint?.();
+    // What this operation actually asked for. Clearing `completedAt` on an
+    // uncompletion is intended; nothing else here is.
+    const completionChange = {
+      completed: payload.completed, completedAt: payload.completed ? Timestamp.now() : null,
+    };
+    // An optional value the payload never carried is an absence, not an
+    // instruction to erase the one already stored. `?? null` is right for a
+    // document being created — it matches what the online writer stores — and
+    // wrong for one being updated.
+    const measurements = {
+      ...(payload.durationMinutes !== undefined ? { durationMinutes: payload.durationMinutes } : {}),
+      ...(payload.caloriesBurned !== undefined ? { caloriesBurned: payload.caloriesBurned } : {}),
+    };
     if (!snap.empty) {
-      await updateDoc(doc(db, "users", uid, "workout_logs", [...snap.docs].sort((a, b) => a.id.localeCompare(b.id))[0].id), {
-        completed: payload.completed, completedAt: payload.completed ? Timestamp.now() : null,
-      });
+      await updateDoc(doc(db, "users", uid, "workout_logs", [...snap.docs].sort((a, b) => a.id.localeCompare(b.id))[0].id), completionChange);
     } else {
-      await setDoc(doc(logsRef, replayLogId(payload)), {
-        planId: payload.planId, weekKey: payload.weekKey, dayIndex: payload.dayIndex,
-        exerciseIndex: payload.exerciseIndex, completed: payload.completed,
-        completedAt: payload.completed ? Timestamp.now() : null, createdAt: Timestamp.now(),
-        durationMinutes: payload.durationMinutes ?? null, caloriesBurned: payload.caloriesBurned ?? null,
+      // Same lookup miss as in TOGGLE_SET, same rule: re-read this exact
+      // address before deciding whether this is a create or an edit.
+      const logRef = doc(logsRef, replayLogId(payload));
+      await runTransaction(db, async transaction => {
+        const current = await transaction.get(logRef);
+        assertAccountOwner(ownerUid);
+        checkpoint?.();
+        if (current.exists()) {
+          transaction.update(logRef, { ...completionChange, ...measurements });
+          return;
+        }
+        transaction.set(logRef, {
+          planId: payload.planId, weekKey: payload.weekKey, dayIndex: payload.dayIndex,
+          exerciseIndex: payload.exerciseIndex, ...completionChange, createdAt: Timestamp.now(),
+          durationMinutes: payload.durationMinutes ?? null, caloriesBurned: payload.caloriesBurned ?? null,
+        });
       });
     }
     return [

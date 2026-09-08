@@ -23,7 +23,7 @@ import { rows, writes, firestore, resetWorkoutFirestore } from '@/test/mocks/wor
 const DAY = { planId: 'p', weekKey: 'Week 1', dayIndex: 0, workoutDay: '2026-09-07', completed: true };
 const SET = { ...DAY, exerciseIndex: 0, setNumber: 1, repsCompleted: 10, weightUsed: 40 };
 const STORAGE = 'FITSSAI_OFFLINE_QUEUE';
-const writeSetDocument = firestore.setDoc.getMockImplementation()!;
+const createParentLog = firestore.runTransaction.getMockImplementation()!;
 let client: QueryClient;
 const wrapper = ({ children }: { children: React.ReactNode }) =>
   <QueryClientProvider client={client}>{children}</QueryClientProvider>;
@@ -256,8 +256,9 @@ describe('claims, interruptions, storage transitions and ordering', () => {
 
   it('recovers a crash between parent-log and set writes without duplicating the parent', async () => {
     enqueue('TOGGLE_SET', SET);
-    firestore.setDoc.mockImplementationOnce(async (ref, data) => {
-      await writeSetDocument(ref, data);
+    // Interrupted after the parent log is committed and before the set write.
+    firestore.runTransaction.mockImplementationOnce(async (db, callback) => {
+      await createParentLog(db, callback);
       identity.currentUser = { uid: 'B' };
     });
     const interrupted = await flush();
@@ -336,5 +337,116 @@ describe('claims, interruptions, storage transitions and ordering', () => {
     firestore.getDocs.mockImplementationOnce(async () => ({ docs: [], empty: true }));
     expect((await flush()).completed).toBe(1);
     expect([...rows.keys()]).toEqual([...paths, `${paths[0]}/workout_set_logs/set_2`]);
+  });
+});
+
+/*
+  A deterministic ID means two replays address the same document. That is the
+  point, and it is also the hazard: if the lookup that decides "create" or
+  "update" reports empty while the document exists, a create must not become a
+  silent replace. The lookup can report empty for real — the Firestore SDK
+  serves `getDocs` from a cold in-memory cache when it considers itself
+  offline, which is exactly the state a reconnecting replay runs in.
+
+  Every parent address below comes from a real replay rather than a repeated
+  copy of `replayLogId`, so these tests cannot agree with a wrong ID.
+*/
+describe('a lookup that misses an existing deterministic parent', () => {
+  const EXISTING = {
+    workoutDay: '2026-09-07', completed: true, completedAt: 'ts-completed',
+    durationMinutes: 45, caloriesBurned: 320, createdAt: 'ts-created', notes: 'felt strong',
+  };
+  const EXERCISE = { planId: 'p', weekKey: 'Week 1', dayIndex: 0, exerciseIndex: 0 };
+
+  /** The deterministic parent, at the address production actually derives. */
+  const seedParent = async (fields: Record<string, unknown>) => {
+    enqueue('TOGGLE_DAY_COMPLETION', { ...EXERCISE, completed: true });
+    expect((await flush()).completed).toBe(1);
+    const path = [...rows.keys()][0];
+    rows.set(path, { ...rows.get(path), ...EXISTING, ...fields });
+    writes.length = 0;
+    return path;
+  };
+  const staleEmptyLookup = () => firestore.getDocs.mockImplementationOnce(async () => ({ docs: [], empty: true }));
+
+  it('TOGGLE_SET leaves the existing parent exactly as it was and still writes its set', async () => {
+    const parent = await seedParent({});
+    const before = { ...rows.get(parent)! };
+    // No workoutDay in the payload: an older queue entry must not be able to
+    // strip the date the document already carries.
+    enqueue('TOGGLE_SET', { ...SET, workoutDay: undefined });
+    staleEmptyLookup();
+    expect((await flush()).completed).toBe(1);
+    expect([...rows.keys()]).toEqual([parent, `${parent}/workout_set_logs/set_1`]);
+    expect(rows.get(parent)).toEqual(before);
+    expect(rows.get(`${parent}/workout_set_logs/set_1`)).toMatchObject({ setNumber: 1, repsCompleted: 10, weightUsed: 40 });
+  });
+
+  it('TOGGLE_DAY_COMPLETION completion changes only completion, keeping unrelated fields', async () => {
+    const parent = await seedParent({ completed: false, completedAt: null });
+    enqueue('TOGGLE_DAY_COMPLETION', { ...EXERCISE, completed: true });
+    staleEmptyLookup();
+    expect((await flush()).completed).toBe(1);
+    expect([...rows.keys()]).toEqual([parent]);
+    const row = rows.get(parent)!;
+    expect(row.completed).toBe(true);
+    expect(row.completedAt).toBeTruthy();
+    // Absent optional payload values are absent, not an instruction to clear.
+    expect(row).toMatchObject({
+      durationMinutes: 45, caloriesBurned: 320, workoutDay: '2026-09-07',
+      createdAt: 'ts-created', notes: 'felt strong',
+    });
+  });
+
+  it('TOGGLE_DAY_COMPLETION uncompletion clears completion only', async () => {
+    const parent = await seedParent({});
+    enqueue('TOGGLE_DAY_COMPLETION', { ...EXERCISE, completed: false });
+    staleEmptyLookup();
+    expect((await flush()).completed).toBe(1);
+    expect([...rows.keys()]).toEqual([parent]);
+    expect(rows.get(parent)).toMatchObject({
+      completed: false, completedAt: null,
+      durationMinutes: 45, caloriesBurned: 320, workoutDay: '2026-09-07',
+      createdAt: 'ts-created', notes: 'felt strong',
+    });
+  });
+
+  it('TOGGLE_DAY_COMPLETION applies duration and calories the payload does carry', async () => {
+    const parent = await seedParent({});
+    enqueue('TOGGLE_DAY_COMPLETION', { ...EXERCISE, completed: true, durationMinutes: 12, caloriesBurned: 90 });
+    staleEmptyLookup();
+    expect((await flush()).completed).toBe(1);
+    expect(rows.get(parent)).toMatchObject({ durationMinutes: 12, caloriesBurned: 90, notes: 'felt strong' });
+  });
+
+  it('survives a stale-empty lookup on the replay that recovers a failed cleanup', async () => {
+    // The compound case: the remote write landed, the local cleanup failed,
+    // and the recovery replay is itself the one reading from a cold cache.
+    const parent = await seedParent({});
+    const before = { ...rows.get(parent)! };
+    enqueue('TOGGLE_SET', { ...SET, workoutDay: undefined });
+    const originalSet = Storage.prototype.setItem;
+    const storage = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(function (key, value) {
+      if (key === STORAGE && value === '[]') throw new Error('Crash before cleanup');
+      return originalSet.call(this, key, value);
+    });
+    staleEmptyLookup();
+    expect((await flush()).storageError).toBeInstanceOf(QueueStorageError);
+    storage.mockRestore();
+    vi.spyOn(Date, 'now').mockReturnValue(Date.now() + CLAIM_LEASE_MS);
+    staleEmptyLookup();
+    expect((await flush()).completed).toBe(1);
+    expect([...rows.keys()]).toEqual([parent, `${parent}/workout_set_logs/set_1`]);
+    expect(rows.get(parent)).toEqual(before);
+    expect(loadQueue()).toEqual([]);
+  });
+
+  it('still creates the exercise log when the parent genuinely does not exist', async () => {
+    enqueue('TOGGLE_DAY_COMPLETION', { ...EXERCISE, completed: true, durationMinutes: 12 });
+    expect((await flush()).completed).toBe(1);
+    expect([...rows.keys()]).toHaveLength(1);
+    expect([...rows.values()][0]).toMatchObject({
+      ...EXERCISE, completed: true, durationMinutes: 12, caloriesBurned: null,
+    });
   });
 });
