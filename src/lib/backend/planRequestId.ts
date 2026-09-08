@@ -45,12 +45,24 @@ interface PendingRequest {
 /**
  * Failures that end a logical attempt.
  *
- * Every one of them is a refusal the server made without persisting a plan, so
- * pressing the button again is a new request and deserves a new id. What is
- * deliberately absent is as important: INTERNAL covers a lost response, a
- * timed-out callable and a crash after the plan was already written, and
- * REQUEST_IN_PROGRESS means the server is still working on this very id.
- * Neither says the attempt produced nothing, so neither may throw its id away.
+ * Every one of them is a refusal the server made *before* it had anything to
+ * persist — no provider call had succeeded, or none had been made at all — so
+ * pressing the button again is a new request and deserves a new id.
+ *
+ * What is deliberately absent is as important. INTERNAL covers a lost
+ * response, a timed-out callable and a crash after the plan was already
+ * written. REQUEST_IN_PROGRESS means the server is still working on this very
+ * id. And PERSISTENCE_FAILED is raised by a `catch` around a Firestore
+ * transaction, which cannot tell a refused commit from a commit whose
+ * acknowledgement was lost — the plan may well be on disk, completed and paid
+ * for. None of the three says the attempt produced nothing, so none may throw
+ * its id away.
+ *
+ * Keeping an id costs nothing when the failure was real: the server's record
+ * for it says `failed`, and the retry re-claims it, reuses the plan id it
+ * already reserved and generates once. Throwing one away costs a whole extra
+ * generation and a whole extra charge whenever the outcome was actually a
+ * success nobody heard about.
  */
 const SETTLED_CODES: readonly AiErrorCode[] = [
   "UNAUTHENTICATED",
@@ -60,7 +72,6 @@ const SETTLED_CODES: readonly AiErrorCode[] = [
   "PROVIDER_RATE_LIMITED",
   "PROVIDER_UNAVAILABLE",
   "MODEL_OUTPUT_INVALID",
-  "PERSISTENCE_FAILED",
 ];
 
 /** True when the outcome leaves it unknown whether a plan was created. */

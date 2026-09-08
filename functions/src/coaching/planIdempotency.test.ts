@@ -35,6 +35,8 @@ const UID = "alice";
 const OTHER_UID = "mallory";
 const REQUEST_ID = "3f1a6f28-9c4e-4a1b-8f2d-77c0b5e1a9d4";
 const OTHER_REQUEST_ID = "8b2c1d40-5e6f-4a7b-9c8d-0e1f2a3b4c5d";
+const THIRD_REQUEST_ID = "1a2b3c4d-5e6f-4a8b-9c0d-1e2f3a4b5c6d";
+const FOURTH_REQUEST_ID = "9f8e7d6c-5b4a-4392-8170-6f5e4d3c2b1a";
 const START = new Date("2026-08-27T10:00:00.000Z");
 
 const COMPLETE_PROFILE = {
@@ -166,30 +168,42 @@ const call = (
 
 const plans = (h: Harness, uid: string = UID) => h.db.under(`users/${uid}/workout_plans`);
 
-const quotaCount = (h: Harness, uid: string = UID): number => {
-  const doc = h.db.docs.get(
-    `${QUOTA_COLLECTION}/${uid}__plan_generation__${quotaPeriod(h.clock())}`
-  );
-  return (doc?.count as number) ?? 0;
-};
+const quotaPath = (h: Harness, uid: string = UID): string =>
+  `${QUOTA_COLLECTION}/${uid}__plan_generation__${quotaPeriod(h.clock())}`;
+
+const quotaCount = (h: Harness, uid: string = UID): number =>
+  (h.db.docs.get(quotaPath(h, uid))?.count as number) ?? 0;
 
 const operation = (h: Harness, uid: string = UID, requestId: string = REQUEST_ID) =>
   h.db.docs.get(`${OPERATION_COLLECTION}/${operationDocId(uid, requestId)}`);
 
 /** Take the claim the way the handler does, then walk away from it. */
-const claimAndAbandon = async (h: Harness, requestId: string = REQUEST_ID) =>
+const claimAndAbandon = async (
+  h: Harness,
+  requestId: string = REQUEST_ID,
+  planId: string = "abandoned-plan"
+) =>
   h.deps.operations.claim({
     uid: UID,
     requestId,
-    mintPlanId: () => "abandoned-plan",
-    reserveQuota: async (tx) =>
-      (await h.deps.quota.reserveInTransaction(
-        tx,
-        UID,
-        "plan_generation",
-        DEFAULT_QUOTA_LIMITS.plan_generation
-      )) !== null,
+    mintPlanId: () => planId,
+    reserveQuota: async (tx, leaseExpiresAt) =>
+      (await h.deps.quota.reserveInTransaction(tx, {
+        uid: UID,
+        action: "plan_generation",
+        requestId,
+        limit: DEFAULT_QUOTA_LIMITS.plan_generation,
+        expiresAt: leaseExpiresAt,
+      })) !== null,
   });
+
+/** The units the period still has holds recorded against. */
+const heldUnits = (h: Harness, uid: string = UID): Array<{ requestId: string }> =>
+  (h.db.docs.get(quotaPath(h, uid))?.reservations as Array<{ requestId: string }>) ?? [];
+
+/** What the user is actually allowed to still generate, as the server sees it. */
+const effectiveUsage = (h: Harness, uid: string = UID): Promise<number> =>
+  h.deps.quota.getUsage(uid, "plan_generation");
 
 describe("one logical request, one plan, one charge", () => {
   it("returns the first call's plan for a repeated request id without generating again", async () => {
@@ -355,7 +369,12 @@ describe("a plan that exists is never unmade", () => {
       uid: UID,
       requestId: REQUEST_ID,
       claimToken: operation(h)?.claimToken as string,
-      releaseQuota: (tx) => h.deps.quota.releaseInTransaction(tx, UID, "plan_generation"),
+      releaseQuota: (tx) =>
+        h.deps.quota.releaseInTransaction(tx, {
+          uid: UID,
+          action: "plan_generation",
+          requestId: REQUEST_ID,
+        }),
     });
 
     expect(operation(h)?.status).toBe("completed");
@@ -426,6 +445,12 @@ describe("an abandoned request recovers", () => {
       uid: UID,
       requestId: REQUEST_ID,
       claimToken: staleToken,
+      consumeQuota: (tx) =>
+        h.deps.quota.consumeInTransaction(tx, {
+          uid: UID,
+          action: "plan_generation",
+          requestId: REQUEST_ID,
+        }),
       writeResult: (tx, planId) => {
         tx.create(
           h.db.collection("users").doc(UID).collection("workout_plans").doc(planId),
@@ -566,6 +591,303 @@ describe("quota is charged for what was produced, and only that", () => {
     expect(plans(h)).toHaveLength(3);
     expect(h.providerCalls).toBe(3);
     expect(operation(h, UID, ids[3])).toBeUndefined();
+  });
+});
+
+/*
+  The finalisation transaction commits, and the answer never gets back.
+
+  Nothing distinguishes this from a refused commit at the call site — which is
+  the whole reason it is dangerous: the handler reports PERSISTENCE_FAILED for
+  a request that persisted a plan, completed its record and paid for it.
+*/
+const loseTheAcknowledgement = (h: Harness): void => {
+  const committed = h.deps.operations.finalize;
+  let lost = false;
+  h.deps.operations = {
+    ...h.deps.operations,
+    // Once only: the connection that dropped is not the next one.
+    finalize: async (input) => {
+      const outcome = await committed(input);
+      if (lost) return outcome;
+      lost = true;
+      throw new Error("commit acknowledgement lost");
+    },
+  };
+};
+
+describe("a commit whose acknowledgement was lost", () => {
+  it("reports failure over a plan that is on disk, completed and paid for", async () => {
+    const h = harness();
+    loseTheAcknowledgement(h);
+
+    await expect(call(h)).rejects.toMatchObject({ code: "PERSISTENCE_FAILED" });
+
+    // The error is about the answer, not the outcome. Everything committed.
+    expect(plans(h)).toHaveLength(1);
+    expect(operation(h)?.status).toBe("completed");
+    expect(quotaCount(h)).toBe(1);
+    // And the failure path did not talk itself into undoing any of it.
+    expect(operation(h)?.planId).toBe(plans(h)[0][0].split("/").pop());
+    expect(heldUnits(h)).toHaveLength(0);
+  });
+
+  it("reconciles when the retry keeps the same request id", async () => {
+    const h = harness();
+    loseTheAcknowledgement(h);
+    await expect(call(h)).rejects.toMatchObject({ code: "PERSISTENCE_FAILED" });
+
+    const retry = await call(h);
+
+    expect(retry.replay).toBe(true);
+    expect(retry.planId).toBe(operation(h)?.planId);
+    expect(h.providerCalls).toBe(1);
+    expect(plans(h)).toHaveLength(1);
+    expect(quotaCount(h)).toBe(1);
+    expect(await effectiveUsage(h)).toBe(1);
+  });
+
+  /*
+    The counterfactual, and the reason PERSISTENCE_FAILED may not be treated as
+    a settled outcome by the browser. A client that mints a new id here asks
+    for a second generation of something that already succeeded — and gets it.
+  */
+  it("cannot reconcile anything once the retry has been given a new id", async () => {
+    const h = harness();
+    loseTheAcknowledgement(h);
+    await expect(call(h)).rejects.toMatchObject({ code: "PERSISTENCE_FAILED" });
+
+    await call(h, { requestId: OTHER_REQUEST_ID });
+
+    expect(h.providerCalls).toBe(2);
+    expect(plans(h)).toHaveLength(2);
+    expect(quotaCount(h)).toBe(2);
+  });
+
+  it("recovers by regenerating when the commit really was refused", async () => {
+    const h = harness({ failWrites: (path) => path.includes("/workout_plans/") });
+    await expect(call(h)).rejects.toMatchObject({ code: "PERSISTENCE_FAILED" });
+
+    expect(plans(h)).toHaveLength(0);
+    expect(operation(h)?.status).toBe("failed");
+    expect(quotaCount(h)).toBe(0);
+    const reserved = operation(h)?.planId;
+
+    (h.db as unknown as { options: { failWrites?: (p: string) => boolean } }).options.failWrites =
+      undefined;
+    const retry = await call(h);
+
+    // The same id, so the same reserved document — one plan, charged once.
+    expect(retry.planId).toBe(reserved);
+    expect(plans(h)).toHaveLength(1);
+    expect(quotaCount(h)).toBe(1);
+    expect(heldUnits(h)).toHaveLength(0);
+  });
+});
+
+/*
+  Three *successful* generations a month is the promise. A unit taken by a
+  request that was killed before it produced anything is not a generation
+  anybody received, so it cannot be allowed to sit on the allowance for the
+  rest of the month.
+
+  The unit is given back by the next transaction that reads the document — the
+  user's own next request — rather than by anything that has to be scheduled,
+  swept or migrated.
+*/
+describe("an abandoned reservation does not cost a successful generation", () => {
+  it("does not spend the month on generations nobody received", async () => {
+    const h = harness();
+    for (const requestId of [REQUEST_ID, OTHER_REQUEST_ID, THIRD_REQUEST_ID]) {
+      await claimAndAbandon(h, requestId, `abandoned-${requestId}`);
+    }
+    expect(quotaCount(h)).toBe(3);
+    expect(plans(h)).toHaveLength(0);
+
+    h.advance(CLAIM_LEASE_MS + 1000);
+    const result = await call(h, { requestId: FOURTH_REQUEST_ID });
+
+    expect(result.ok).toBe(true);
+    expect(plans(h)).toHaveLength(1);
+    // One plan made, one unit spent — not four.
+    expect(await effectiveUsage(h)).toBe(1);
+    expect(result.quota.remaining).toBe(2);
+  });
+
+  it("A: stops counting an abandoned unit the moment its lease runs out", async () => {
+    const h = harness();
+    await claimAndAbandon(h);
+    expect(await effectiveUsage(h)).toBe(1);
+
+    h.advance(CLAIM_LEASE_MS + 1000);
+
+    // Nothing ran, nothing was swept: the unit simply stopped being anyone's.
+    expect(await effectiveUsage(h)).toBe(0);
+
+    await call(h, { requestId: OTHER_REQUEST_ID });
+    expect(quotaCount(h)).toBe(1);
+    expect(await effectiveUsage(h)).toBe(1);
+  });
+
+  it("B: keeps a stale takeover to the one unit the dead attempt held", async () => {
+    const h = harness();
+    await claimAndAbandon(h);
+
+    h.advance(CLAIM_LEASE_MS + 1000);
+    await call(h);
+
+    expect(plans(h)).toHaveLength(1);
+    expect(quotaCount(h)).toBe(1);
+    expect(await effectiveUsage(h)).toBe(1);
+    expect(heldUnits(h)).toHaveLength(0);
+  });
+
+  it("C: never reclaims a unit that bought a plan, however long it sits", async () => {
+    const h = harness();
+    await call(h);
+
+    h.advance(CLAIM_LEASE_MS * 100);
+
+    expect(await effectiveUsage(h)).toBe(1);
+    expect(heldUnits(h)).toHaveLength(0);
+    // And it still counts against the limit, which is the point.
+    await call(h, { requestId: OTHER_REQUEST_ID });
+    expect(await effectiveUsage(h)).toBe(2);
+  });
+
+  it("D: never reclaims a unit from a claim that is still live", async () => {
+    const h = harness();
+    await claimAndAbandon(h);
+
+    h.advance(CLAIM_LEASE_MS - 1000);
+
+    expect(await effectiveUsage(h)).toBe(1);
+    await expect(call(h)).rejects.toMatchObject({ code: "REQUEST_IN_PROGRESS" });
+    expect(quotaCount(h)).toBe(1);
+    expect(heldUnits(h).map((entry) => entry.requestId)).toEqual([REQUEST_ID]);
+  });
+
+  it("E: gives a request's unit back once, however often it is released", async () => {
+    const h = harness();
+    await claimAndAbandon(h);
+    expect(quotaCount(h)).toBe(1);
+
+    const release = () =>
+      h.db.runTransaction((tx) =>
+        h.deps.quota.releaseInTransaction(tx, {
+          uid: UID,
+          action: "plan_generation",
+          requestId: REQUEST_ID,
+        })
+      );
+
+    await release();
+    expect(quotaCount(h)).toBe(0);
+
+    await release();
+    await release();
+
+    // A refund it never paid for would be a free generation.
+    expect(quotaCount(h)).toBe(0);
+    expect(await effectiveUsage(h)).toBe(0);
+  });
+
+  it("F: cannot go below zero, however many units are reclaimed at once", async () => {
+    const h = harness();
+    for (const requestId of [REQUEST_ID, OTHER_REQUEST_ID, THIRD_REQUEST_ID]) {
+      await claimAndAbandon(h, requestId, `abandoned-${requestId}`);
+    }
+    const stale = heldUnits(h);
+
+    h.advance(CLAIM_LEASE_MS + 1000);
+    expect(await effectiveUsage(h)).toBe(0);
+
+    // And a record claiming more holds than it has units is still floored.
+    h.db.docs.set(quotaPath(h), {
+      uid: UID,
+      action: "plan_generation",
+      count: 1,
+      reservations: stale,
+    });
+
+    expect(await effectiveUsage(h)).toBe(0);
+    await call(h, { requestId: FOURTH_REQUEST_ID });
+    expect(quotaCount(h)).toBeGreaterThanOrEqual(0);
+    expect(await effectiveUsage(h)).toBe(1);
+  });
+
+  it("G: reclaims within a period, and a new month starts clean", async () => {
+    const h = harness();
+    await claimAndAbandon(h);
+    expect(quotaPath(h)).toContain("2026-08");
+
+    h.advance(31 * 24 * 60 * 60 * 1000);
+
+    expect(quotaPath(h)).toContain("2026-09");
+    expect(await effectiveUsage(h)).toBe(0);
+
+    const result = await call(h, { requestId: OTHER_REQUEST_ID });
+    expect(result.quota.period).toBe("2026-09");
+    expect(result.quota.remaining).toBe(2);
+  });
+
+  /*
+    Reclaiming must not become a way to generate for free. Once a unit has gone
+    back, the request that abandoned it is an ordinary new request: if it comes
+    back it pays again, exactly like any other press of the button.
+  */
+  it("charges again when a request revives after its unit went back", async () => {
+    const h = harness();
+    await claimAndAbandon(h);
+
+    h.advance(CLAIM_LEASE_MS + 1000);
+    await call(h, { requestId: OTHER_REQUEST_ID });
+    expect(await effectiveUsage(h)).toBe(1);
+
+    await call(h);
+
+    expect(plans(h)).toHaveLength(2);
+    expect(await effectiveUsage(h)).toBe(2);
+  });
+
+  it("still refuses a fourth generation when three really did succeed", async () => {
+    const h = harness();
+    for (const requestId of [REQUEST_ID, OTHER_REQUEST_ID, THIRD_REQUEST_ID]) {
+      await call(h, { requestId });
+    }
+
+    h.advance(CLAIM_LEASE_MS * 10);
+
+    await expect(call(h, { requestId: FOURTH_REQUEST_ID })).rejects.toMatchObject({
+      code: "QUOTA_EXCEEDED",
+    });
+    expect(plans(h)).toHaveLength(3);
+  });
+
+  it("does not let a dead claim refund the unit its successor is using", async () => {
+    const h = harness();
+    const stale = await claimAndAbandon(h);
+    const staleToken = (stale as { claimToken: string }).claimToken;
+
+    h.advance(CLAIM_LEASE_MS + 1000);
+    await call(h);
+
+    // The abandoned invocation wakes up and reports its own failure.
+    await h.deps.operations.fail({
+      uid: UID,
+      requestId: REQUEST_ID,
+      claimToken: staleToken,
+      releaseQuota: (tx) =>
+        h.deps.quota.releaseInTransaction(tx, {
+          uid: UID,
+          action: "plan_generation",
+          requestId: REQUEST_ID,
+        }),
+    });
+
+    expect(operation(h)?.status).toBe("completed");
+    expect(quotaCount(h)).toBe(1);
+    expect(await effectiveUsage(h)).toBe(1);
   });
 });
 

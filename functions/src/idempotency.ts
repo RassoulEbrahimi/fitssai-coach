@@ -92,11 +92,18 @@ export interface ClaimInput {
   /**
    * Takes the request's one quota reservation, inside the claim's transaction.
    *
-   * Called only when the record does not already hold one, so a retry that
-   * continues an existing request is never charged a second time. Returning
-   * false means the period's allowance is gone and nothing is claimed.
+   * Called on every claim, including a takeover, and given the lease the claim
+   * is about to write so the hold and the claim stop being live at the same
+   * moment. Charging once per logical request is the store's job rather than
+   * this record's: keyed by request id, it recognises a continuation and
+   * renews the hold instead of taking a second one. A flag here could only say
+   * that *something* was once charged, which is not the same question — a unit
+   * reclaimed after this claim was abandoned has to be taken again.
+   *
+   * Returning false means the period's allowance is gone and nothing is
+   * claimed.
    */
-  reserveQuota: (tx: OperationTransaction) => Promise<boolean>;
+  reserveQuota: (tx: OperationTransaction, leaseExpiresAt: Date) => Promise<boolean>;
 }
 
 export interface FinalizeInput {
@@ -104,6 +111,14 @@ export interface FinalizeInput {
   requestId: string;
   /** Proves this invocation still owns the claim it is finalising. */
   claimToken: string;
+  /**
+   * Turns the request's reservation into a charge, in the same transaction.
+   *
+   * The plan, the completed record and the charge for it therefore commit as
+   * one write or not at all — there is no ordering of failures that leaves a
+   * plan somebody was not charged for, or a charge with no plan behind it.
+   */
+  consumeQuota: (tx: OperationTransaction) => Promise<void>;
   /** Writes the result document, in the same transaction as the completion. */
   writeResult: (tx: OperationTransaction, planId: string) => void;
 }
@@ -195,8 +210,8 @@ export const createFirestoreOperationStore = (
           the reservation and the reserved plan id carry over rather than being
           taken again, so a crash cannot cost a user two of their three plans.
         */
-        const alreadyCharged = data?.quotaCharged === true;
-        if (!alreadyCharged && !(await reserveQuota(transaction))) {
+        const leaseExpiresAt = new Date(at.getTime() + CLAIM_LEASE_MS);
+        if (!(await reserveQuota(transaction, leaseExpiresAt))) {
           return { kind: "quota_exceeded" };
         }
 
@@ -211,11 +226,15 @@ export const createFirestoreOperationStore = (
             status: "in_progress",
             claimToken,
             planId,
+            // Descriptive, for anyone reading a record in the console. The
+            // allowance itself is the quota document's business, not this
+            // one's: two documents that both decide cost would eventually
+            // disagree about it.
             quotaCharged: true,
             attempts: attempts + 1,
             startedAt: readString(data, "startedAt") ?? at.toISOString(),
             claimedAt: at.toISOString(),
-            leaseExpiresAt: new Date(at.getTime() + CLAIM_LEASE_MS).toISOString(),
+            leaseExpiresAt: leaseExpiresAt.toISOString(),
           },
           { merge: true }
         );
@@ -223,7 +242,7 @@ export const createFirestoreOperationStore = (
         return { kind: "claimed", claimToken, planId };
       }),
 
-    finalize: async ({ uid, requestId, claimToken, writeResult }) =>
+    finalize: async ({ uid, requestId, claimToken, consumeQuota, writeResult }) =>
       inTransaction<FinalizeResult>(async (transaction) => {
         const at = now();
         const docRef = ref(uid, requestId);
@@ -237,6 +256,9 @@ export const createFirestoreOperationStore = (
         // this one was with the provider. Its plan is the one that counts.
         if (readString(data, "claimToken") !== claimToken || !planId) return { kind: "lost" };
 
+        // Before any write in this transaction: the quota read has to happen
+        // while reads are still allowed.
+        await consumeQuota(transaction);
         writeResult(transaction, planId);
         transaction.set(
           docRef,

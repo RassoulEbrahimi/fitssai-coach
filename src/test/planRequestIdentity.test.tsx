@@ -124,6 +124,40 @@ describe("an uncertain attempt keeps its identity", () => {
     expect(sent[0]).toBe(sent[1]);
   });
 
+  /*
+    The finalisation transaction commits the plan, the completed record and the
+    charge together — and then the acknowledgement is lost. The function's
+    `catch` around that transaction cannot tell that apart from a refused
+    commit, so it reports PERSISTENCE_FAILED for a request that in fact
+    succeeded. Treating that as definitive threw the id away and made the next
+    press a second generation, a second plan and a second charge.
+  */
+  it("keeps the id when persistence could not be acknowledged", async () => {
+    outcomes.push({ kind: "error", code: "PERSISTENCE_FAILED" });
+    const hook = mount();
+
+    await press(hook);
+    await press(hook);
+
+    expect(sent[1]).toBe(sent[0]);
+  });
+
+  it("reconciles a persistence failure that had actually committed", async () => {
+    outcomes.push({ kind: "error", code: "PERSISTENCE_FAILED" }, { kind: "ok", replay: true });
+    const hook = mount();
+
+    await press(hook);
+    await press(hook);
+
+    // Same logical request, so the server answers with the plan it already
+    // made rather than making a second one.
+    expect(sent[1]).toBe(sent[0]);
+    expect(toasts.at(-1)).toEqual({ level: "success", title: "Dein Trainingsplan ist fertig" });
+    // And only once it has been reconciled does the next press start afresh.
+    await press(hook);
+    expect(sent[2]).not.toBe(sent[0]);
+  });
+
   it("survives a reload, so a reopened tab reconciles instead of regenerating", async () => {
     outcomes.push({ kind: "error", code: "INTERNAL" });
     const hook = mount();
@@ -166,7 +200,6 @@ describe("a settled attempt gives its identity up", () => {
     "MODEL_OUTPUT_INVALID",
     "PROVIDER_UNAVAILABLE",
     "PROVIDER_RATE_LIMITED",
-    "PERSISTENCE_FAILED",
     "UNAUTHENTICATED",
     "INVALID_REQUEST",
   ])("starts a new request after %s, which persisted nothing", async (code) => {
@@ -191,7 +224,11 @@ describe("a settled attempt gives its identity up", () => {
 
     // Growing this list is a decision, not an accident: anything uncertain
     // keeps its request id and will be retried against the same server record.
-    expect([...uncertain].sort()).toEqual(["INTERNAL", "REQUEST_IN_PROGRESS"]);
+    expect([...uncertain].sort()).toEqual([
+      "INTERNAL",
+      "PERSISTENCE_FAILED",
+      "REQUEST_IN_PROGRESS",
+    ]);
   });
 });
 

@@ -135,7 +135,11 @@ export const handleGenerateWorkoutPlan = async (
         requestId,
         claimToken: context.claimToken,
         releaseQuota: (tx) =>
-          deps.quota.releaseInTransaction(tx as QuotaTransactionLike, uid, ACTION),
+          deps.quota.releaseInTransaction(tx as QuotaTransactionLike, {
+            uid,
+            action: ACTION,
+            requestId,
+          }),
       })
       .catch(() => undefined);
     await logSafely({
@@ -182,17 +186,23 @@ export const handleGenerateWorkoutPlan = async (
     uid,
     requestId,
     mintPlanId: () => deps.newPlanId?.() ?? deps.firestore.collection("users").doc().id,
-    reserveQuota: async (tx) =>
-      (await deps.quota.reserveInTransaction(
-        tx as QuotaTransactionLike,
+    reserveQuota: async (tx, leaseExpiresAt) =>
+      (await deps.quota.reserveInTransaction(tx as QuotaTransactionLike, {
         uid,
-        ACTION,
-        limit
-      )) !== null,
+        action: ACTION,
+        requestId,
+        limit,
+        expiresAt: leaseExpiresAt,
+      })) !== null,
   });
 
   if (claim.kind === "replay") {
-    return { ok: true, planId: claim.planId, quota: await summary(), replay: true };
+    /*
+      The reconciliation path: this is what a browser reaches after a response
+      it never saw. It already knows a plan exists, so a quota read that fails
+      here must not turn that plan back into an error the user has to retry.
+    */
+    return { ok: true, planId: claim.planId, quota: await summaryOrEstimate(), replay: true };
   }
   if (claim.kind === "in_progress") {
     throw new AiError("REQUEST_IN_PROGRESS", "An identical request is already running.");
@@ -338,6 +348,12 @@ const commitPlan = async (
       uid: args.uid,
       requestId: args.requestId,
       claimToken: args.claimToken,
+      consumeQuota: (tx: OperationTransaction) =>
+        deps.quota.consumeInTransaction(tx as QuotaTransactionLike, {
+          uid: args.uid,
+          action: ACTION,
+          requestId: args.requestId,
+        }),
       writeResult: (tx: OperationTransaction, planId: string) => {
         tx.create(planRef(planId), {
           content: args.content,
