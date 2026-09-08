@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest";
+import { readFileSync } from "node:fs";
 import { handleGenerateWorkoutPlan, type PlanGenerationDeps } from "./generatePlan";
 import {
   createFirestoreQuotaStore,
@@ -888,6 +889,192 @@ describe("an abandoned reservation does not cost a successful generation", () =>
     expect(operation(h)?.status).toBe("completed");
     expect(quotaCount(h)).toBe(1);
     expect(await effectiveUsage(h)).toBe(1);
+  });
+});
+
+/*
+  A claim that has outlived its lease is not allowed to finish.
+
+  The token says who claimed the request; it cannot say whether the claim is
+  still current. That distinction only started to matter when the quota
+  reservation moved onto the quota document, where an unrelated request is
+  entitled to reclaim it once it expires — at which point a commit here would
+  write a plan that nothing is charged for. The execution budget makes that
+  unreachable in production; the lease check makes it unreachable at all.
+*/
+describe("a claim that outlived its lease cannot finish", () => {
+  const finalizeWith = (h: Harness, claimToken: string, source = "stale") =>
+    h.deps.operations.finalize({
+      uid: UID,
+      requestId: REQUEST_ID,
+      claimToken,
+      consumeQuota: (tx) =>
+        h.deps.quota.consumeInTransaction(tx, {
+          uid: UID,
+          action: "plan_generation",
+          requestId: REQUEST_ID,
+        }),
+      writeResult: (tx, planId) => {
+        tx.create(h.db.collection("users").doc(UID).collection("workout_plans").doc(planId), {
+          content: {},
+          source,
+        });
+      },
+    });
+
+  it("refuses the claimant whose reservation was reclaimed under it", async () => {
+    const h = harness();
+    const stale = await claimAndAbandon(h, REQUEST_ID, "plan-stale");
+    const staleToken = (stale as { claimToken: string }).claimToken;
+    expect(quotaCount(h)).toBe(1);
+
+    // The lease runs out, and an unrelated request reclaims the unit in passing.
+    h.advance(CLAIM_LEASE_MS + 1000);
+    await call(h, { requestId: OTHER_REQUEST_ID });
+    expect(heldUnits(h).map((entry) => entry.requestId)).toEqual([]);
+    expect(quotaCount(h)).toBe(1);
+
+    // The abandoned invocation wakes up holding a token that still matches.
+    const outcome = await finalizeWith(h, staleToken);
+
+    expect(outcome).toEqual({ kind: "lost" });
+    // Its plan was never written, so nothing exists that nobody paid for.
+    expect(plans(h)).toHaveLength(1);
+    expect(plans(h)[0][1].source).toBe("ai");
+    expect(operation(h)?.status).toBe("in_progress");
+    expect(quotaCount(h)).toBe(1);
+    expect(await effectiveUsage(h)).toBe(1);
+  });
+
+  it("refuses it even when nothing else has touched the allowance", async () => {
+    const h = harness();
+    const stale = await claimAndAbandon(h, REQUEST_ID, "plan-stale");
+    const staleToken = (stale as { claimToken: string }).claimToken;
+
+    h.advance(CLAIM_LEASE_MS + 1000);
+    const outcome = await finalizeWith(h, staleToken);
+
+    // The hold is still on the document here, so the old code would have
+    // committed and charged correctly. It is refused all the same: a claim
+    // nobody can vouch for is not a claim.
+    expect(outcome).toEqual({ kind: "lost" });
+    expect(plans(h)).toHaveLength(0);
+    expect(operation(h)?.status).toBe("in_progress");
+  });
+
+  it("refuses a claimant whose request was taken over and is still running", async () => {
+    const h = harness();
+    const stale = await claimAndAbandon(h, REQUEST_ID, "plan-stale");
+    const staleToken = (stale as { claimToken: string }).claimToken;
+
+    h.advance(CLAIM_LEASE_MS + 1000);
+    const winner = await claimAndAbandon(h, REQUEST_ID, "plan-stale");
+    expect(winner.kind).toBe("claimed");
+
+    const outcome = await finalizeWith(h, staleToken);
+
+    expect(outcome).toEqual({ kind: "lost" });
+    expect(plans(h)).toHaveLength(0);
+    // And the successor still owns the request and its one unit.
+    expect(operation(h)?.claimToken).toBe((winner as { claimToken: string }).claimToken);
+    expect(heldUnits(h).map((entry) => entry.requestId)).toEqual([REQUEST_ID]);
+    expect(quotaCount(h)).toBe(1);
+  });
+
+  it("still lets a live claim finish in the ordinary way", async () => {
+    const h = harness();
+    const result = await call(h);
+
+    // The check must cost an ordinary generation nothing.
+    expect(result.replay).toBe(false);
+    expect(plans(h)).toHaveLength(1);
+    expect(operation(h)?.status).toBe("completed");
+    expect(quotaCount(h)).toBe(1);
+    expect(await effectiveUsage(h)).toBe(1);
+    expect(heldUnits(h)).toHaveLength(0);
+  });
+
+  it("still replays a completed request, whose lease is deliberately gone", async () => {
+    const h = harness();
+    const done = await call(h);
+    expect(operation(h)?.leaseExpiresAt).toBeNull();
+
+    h.advance(CLAIM_LEASE_MS * 10);
+    const replay = await call(h);
+
+    expect(replay.replay).toBe(true);
+    expect(replay.planId).toBe(done.planId);
+    expect(h.providerCalls).toBe(1);
+  });
+
+  /*
+    The same thing through the production handler: a provider call that takes
+    longer than the lease. Nothing is written, the unit goes back, and the
+    browser keeps the request id because the outcome is uncertain — so the
+    retry is the same logical request and produces exactly one plan.
+  */
+  it("discards work from an invocation that ran past its own lease", async () => {
+    const h = harness();
+    const generate = h.deps.provider.generatePlanWithUsage;
+    h.deps.provider = {
+      ...h.deps.provider,
+      generatePlanWithUsage: async (...args: Parameters<typeof generate>) => {
+        h.advance(CLAIM_LEASE_MS + 1000);
+        return generate(...args);
+      },
+    };
+
+    await expect(call(h)).rejects.toMatchObject({ code: "REQUEST_IN_PROGRESS" });
+
+    expect(plans(h)).toHaveLength(0);
+    expect(quotaCount(h)).toBe(0);
+    expect(await effectiveUsage(h)).toBe(0);
+    expect(operation(h)?.status).toBe("failed");
+  });
+
+  it("lets the retry of that request generate exactly one plan", async () => {
+    const h = harness();
+    const generate = h.deps.provider.generatePlanWithUsage;
+    let slow = true;
+    h.deps.provider = {
+      ...h.deps.provider,
+      generatePlanWithUsage: async (...args: Parameters<typeof generate>) => {
+        if (slow) {
+          slow = false;
+          h.advance(CLAIM_LEASE_MS + 1000);
+        }
+        return generate(...args);
+      },
+    };
+
+    await expect(call(h)).rejects.toMatchObject({ code: "REQUEST_IN_PROGRESS" });
+    const retry = await call(h);
+
+    expect(retry.ok).toBe(true);
+    expect(plans(h)).toHaveLength(1);
+    expect(quotaCount(h)).toBe(1);
+    expect(await effectiveUsage(h)).toBe(1);
+    expect(heldUnits(h)).toHaveLength(0);
+  });
+});
+
+/*
+  The lease closes the hole on its own, but the margin still matters: an
+  invocation that reached its lease before the platform stopped it would throw
+  away work it had already paid the provider for. The budget has to stay
+  comfortably inside the lease, and that is a relationship between two files
+  with nothing but this test to hold it.
+*/
+describe("the lease outlasts the execution budget it covers", () => {
+  it("gives an invocation less time to run than its claim is honoured for", () => {
+    // Read from the package root, the way the client's own timeout guard does.
+    const index = readFileSync("src/index.ts", "utf-8");
+    const budget = Number(
+      /timeoutSeconds:\s*(\d+)/.exec(index.slice(index.indexOf("generateWorkoutPlan")))?.[1]
+    );
+
+    expect(budget).toBe(180);
+    expect(CLAIM_LEASE_MS).toBeGreaterThan(budget * 1000);
   });
 });
 

@@ -249,12 +249,28 @@ export const createFirestoreOperationStore = (
         const data = (await transaction.get(docRef)).data();
         const planId = readString(data, "planId");
 
+        /*
+          A finished request first, and unconditionally. Completion clears the
+          lease, so asking about the lease before this would turn every replay
+          into a refusal.
+        */
         if (data?.status === "completed" && planId) {
           return { kind: "superseded", planId };
         }
         // Not ours any more: another invocation took the request over while
         // this one was with the provider. Its plan is the one that counts.
         if (readString(data, "claimToken") !== claimToken || !planId) return { kind: "lost" };
+        /*
+          Ours by name, but not any more in fact. Past the lease this claim is
+          not evidence that anybody is still working on the request: the
+          reservation that paid for it may already have been reclaimed by
+          somebody else's transaction, and committing here would write a plan
+          nothing is charged for. The token alone cannot see that, because the
+          reservation lives on a document other requests are entitled to
+          change — so the lease is what has to be checked, and it is checked
+          here rather than left to the execution budget to make unreachable.
+        */
+        if (!leaseIsLive(data, at)) return { kind: "lost" };
 
         // Before any write in this transaction: the quota read has to happen
         // while reads are still allowed.

@@ -273,10 +273,16 @@ export const handleGenerateWorkoutPlan = async (
     });
 
     if (outcome.kind === "lost") {
-      // Another invocation owns this request now and has not finished. This
-      // one's work is discarded rather than written over theirs; the
-      // reservation stays with the request, so nothing is refunded for it.
-      throw new AiError("REQUEST_IN_PROGRESS", "Another invocation owns this request.");
+      /*
+        This invocation is no longer the one entitled to answer: either
+        another took the request over, or this claim outlived its lease and
+        the reservation behind it may already be somebody else's. Its work is
+        discarded rather than written over theirs. The browser keeps the
+        request id — the outcome is uncertain, not a refusal — so the retry
+        reaches the same record and either replays the winner's plan or
+        claims the request again and generates once.
+      */
+      throw new AiError("REQUEST_IN_PROGRESS", "This invocation no longer owns the request.");
     }
 
     return outcome;
