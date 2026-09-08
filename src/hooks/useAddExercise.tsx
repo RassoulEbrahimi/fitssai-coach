@@ -4,6 +4,7 @@ import { db } from "@/lib/firebase";
 import { useAuth } from "./useAuth";
 import { useSupabaseAction } from "./useSupabaseAction";
 import { Exercise, WorkoutPlan } from "@/lib/types";
+import { assertPlanEditPreservesHistory } from "@/lib/exerciseHistoryGuard";
 
 interface AddExerciseParams {
   planId: string; weekKey: string; dayIndex: number; exercise: Exercise;
@@ -32,6 +33,20 @@ export const useAddExercise = () => {
         };
       }
       if (!Array.isArray(content[weekKey][dayIndex].exercises)) content[weekKey][dayIndex].exercises = [];
+
+      // Appending shifts nothing, so it is safe unless a log already sits at
+      // the index the new exercise lands on - which happens when an earlier
+      // delete left history behind past the end of the array. Taking that slot
+      // would silently adopt someone else's sets.
+      await assertPlanEditPreservesHistory({
+        uid: user.uid,
+        planId,
+        content,
+        weekKey,
+        dayIndex,
+        edit: { kind: "append", exerciseIndex: content[weekKey][dayIndex].exercises.length },
+      });
+
       content[weekKey][dayIndex].exercises.push(exercise);
 
       await setDoc(planRef, { content, updatedAt: Timestamp.now() }, { merge: true });

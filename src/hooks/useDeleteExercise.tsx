@@ -5,6 +5,7 @@ import { useAuth } from "./useAuth";
 import { logEvent, logError } from "@/lib/telemetryClient";
 import { useSupabaseAction } from "./useSupabaseAction";
 import { WorkoutPlanContent } from "@/lib/types";
+import { assertPlanEditPreservesHistory } from "@/lib/exerciseHistoryGuard";
 
 export type { WorkoutPlanContent };
 
@@ -30,6 +31,19 @@ export function useDeleteExercise() {
       const week = content[params.weekKey] || [];
       const day = week[params.dayIndex];
       if (!day?.exercises) throw new Error("Day or exercises not found");
+
+      // Removing an exercise shifts every later one down a place, so any
+      // history logged at those positions would come to describe a different
+      // movement. Checked here, immediately before the write, so as little as
+      // possible can happen between the check and the commit.
+      await assertPlanEditPreservesHistory({
+        uid: user.uid,
+        planId: params.planId,
+        content,
+        weekKey: params.weekKey,
+        dayIndex: params.dayIndex,
+        edit: { kind: "delete", exerciseIndex: params.exerciseIndex },
+      });
 
       const updatedContent = {
         ...content,

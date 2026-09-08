@@ -3,6 +3,13 @@ import { vi } from "vitest";
 type Row = Record<string, unknown>;
 type Ref = { path: string };
 type Filter = { field: string; op: string; value: unknown };
+type Limit = { __limit: number };
+type Query = { source: Ref; filters: Filter[]; limit?: number };
+
+const isLimit = (constraint: Filter | Limit): constraint is Limit =>
+  typeof (constraint as Limit).__limit === "number";
+const isQuery = (target: Query | Ref): target is Query =>
+  (target as Query).source !== undefined;
 
 /** In-memory Firestore boundary: production queries and writers remain real. */
 export const rows = new Map<string, Row>();
@@ -56,16 +63,33 @@ export const firestore = {
     rows.delete(target.path);
     writes.push({ path: target.path, data: { __deleted: true } });
   }),
+  /** Single-document read, used by every workout-plan editing path. */
+  getDoc: vi.fn(async (target: Ref) => snapshot(target.path)),
   where: (field: string, op: string, value: unknown): Filter => ({ field, op, value }),
-  query: (source: Ref, ...filters: Filter[]) => ({ source, filters }),
-  getDocs: vi.fn(async ({ source, filters }: { source: Ref; filters: Filter[] }) => {
-    const docs = [...rows.entries()].filter(([path, data]) =>
+  /** `limit(n)` is a constraint like `where`, distinguished by its own marker. */
+  limit: (count: number): Limit => ({ __limit: count }),
+  query: (source: Ref, ...constraints: (Filter | Limit)[]) => ({
+    source,
+    filters: constraints.filter((c): c is Filter => !isLimit(c)),
+    limit: constraints.find(isLimit)?.__limit,
+  }),
+  /*
+    Accepts a query and a bare collection reference alike. `useSetTracking`
+    reads a set subcollection with `getDocs(setsRef)` and no constraints, so a
+    query-only double would leave that production read untestable.
+  */
+  getDocs: vi.fn(async (target: Query | Ref) => {
+    const { source, filters, limit } = isQuery(target)
+      ? target
+      : { source: target, filters: [] as Filter[], limit: undefined };
+    const matched = [...rows.entries()].filter(([path, data]) =>
       path.startsWith(`${source.path}/`) && path.split("/").length === source.path.split("/").length + 1 &&
       filters.every(f => f.op === '==' ? data[f.field] === f.value :
         typeof data[f.field] === 'string' && typeof f.value === 'string' &&
         (f.op === '>=' ? (data[f.field] as string) >= f.value :
           f.op === '<=' && (data[f.field] as string) <= f.value))
     ).map(([path]) => snapshot(path));
+    const docs = limit === undefined ? matched : matched.slice(0, limit);
     return { docs, empty: docs.length === 0 };
   }),
   runTransaction: vi.fn(async (_db: unknown, callback: (transaction: {
