@@ -7,6 +7,7 @@ import { useTranslation } from "react-i18next";
 import { logEvent, logError } from "@/lib/telemetryClient";
 import { useSupabaseAction } from "./useSupabaseAction";
 import { Exercise, WorkoutPlanContent } from "@/lib/types";
+import { PlanEditBlockedError, assertPlanEditPreservesHistory, changesExerciseIdentity } from "@/lib/exerciseHistoryGuard";
 
 export type { Exercise };
 
@@ -35,7 +36,24 @@ export function useExerciseEditor() {
       const day = { ...(week[params.dayIndex] || {}) };
       const exercises = [...(day.exercises || [])];
       if (!exercises[params.exerciseIndex]) throw new Error("Exercise not found");
-      exercises[params.exerciseIndex] = { ...exercises[params.exerciseIndex], ...params.exercise };
+      const merged = { ...exercises[params.exerciseIndex], ...params.exercise };
+
+      // Only a different exercise at the position rewrites what its history
+      // means. Sets, reps, weight, rest and notes describe how the same
+      // movement is performed, so they stay editable however much history the
+      // position carries.
+      if (changesExerciseIdentity(exercises[params.exerciseIndex], merged)) {
+        await assertPlanEditPreservesHistory({
+          uid: user.uid,
+          planId: params.planId,
+          content,
+          weekKey: params.weekKey,
+          dayIndex: params.dayIndex,
+          edit: { kind: "replace", exerciseIndex: params.exerciseIndex },
+        });
+      }
+
+      exercises[params.exerciseIndex] = merged;
       day.exercises = exercises;
       week[params.dayIndex] = day;
       const updatedContent = { ...content, [params.weekKey]: week };
@@ -66,6 +84,9 @@ export function useExerciseEditor() {
     onError: (error: any, params: UpdateExerciseParams, context: { previousPlan?: any } | undefined) => {
       if (context?.previousPlan) queryClient.setQueryData(["workout-plan", params.planId], context.previousPlan);
       logError(error, "exercise_update_failed");
+      // A refused edit is reported once, by the shared handler in
+      // useSupabaseAction, with wording that explains the refusal.
+      if (error instanceof PlanEditBlockedError) return;
       toast({ title: t("workout.updateFailed") || "Update failed", description: error.message, variant: "destructive" });
     },
     onSuccess: (data: UpdateExerciseResponse, params: UpdateExerciseParams) => {

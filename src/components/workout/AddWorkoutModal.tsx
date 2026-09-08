@@ -11,6 +11,7 @@ import { toastSuccess, toastError } from '@/lib/toastWithIcon';
 import { ManualWorkoutForm } from './ManualWorkoutForm';
 import { AIPromptAssist } from './AIPromptAssist';
 import type { Exercise } from '@/hooks/useExerciseEditor';
+import { PlanEditBlockedError, assertPlanEditPreservesHistory } from '@/lib/exerciseHistoryGuard';
 
 interface WorkoutSuggestion {
   name: string;
@@ -102,6 +103,18 @@ export function AddWorkoutModal({
       // Check if it's a WorkoutSuggestion (has duration property) or Exercise
       const isWorkoutSuggestion = 'duration' in exercise;
 
+      // Appending shifts no existing position, but the slot it lands on can
+      // already carry history left behind by an earlier delete. Taking it would
+      // silently adopt another exercise's sets.
+      await assertPlanEditPreservesHistory({
+        uid: user.uid,
+        planId: planData.id,
+        content,
+        weekKey: dayContext.weekKey,
+        dayIndex: dayContext.dayIndex,
+        edit: { kind: 'append', exerciseIndex: dayData.exercises.length },
+      });
+
       // Add new exercise - handle both Exercise and WorkoutSuggestion types
       dayData.exercises.push({
         name: exercise.name,
@@ -125,6 +138,10 @@ export function AddWorkoutModal({
       onClose();
     } catch (err: any) {
       console.error('Error adding workout:', err);
+      if (err instanceof PlanEditBlockedError) {
+        toastError(err.title, err.message, 6000);
+        return;
+      }
       toastError('Fehler', 'Training konnte nicht hinzugefügt werden');
     }
   };

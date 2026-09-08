@@ -29,6 +29,7 @@ import { useTrainingData } from "@/contexts/TrainingContext";
 import { useDeleteExercise } from "@/hooks/useDeleteExercise";
 import { useRestoreExercise } from "@/hooks/useRestoreExercise";
 import { Button as ToastButton } from "@/components/ui/button";
+import { PlanEditBlockedError } from "@/lib/exerciseHistoryGuard";
 import { WorkoutPlan } from "@/lib/types";
 import { WorkoutLog } from "@/lib/types";
 
@@ -525,6 +526,9 @@ const WorkoutView: React.FC<WorkoutViewProps> = ({
           logEvent('exercise_deleted', { weekKey, dayIndex, exerciseIndex, exerciseName: exercise.name });
         },
         onError: (error) => {
+          // A refused delete already explains itself through the shared
+          // handler; a second "failed to delete" would bury the reason.
+          if (error instanceof PlanEditBlockedError) return;
           toast({
             title: "Failed to delete exercise",
             description: error instanceof Error ? error.message : "Please try again",
@@ -574,6 +578,9 @@ const WorkoutView: React.FC<WorkoutViewProps> = ({
           lastDeletedRef.current = null;
         },
         onError: (error) => {
+          // Same as the delete path: the refusal has already been reported
+          // with its real reason.
+          if (error instanceof PlanEditBlockedError) return;
           toast({
             title: "Failed to restore exercise",
             description: error instanceof Error ? error.message : "Please try again",

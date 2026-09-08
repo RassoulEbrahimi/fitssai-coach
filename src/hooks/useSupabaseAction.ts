@@ -2,6 +2,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useOfflineQueue } from './useOfflineQueue';
 import { useAuth } from '@/hooks/useAuth';
 import { AccountChangedError, assertAccountOwner } from '@/lib/accountIdentity';
+import { PlanEditBlockedError } from '@/lib/exerciseHistoryGuard';
 import { QueueStorageError, type OfflineMutationPayloads, type OfflineMutationType } from '@/lib/offlineQueue';
 import { logEvent, logError, logRetry } from '@/lib/telemetryClient';
 import { toastError } from '@/lib/toastWithIcon';
@@ -68,6 +69,11 @@ export const retryWithBackoff = async <T,>(
             // not revert, and each backoff holds the caller open — a finish that
             // waits seven seconds to report a failure it already knew about.
             if (error instanceof AccountChangedError) throw error;
+
+            // A refused plan edit is a decision, not a transient failure. It
+            // will be refused identically on every attempt, and retrying only
+            // holds the caller open for seven seconds before saying so.
+            if (error instanceof PlanEditBlockedError) throw error;
 
             if (attempt < config.retries) {
                 const delay = config.initialDelay * Math.pow(2, attempt);
@@ -179,6 +185,10 @@ export const useSupabaseAction = <TData = unknown, TVariables = void, TContext =
 
             if (error instanceof QueueStorageError) {
                 toastError('Nicht offline gespeichert', 'Lokales Speichern fehlgeschlagen. Bitte erneut versuchen.', 4000);
+            } else if (error instanceof PlanEditBlockedError) {
+                // The refusal explains itself; the caller's generic "could not
+                // save" would replace a true reason with a misleading one.
+                toastError(error.title, error.message, 6000);
             } else if (messages?.error) {
                 toastError('Fehler', messages.error, 3000);
             }

@@ -5,6 +5,7 @@ import { useAuth } from "./useAuth";
 import { Exercise, WorkoutPlanContent } from "@/lib/types";
 import { logEvent, logError } from "@/lib/telemetryClient";
 import { useSupabaseAction } from "./useSupabaseAction";
+import { assertPlanEditPreservesHistory } from "@/lib/exerciseHistoryGuard";
 
 export interface RestoreExerciseParams {
   planId: string; weekKey: string; dayIndex: number; exerciseIndex: number; exercise: Exercise;
@@ -28,6 +29,19 @@ export function useRestoreExercise() {
       const week = content[params.weekKey] || [];
       const day = week[params.dayIndex];
       if (!day) throw new Error("Day not found");
+
+      // Re-inserting pushes everything from this index up a place. If the
+      // position was logged against in the meantime - a set recorded on the
+      // exercise that moved into the gap - undoing the delete would hand that
+      // history to the wrong movement.
+      await assertPlanEditPreservesHistory({
+        uid: user.uid,
+        planId: params.planId,
+        content,
+        weekKey: params.weekKey,
+        dayIndex: params.dayIndex,
+        edit: { kind: "insert", exerciseIndex: params.exerciseIndex },
+      });
 
       const exercises = [...(day.exercises || [])];
       exercises.splice(params.exerciseIndex, 0, params.exercise);
