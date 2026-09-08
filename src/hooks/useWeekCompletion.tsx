@@ -59,7 +59,7 @@ export const useWeekCompletion = ({ planId, weekKey, enabled = true, availableWe
         if (!user) throw new Error("User not available");
         const logsRef = collection(db, "users", user.uid, "workout_logs");
         const snap = await getDocs(query(logsRef, where("planId", "==", targetPlanId), where("weekKey", "==", targetWeekKey)));
-        return buildCompletionState(snap.docs.map(d => d.data() as any));
+        return buildCompletionState(snap.docs.map(d => d.data()));
       },
       staleTime: 30000,
     });
@@ -79,10 +79,10 @@ export const useWeekCompletion = ({ planId, weekKey, enabled = true, availableWe
       try {
         const logsRef = collection(db, "users", user.uid, "workout_logs");
         const snap = await getDocs(query(logsRef, where("planId", "==", planId), where("weekKey", "==", weekKey)));
-        const state = buildCompletionState(snap.docs.map(d => d.data() as any));
+        const state = buildCompletionState(snap.docs.map(d => d.data()));
         logEvent("fetch_week_completion_success", { planId, weekKey });
         return state;
-      } catch (error: any) {
+      } catch (error: unknown) {
         logError(error, `fetch_week_completion_failed: ${planId} ${weekKey}`);
         toastError("Fehler beim Laden", "Trainingsplan konnte nicht geladen werden.");
         throw error;
@@ -101,7 +101,7 @@ export const useWeekCompletion = ({ planId, weekKey, enabled = true, availableWe
     }
   }, [isOnline, query_.data, query_.isFetching, planId, weekKey]);
 
-  const { mutate: toggleExercise, isPending: isToggling } = useSupabaseAction<any, ToggleExerciseParams, ToggleExerciseContext>({
+  const { mutate: toggleExercise, isPending: isToggling } = useSupabaseAction<{ success: boolean; queued?: boolean }, ToggleExerciseParams, ToggleExerciseContext>({
     action: async (params: ToggleExerciseParams) => {
       if (!user) throw new Error("Not authenticated");
       // Fixed here, re-checked after the lookup: a completion started by A must
@@ -148,8 +148,8 @@ export const useWeekCompletion = ({ planId, weekKey, enabled = true, availableWe
       });
       return { previousData };
     },
-    onError: (_error: any, _params: any, context: ToggleExerciseContext | undefined) => {
-      if (isOnline && context?.previousData) queryClient.setQueryData(queryKey, context.previousData);
+    onError: (_error: unknown, _params: ToggleExerciseParams, context: ToggleExerciseContext | undefined) => {
+      if (context) queryClient.setQueryData(queryKey, context.previousData ?? {});
     },
   });
 

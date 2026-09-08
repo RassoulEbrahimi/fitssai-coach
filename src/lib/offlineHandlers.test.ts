@@ -11,6 +11,7 @@ vi.mock("firebase/firestore", () => ({
   query: (...args: unknown[]) => args,
   where: (field: string, op: string, value: unknown) => ({ field, op, value }),
   addDoc: (ref: unknown, data: Record<string, unknown>) => addDoc(ref, data),
+  setDoc: (ref: unknown, data: Record<string, unknown>) => addDoc(ref, data),
   deleteDoc: vi.fn(),
   updateDoc: (ref: unknown, data: Record<string, unknown>) => updateDoc(ref, data),
   getDocs: (...args: unknown[]) => getDocs(args),

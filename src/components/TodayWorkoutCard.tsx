@@ -203,11 +203,13 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
       completed: params.completed,
       // The day the user is looking at, which is not always today.
       workoutDay: selectedDateStr,
+    }, {
+      onSuccess: (data) => {
+        if (params.completed && !data.queued) {
+          showToast(t('todayWorkout.setCompleted', { set: params.setNumber }));
+        }
+      },
     });
-
-    if (params.completed) {
-      showToast(t('todayWorkout.setCompleted', { set: params.setNumber }));
-    }
   }, [user, workoutPlan, weekKey, dayIndex, selectedDateStr, exercises, toggleSet, showToast, t]);
 
   // Calculate total sets and completed sets for progress

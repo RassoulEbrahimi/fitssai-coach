@@ -2,9 +2,9 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useOfflineQueue } from './useOfflineQueue';
 import { useAuth } from '@/hooks/useAuth';
 import { AccountChangedError, assertAccountOwner } from '@/lib/accountIdentity';
-import type { OfflineMutationPayloads, OfflineMutationType } from '@/lib/offlineQueue';
+import { QueueStorageError, type OfflineMutationPayloads, type OfflineMutationType } from '@/lib/offlineQueue';
 import { logEvent, logError, logRetry } from '@/lib/telemetryClient';
-import { toastError, toastOffline } from '@/lib/toastWithIcon';
+import { toastError } from '@/lib/toastWithIcon';
 
 interface RetryConfig {
     retries: number;
@@ -106,21 +106,19 @@ export const useSupabaseAction = <TData = unknown, TVariables = void, TContext =
         toOfflinePayload ? toOfflinePayload(variables) : variables;
 
     return useMutation<TData, Error, TVariables, TContext>({
+        // FitssAI owns durable offline mutations; TanStack must enter app code.
+        networkMode: offlineActionType ? 'always' : undefined,
+        retry: false,
         mutationFn: async (variables: TVariables) => {
             // The mounted action belongs to this account, including delayed retries.
             assertAccountOwner(ownerUid);
             // 1. Offline Check (Immediate)
-            if (!isOnline && offlineActionType) {
+            if ((!navigator.onLine || !isOnline) && offlineActionType) {
                 const payload = buildOfflinePayload(variables);
                 if (payload === null) {
                     throw new Error('Offline-Speichern ist für diese Aktion nicht möglich.');
                 }
                 enqueue(offlineActionType, payload as OfflineMutationPayloads[OfflineMutationType]);
-                if (messages?.offlineQueued) {
-                    // Optional: toastOffline(messages.offlineQueued); 
-                    // Strategy: Let the caller decide or use a default toast here?
-                    // For consistency, we can return a mock success structure.
-                }
                 return { success: true, queued: true } as unknown as TData;
             }
 
@@ -145,12 +143,6 @@ export const useSupabaseAction = <TData = unknown, TVariables = void, TContext =
 
                 if (queuedPayload !== null && offlineActionType) {
                     enqueue(offlineActionType, queuedPayload as OfflineMutationPayloads[OfflineMutationType]);
-
-                    toastOffline(
-                        'Offline gespeichert',
-                        'Verbindungsproblem. Wir synchronisieren das später.',
-                        3000
-                    );
 
                     return { success: true, queued: true } as unknown as TData;
                 }
@@ -185,7 +177,9 @@ export const useSupabaseAction = <TData = unknown, TVariables = void, TContext =
             console.error('Action failed:', error);
             logError(error, `action_failed: ${offlineActionType}`);
 
-            if (messages?.error) {
+            if (error instanceof QueueStorageError) {
+                toastError('Nicht offline gespeichert', 'Lokales Speichern fehlgeschlagen. Bitte erneut versuchen.', 4000);
+            } else if (messages?.error) {
                 toastError('Fehler', messages.error, 3000);
             }
 
