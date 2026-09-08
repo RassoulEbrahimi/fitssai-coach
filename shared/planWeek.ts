@@ -92,3 +92,29 @@ export const resolvePlanWeek = (planCreatedAt: Date, at: Date): ResolvedPlanWeek
     planFinished: false,
   };
 };
+
+/* ------------------------------------------------------------------ *
+ * Week keys as a value the two sides can exchange
+ * ------------------------------------------------------------------ */
+
+/**
+ * `"Week 1".."Week 4"` and nothing else.
+ *
+ * A weekly review is now asked for one *named* week rather than for "whatever
+ * week it is on the server right now", so the name crosses the callable
+ * boundary and has to be checked there. Anything outside the programme is
+ * rejected rather than clamped: clamping is how a request for Week 1 quietly
+ * became an answer about Week 3.
+ */
+export const isPlanWeekKey = (value: unknown): value is string =>
+  typeof value === "string" &&
+  /^Week [1-9][0-9]*$/.test(value) &&
+  Number(value.slice(5)) <= PLAN_TOTAL_WEEKS;
+
+/** The 1-based week number of a valid key, or null when it is not one. */
+export const planWeekNumber = (value: unknown): number | null =>
+  isPlanWeekKey(value) ? Number(value.slice(5)) : null;
+
+/** The key of the week before `weekNumber`, when the programme has one. */
+export const previousPlanWeekKey = (weekNumber: number): string | null =>
+  weekNumber > 1 ? `Week ${weekNumber - 1}` : null;

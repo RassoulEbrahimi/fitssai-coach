@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useAuth } from '@/hooks/useAuth';
+import { useBerlinToday } from '@/hooks/useBerlinToday';
+import { dateToBerlin } from '@/lib/dateUtils';
 import { accountStorageKey } from '@/lib/accountIdentity';
 import { NUDGE_RECORD_STORAGE_KEY } from '@/lib/nudges/delivery';
 import {
@@ -34,13 +36,24 @@ import type { WorkoutPlan } from "@/lib/types";
  * 18:00" — would be a promise nothing in this architecture keeps, since
  * nothing can run while the app is closed. So a nudge is evaluated when the
  * app is open and looked at, and the UI says exactly that.
+ *
+ * The day it evaluates is the *real* Berlin day, read here and nowhere else.
+ * It used to be a parameter, and the dashboard passed `selectedDate` — the
+ * date the user happens to be browsing on the workout tab's calendar strip.
+ * Paging back to last Tuesday therefore produced "Heute ist eine
+ * Trainingseinheit geplant." about last Tuesday, and paging forward announced
+ * a day that has not happened. Browsing is not a clock, so no browsing surface
+ * can supply one any more: `today` exists only so a test can hold time still.
  */
 
 export interface UseTrainingNudgeInput {
   plan: WorkoutPlan | null | undefined;
   logs: readonly (AnyWorkoutLogShape | null | undefined)[] | null | undefined;
-  /** The date to evaluate, normally the app's "today". */
-  date: Date;
+  /**
+   * Overrides the real Berlin day. For tests and previews only — never for a
+   * date the user is merely looking at. Production passes nothing.
+   */
+  today?: Date;
   /** Escape hatch for surfaces that must not deliver (tests, previews). */
   enabled?: boolean;
 }
@@ -59,10 +72,20 @@ export interface TrainingNudgeState {
 export const useTrainingNudge = ({
   plan,
   logs,
-  date,
+  today,
   enabled = true,
 }: UseTrainingNudgeInput): TrainingNudgeState => {
   const { user } = useAuth();
+  /*
+    Reactive: it re-reads at Berlin midnight, so a tab left open overnight
+    becomes eligible for the new day's session rather than staying on
+    yesterday's answer until somebody reloads.
+  */
+  const berlinToday = useBerlinToday();
+  const date = useMemo(
+    () => today ?? dateToBerlin(berlinToday),
+    [today, berlinToday]
+  );
   const storageKey = user?.uid ? accountStorageKey(NUDGE_RECORD_STORAGE_KEY, user.uid) : null;
   const evaluation = useMemo(
     () => evaluateTrainingNudges({ plan, date, logs }),
