@@ -52,8 +52,16 @@ interface HomeViewProps {
   workoutLogs?: WorkoutLog[];
 }
 
-// David Goggins quotes moved outside to be stable
-const gogginsQuotes = [
+/*
+  The only motivational quote pool the product renders. Exported so the
+  content-safety regression in src/test/motivationQuoteSafety.test.ts reads
+  the pool the dashboard actually draws from, rather than a copy of it.
+
+  Nothing here may tell someone to keep training through pain: the card is
+  shown to people who are about to train, next to their plan, so a line like
+  "don't stop when you feel pain" reads as instruction, not philosophy.
+*/
+export const gogginsQuotes = [
   "Stay hard!",
   "Nobody cares, work harder.",
   "You are in danger of living a life so comfortable and soft, that you will die without ever realizing your true potential.",
@@ -63,18 +71,15 @@ const gogginsQuotes = [
   "It's so easy to be great nowadays, because everyone else is weak.",
   "The most important conversations you'll ever have are the ones you'll have with yourself.",
   "We live in an external world. Everything, you have to see it, touch it. If you can for the rest of your life live inside of yourself — to find greatness — you have to go inside.",
-  "You have to build calluses on your brain just like how you build calluses on your hands. Callus your mind through pain and suffering.",
   "The only person who was going to turn my life around was me.",
   "You are stopping you. You are giving up instead of getting hard.",
   "Life is one big tug-of-war between mediocrity and trying to find your best self.",
   "Don't count on motivation. Count on discipline.",
-  "Pain unlocks a secret doorway in the mind, one that leads to both peak performance and beautiful silence.",
   "Be uncommon amongst uncommon people.",
   "You are in control. You decide what you want your life to be.",
   "Greatness pulls mediocrity into the mud. Get out there and get after it.",
   "The most important thing is to stay in the fight.",
   "There is no shortcut. There is no hack. There's only one way: So, get after it.",
-  "Don't stop when you feel pain. Stop when you're finished.",
   "Every day is an opportunity to learn, adapt, and grow.",
   "Most of us live in our own little cocoons. Break free.",
   "You may lose the battle of the morning, but don't lose the war of the day.",
