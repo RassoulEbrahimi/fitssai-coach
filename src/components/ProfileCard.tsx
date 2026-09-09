@@ -23,6 +23,7 @@ import {
   Sparkles
 } from "lucide-react";
 import { motion } from "framer-motion";
+import { Link } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { useAuth } from "@/hooks/useAuth";
 import { useAISessions } from "@/hooks/useAISessions";
@@ -555,13 +556,13 @@ export const ProfileCard = ({ profile, onProfileUpdate, workoutProgress }: Profi
                       Erweiterte Verwaltungsoptionen
                     </p>
                   </div>
-                  <a 
-                    href="/admin"
+                  <Link
+                    to="/admin"
                     className="p-2 rounded-md hover:bg-accent transition-colors"
                     aria-label="Adminbereich öffnen"
                   >
                     <Shield className="h-4 w-4 text-foreground" />
-                  </a>
+                  </Link>
                 </div>
               )}
             </div>
