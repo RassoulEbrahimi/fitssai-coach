@@ -3,6 +3,12 @@ name: Deploy to GitHub Pages
 on:
   push:
     branches: [main]
+  # Every pull request aimed at main runs the same three gates the branch
+  # itself runs, so a change is proven green before it is merged rather than
+  # after. Ordinary pull_request and not pull_request_target: a fork's code
+  # must never run with this repository's token or secrets.
+  pull_request:
+    branches: [main]
   workflow_dispatch:
 
 permissions:
@@ -11,8 +17,14 @@ permissions:
   id-token: write
 
 concurrency:
-  group: pages
-  cancel-in-progress: false
+  # Pages accepts one deployment at a time, so everything that can deploy
+  # stays in the single shared group and queues. Pull request validation never
+  # deploys and must not be able to hold a deployment behind it, so each pull
+  # request gets its own group, where a new push supersedes the run it
+  # replaces. Both expressions are constant for push and workflow_dispatch:
+  # group 'pages', no cancellation, exactly as before.
+  group: ${{ github.event_name == 'pull_request' && format('pages-pr-{0}', github.ref) || 'pages' }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   # The server-side execution layer has its own dependency tree, its own
@@ -131,6 +143,15 @@ jobs:
           path: dist
 
   deploy:
+    # The github-pages environment is already restricted to main, but that
+    # rejection only happens once the job has been entered. This states the
+    # same rule up front: publish what main actually holds, from a push to it
+    # or a manual redeploy of it. A pull request run matches neither -- its ref
+    # is refs/pull/<n>/merge -- so the job is skipped rather than failed, and
+    # no pull request ever reaches the deployment environment.
+    if: >-
+      github.ref == 'refs/heads/main' &&
+      (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
