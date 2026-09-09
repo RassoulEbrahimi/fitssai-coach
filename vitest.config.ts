@@ -10,6 +10,13 @@ const appVersion: string = require_('./package.json').version ?? '0.0.0';
 
 export default defineConfig({
   plugins: [react()],
+  /*
+    Same base the production build is served under (see vite.config.ts). Asset
+    URLs built from import.meta.env.BASE_URL are then the URLs GitHub Pages
+    actually serves, so a test can tell a base-aware path from a root-relative
+    one instead of seeing "/" for both.
+  */
+  base: '/fitssai-coach/',
   define: {
     __FITSSAI_APP_VERSION__: JSON.stringify(appVersion),
     __FITSSAI_BUILD_SHA__: JSON.stringify('unknown'),
