@@ -45,8 +45,14 @@ export default function EmeraldSplash({ onFinish }: { onFinish: () => void }) {
             }}
             transition={{ duration: prefersReducedMotion ? 0.3 : 1.2 }}
           >
+            {/*
+              A root-relative src would resolve against the domain root, but the
+              app is served from /fitssai-coach/ on GitHub Pages. BASE_URL is the
+              deployment base Vite is configured with, so the logo follows the
+              app wherever it is mounted.
+            */}
             <img
-              src="/icons/fitssai-512.png"
+              src={`${import.meta.env.BASE_URL}icons/fitssai-512.png`}
               alt="FitssAI"
               className="w-24 h-24 rounded-2xl"
             />
