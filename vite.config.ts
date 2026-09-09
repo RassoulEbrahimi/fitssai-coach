@@ -1,40 +1,16 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react-swc";
 import path from "path";
-import { execSync } from "child_process";
-import { createRequire } from "module";
 import { VitePWA } from 'vite-plugin-pwa';
-
-/**
- * Commit being built. CI provides GITHUB_SHA; locally we ask Git. Falls back
- * to "unknown", which the app renders as "Build dev".
- */
-const resolveBuildSha = (): string => {
-  const fromCi = process.env.GITHUB_SHA || process.env.VITE_BUILD_SHA;
-  if (fromCi && fromCi.trim() !== "") return fromCi.trim();
-  try {
-    return execSync("git rev-parse HEAD", { stdio: ["ignore", "pipe", "ignore"] })
-      .toString()
-      .trim();
-  } catch {
-    return "unknown";
-  }
-};
-
-/** App version, read from package.json so it is never hand-maintained here. */
-const resolveAppVersion = (): string => {
-  try {
-    const require = createRequire(import.meta.url);
-    return require("./package.json").version ?? "0.0.0";
-  } catch {
-    return "0.0.0";
-  }
-};
+import { resolveAppVersion, resolveBuildSha } from "./scripts/buildMetadata";
 
 export default defineConfig(({ mode }) => ({
   define: {
     __FITSSAI_BUILD_SHA__: JSON.stringify(resolveBuildSha()),
-    __FITSSAI_APP_VERSION__: JSON.stringify(resolveAppVersion()),
+    // Anchored on the config's own directory: Vite bundles this file to a
+    // temporary location, so a cwd- or import-relative lookup would not be
+    // the same file in every build.
+    __FITSSAI_APP_VERSION__: JSON.stringify(resolveAppVersion(__dirname)),
   },
   base: "/fitssai-coach/",
   server: {
