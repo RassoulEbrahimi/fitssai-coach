@@ -52,10 +52,10 @@ describe("normalizeVersion", () => {
     expect(normalizeVersion("1.4.2")).toBe("1.4.2");
   });
 
-  it("falls back rather than inventing a version", () => {
-    expect(normalizeVersion(null)).toBe("0.0.0");
-    expect(normalizeVersion(undefined)).toBe("0.0.0");
-    expect(normalizeVersion("  ")).toBe("0.0.0");
+  it("says so rather than inventing a release-shaped version", () => {
+    expect(normalizeVersion(null)).toBe("unknown");
+    expect(normalizeVersion(undefined)).toBe("unknown");
+    expect(normalizeVersion("  ")).toBe("unknown");
   });
 });
 
@@ -72,7 +72,7 @@ describe("formatVersionLabel", () => {
   });
 
   it("falls back on both halves independently", () => {
-    expect(formatVersionLabel(null, null)).toBe("Version 0.0.0 · dev");
+    expect(formatVersionLabel(null, null)).toBe("Version unknown · dev");
   });
 
   it("separates the two parts with a middle dot", () => {
@@ -87,19 +87,26 @@ describe("injected build identity", () => {
       readFileSync(resolve(__dirname, "../../package.json"), "utf8")
     ) as { version: string };
 
-    expect(pkg.version).toBe("1.0.0");
+    // Version-agnostic on purpose: this pins the wiring, not the release
+    // number, so a version bump does not have to be chased through the tests.
+    expect(pkg.version).toMatch(/^\d+\.\d+\.\d+/);
     expect(APP_VERSION).toBe(pkg.version);
   });
 
-  it("formats the Profile label as 'Version 1.0.0 · <sha>'", () => {
+  it("formats the Profile label as 'Version <x.y.z> · <sha>'", () => {
     expect(formatVersionLabel("1.0.0", "8440809bfbe9d0e52b28b8fa2f68c37cbe4ebf4e")).toBe(
       "Version 1.0.0 · 8440809"
     );
   });
 
-  it("never renders the 0.0.0 scaffold default for the real app version", async () => {
+  it("renders the declared version, never the 0.0.0 scaffold default", async () => {
     const { VERSION_LABEL } = await import("./buildInfo");
+    const pkg = JSON.parse(
+      readFileSync(resolve(__dirname, "../../package.json"), "utf8")
+    ) as { version: string };
+
     expect(VERSION_LABEL).not.toContain("Version 0.0.0");
-    expect(VERSION_LABEL).toMatch(/^Version 1\.0\.0 · ([0-9a-f]{7}|dev)$/);
+    expect(VERSION_LABEL).not.toContain("Version unknown");
+    expect(VERSION_LABEL).toBe(`Version ${pkg.version} · dev`);
   });
 });

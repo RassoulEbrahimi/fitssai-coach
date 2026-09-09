@@ -20,11 +20,16 @@ export const shortenSha = (sha: string | null | undefined): string => {
   return trimmed.slice(0, 7).toLowerCase();
 };
 
-/** Fall back to the package.json default rather than inventing a version. */
+/**
+ * Say "unknown" when no version was injected, rather than substituting a
+ * plausible-looking one. The old fallback was the scaffold default 0.0.0,
+ * which reads as a genuine declared release and hid an unversioned build for
+ * as long as it took someone to notice the number was wrong.
+ */
 export const normalizeVersion = (version: string | null | undefined): string => {
-  if (typeof version !== "string") return "0.0.0";
+  if (typeof version !== "string") return "unknown";
   const trimmed = version.trim();
-  return trimmed === "" ? "0.0.0" : trimmed;
+  return trimmed === "" ? "unknown" : trimmed;
 };
 
 /** e.g. "Build 348328c" — kept for callers that only need the commit. */
@@ -32,9 +37,10 @@ export const formatBuildLabel = (sha: string | null | undefined): string =>
   `Build ${shortenSha(sha)}`;
 
 /**
- * e.g. "Version 0.0.0 · 4a9741f", or "Version 0.0.0 · dev" outside a Git
+ * e.g. "Version 1.0.0 · 4a9741f", or "Version 1.0.0 · dev" outside a Git
  * checkout. The separator is a middle dot, not a hyphen, so the version and
- * the commit stay visually distinct.
+ * the commit stay visually distinct. Either half degrades to a word — "unknown"
+ * or "dev" — that cannot be mistaken for a release value.
  */
 export const formatVersionLabel = (
   version: string | null | undefined,
