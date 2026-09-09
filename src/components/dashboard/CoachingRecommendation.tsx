@@ -28,12 +28,13 @@ import { weeklyReviewContextKey, type WeeklyReviewUiContext } from "@/lib/coachi
  *     up as a model's, and a failed model call never invents one.
  *
  *  3. **It says it about the week it was generated for.** The model's sentence
- *     is held under the context it was requested for — account, plan, week and
- *     the numbers behind it. Change any of them and the sentence is no longer
- *     current, so it is not rendered: the section falls back to the
- *     deterministic wording for the week now on screen. That is what stops a
- *     late answer about Week 1 from arriving as Week 2's advice, and what stops
- *     last hour's sentence from surviving a session logged since.
+ *     is held under the context it was requested for — account, plan, week,
+ *     the profile the model was told about, and the numbers behind it. Change
+ *     any of them and the sentence is no longer current, so it is not
+ *     rendered: the section falls back to the deterministic wording for the
+ *     week now on screen. That is what stops a late answer about Week 1 from
+ *     arriving as Week 2's advice, and what stops last hour's sentence from
+ *     surviving a session logged since.
  */
 
 interface CoachingRecommendationProps {
@@ -64,6 +65,23 @@ interface ExplanationOutcome {
   recommendation: WeeklyRecommendation | null;
 }
 
+/**
+ * Every answer, filed under the context it answers for.
+ *
+ * A single slot was not enough. Two calls can be open at once — the user asks
+ * about Week 1, pages to Week 2 and asks again — and whichever *returns* last
+ * wrote the slot, so Week 1's late answer replaced Week 2's. The render guard
+ * still refused to show it under Week 2, but the user was left with the
+ * deterministic wording and one fewer explanation in their monthly budget.
+ *
+ * Filing by context removes the race rather than refereeing it: a response can
+ * only ever be written where it belongs, so it cannot displace another
+ * context's answer no matter when it lands. Nothing is evicted because there
+ * is nothing to evict — only a request the user made adds an entry, and the
+ * month's quota bounds those long before memory would notice.
+ */
+type ExplanationOutcomes = Readonly<Record<string, ExplanationOutcome>>;
+
 const STATE_NOTE: Readonly<Partial<Record<ExplanationState, string>>> = {
   unavailable:
     "Die Erklärung vom KI-Coach ist gerade nicht verfügbar. Die Empfehlung oben stammt unverändert aus deinen eigenen Zahlen.",
@@ -91,7 +109,10 @@ export const CoachingRecommendation: React.FC<CoachingRecommendationProps> = ({
     all move it — and all of them retire the sentence held against the old one.
   */
   const contextKey = weeklyReviewContextKey(context, metrics);
-  const [outcome, setOutcome] = useState<ExplanationOutcome | null>(null);
+  const [outcomes, setOutcomes] = useState<ExplanationOutcomes>({});
+  /* A write only ever touches its own context's entry. See above. */
+  const remember = (next: ExplanationOutcome) =>
+    setOutcomes((held) => ({ ...held, [next.contextKey]: next }));
   /*
     Every accepted call spends one unit of the month's weekly-summary budget,
     so a second call that overlaps the first buys the user nothing and costs
@@ -105,7 +126,7 @@ export const CoachingRecommendation: React.FC<CoachingRecommendationProps> = ({
   const inFlight = useRef<Set<string>>(new Set());
 
   /* Anything held under another context is not an answer about this one. */
-  const current = outcome?.contextKey === contextKey ? outcome : null;
+  const current = outcomes[contextKey] ?? null;
   const state: ExplanationState = current?.state ?? "idle";
   const recommendation = current?.recommendation ?? deterministic;
   const explainable = isExplainableWeek(metrics);
@@ -116,19 +137,20 @@ export const CoachingRecommendation: React.FC<CoachingRecommendationProps> = ({
     inFlight.current.add(requestKey);
 
     /*
-      Every write below carries the key the request was made under, and the
-      render above only ever shows the one matching the current context. So an
-      answer that arrives after the user has switched week is not rendered as
-      the new week's advice — it is simply never rendered as anything.
+      Every write below carries the key the request was made under, so it lands
+      on that context's entry and on no other — a late answer can neither be
+      rendered as the current week's advice nor take away the answer the
+      current week already has. The render above shows only the entry matching
+      the context on screen.
     */
-    setOutcome({ contextKey: requestKey, state: "loading", recommendation: null });
+    remember({ contextKey: requestKey, state: "loading", recommendation: null });
     try {
       const review = await fetchWeeklyReview({
         weekKey: context?.weekKey ?? metrics.weekKey ?? null,
         planId: context?.planId ?? null,
       });
       if (review.recommendation.source === "ai") {
-        setOutcome({
+        remember({
           contextKey: requestKey,
           state: "done",
           recommendation: review.recommendation,
@@ -137,13 +159,13 @@ export const CoachingRecommendation: React.FC<CoachingRecommendationProps> = ({
       }
       // The backend fell back to its own wording — which is the same wording
       // already on screen, so nothing changes except the note explaining why.
-      setOutcome({
+      remember({
         contextKey: requestKey,
         state: review.aiStatus === "quota_exceeded" ? "quota_exceeded" : "unavailable",
         recommendation: null,
       });
     } catch {
-      setOutcome({ contextKey: requestKey, state: "unavailable", recommendation: null });
+      remember({ contextKey: requestKey, state: "unavailable", recommendation: null });
     } finally {
       inFlight.current.delete(requestKey);
     }

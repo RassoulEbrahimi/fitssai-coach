@@ -213,14 +213,29 @@ const HomeView: React.FC<HomeViewProps> = ({
     refuses an answer about any other, so a sentence generated while the user
     was reading Week 1 can never surface under Week 2 — and a sentence for a
     plan or an account that is no longer on screen can never surface at all.
+
+    The goal and the experience level are here because the backend tells the
+    model both, so a sentence generated before either changed is no longer the
+    answer to what would be asked now. They are read from the profile already
+    on screen and sent nowhere: the server reads its own copy under the
+    caller's uid, and this is only how the screen knows the wording is stale.
   */
   const weeklyReviewContext = useMemo<WeeklyReviewUiContext>(
     () => ({
       accountId: profile?.id ?? null,
       planId: workoutPlan?.id ?? null,
       weekKey: selectedWeek.weekKey,
+      // Canonicalised, so a stored alias of the same goal is the same goal.
+      goal: normaliseFitnessGoal(profile?.fitness_goal) ?? null,
+      experienceLevel: profile?.experience_level ?? null,
     }),
-    [profile?.id, workoutPlan?.id, selectedWeek]
+    [
+      profile?.id,
+      profile?.fitness_goal,
+      profile?.experience_level,
+      workoutPlan?.id,
+      selectedWeek,
+    ]
   );
 
   const refreshQuote = () => {

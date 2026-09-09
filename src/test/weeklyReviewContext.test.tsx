@@ -74,6 +74,15 @@ const AI_WORDING = {
   source: 'ai' as const,
 };
 
+/** A second model answer, distinguishable from the first on screen. */
+const OTHER_AI_WORDING = {
+  category: 'consistency' as const,
+  headline: 'Eine von drei',
+  message: 'Du hast eine der drei geplanten Einheiten dieser Woche abgeschlossen.',
+  reason: 'Eine abgeschlossene Trainingseinheit von drei geplanten.',
+  source: 'ai' as const,
+};
+
 const responseFor = (
   weekKey: string,
   weekNumber: number,
@@ -98,6 +107,7 @@ const context = (weekKey: string, over: Record<string, unknown> = {}) => ({
 
 const explain = () => screen.getByRole('button', { name: /Vom KI-Coach erklären lassen/ });
 const aiWording = () => screen.queryByText(AI_WORDING.headline);
+const otherAiWording = () => screen.queryByText(OTHER_AI_WORDING.headline);
 const aiBadge = () => screen.queryByText(/Formulierung vom KI-Coach/);
 
 beforeEach(() => {
@@ -209,6 +219,38 @@ describe('an answer that arrives after the user has moved on', () => {
     expect(screen.getByText(/1 von 3 Trainingstagen abgeschlossen \(33 %\)/)).toBeInTheDocument();
   });
 
+  it('does not take away the answer Week 2 already has', async () => {
+    const user = userEvent.setup();
+    let resolveWeek1: (value: unknown) => void = () => undefined;
+    callable
+      .mockReturnValueOnce(new Promise((resolve) => { resolveWeek1 = resolve; }))
+      .mockResolvedValueOnce({
+        data: responseFor('Week 2', 2, { recommendation: OTHER_AI_WORDING }),
+      });
+
+    const rendered = render(
+      <CoachingRecommendation metrics={WEEK_1} context={context('Week 1')} />
+    );
+    await user.click(explain());
+
+    // The user pages to Week 2 with Week 1's call still open, and asks again.
+    rendered.rerender(<CoachingRecommendation metrics={WEEK_2} context={context('Week 2')} />);
+    await user.click(explain());
+    expect(await screen.findByText(OTHER_AI_WORDING.headline)).toBeInTheDocument();
+
+    // Week 1's answer lands last. It belongs to Week 1 and goes to Week 1.
+    await act(async () => {
+      resolveWeek1({ data: responseFor('Week 1', 1) });
+    });
+
+    // Week 2's answer is still there: not replaced, not cleared, and not
+    // quietly swapped for the deterministic wording the user did not pay for.
+    expect(otherAiWording()).toBeInTheDocument();
+    expect(aiBadge()).toBeInTheDocument();
+    expect(aiWording()).toBeNull();
+    expect(screen.queryByText(/1 von 3 Trainingstagen abgeschlossen \(33 %\)/)).toBeNull();
+  });
+
   it('leaves the button usable for the week now on screen', async () => {
     const user = userEvent.setup();
     callable.mockReturnValue(new Promise(() => undefined));
@@ -309,6 +351,95 @@ describe('when the week\'s facts change underneath', () => {
 
     expect(aiWording()).toBeInTheDocument();
     expect(callable).toHaveBeenCalledTimes(1);
+  });
+});
+
+/* ------------------------------------------------------------------ *
+ * The profile the model was told about
+ * ------------------------------------------------------------------ */
+
+/**
+ * The backend hands the model the caller's goal and experience level along
+ * with the numbers, so the same week at the same numbers is phrased for the
+ * person it is phrased for. Change either and the sentence on screen answers a
+ * question that is no longer being asked — the numbers alone cannot show it,
+ * which is why both belong in the render context.
+ *
+ * Nothing here is sent to the backend: it reads its own copy under the
+ * caller's uid. This is only how the screen knows its wording went stale.
+ */
+describe('when the profile the model was told about changes', () => {
+  const withProfile = (over: Record<string, unknown>) =>
+    context('Week 1', { goal: 'gainMuscle', experienceLevel: 'beginner', ...over });
+
+  const explained = async (initial: ReturnType<typeof withProfile>) => {
+    const user = userEvent.setup();
+    callable.mockResolvedValue({ data: responseFor('Week 1', 1) });
+    const rendered = render(<CoachingRecommendation metrics={WEEK_1} context={initial} />);
+    await user.click(explain());
+    expect(await screen.findByText(AI_WORDING.headline)).toBeInTheDocument();
+    return rendered;
+  };
+
+  it('retires wording generated under the old goal', async () => {
+    const rendered = await explained(withProfile({}));
+
+    rendered.rerender(
+      <CoachingRecommendation metrics={WEEK_1} context={withProfile({ goal: 'loseFat' })} />
+    );
+
+    expect(aiWording()).toBeNull();
+    expect(aiBadge()).toBeNull();
+    expect(screen.getByText(/2 von 3 Trainingstagen abgeschlossen \(67 %\)/)).toBeInTheDocument();
+  });
+
+  it('retires wording generated under the old experience level', async () => {
+    const rendered = await explained(withProfile({}));
+
+    rendered.rerender(
+      <CoachingRecommendation
+        metrics={WEEK_1}
+        context={withProfile({ experienceLevel: 'advanced' })}
+      />
+    );
+
+    expect(aiWording()).toBeNull();
+    expect(aiBadge()).toBeNull();
+  });
+
+  it('keeps valid wording when the same profile arrives again', async () => {
+    const rendered = await explained(withProfile({}));
+
+    // A new object carrying the same two values is not a change of profile,
+    // and neither is a stored spelling that only differs in padding.
+    rendered.rerender(<CoachingRecommendation metrics={WEEK_1} context={withProfile({})} />);
+    expect(aiWording()).toBeInTheDocument();
+
+    rendered.rerender(
+      <CoachingRecommendation
+        metrics={WEEK_1}
+        context={withProfile({ goal: ' gainMuscle ', experienceLevel: ' beginner ' })}
+      />
+    );
+
+    expect(aiWording()).toBeInTheDocument();
+    expect(callable).toHaveBeenCalledTimes(1);
+  });
+
+  it('is not confused by a profile that has not loaded yet', async () => {
+    const rendered = await explained(withProfile({}));
+
+    // Absent is a context of its own — it is not "any profile".
+    rendered.rerender(
+      <CoachingRecommendation
+        metrics={WEEK_1}
+        context={withProfile({ goal: null, experienceLevel: null })}
+      />
+    );
+    expect(aiWording()).toBeNull();
+
+    rendered.rerender(<CoachingRecommendation metrics={WEEK_1} context={withProfile({})} />);
+    expect(aiWording()).toBeInTheDocument();
   });
 });
 

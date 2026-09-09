@@ -12,10 +12,12 @@ import type { WeeklyReviewMetrics } from "@shared/weeklyRecommendation";
  * leaving it on screen under the new numbers is the same untruth as showing it
  * under the wrong week.
  *
- * So the rendered wording is kept under a key made of three things:
+ * So the rendered wording is kept under a key made of four things:
  *
  *   - the account, because two people share nothing (PR64);
  *   - the plan and the week, which is the backend's own binding;
+ *   - the two profile fields the model is told about, because they change what
+ *     it is asked to say about numbers that have not moved;
  *   - a fingerprint of the numbers the wording was generated from.
  *
  * Nothing is persisted and nothing is written: the key is derived on every
@@ -29,6 +31,19 @@ export interface WeeklyReviewUiContext {
   planId?: string | null;
   /** `"Week 1".."Week 4"`, or null when no plan covers the selected date. */
   weekKey?: string | null;
+  /**
+   * The fitness goal, in its canonical spelling.
+   *
+   * The server reads the goal itself, under the caller's own uid, and hands it
+   * to the model — nothing is sent from here and nothing here is trusted. It
+   * is in the key because the model is *told* it: the same week, at the same
+   * numbers, is phrased differently for someone building muscle than for
+   * someone losing fat, so a goal changed since the sentence was generated
+   * leaves that sentence answering a question the user no longer asked.
+   */
+  goal?: string | null;
+  /** The experience level, for the same reason and read the same way. */
+  experienceLevel?: string | null;
 }
 
 /**
@@ -57,7 +72,15 @@ export const weeklyReviewFactsFingerprint = (metrics: WeeklyReviewMetrics): stri
   ].join("|");
 
 /**
- * The full key: who, which plan, which week, and which numbers.
+ * A profile field as the key sees it: an absent one and a blank one are the
+ * same absence, and surrounding whitespace is not a change of goal.
+ */
+const profileSegment = (value: string | null | undefined, absent: string): string =>
+  value?.trim() || absent;
+
+/**
+ * The full key: who, which plan, which week, told what about themselves, and
+ * which numbers.
  *
  * Two renders share a key exactly when a sentence generated for one is still
  * true of the other.
@@ -70,5 +93,7 @@ export const weeklyReviewContextKey = (
     context?.accountId ?? "no-account",
     context?.planId ?? "no-plan",
     context?.weekKey ?? metrics.weekKey ?? "no-week",
+    profileSegment(context?.goal, "no-goal"),
+    profileSegment(context?.experienceLevel, "no-experience"),
     weeklyReviewFactsFingerprint(metrics),
   ].join("::");
