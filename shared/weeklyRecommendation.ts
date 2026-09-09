@@ -548,6 +548,54 @@ export const isExplainableWeek = (metrics: WeeklyReviewMetrics): boolean =>
   metrics.hasPlan && metrics.weekNumber !== null && metrics.completionPercent !== null;
 
 /* ------------------------------------------------------------------ *
+ * Which week a review is about
+ * ------------------------------------------------------------------ */
+
+/**
+ * The identity of the week a review answers for.
+ *
+ * The weekly review used to send nothing and answer for whatever week the
+ * *server's* clock was in. Someone reading Week 1 in the app could therefore
+ * be shown wording generated from Week 3's numbers, with nothing in the
+ * response to reveal it. So the request now names a week and the response
+ * names the week it actually used, and the client refuses anything else.
+ *
+ * Three fields, all of which already exist on both sides:
+ *
+ *   - `planId` — the plan document the numbers came from. A second plan (or a
+ *     second account) is a different review, not a newer one.
+ *   - `weekKey` / `weekNumber` — the plan week. Null only when no plan covers
+ *     the request at all, in which case there is nothing to bind.
+ *
+ * There is no request id and no new persisted identifier: a review is read-only
+ * and stateless, so the week and the plan are the whole of its identity.
+ */
+export interface WeeklyReviewContext {
+  planId: string | null;
+  /** `"Week 1".."Week 4"`, or null when no plan covers the request. */
+  weekKey: string | null;
+  weekNumber: number | null;
+}
+
+/**
+ * Whether a response may be rendered as the answer to a given request.
+ *
+ * The week must match exactly. The plan must match too, but only when both
+ * sides know it — a client that has not loaded a plan document yet still gets
+ * a usable answer, and a null on either side is "unknown", never "any".
+ */
+export const weeklyReviewContextMatches = (
+  requested: Pick<WeeklyReviewContext, "planId" | "weekKey">,
+  answered: Pick<WeeklyReviewContext, "planId" | "weekKey">
+): boolean => {
+  if (requested.weekKey !== answered.weekKey) return false;
+  if (requested.planId !== null && answered.planId !== null) {
+    return requested.planId === answered.planId;
+  }
+  return true;
+};
+
+/* ------------------------------------------------------------------ *
  * The model's side of the contract
  * ------------------------------------------------------------------ */
 

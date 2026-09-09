@@ -26,6 +26,7 @@ import {
   buildWeeklyReviewMetrics,
   normaliseFitnessGoal,
   readPlanWeekDays,
+  type WeeklyReviewUiContext,
 } from "@/lib/coaching";
 import { resolvePlanDay } from "@/lib/planLifecycle";
 import { TrainingNudgeCard } from "@/components/dashboard/TrainingNudgeCard";
@@ -137,9 +138,13 @@ const HomeView: React.FC<HomeViewProps> = ({
     collection — the engine is pure and takes the resolved week explicitly
     rather than reading a clock.
   */
+  const selectedWeek = useMemo(
+    () => resolvePlanDay(workoutPlan, selectedDate),
+    [workoutPlan, selectedDate]
+  );
+
   const weeklyFacts = useMemo(() => {
-    const resolved = resolvePlanDay(workoutPlan, selectedDate);
-    const weekKey = resolved.weekKey;
+    const weekKey = selectedWeek.weekKey;
     if (!workoutPlan || !weekKey) return null;
 
     const planDays = readPlanWeekDays(workoutPlan, weekKey);
@@ -182,7 +187,7 @@ const HomeView: React.FC<HomeViewProps> = ({
       goal: normaliseFitnessGoal(profile?.fitness_goal),
       planFinished,
     });
-  }, [workoutPlan, workoutLogs, profile, selectedDate, planFinished]);
+  }, [workoutPlan, workoutLogs, profile, selectedWeek, planFinished]);
 
   /*
     The same week, in the shape the coaching recommendation needs — and in the
@@ -191,16 +196,46 @@ const HomeView: React.FC<HomeViewProps> = ({
     apart; this only supplies the inputs.
   */
   const weeklyReviewMetrics = useMemo(
-    () => {
-      const resolved = resolvePlanDay(workoutPlan, selectedDate);
-      return buildWeeklyReviewMetrics({
+    () =>
+      buildWeeklyReviewMetrics({
         plan: workoutPlan,
-        weekKey: resolved.weekKey,
-        weekNumber: resolved.weekNumber,
+        weekKey: selectedWeek.weekKey,
+        weekNumber: selectedWeek.weekNumber,
         logs: workoutLogs,
-      });
-    },
-    [workoutPlan, selectedDate, workoutLogs]
+      }),
+    [workoutPlan, selectedWeek, workoutLogs]
+  );
+
+  /*
+    Which account, plan and week the review above is about.
+
+    The recommendation section asks the backend for exactly this week and
+    refuses an answer about any other, so a sentence generated while the user
+    was reading Week 1 can never surface under Week 2 — and a sentence for a
+    plan or an account that is no longer on screen can never surface at all.
+
+    The goal and the experience level are here because the backend tells the
+    model both, so a sentence generated before either changed is no longer the
+    answer to what would be asked now. They are read from the profile already
+    on screen and sent nowhere: the server reads its own copy under the
+    caller's uid, and this is only how the screen knows the wording is stale.
+  */
+  const weeklyReviewContext = useMemo<WeeklyReviewUiContext>(
+    () => ({
+      accountId: profile?.id ?? null,
+      planId: workoutPlan?.id ?? null,
+      weekKey: selectedWeek.weekKey,
+      // Canonicalised, so a stored alias of the same goal is the same goal.
+      goal: normaliseFitnessGoal(profile?.fitness_goal) ?? null,
+      experienceLevel: profile?.experience_level ?? null,
+    }),
+    [
+      profile?.id,
+      profile?.fitness_goal,
+      profile?.experience_level,
+      workoutPlan?.id,
+      selectedWeek,
+    ]
   );
 
   const refreshQuote = () => {
@@ -284,13 +319,21 @@ const HomeView: React.FC<HomeViewProps> = ({
     below — a hook that only runs on the loaded branch changes the hook count
     between renders.
 
+    `selectedDate` is deliberately *not* passed. It is the date the user is
+    browsing — the calendar strip on the workout tab writes it, and both views
+    share it — so feeding it to the nudge layer meant that paging back to last
+    Tuesday raised "Heute ist eine Trainingseinheit geplant." about last
+    Tuesday, and paging forward did the same for a day that has not yet
+    happened. The hook
+    reads the real Berlin day itself and re-reads it at midnight; there is no
+    longer a way for a browsing surface to tell it what "today" is.
+
     It reads. Nothing here writes a plan, a log or a completion; the card's one
     action opens the workout tab.
   */
   const { nudges: trainingNudges, dismiss: dismissTrainingNudge } = useTrainingNudge({
     plan: workoutPlan,
     logs: workoutLogs,
-    date: selectedDate,
   });
 
   // Show skeleton when initially loading or generating plans
@@ -543,6 +586,7 @@ const HomeView: React.FC<HomeViewProps> = ({
           <WeeklyReview
             facts={weeklyFacts}
             metrics={weeklyReviewMetrics}
+            reviewContext={weeklyReviewContext}
             /* Reading the plan, never rewriting it. */
             onViewPlan={onNavigate ? () => onNavigate('workout') : undefined}
           />

@@ -6,8 +6,10 @@ import {
   recommendFocus,
   validateModelRecommendation,
   type WeeklyRecommendation,
+  type WeeklyReviewContext,
   type WeeklyReviewMetrics,
 } from "../../../shared/weeklyRecommendation";
+import { isPlanWeekKey } from "../../../shared/planWeek";
 import { AiError } from "../errors";
 import { requireAuth, type AuthContextLike } from "../auth";
 import { DEFAULT_QUOTA_LIMITS } from "../quota";
@@ -33,6 +35,13 @@ import { GEMINI_MODEL_ID, GEMINI_PROVIDER_ID } from "./providers/gemini";
  * outage all degrade to the deterministic wording rather than to an error —
  * and the response says which it was, so nothing deterministic is ever
  * presented as if a model wrote it.
+ *
+ * The third rule, new in PR68, is that a review answers for the week it was
+ * asked about. The handler used to take no input and resolve the week from its
+ * own clock, so a user reading Week 1 in the app received wording generated
+ * from the numbers of whatever week the server was in. The request now names
+ * the week, the response says which week it used, and a week that has not
+ * happened yet is answered without paying a model to describe it.
  */
 
 const ACTION = "weekly_summary" as const;
@@ -74,6 +83,15 @@ export type WeeklyReviewAiStatus =
 
 export interface WeeklyReviewResult {
   ok: true;
+  /**
+   * The plan and week these numbers and this wording belong to.
+   *
+   * Sent explicitly rather than left to be inferred from the metrics, and
+   * checked by the client against the context it asked from: a response that
+   * arrives after the user has moved on is data about another week, and must
+   * not be rendered as this one's.
+   */
+  context: WeeklyReviewContext;
   metrics: WeeklyReviewMetrics;
   recommendation: WeeklyRecommendation;
   aiStatus: WeeklyReviewAiStatus;
@@ -128,6 +146,24 @@ export const buildWeeklyReviewInput = (
   return parsed.success ? parsed.data : null;
 };
 
+/**
+ * The one thing a caller may say: which week of its own programme to review.
+ *
+ * Absent is allowed and means "the week the server is in" — the pre-PR68
+ * behaviour, kept so a client that has not shipped yet keeps working. Present
+ * but not a week of the four-week programme is refused rather than clamped:
+ * clamping "Week 9" to "Week 4" would answer a question nobody asked, which is
+ * the family of bug this whole change is about.
+ */
+export const readRequestedWeekKey = (data: unknown): string | null => {
+  const candidate = (data ?? {}) as { weekKey?: unknown };
+  if (candidate.weekKey === undefined || candidate.weekKey === null) return null;
+  if (!isPlanWeekKey(candidate.weekKey)) {
+    throw new AiError("INVALID_REQUEST", "Unsupported weekly review week.");
+  }
+  return candidate.weekKey;
+};
+
 export const handleGenerateWeeklyReview = async (
   request: WeeklyReviewRequest,
   deps: WeeklyReviewDeps
@@ -135,9 +171,11 @@ export const handleGenerateWeeklyReview = async (
   const now = deps.now ?? (() => new Date());
   const limit = DEFAULT_QUOTA_LIMITS[ACTION];
 
-  // 1. Identity from the verified token. `request.data` is not read at all:
-  //    the review takes no input, so there is nothing for a caller to forge.
+  // 1. Identity from the verified token. The only field read from
+  //    `request.data` is a week key, and it selects a position in the caller's
+  //    own programme — it cannot add a completion or reach another user's data.
   const { uid } = requireAuth(request);
+  const requestedWeekKey = readRequestedWeekKey(request.data);
   const startedAt = Date.now();
 
   const summary = async (): Promise<QuotaSummary> => {
@@ -149,7 +187,7 @@ export const handleGenerateWeeklyReview = async (
   //    Read-only, throughout — see weeklyReviewData.ts.
   let data;
   try {
-    data = await readWeeklyReviewData(deps.firestore, uid, now());
+    data = await readWeeklyReviewData(deps.firestore, uid, now(), requestedWeekKey);
   } catch {
     throw new AiError("INTERNAL", "Failed to read the weekly review data.");
   }
@@ -162,6 +200,7 @@ export const handleGenerateWeeklyReview = async (
     aiStatus: WeeklyReviewAiStatus
   ): Promise<WeeklyReviewResult> => ({
     ok: true,
+    context: data.context,
     metrics,
     recommendation,
     aiStatus,
@@ -180,14 +219,22 @@ export const handleGenerateWeeklyReview = async (
       })
       .catch(() => undefined);
 
-  // 3. Nothing planned, or a week outside the programme. There is no coaching
+  // 3. A week that has not begun yet. Its numbers are all zero because nobody
+  //    could have trained in it, so there is no adherence to explain and
+  //    nothing worth a user's quota — least of all a sentence about sessions
+  //    they have not missed yet.
+  if (data.weekNotStarted) {
+    return respond(deterministic, "not_applicable");
+  }
+
+  // 4. Nothing planned, or a week outside the programme. There is no coaching
   //    conclusion to phrase, so no provider call and no quota is spent.
   const input = buildWeeklyReviewInput(metrics, profile);
   if (input === null) {
     return respond(deterministic, "not_applicable");
   }
 
-  // 4. Reserve before spending. Exhausted quota is not an error: the review
+  // 5. Reserve before spending. Exhausted quota is not an error: the review
   //    still renders, in its own words.
   const reserved = await deps.quota.reserve(uid, ACTION, limit).catch(() => null);
   if (reserved === null) {
@@ -202,7 +249,7 @@ export const handleGenerateWeeklyReview = async (
   let usage: TokenUsage = {};
 
   try {
-    // 5. One attempt. No repair loop: a second paid call to reword a sentence
+    // 6. One attempt. No repair loop: a second paid call to reword a sentence
     //    the app can already write itself is not worth a user's quota.
     const attempt = await deps.provider.summariseWeeklyReviewWithUsage(input);
     usage = attempt.usage;

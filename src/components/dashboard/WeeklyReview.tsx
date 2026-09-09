@@ -12,6 +12,7 @@ import {
   type WeeklyCoachingFacts,
 } from "@/lib/coaching";
 import type { WeeklyReviewMetrics } from "@shared/weeklyRecommendation";
+import type { WeeklyReviewUiContext } from "@/lib/coaching/reviewContext";
 import { CoachingRecommendation } from "./CoachingRecommendation";
 
 /**
@@ -32,6 +33,12 @@ interface WeeklyReviewProps {
   facts: WeeklyCoachingFacts;
   /** Enables the "Empfehlung für dich" section. Advice only; changes nothing. */
   metrics?: WeeklyReviewMetrics;
+  /**
+   * Which account, plan and week the numbers above belong to. Passed straight
+   * through: the recommendation section binds its model wording to it, so a
+   * sentence generated for one week is never shown under another.
+   */
+  reviewContext?: WeeklyReviewUiContext;
   /** Opens the plan for reading. Never a mutation. */
   onViewPlan?: () => void;
   className?: string;
@@ -59,6 +66,7 @@ const Metric: React.FC<{
 export const WeeklyReview: React.FC<WeeklyReviewProps> = ({
   facts,
   metrics,
+  reviewContext,
   onViewPlan,
   className,
 }) => {
@@ -91,6 +99,7 @@ export const WeeklyReview: React.FC<WeeklyReviewProps> = ({
             {metrics && (
               <CoachingRecommendation
                 metrics={metrics}
+                context={reviewContext}
                 onViewPlan={onViewPlan}
                 className="pt-3 border-t border-border/40"
               />
@@ -134,6 +143,7 @@ export const WeeklyReview: React.FC<WeeklyReviewProps> = ({
             {metrics && (
               <CoachingRecommendation
                 metrics={metrics}
+                context={reviewContext}
                 onViewPlan={onViewPlan}
                 className="pt-3 border-t border-border/40"
               />

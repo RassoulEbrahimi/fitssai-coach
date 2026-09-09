@@ -95,7 +95,8 @@ afterEach(() => {
 interface HookProps {
   plan: WorkoutPlan;
   logs: readonly AnyWorkoutLogShape[];
-  date: Date;
+  /** Holds time still. Production passes nothing and reads the Berlin day. */
+  today: Date;
 }
 
 const render = (initial: Partial<HookProps> = {}) =>
@@ -103,7 +104,7 @@ const render = (initial: Partial<HookProps> = {}) =>
     initialProps: {
       plan: initial.plan ?? plan(),
       logs: initial.logs ?? [],
-      date: initial.date ?? MONDAY,
+      today: initial.today ?? MONDAY,
     },
   });
 
@@ -192,7 +193,7 @@ describe("one browser notification per training day, whatever the wording", () =
     expect(result.current.nudges[0].type).toBe("planned-session-today");
 
     // 2. The user completes one exercise.
-    rerender({ plan: plan(), logs: [oneExerciseDone], date: MONDAY });
+    rerender({ plan: plan(), logs: [oneExerciseDone], today: MONDAY });
 
     // 3. The wording changes — the day is under way but still not finished.
     await waitFor(() => expect(result.current.nudges[0].type).toBe("unfinished-session"));
@@ -206,7 +207,7 @@ describe("one browser notification per training day, whatever the wording", () =
     const { result, rerender } = render();
     const before = result.current.nudges[0];
 
-    rerender({ plan: plan(), logs: [oneExerciseDone], date: MONDAY });
+    rerender({ plan: plan(), logs: [oneExerciseDone], today: MONDAY });
     const after = result.current.nudges[0];
 
     // The render identity moves with the wording; the delivery identity does not.
@@ -233,7 +234,7 @@ describe("one browser notification per training day, whatever the wording", () =
     monday.unmount();
 
     // A new day is a new plan position, so it is a new nudge.
-    render({ plan: twoDayPlan(), date: WEDNESDAY });
+    render({ plan: twoDayPlan(), today: WEDNESDAY });
     await waitFor(() => expect(shown).toHaveLength(2));
   });
 });
@@ -253,7 +254,7 @@ describe("dismissal", () => {
     const { result, rerender } = render();
     act(() => result.current.dismiss(result.current.nudges[0].dayKey));
 
-    rerender({ plan: plan(), logs: [oneExerciseDone], date: MONDAY });
+    rerender({ plan: plan(), logs: [oneExerciseDone], today: MONDAY });
     expect(result.current.nudges).toEqual([]);
   });
 
@@ -282,7 +283,7 @@ describe("dismissal", () => {
     monday.unmount();
 
     stubNotification("granted");
-    const wednesday = render({ plan: twoDayPlan(), date: WEDNESDAY });
+    const wednesday = render({ plan: twoDayPlan(), today: WEDNESDAY });
     expect(wednesday.result.current.nudges.length).toBeGreaterThan(0);
     await waitFor(() => expect(shown).toHaveLength(1));
   });
@@ -307,7 +308,7 @@ describe("dismissal", () => {
     const planBefore = JSON.stringify(source);
     const logsBefore = JSON.stringify(logs);
 
-    const { result } = renderHook(() => useTrainingNudge({ plan: source, logs, date: MONDAY }));
+    const { result } = renderHook(() => useTrainingNudge({ plan: source, logs, today: MONDAY }));
     act(() => result.current.dismiss(result.current.nudges[0].dayKey));
 
     expect(JSON.stringify(source)).toBe(planBefore);

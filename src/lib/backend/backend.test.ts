@@ -219,16 +219,25 @@ describe("the weekly review is advice, and the client keeps it that way", () => 
     expect(callers.sort()).toEqual([
       "src/components/dashboard/CoachingRecommendation.test.tsx",
       "src/components/dashboard/CoachingRecommendation.tsx",
+      "src/test/weeklyReviewContext.test.tsx",
     ]);
   });
 
-  it("sends no request body at all", () => {
+  it("sends a week key and nothing else", () => {
     const code = stripComments(read("src/lib/backend/weeklyReview.ts"));
 
-    // Every input is read server-side under the caller's own uid, so there is
-    // nothing here for a browser to shape the answer with.
-    expect(code).toMatch(/httpsCallable<undefined,/);
-    expect(code).toMatch(/await callable\(\)/);
+    /*
+      The body used to be empty, and that was the bug: the backend resolved the
+      week from its own clock, so a user reading Week 1 was answered about the
+      server's current week. Exactly one field crosses now — which week of the
+      caller's own programme to review. Everything the answer is computed from
+      is still read server-side under the caller's own uid, so there is still
+      nothing here for a browser to shape the answer with.
+    */
+    expect(code).toMatch(/httpsCallable<\{ weekKey: string \| null \},/);
+    expect(code).toMatch(/await callable\(\{ weekKey: request\.weekKey \}\)/);
+    // No metric, no completion, no uid, no plan content.
+    expect(code).not.toMatch(/callable\(\{[^}]*(completed|metrics|uid|content)/);
   });
 
   it("carries no secret and no provider", () => {

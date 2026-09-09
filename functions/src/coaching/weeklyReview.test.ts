@@ -166,6 +166,17 @@ const run = async (options: HarnessOptions = {}) => {
   return { ...h, result };
 };
 
+/** The same, for a caller that names the week it is asking about. */
+const runFor = async (weekKey: unknown, options: HarnessOptions = {}) => {
+  const h = harness(options);
+  await h.seed();
+  const result = await handleGenerateWeeklyReview(
+    { auth: { uid: UID }, data: { weekKey } },
+    h.deps
+  );
+  return { ...h, result };
+};
+
 describe("who may ask", () => {
   it("refuses an unauthenticated caller", async () => {
     const { deps } = harness();
@@ -1108,5 +1119,185 @@ describe("what the model is told", () => {
     expect(Object.keys(providerCalls[0] as object)).toEqual(
       expect.not.arrayContaining(["uid", "email", "name", "weight", "height"])
     );
+  });
+});
+
+
+describe("the week under review is the week that was asked for", () => {
+  /*
+    P1-07. This handler used to read no input at all and resolve the week from
+    its own clock, so a user reading Week 1 in the app was answered about
+    whatever week the server was in — numbers, category and, worst of all,
+    wording generated from them. The week now crosses the boundary.
+
+    Week 1 of this fixture is fully completed and Week 2 has one of three
+    sessions done, so "which week did it answer about" is visible in every
+    number below rather than only in a label.
+  */
+  const twoDifferentWeeks: HarnessOptions = {
+    completed: [
+      ["Week 1", 0],
+      ["Week 1", 2],
+      ["Week 1", 4],
+      ["Week 2", 0],
+    ],
+  };
+
+  it("reviews the historical week the caller named, not the current one", async () => {
+    const { result } = await runFor("Week 1", {
+      ...twoDifferentWeeks,
+      response: aiAnswer("celebrate"),
+    });
+
+    expect(result.metrics.weekKey).toBe("Week 1");
+    expect(result.metrics.weekNumber).toBe(1);
+    expect(result.metrics.completedDays).toBe(3);
+    expect(result.metrics.completionPercent).toBe(100);
+  });
+
+  it("reviews the current week when the caller names it", async () => {
+    const { result } = await runFor("Week 2", {
+      ...twoDifferentWeeks,
+      response: aiAnswer("consistency"),
+    });
+
+    expect(result.metrics.weekKey).toBe("Week 2");
+    expect(result.metrics.completedDays).toBe(1);
+    expect(result.metrics.completionPercent).toBe(33);
+  });
+
+  it("still resolves the week from the clock when the caller names none", async () => {
+    // The pre-PR68 contract, kept so a browser that has not shipped yet works.
+    const { result } = await run({ ...twoDifferentWeeks, response: aiAnswer("consistency") });
+
+    expect(result.metrics.weekKey).toBe("Week 2");
+    expect(result.metrics.completedDays).toBe(1);
+  });
+
+  it("says which plan and week it answered about", async () => {
+    const { result } = await runFor("Week 1", {
+      ...twoDifferentWeeks,
+      response: aiAnswer("celebrate"),
+    });
+
+    expect(result.context).toEqual({ planId: PLAN_ID, weekKey: "Week 1", weekNumber: 1 });
+  });
+
+  it("compares the named week against the week before it, not against the clock's", async () => {
+    const { providerCalls } = await runFor("Week 2", {
+      ...twoDifferentWeeks,
+      response: aiAnswer("consistency"),
+      at: new Date("2026-08-27T18:00:00Z"), // Week 4
+    });
+
+    // Week 2 was 1 of 3; the week before it was 3 of 3. Nothing about Week 4.
+    expect(providerCalls[0]).toMatchObject({
+      weekNumber: 2,
+      completedDays: 1,
+      previousWeekCompletionPercent: 100,
+    });
+  });
+
+  it("reviews a week of a finished programme without pretending it is current", async () => {
+    const { result } = await runFor("Week 1", {
+      ...twoDifferentWeeks,
+      response: aiAnswer("celebrate"),
+      at: new Date("2026-09-10T10:00:00Z"), // past Week 4
+    });
+
+    expect(result.metrics.weekKey).toBe("Week 1");
+    expect(result.metrics.completedDays).toBe(3);
+    // The programme really is over, and the response still says so.
+    expect(result.planFinished).toBe(true);
+  });
+
+  it("hands the model the named week's numbers", async () => {
+    const { providerCalls } = await runFor("Week 1", {
+      ...twoDifferentWeeks,
+      response: aiAnswer("celebrate"),
+    });
+
+    expect(providerCalls).toHaveLength(1);
+    expect(providerCalls[0]).toMatchObject({
+      weekNumber: 1,
+      scheduledDays: 3,
+      completedDays: 3,
+      completionPercent: 100,
+    });
+  });
+});
+
+describe("a week that is not a week of this programme", () => {
+  it.each([
+    ["a week past the programme", "Week 5"],
+    ["a week before it", "Week 0"],
+    ["a lowercase key", "week 1"],
+    ["a number", 1],
+    ["prose", "the week I trained"],
+  ])("refuses %s", async (_label, weekKey) => {
+    const h = harness({ completed: [["Week 2", 0]], response: aiAnswer("consistency") });
+    await h.seed();
+
+    await expect(
+      handleGenerateWeeklyReview({ auth: { uid: UID }, data: { weekKey } }, h.deps)
+    ).rejects.toMatchObject({ code: "INVALID_REQUEST" });
+
+    // Refused before anything is read, called or spent.
+    expect(h.providerCalls).toHaveLength(0);
+    expect(await h.deps.quota.getUsage(UID, "weekly_summary")).toBe(0);
+  });
+
+  it("is not clamped into the programme", async () => {
+    /*
+      The tempting alternative — clamp "Week 9" to "Week 4" and answer — is the
+      same failure in a new place: a confident answer to a question nobody
+      asked. It refuses instead.
+    */
+    const h = harness({ completed: [["Week 2", 0]] });
+    await h.seed();
+
+    await expect(
+      handleGenerateWeeklyReview({ auth: { uid: UID }, data: { weekKey: "Week 9" } }, h.deps)
+    ).rejects.toMatchObject({ code: "INVALID_REQUEST" });
+  });
+});
+
+describe("a week that has not happened yet", () => {
+  it("answers without paying a model to describe it", async () => {
+    const { result, providerCalls } = await runFor("Week 4", {
+      completed: [["Week 2", 0]],
+      response: aiAnswer("consistency"),
+    });
+
+    /*
+      Nobody could have trained in Week 4 yet, so its zeros are not adherence —
+      they are an absence of days. A model asked to phrase them would write
+      about sessions the user has not missed, and the user would pay for it.
+    */
+    expect(result.aiStatus).toBe("not_applicable");
+    expect(providerCalls).toHaveLength(0);
+    expect(result.recommendation.source).toBe("deterministic");
+    expect(result.context.weekKey).toBe("Week 4");
+  });
+
+  it("spends no quota on it", async () => {
+    const { deps } = await runFor("Week 3", {
+      completed: [["Week 2", 0]],
+      response: aiAnswer("consistency"),
+    });
+
+    expect(await deps.quota.getUsage(UID, "weekly_summary")).toBe(0);
+  });
+
+  it("treats every week of a finished programme as one that happened", async () => {
+    const { result, providerCalls } = await runFor("Week 4", {
+      completed: [["Week 4", 0], ["Week 4", 2]],
+      response: aiAnswer("maintain"),
+      at: new Date("2026-09-10T10:00:00Z"),
+    });
+
+    expect(result.aiStatus).toBe("ai");
+    expect(providerCalls).toHaveLength(1);
+    expect(result.metrics.completedDays).toBe(2);
   });
 });

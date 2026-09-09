@@ -4,9 +4,15 @@ import {
   type ReviewCompletion,
   type ReviewLog,
   type ReviewPlanDay,
+  type WeeklyReviewContext,
   type WeeklyReviewMetrics,
 } from "../../../shared/weeklyRecommendation";
-import { resolvePlanWeek, type ResolvedPlanWeek } from "../../../shared/planWeek";
+import {
+  planWeekNumber,
+  previousPlanWeekKey,
+  resolvePlanWeek,
+  type ResolvedPlanWeek,
+} from "../../../shared/planWeek";
 import { readCompletedWorkoutDays } from "../../../shared/workoutCompletion";
 import { normaliseFitnessGoal } from "./profileInput";
 import { EXPERIENCE_LEVELS, type ExperienceLevel, type FitnessGoal } from "./planGenerationInput";
@@ -14,10 +20,18 @@ import { EXPERIENCE_LEVELS, type ExperienceLevel, type FitnessGoal } from "./pla
 /**
  * Everything the weekly review reads, read by the server.
  *
- * The browser sends no metric and no week: it sends nothing at all. The plan,
- * the logs and the two profile fields are read here under the uid the auth
- * guard resolved from a verified token, so a caller can neither review someone
- * else's week nor claim a completion they never logged.
+ * The browser sends no metric: the plan, the logs and the two profile fields
+ * are read here under the uid the auth guard resolved from a verified token,
+ * so a caller can neither review someone else's week nor claim a completion
+ * they never logged.
+ *
+ * It may now name *which* week it is asking about, and that is the only thing
+ * it may say. The week is a position in the caller's own four-week programme,
+ * validated before it gets here, and it selects which of the caller's own
+ * records are counted — it can neither add a completion nor reach another
+ * user's data. Before this, the week came from the server's clock alone, so a
+ * user reading Week 1 was shown Week 3's numbers and, worse, wording generated
+ * from them.
  *
  * This module only ever reads. Nothing in the weekly review writes to
  * `users/{uid}/workout_plans` — a review that could touch a plan would be a
@@ -162,9 +176,51 @@ export const readCoachingProfile = async (
 export interface WeeklyReviewData {
   metrics: WeeklyReviewMetrics;
   profile: CoachingProfileFacts;
-  /** True once the four-week programme is over. */
+  /** True once the four-week programme is over, as of `at`. */
   planFinished: boolean;
+  /** The plan and week these numbers are actually about. */
+  context: WeeklyReviewContext;
+  /**
+   * True when the requested week has not begun yet as of `at`.
+   *
+   * A week nobody could have trained in has no adherence to explain, so the
+   * caller stops before spending anything on wording for it. It is not an
+   * error: the numbers below it are still true, they are simply all zero.
+   */
+  weekNotStarted: boolean;
 }
+
+/**
+ * Which week these numbers are about: the one the caller asked for, or the one
+ * `at` falls in when it asked for none.
+ *
+ * A named week is honoured exactly as given — never clamped to the current
+ * one, because a silent clamp is precisely the bug this resolves. The only
+ * thing the server's own clock still decides is whether that week has started.
+ */
+export const selectReviewWeek = (
+  current: ResolvedReviewWeek,
+  requestedWeekKey: string | null | undefined
+): { week: ResolvedReviewWeek; weekNotStarted: boolean } => {
+  const requestedNumber = planWeekNumber(requestedWeekKey);
+  if (requestedNumber === null) return { week: current, weekNotStarted: false };
+
+  return {
+    week: {
+      weekKey: `Week ${requestedNumber}`,
+      weekNumber: requestedNumber,
+      previousWeekKey: previousPlanWeekKey(requestedNumber),
+      planFinished: current.planFinished,
+    },
+    /*
+      Past the programme, every week of it has been lived through. Before it
+      starts, none has. In between, the current week number decides.
+    */
+    weekNotStarted: current.planFinished
+      ? false
+      : current.weekNumber === null || requestedNumber > current.weekNumber,
+  };
+};
 
 /**
  * Read the caller's plan and logs and reduce them to the week's metrics.
@@ -172,11 +228,15 @@ export interface WeeklyReviewData {
  * Two reads and one profile read, all under the caller's own uid, all
  * read-only. A user with no plan gets an honest empty week rather than an
  * error: "nothing is planned yet" is a true thing to say and a useful one.
+ *
+ * `requestedWeekKey` selects the week; `at` still places the plan on the
+ * calendar, so "has this week happened yet" stays a server-side judgement.
  */
 export const readWeeklyReviewData = async (
   firestore: Firestore,
   uid: string,
-  at: Date
+  at: Date,
+  requestedWeekKey: string | null = null
 ): Promise<WeeklyReviewData> => {
   const user = firestore.collection("users").doc(uid);
 
@@ -187,12 +247,19 @@ export const readWeeklyReviewData = async (
     .get();
 
   const planDoc = plans.docs[0];
+  const planId = planDoc?.id ?? null;
   const planCreatedAt = planDoc ? toDate(planDoc.get("createdAt")) : null;
-  const week = planCreatedAt
+  const current: ResolvedReviewWeek = planCreatedAt
     ? resolveReviewWeek(planCreatedAt, at)
     : { weekKey: null, weekNumber: null, previousWeekKey: null, planFinished: false };
+  const { week, weekNotStarted } = selectReviewWeek(current, requestedWeekKey);
 
   const profile = await readCoachingProfile(firestore, uid);
+  const context: WeeklyReviewContext = {
+    planId,
+    weekKey: week.weekKey,
+    weekNumber: week.weekNumber,
+  };
 
   if (!planDoc || week.weekKey === null) {
     return {
@@ -205,7 +272,9 @@ export const readWeeklyReviewData = async (
         weekLogs: [],
       }),
       profile,
-      planFinished: week.planFinished,
+      planFinished: current.planFinished,
+      context,
+      weekNotStarted,
     };
   }
 
@@ -233,6 +302,8 @@ export const readWeeklyReviewData = async (
         : null,
     }),
     profile,
-    planFinished: false,
+    planFinished: current.planFinished,
+    context,
+    weekNotStarted,
   };
 };
