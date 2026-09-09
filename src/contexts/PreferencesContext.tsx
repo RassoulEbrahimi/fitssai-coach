@@ -1,8 +1,11 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { BACKGROUND_MODE_STORAGE_KEY, parseBackgroundMode, readStoredBackgroundMode, type BackgroundMode } from '@/lib/background';
 
 const STORAGE_KEY = 'fitssai.preferences.enableAdvancedGlass';
 
 interface PreferencesContextValue {
+  backgroundMode: BackgroundMode;
+  setBackgroundMode: (value: BackgroundMode) => void;
   enableAdvancedGlass: boolean;
   setEnableAdvancedGlass: (value: boolean) => void;
 }
@@ -10,6 +13,17 @@ interface PreferencesContextValue {
 const PreferencesContext = createContext<PreferencesContextValue | undefined>(undefined);
 
 export function PreferencesProvider({ children }: { children: ReactNode }) {
+  const [backgroundMode, setBackgroundModeState] = useState<BackgroundMode>(readStoredBackgroundMode);
+
+  const setBackgroundMode = (value: BackgroundMode) => {
+    setBackgroundModeState(value);
+    try {
+      localStorage.setItem(BACKGROUND_MODE_STORAGE_KEY, value);
+    } catch {
+      // Blocked/full storage must not prevent the current session's choice.
+    }
+  };
+
   const [enableAdvancedGlass, setEnableAdvancedGlassState] = useState<boolean>(() => {
     // Default to false (advanced effects OFF by default)
     try {
@@ -32,6 +46,10 @@ export function PreferencesProvider({ children }: { children: ReactNode }) {
   // Sync across tabs
   useEffect(() => {
     const handleStorageChange = (e: StorageEvent) => {
+      if (e.storageArea && e.storageArea !== window.localStorage) return;
+      if (e.key === BACKGROUND_MODE_STORAGE_KEY || e.key === null) {
+        setBackgroundModeState(parseBackgroundMode(e.newValue));
+      }
       if (e.key === STORAGE_KEY) {
         setEnableAdvancedGlassState(e.newValue === 'true');
       }
@@ -42,7 +60,7 @@ export function PreferencesProvider({ children }: { children: ReactNode }) {
   }, []);
 
   return (
-    <PreferencesContext.Provider value={{ enableAdvancedGlass, setEnableAdvancedGlass }}>
+    <PreferencesContext.Provider value={{ enableAdvancedGlass, setEnableAdvancedGlass, backgroundMode, setBackgroundMode }}>
       {children}
     </PreferencesContext.Provider>
   );

@@ -9,6 +9,7 @@
 
 import { AUTH_RECOVERY_MARKER } from "@/lib/authPersistenceRecovery";
 import { THEME_STORAGE_KEY } from "@/lib/theme";
+import { BACKGROUND_MODE_STORAGE_KEY } from "@/lib/background";
 import {
   SESSION_STORAGE_KEY,
   LEGACY_SESSION_STARTED_KEY,
@@ -38,6 +39,7 @@ export const SIGN_OUT_CLEARED_KEYS: readonly string[] = [
  * security measure.
  */
 export const SIGN_OUT_PRESERVED_KEYS: readonly string[] = [
+  BACKGROUND_MODE_STORAGE_KEY,
   THEME_STORAGE_KEY,
   "fitssai.preferences.enableAdvancedGlass",
   "fitssai:compactCards",
