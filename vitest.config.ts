@@ -1,12 +1,13 @@
 import { defineConfig } from 'vitest/config';
 import react from '@vitejs/plugin-react-swc';
 import path from 'path';
-import { createRequire } from 'module';
+import { resolveAppVersion } from './scripts/buildMetadata';
 
 // Mirror the build-time injection from vite.config.ts so buildInfo is exercised
 // with the same values production gets, instead of its no-injection fallback.
-const require_ = createRequire(import.meta.url);
-const appVersion: string = require_('./package.json').version ?? '0.0.0';
+// Same resolver the build uses, so a missing or empty version fails here too
+// rather than being papered over with a release-shaped placeholder.
+const appVersion: string = resolveAppVersion(__dirname);
 
 export default defineConfig({
   plugins: [react()],
