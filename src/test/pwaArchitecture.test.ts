@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "fs";
 import { resolve } from "path";
+import { getManifest } from "workbox-build";
 
 /**
  * Architecture guard: the project used to carry two service workers — a
@@ -56,6 +57,23 @@ describe("service-worker architecture", () => {
 
 describe("PWA configuration for GitHub Pages", () => {
   const config = read("vite.config.ts");
+
+  it("does not precache background video or introduce media runtime caching", async () => {
+    // Exercise the actual configured glob against real public assets. A
+    // mounted-element test alone cannot catch service-worker prefetching.
+    const patterns = config.match(/globPatterns:\s*(\[[^\]]+\])/)?.[1];
+    expect(patterns).toBeDefined();
+    const globPatterns = JSON.parse(patterns!.replace(/'/g, '"')) as string[];
+    const { manifestEntries } = await getManifest({
+      globDirectory: resolve(root, "public"),
+      globPatterns,
+      // Do not let Workbox's default size limit mask an accidental video glob.
+      maximumFileSizeToCacheInBytes: 10 * 1024 * 1024,
+    });
+    expect(manifestEntries.length).toBeGreaterThan(0);
+    expect(manifestEntries.some(({ url }) => /\.(mp4|webm)$/.test(url))).toBe(false);
+    expect(config).not.toMatch(/runtimeCaching\s*:/);
+  });
 
   it("keeps the GitHub Pages base path", () => {
     // start_url, scope and the registration URL are all derived from base.

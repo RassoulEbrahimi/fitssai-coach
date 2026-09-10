@@ -1,5 +1,7 @@
 import React, { useState, useRef, useEffect } from "react";
-import { motion } from "framer-motion";
+import { motion, useReducedMotion } from "framer-motion";
+import * as RadioGroupPrimitive from "@radix-ui/react-radio-group";
+import { parseBackgroundMode } from "@/lib/background";
 import { Button } from "@/components/ui/button";
 import { RefreshCw, Sparkles, User, Ruler, Weight, Activity, Settings, Calendar, Crown, Pencil, Target, Utensils, Dumbbell, Camera, Loader2, Flame, Clock, Zap, Sun, Moon, Monitor } from "lucide-react";
 import { AIAnalyticsCard } from "@/components/AIAnalyticsCard";
@@ -245,7 +247,8 @@ const ProfileView: React.FC<ProfileViewProps> = React.memo(({
   nutritionPlan,
   onGeneratePlans
 }) => {
-  const { enableAdvancedGlass, setEnableAdvancedGlass } = usePreferences();
+  const { enableAdvancedGlass, setEnableAdvancedGlass, backgroundMode, setBackgroundMode } = usePreferences();
+  const prefersReducedMotion = useReducedMotion();
   const [isEditOpen, setIsEditOpen] = useState(false);
   const [isGoalsOpen, setIsGoalsOpen] = useState(false);
   const [isTrainingOpen, setIsTrainingOpen] = useState(false);
@@ -789,6 +792,39 @@ const ProfileView: React.FC<ProfileViewProps> = React.memo(({
                 </button>
               ))}
             </div>
+          </div>
+
+          <div className="pt-2 border-t border-white/5">
+            <span id="background-mode-label" className="text-sm font-medium text-foreground">Hintergrund</span>
+            <p id="background-mode-description" className="text-xs text-muted-foreground mt-0.5 mb-3">
+              Statisch spart Ressourcen. Animiert zeigt das Hintergrundvideo.
+            </p>
+            <RadioGroupPrimitive.Root
+              value={backgroundMode}
+              onValueChange={(value) => setBackgroundMode(parseBackgroundMode(value))}
+              aria-labelledby="background-mode-label"
+              aria-describedby={prefersReducedMotion ? "background-mode-description background-motion-note" : "background-mode-description"}
+              orientation="horizontal"
+              className="flex rounded-xl bg-muted/50 p-1 gap-1"
+            >
+              {[
+                { value: "static", label: "Statisch" },
+                { value: "animated", label: "Animiert" },
+              ].map(({ value, label }) => (
+                <RadioGroupPrimitive.Item
+                  key={value}
+                  value={value}
+                  className="flex-1 py-2 px-3 rounded-lg text-xs font-medium transition-colors text-muted-foreground hover:bg-accent data-[state=checked]:bg-emerald-500/20 data-[state=checked]:text-emerald-600 dark:data-[state=checked]:text-emerald-400 data-[state=checked]:shadow-sm"
+                >
+                  {label}
+                </RadioGroupPrimitive.Item>
+              ))}
+            </RadioGroupPrimitive.Root>
+            {prefersReducedMotion && (
+              <p id="background-motion-note" className="text-xs text-muted-foreground mt-2">
+                Reduzierte Bewegung ist aktiv. Mit ‚Animiert‘ erlaubst du das Hintergrundvideo.
+              </p>
+            )}
           </div>
 
           {/* Premium Glass Toggle */}
