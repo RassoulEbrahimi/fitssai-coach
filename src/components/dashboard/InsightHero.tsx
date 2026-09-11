@@ -6,10 +6,12 @@ import { Button } from '@/components/ui/button';
 import { GradientCard } from '@/components/micro/GradientCard';
 import { cn } from '@/lib/utils';
 import { useNavigate } from 'react-router-dom';
+import type { AppView } from '@/lib/navigation';
 
 interface InsightHeroProps {
     insight: Insight | null;
     onDismiss?: () => void;
+    onNavigate?: (view: AppView) => void;
     className?: string;
 }
 
@@ -23,7 +25,7 @@ const IconMap: Record<string, React.ElementType> = {
     'CheckCircle2': CheckCircle2
 };
 
-export const InsightHero: React.FC<InsightHeroProps> = ({ insight, onDismiss, className }) => {
+export const InsightHero: React.FC<InsightHeroProps> = ({ insight, onDismiss, onNavigate, className }) => {
     const navigate = useNavigate();
 
     if (!insight) return null;
@@ -44,7 +46,7 @@ export const InsightHero: React.FC<InsightHeroProps> = ({ insight, onDismiss, cl
         e.stopPropagation();
         if (insight.actionType === 'navigate' && insight.actionTarget) {
             if (insight.actionTarget === 'workout') {
-                navigate('/workout'); // Or emit event
+                onNavigate?.('workout');
             } else {
                 navigate(insight.actionTarget);
             }
