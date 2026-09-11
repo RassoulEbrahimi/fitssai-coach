@@ -473,6 +473,7 @@ const HomeView: React.FC<HomeViewProps> = ({
         {/* Insight Hero (Smart Insights) */}
         <InsightHero
           insight={activeInsight}
+          onNavigate={onNavigate}
           onDismiss={() => {
             // Optional: Persist dismissal in local state or session storage if desired
           }}
