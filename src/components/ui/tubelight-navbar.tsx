@@ -233,6 +233,9 @@ export const NavBar = React.forwardRef<HTMLElement, NavBarProps>(
             return (
               <motion.button
                 key={item.id}
+                type="button"
+                aria-label={item.name}
+                aria-current={isActive ? "page" : undefined}
                 onClick={() => onTabChange(item.id)}
                 onTapStart={() => !prefersReducedMotion && setPressedButton(item.id)}
                 onTap={() => !prefersReducedMotion && setTimeout(() => setPressedButton(null), 200)}
@@ -245,7 +248,7 @@ export const NavBar = React.forwardRef<HTMLElement, NavBarProps>(
                   scale: { duration: 0.2 }
                 }}
                 className={cn(
-                  "relative cursor-pointer text-sm font-semibold px-6 py-2 rounded-full transition-colors touch-manipulation",
+                  "relative cursor-pointer text-sm font-semibold px-5 min-[375px]:px-6 py-2 min-h-11 md:min-h-0 rounded-full transition-colors touch-manipulation focus-visible:-outline-offset-2",
                   "text-foreground/70 hover:text-emerald-700 dark:hover:text-emerald-300",
                   isActive && "text-emerald-700 dark:text-emerald-400",
                 )}
@@ -290,7 +293,7 @@ export const NavBar = React.forwardRef<HTMLElement, NavBarProps>(
                     }
                   }}
                 >
-                  <Icon size={isMobile ? 22 : 20} strokeWidth={2.5} />
+                  <Icon aria-hidden="true" size={isMobile ? 22 : 20} strokeWidth={2.5} />
                 </motion.span>
                 
                 {isActive && (
