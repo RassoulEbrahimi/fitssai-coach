@@ -56,7 +56,7 @@ describe("primary navigation", () => {
       } else {
         expect(label).toHaveTextContent(name);
       }
-      expect(within(nav).getByRole("button", { name, exact: true })).toBe(buttons[index]);
+      expect(within(nav).getByRole("button", { name })).toBe(buttons[index]);
       expect(buttons[index]).toHaveAccessibleName(name);
     }
     expect(within(nav).getByRole("button", { current: "page" })).toHaveAccessibleName("Dashboard");
