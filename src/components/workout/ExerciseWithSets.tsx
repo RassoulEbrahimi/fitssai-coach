@@ -134,56 +134,58 @@ export const ExerciseWithSets: React.FC<ExerciseWithSetsProps> = ({
             : "border-border bg-background"
         )}
       >
-        {/* Exercise Header */}
-        <CollapsibleTrigger asChild>
-          <div
-            className={cn(
-              "flex items-center gap-3 p-4 cursor-pointer hover:bg-muted/50 transition-colors",
-              "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
-            )}
-            role="button"
-            tabIndex={0}
-          >
-            {/* Icon */}
-            <div className={cn(
-              "w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0",
-              isExerciseComplete
-                ? "bg-primary text-primary-foreground"
-                : "bg-muted text-muted-foreground"
-            )}>
-              <Dumbbell className="w-5 h-5" />
-            </div>
-
-            {/* Exercise info */}
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2">
-                <span className={cn(
-                  "font-medium text-sm truncate",
-                  isExerciseComplete && "text-primary"
-                )}>
-                  {exercise.name}
-                </span>
-              </div>
-              <div className="flex items-center gap-2 mt-1">
-                <span className="text-xs text-muted-foreground">
-                  {completedCount}/{totalSets} Sätze
-                </span>
-                {exercise.rest && (
-                  <span className="text-xs text-muted-foreground">
-                    • {formatRestDisplay(exercise.rest, { withLabel: true })}
-                  </span>
-                )}
-              </div>
-              {/* Mini progress bar */}
-              <Progress 
-                value={progressPercent} 
-                className="h-1 mt-2 bg-muted/50"
-              />
-            </div>
-
-            {/* Expand indicator */}
-            <ChevronDown className="w-5 h-5 text-muted-foreground transition-transform duration-200 collapsible-chevron" />
+        {/*
+          Exercise header. A native button, not a div with role="button": the
+          browser then gives Enter and Space activation for free instead of us
+          re-implementing keyboard behaviour by hand. w-full/text-left keep the
+          block-level look the div had, since a button shrinks to fit its
+          content and centres its text.
+        */}
+        <CollapsibleTrigger
+          className={cn(
+            "flex w-full items-center gap-3 p-4 text-left cursor-pointer hover:bg-muted/50 transition-colors",
+            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
+          )}
+        >
+          {/* Icon */}
+          <div className={cn(
+            "w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0",
+            isExerciseComplete
+              ? "bg-primary text-primary-foreground"
+              : "bg-muted text-muted-foreground"
+          )}>
+            <Dumbbell className="w-5 h-5" />
           </div>
+
+          {/* Exercise info */}
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2">
+              <span className={cn(
+                "font-medium text-sm truncate",
+                isExerciseComplete && "text-primary"
+              )}>
+                {exercise.name}
+              </span>
+            </div>
+            <div className="flex items-center gap-2 mt-1">
+              <span className="text-xs text-muted-foreground">
+                {completedCount}/{totalSets} Sätze
+              </span>
+              {exercise.rest && (
+                <span className="text-xs text-muted-foreground">
+                  • {formatRestDisplay(exercise.rest, { withLabel: true })}
+                </span>
+              )}
+            </div>
+            {/* Mini progress bar */}
+            <Progress 
+              value={progressPercent} 
+              className="h-1 mt-2 bg-muted/50"
+            />
+          </div>
+
+          {/* Expand indicator */}
+          <ChevronDown className="w-5 h-5 text-muted-foreground transition-transform duration-200 collapsible-chevron" />
         </CollapsibleTrigger>
 
         {/* Sets list */}
