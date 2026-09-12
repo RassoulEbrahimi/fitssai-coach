@@ -155,7 +155,23 @@ const Dashboard = () => {
     toggleDay,
     isToggling: completingWorkout
   } = useWorkoutLogs(liveWorkoutPlan?.id);
-  const { data: nutritionPlan } = useNutritionPlan();
+  /*
+    The nutrition tab's loading and error state must come from *this* query.
+    It used to read useWorkoutPlan().isLoading, which coupled the nutrition
+    skeleton to an unrelated fetch and made a failed nutrition load render as
+    "there is no plan yet".
+  */
+  const {
+    data: nutritionPlan,
+    isLoading: isLoadingNutritionPlan,
+    isError: isNutritionPlanError,
+    refetch: refetchNutritionPlan,
+  } = useNutritionPlan();
+
+  /** Retries the nutrition query only — no navigation, no plan generation. */
+  const retryNutritionPlan = useCallback(() => {
+    void refetchNutritionPlan?.();
+  }, [refetchNutritionPlan]);
 
   // Prefetch weekly activity data immediately so it's ready when HomeView mounts
   useWeeklyActivity('weekly');
@@ -606,11 +622,12 @@ const Dashboard = () => {
                     <div className="space-y-6">
                       <Suspense fallback={<NutritionSkeleton />}>
                         <div ref={(el) => setViewRef('nutrition', el)}>
-                          {isLoadingPlans && !nutritionPlan ? (
-                            <NutritionSkeleton />
-                          ) : (
-                            <NutritionView nutritionPlan={nutritionPlan} />
-                          )}
+                          <NutritionView
+                            nutritionPlan={nutritionPlan ?? null}
+                            isLoading={isLoadingNutritionPlan}
+                            isError={isNutritionPlanError}
+                            onRetry={retryNutritionPlan}
+                          />
                         </div>
                       </Suspense>
                     </div>
