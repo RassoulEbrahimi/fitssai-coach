@@ -190,6 +190,12 @@
       "emptyState": {
         "title": "Noch kein Ernährungsplan",
         "description": "Sobald ein Ernährungsplan für dich vorliegt, findest du ihn hier."
+      },
+      "loading": "Ernährungsplan wird geladen",
+      "errorState": {
+        "title": "Ernährungsplan konnte nicht geladen werden",
+        "description": "Beim Laden deines Ernährungsplans ist ein Fehler aufgetreten. Bitte versuche es erneut.",
+        "retry": "Erneut versuchen"
       }
     },
     "profile": {
