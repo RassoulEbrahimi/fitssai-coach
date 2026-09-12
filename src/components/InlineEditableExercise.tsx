@@ -9,135 +9,13 @@ import { useTranslation } from 'react-i18next';
 import type { Exercise } from '@/hooks/useExerciseEditor';
 import { cn } from '@/lib/utils';
 import { ExerciseSelector, PREDEFINED_EXERCISES } from '@/components/ExerciseSelector';
+import {
+  findExerciseDefinition,
+  formatDescription,
+  parseDescription,
+  resolveExerciseFields,
+} from '@/lib/exerciseFields';
 
-// Predefined exercises with field definitions
-type ExerciseField = 'sets' | 'reps' | 'weight' | 'rest' | 'distance' | 'duration';
-const PREDEFINED_EXERCISES_WITH_FIELDS = [
-// Cardio
-{
-  name: 'Laufen',
-  type: 'cardio',
-  icon: '🏃',
-  fields: ['distance', 'duration'] as ExerciseField[]
-}, {
-  name: 'Radfahren',
-  type: 'cardio',
-  icon: '🚴',
-  fields: ['distance', 'duration'] as ExerciseField[]
-}, {
-  name: 'Schwimmen',
-  type: 'cardio',
-  icon: '🏊',
-  fields: ['distance', 'duration'] as ExerciseField[]
-}, {
-  name: 'Rudern',
-  type: 'cardio',
-  icon: '🚣',
-  fields: ['distance', 'duration'] as ExerciseField[]
-},
-// Upper Body - Push
-{
-  name: 'Bankdrücken',
-  type: 'strength',
-  icon: '💪',
-  fields: ['sets', 'reps', 'weight', 'rest'] as ExerciseField[]
-}, {
-  name: 'Schrägbankdrücken',
-  type: 'strength',
-  icon: '💪',
-  fields: ['sets', 'reps', 'weight', 'rest'] as ExerciseField[]
-}, {
-  name: 'Schulterdrücken',
-  type: 'strength',
-  icon: '💪',
-  fields: ['sets', 'reps', 'weight', 'rest'] as ExerciseField[]
-}, {
-  name: 'Liegestütze',
-  type: 'strength',
-  icon: '💪',
-  fields: ['sets', 'reps'] as ExerciseField[]
-}, {
-  name: 'Dips',
-  type: 'strength',
-  icon: '💪',
-  fields: ['sets', 'reps', 'weight'] as ExerciseField[]
-},
-// Upper Body - Pull
-{
-  name: 'Klimmzüge',
-  type: 'strength',
-  icon: '💪',
-  fields: ['sets', 'reps'] as ExerciseField[]
-}, {
-  name: 'Latziehen',
-  type: 'strength',
-  icon: '💪',
-  fields: ['sets', 'reps', 'weight'] as ExerciseField[]
-}, {
-  name: 'Rudern',
-  type: 'strength',
-  icon: '💪',
-  fields: ['sets', 'reps', 'weight'] as ExerciseField[]
-}, {
-  name: 'Bizepscurls',
-  type: 'strength',
-  icon: '💪',
-  fields: ['sets', 'reps', 'weight'] as ExerciseField[]
-},
-// Lower Body
-{
-  name: 'Kniebeugen',
-  type: 'strength',
-  icon: '🦵',
-  fields: ['sets', 'reps', 'weight', 'rest'] as ExerciseField[]
-}, {
-  name: 'Kreuzheben',
-  type: 'strength',
-  icon: '🦵',
-  fields: ['sets', 'reps', 'weight', 'rest'] as ExerciseField[]
-}, {
-  name: 'Beinpresse',
-  type: 'strength',
-  icon: '🦵',
-  fields: ['sets', 'reps', 'weight'] as ExerciseField[]
-}, {
-  name: 'Ausfallschritte',
-  type: 'strength',
-  icon: '🦵',
-  fields: ['sets', 'reps'] as ExerciseField[]
-}, {
-  name: 'Beinbeuger',
-  type: 'strength',
-  icon: '🦵',
-  fields: ['sets', 'reps', 'weight'] as ExerciseField[]
-}, {
-  name: 'Beinstrecker',
-  type: 'strength',
-  icon: '🦵',
-  fields: ['sets', 'reps', 'weight'] as ExerciseField[]
-}, {
-  name: 'Wadenheben',
-  type: 'strength',
-  icon: '🦵',
-  fields: ['sets', 'reps', 'weight'] as ExerciseField[]
-},
-// Core
-{
-  name: 'Planks',
-  type: 'strength',
-  icon: '🧘',
-  fields: ['duration', 'sets'] as ExerciseField[]
-}, {
-  name: 'Crunches',
-  type: 'strength',
-  icon: '🧘',
-  fields: ['sets', 'reps'] as ExerciseField[]
-}, {
-  name: 'Russian Twists',
-  type: 'strength',
-  icon: '🧘',
-  fields: ['sets', 'reps'] as ExerciseField[]
-}] as const;
 interface InlineEditableExerciseProps {
   exercise: Exercise;
   exerciseIndex: number;
@@ -169,22 +47,6 @@ const InlineEditableExercise: React.FC<InlineEditableExerciseProps> = ({
     if ('vibrate' in navigator) {
       navigator.vibrate(pattern);
     }
-  };
-
-  // Parse distance/duration from description for cardio exercises
-  const parseDescription = (desc: string) => {
-    const distanceMatch = desc.match(/(\d+(?:\.\d+)?)\s*km/i);
-    const durationMatch = desc.match(/(\d+)\s*min/i);
-    return {
-      distance: distanceMatch ? distanceMatch[1] : '',
-      duration: durationMatch ? durationMatch[1] : ''
-    };
-  };
-  const formatDescription = (distance: string, duration: string) => {
-    const parts = [];
-    if (distance) parts.push(`${distance}km`);
-    if (duration) parts.push(`${duration}min`);
-    return parts.join(' / ');
   };
 
   // Local state for inputs (for immediate UI updates)
@@ -229,9 +91,11 @@ const InlineEditableExercise: React.FC<InlineEditableExerciseProps> = ({
     });
   };
 
-  // Get current exercise definition to know which fields to show
-  const currentExerciseDetails = PREDEFINED_EXERCISES_WITH_FIELDS.find(ex => ex.name === exercise.name);
-  const requiredFields = currentExerciseDetails?.fields || [];
+  // Which fields to show: the exercise's own definition when its name is known, and
+  // otherwise the prescription the exercise already carries, so a name variant does not
+  // hide sets, reps, weight or rest that are really there.
+  const currentExerciseDetails = findExerciseDefinition(exercise.name);
+  const requiredFields = React.useMemo(() => resolveExerciseFields(exercise), [exercise]);
   const handleFieldUpdate = async (field: keyof Exercise, value: any) => {
     setIsSaving(true);
     try {
@@ -299,7 +163,7 @@ const InlineEditableExercise: React.FC<InlineEditableExerciseProps> = ({
   };
 
   const handleNameChange = async (selectedExercise: typeof PREDEFINED_EXERCISES[number]) => {
-    const selectedExerciseWithFields = PREDEFINED_EXERCISES_WITH_FIELDS.find(ex => ex.name === selectedExercise.name);
+    const selectedExerciseWithFields = findExerciseDefinition(selectedExercise.name);
     if (!selectedExerciseWithFields) return;
     setIsSaving(true);
     setOpenNamePopover(false);
@@ -453,10 +317,10 @@ const InlineEditableExercise: React.FC<InlineEditableExerciseProps> = ({
         </div>
 
         {/* Parameter fields - inline with auto width */}
-        {requiredFields.includes('sets') && <div className="inline-flex items-center justify-center shrink gap-0.5 px-1.5 py-1 bg-background/50 rounded-md border border-border/30">
+        {(requiredFields.includes('sets') || requiredFields.includes('reps')) && <div className="inline-flex items-center justify-center shrink gap-0.5 px-1.5 py-1 bg-background/50 rounded-md border border-border/30">
             <span className="text-sm leading-none" aria-hidden="true">🏋️</span>
             <Select value={String(exercise.sets)} onValueChange={handleSetsChange} disabled={isSaving || isUpdating}>
-              <SelectTrigger className="h-auto w-auto border-0 bg-transparent p-0 text-xs sm:text-sm font-medium focus:ring-0 [&>svg]:hidden">
+              <SelectTrigger aria-label={`Sätze für ${exercise.name}`} className="h-auto w-auto border-0 bg-transparent p-0 text-xs sm:text-sm font-medium focus:ring-0 [&>svg]:hidden">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent className="bg-background border-border z-50 shadow-lg">
@@ -469,7 +333,7 @@ const InlineEditableExercise: React.FC<InlineEditableExerciseProps> = ({
             </Select>
             <span className="text-xs sm:text-sm text-muted-foreground leading-none">×</span>
             <Select value={String(exercise.reps)} onValueChange={handleRepsChange} disabled={isSaving || isUpdating}>
-              <SelectTrigger className="h-auto w-auto border-0 bg-transparent p-0 text-xs sm:text-sm font-medium focus:ring-0 [&>svg]:hidden">
+              <SelectTrigger aria-label={`Wiederholungen für ${exercise.name}`} className="h-auto w-auto border-0 bg-transparent p-0 text-xs sm:text-sm font-medium focus:ring-0 [&>svg]:hidden">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent className="bg-background border-border z-50 shadow-lg">
