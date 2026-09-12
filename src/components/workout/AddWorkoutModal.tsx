@@ -163,7 +163,7 @@ export function AddWorkoutModal({
           }}
         >
           <DialogHeader>
-            <DialogTitle className="text-2xl font-semibold text-center bg-gradient-to-r from-primary via-emerald-400 to-teal-400 bg-clip-text text-transparent">
+            <DialogTitle className="text-2xl font-semibold text-center text-foreground dark:bg-gradient-to-r dark:from-primary dark:via-emerald-400 dark:to-teal-400 dark:bg-clip-text dark:text-transparent">
               Training hinzufügen
             </DialogTitle>
             <DialogDescription className="sr-only">
@@ -183,7 +183,7 @@ export function AddWorkoutModal({
                     <TabsList className="grid w-full grid-cols-2 mb-6 bg-muted/50">
                       <TabsTrigger 
                         value="manual"
-                        className="min-w-0 px-1.5 text-xs sm:px-3 sm:text-sm data-[state=active]:bg-primary/20 data-[state=active]:text-primary transition-all"
+                        className="min-w-0 px-1.5 text-xs sm:px-3 sm:text-sm data-[state=active]:bg-primary/20 data-[state=active]:text-foreground dark:data-[state=active]:text-primary transition-all"
                       >
                         {/* The emoji is decoration; at 360px the label needs
                             the width more than the icon does. */}
@@ -192,7 +192,7 @@ export function AddWorkoutModal({
                       </TabsTrigger>
                       <TabsTrigger 
                         value="ai" 
-                        className="min-w-0 px-1.5 text-xs sm:px-3 sm:text-sm data-[state=active]:bg-primary/20 data-[state=active]:text-primary transition-all"
+                        className="min-w-0 px-1.5 text-xs sm:px-3 sm:text-sm data-[state=active]:bg-primary/20 data-[state=active]:text-foreground dark:data-[state=active]:text-primary transition-all"
                       >
                         <span className="mr-2 hidden sm:inline" aria-hidden="true">✨</span>
                         <span className="whitespace-nowrap">KI-Vorschlag</span>
