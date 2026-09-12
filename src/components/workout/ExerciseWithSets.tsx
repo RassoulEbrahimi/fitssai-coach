@@ -32,8 +32,6 @@ interface ExerciseWithSetsProps {
   onToggleSet: (params: {
     exerciseIndex: number;
     setNumber: number;
-    repsCompleted: number;
-    weightUsed: number | null;
     completed: boolean;
   }) => void;
   isToggling: boolean;
@@ -66,20 +64,6 @@ export const ExerciseWithSets: React.FC<ExerciseWithSetsProps> = ({
     return isNaN(parsed) ? 3 : parsed; // Default to 3 sets
   }, [exercise.sets]);
 
-  // Parse target reps
-  const targetReps = useMemo(() => {
-    if (typeof exercise.reps === 'number') return exercise.reps;
-    const parsed = parseInt(String(exercise.reps), 10);
-    return isNaN(parsed) ? 10 : parsed; // Default to 10 reps
-  }, [exercise.reps]);
-
-  // Parse weight (extract numeric value)
-  const weightValue = useMemo(() => {
-    if (!exercise.weight) return null;
-    const match = exercise.weight.match(/(\d+(?:\.\d+)?)/);
-    return match ? parseFloat(match[1]) : null;
-  }, [exercise.weight]);
-
   // Calculate progress
   const completedCount = getCompletedSetsCount(exerciseIndex);
   const progressPercent = totalSets > 0 ? Math.round((completedCount / totalSets) * 100) : 0;
@@ -103,11 +87,11 @@ export const ExerciseWithSets: React.FC<ExerciseWithSetsProps> = ({
     const isCurrentlyCompleted = isSetCompleted(exerciseIndex, setNumber);
     const willBeCompleted = !isCurrentlyCompleted;
 
+    // Completion only. The prescription is what the plan asked for, not what
+    // was performed, so no reps or weight travel with the tick.
     onToggleSet({
       exerciseIndex,
       setNumber,
-      repsCompleted: targetReps,
-      weightUsed: weightValue,
       completed: willBeCompleted,
     });
 
@@ -205,7 +189,7 @@ export const ExerciseWithSets: React.FC<ExerciseWithSetsProps> = ({
               <ExerciseSetRow
                 key={setNumber}
                 setNumber={setNumber}
-                targetReps={targetReps}
+                targetReps={exercise.reps}
                 targetWeight={exercise.weight}
                 isCompleted={isSetCompleted(exerciseIndex, setNumber)}
                 isToggling={isToggling}

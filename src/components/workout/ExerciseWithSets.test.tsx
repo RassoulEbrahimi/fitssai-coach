@@ -173,8 +173,6 @@ describe("ExerciseWithSets set controls", () => {
     expect(onToggleSet).toHaveBeenCalledWith({
       exerciseIndex: 0,
       setNumber: 1,
-      repsCompleted: 10,
-      weightUsed: 40,
       completed: true,
     });
     expect(onStartTimer).toHaveBeenCalledWith(0, 90, 1);
@@ -190,6 +188,58 @@ describe("ExerciseWithSets set controls", () => {
     expect(onToggleSet).toHaveBeenCalledWith(
       expect.objectContaining({ exerciseIndex: 0, setNumber: 2, completed: true })
     );
+  });
+
+  it("records completion only, never the prescription as performed reps or weight", async () => {
+    const user = userEvent.setup();
+    const { onToggleSet, onStartTimer } = renderExercise({
+      defaultExpanded: true,
+      exercise: { name: "Bankdrücken", sets: 3, reps: "8–12", weight: "60 kg", rest: "90s" },
+    });
+
+    await user.click(screen.getByRole("checkbox", { name: /Satz 1/ }));
+
+    expect(onToggleSet).toHaveBeenCalledTimes(1);
+    const [params] = onToggleSet.mock.calls[0];
+    expect(params).toEqual({ exerciseIndex: 0, setNumber: 1, completed: true });
+    expect(params).not.toHaveProperty("repsCompleted");
+    expect(params).not.toHaveProperty("weightUsed");
+    expect(onStartTimer).toHaveBeenCalledWith(0, 90, 1);
+  });
+
+  it("shows the range prescription on every set row", () => {
+    renderExercise({
+      defaultExpanded: true,
+      exercise: { name: "Bankdrücken", sets: 2, reps: "8–12", weight: "60 kg", rest: "90s" },
+    });
+
+    expect(screen.getAllByText("8–12 × 60 kg")).toHaveLength(2);
+    expect(screen.getByRole("checkbox", { name: /Satz 1: Vorgabe 8–12 Wiederholungen mit 60 kg/ })).toBeInTheDocument();
+  });
+
+  it("does not turn a time prescription into a rep count", () => {
+    renderExercise({
+      defaultExpanded: true,
+      exercise: { name: "Bankdrücken", sets: 1, reps: "30 Sekunden", rest: "60s" },
+    });
+
+    expect(screen.getByText("30 Sekunden")).toBeInTheDocument();
+    expect(screen.queryByText(/30 Wdh/)).not.toBeInTheDocument();
+  });
+
+  it("un-completes a range set with the same completion-only shape", async () => {
+    const user = userEvent.setup();
+    const { onToggleSet, onCancelTimerForSet } = renderExercise({
+      defaultExpanded: true,
+      exercise: { name: "Bankdrücken", sets: 3, reps: "8–12", weight: "60 kg", rest: "90s" },
+      isSetCompleted: (_exerciseIndex, setNumber) => setNumber === 2,
+      getCompletedSetsCount: () => 1,
+    });
+
+    await user.click(screen.getByRole("checkbox", { name: /Satz 2/ }));
+
+    expect(onToggleSet).toHaveBeenCalledWith({ exerciseIndex: 0, setNumber: 2, completed: false });
+    expect(onCancelTimerForSet).toHaveBeenCalledWith(0, 2);
   });
 
   it("cancels only the owning set's timer when a set is un-completed", async () => {

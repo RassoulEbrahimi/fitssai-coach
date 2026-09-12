@@ -66,7 +66,7 @@ const logSetAt = async (exerciseIndex: number, weekKey: string = WEEK) => {
   await act(async () => {
     await sets.result.current.toggleSetAsync({
       planId: PLAN, weekKey, dayIndex: 0, exerciseIndex,
-      setNumber: 1, repsCompleted: 8, weightUsed: 100, completed: true,
+      setNumber: 1, completed: true,
       workoutDay: '2026-09-07',
     });
   });

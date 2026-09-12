@@ -1,4 +1,5 @@
 import type { FitnessGoal } from "./fitnessGoal";
+import { readActualPerformance } from "../setPerformance";
 
 /**
  * The deterministic coaching fact layer.
@@ -227,9 +228,19 @@ export const computeHistoryCoverage = (
  * Exercise-level facts
  * ------------------------------------------------------------------ */
 
+/**
+ * One logged set, shaped like a `workout_set_logs` document.
+ *
+ * Every logged set is a completed set. Its reps and weight are only read as
+ * performance when `performanceSource` is `"user-recorded"` — see
+ * `setPerformance.ts`. A completion-only set, and every older set without the
+ * marker (whose numbers were copied from the prescription), still counts as
+ * completed but contributes no reps and no load.
+ */
 export interface SetLogInput {
   setNumber: number;
-  repsCompleted: number;
+  performanceSource?: string | null;
+  repsCompleted?: number | null;
   /**
    * Kilograms, when the set was weighted.
    *
@@ -252,12 +263,19 @@ export interface ExerciseSessionInput {
 export interface ExerciseProgressFacts {
   key: string;
   name: string;
+  /** Sets logged as done, whether or not anything about them was measured. */
   completedSets: number;
   prescribedSets: number | null;
-  totalReps: number;
-  /** Heaviest recorded load, or null when nothing was weighted. */
+  /** Completed sets whose reps were explicitly recorded as performed. */
+  measuredSets: number;
+  /**
+   * Performed reps across the session, or null unless every completed set has
+   * recorded reps. A sum over some sets would be a floor, not a total.
+   */
+  totalReps: number | null;
+  /** Heaviest recorded load, or null when no performed load was recorded. */
   topWeight: number | null;
-  /** True when at least one set carried a load. */
+  /** True when at least one set carried a recorded load. */
   hasWeight: boolean;
 }
 
@@ -284,19 +302,27 @@ export const exerciseKey = (exercise: Pick<ExerciseSessionInput, "exerciseId" | 
 export const computeExerciseFacts = (
   exercise: ExerciseSessionInput
 ): ExerciseProgressFacts => {
-  const weights = exercise.sets
-    .map((set) => set.weightUsed)
-    .filter((weight): weight is number => typeof weight === "number" && Number.isFinite(weight) && weight > 0);
+  const actual = exercise.sets.map(readActualPerformance);
+  const weights = actual
+    .map((set) => set.weightKg)
+    .filter((weight): weight is number => weight !== null);
+  const reps = actual
+    .map((set) => set.reps)
+    .filter((count): count is number => count !== null);
+  const completedSets = exercise.sets.length;
 
   return {
     key: exerciseKey(exercise),
     name: exercise.name,
-    completedSets: exercise.sets.length,
+    completedSets,
     prescribedSets:
       typeof exercise.prescribedSets === "number" && exercise.prescribedSets > 0
         ? exercise.prescribedSets
         : null,
-    totalReps: exercise.sets.reduce((sum, set) => sum + (Number.isFinite(set.repsCompleted) ? set.repsCompleted : 0), 0),
+    measuredSets: reps.length,
+    totalReps: completedSets > 0 && reps.length === completedSets
+      ? reps.reduce((sum, count) => sum + count, 0)
+      : null,
     topWeight: weights.length > 0 ? Math.max(...weights) : null,
     hasWeight: weights.length > 0,
   };
@@ -325,6 +351,11 @@ export interface ProgressionFact {
  *
  * At most one signal, in priority order, so a single session cannot produce a
  * pile of overlapping claims.
+ *
+ * Weight and reps signals need recorded performance on every set of both
+ * sessions. A completion-only or unverified set carries none, so a session
+ * that has one can still show more or fewer completed sets — a completion
+ * fact — but never a load or reps claim.
  */
 export const compareExercise = (
   previous: ExerciseProgressFacts,
@@ -332,19 +363,23 @@ export const compareExercise = (
 ): ProgressionFact | null => {
   if (previous.key !== current.key) return null;
 
-  if (previous.hasWeight && current.hasWeight) {
+  const repsBefore = previous.totalReps;
+  const repsAfter = current.totalReps;
+  const performanceMeasured = repsBefore !== null && repsAfter !== null;
+
+  if (performanceMeasured && previous.hasWeight && current.hasWeight) {
     const before = previous.topWeight as number;
     const after = current.topWeight as number;
     // Only at comparable volume: more weight for far fewer reps is not a gain.
-    if (after > before && current.totalReps >= previous.totalReps * 0.8) {
+    if (after > before && repsAfter >= repsBefore * 0.8) {
       return { kind: "weight-increase", exerciseName: current.name, previous: before, current: after };
     }
-    if (after === before && current.totalReps > previous.totalReps) {
-      return { kind: "reps-increase", exerciseName: current.name, previous: previous.totalReps, current: current.totalReps };
+    if (after === before && repsAfter > repsBefore) {
+      return { kind: "reps-increase", exerciseName: current.name, previous: repsBefore, current: repsAfter };
     }
-  } else if (!previous.hasWeight && !current.hasWeight && current.totalReps > previous.totalReps) {
+  } else if (performanceMeasured && !previous.hasWeight && !current.hasWeight && repsAfter > repsBefore) {
     // Bodyweight: reps are the only axis, and that is a real signal.
-    return { kind: "reps-increase", exerciseName: current.name, previous: previous.totalReps, current: current.totalReps };
+    return { kind: "reps-increase", exerciseName: current.name, previous: repsBefore, current: repsAfter };
   }
 
   if (current.completedSets > previous.completedSets) {

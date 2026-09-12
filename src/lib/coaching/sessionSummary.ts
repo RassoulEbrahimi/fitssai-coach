@@ -26,7 +26,11 @@ export interface SessionSummaryInput {
 export interface SessionSummary {
   exercises: ExerciseProgressFacts[];
   completedSets: number;
-  totalReps: number;
+  /**
+   * Performed reps, or null unless every completed set recorded them. Never
+   * derived from the prescription, never 0 for "not measured".
+   */
+  totalReps: number | null;
   /** Sets the plan asked for, when every exercise declared one. */
   prescribedSets: number | null;
   /** True only when every exercise met its prescribed set count. */
@@ -40,7 +44,10 @@ export const summariseSession = (input: SessionSummaryInput): SessionSummary => 
   const exercises = input.exercises.map(computeExerciseFacts);
 
   const completedSets = exercises.reduce((sum, facts) => sum + facts.completedSets, 0);
-  const totalReps = exercises.reduce((sum, facts) => sum + facts.totalReps, 0);
+  const trained = exercises.filter((facts) => facts.completedSets > 0);
+  const totalReps = trained.length > 0 && trained.every((facts) => facts.totalReps !== null)
+    ? trained.reduce((sum, facts) => sum + (facts.totalReps ?? 0), 0)
+    : null;
 
   /*
     Only a total when every exercise declared one — summing a partial set of

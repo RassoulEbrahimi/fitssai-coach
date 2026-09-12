@@ -43,6 +43,13 @@ export interface ToggleDayPayload {
     completed: boolean;
 }
 
+/**
+ * Ticking one set complete or open. Completion only: no reps, no weight.
+ *
+ * Entries queued by an older build may still carry `repsCompleted`/`weightUsed`
+ * copied from the plan's prescription. The handler ignores them, so a replay
+ * never turns them into recorded performance.
+ */
 export interface ToggleSetPayload {
     workoutDay?: string;
     planId: string;
@@ -50,8 +57,6 @@ export interface ToggleSetPayload {
     dayIndex: number;
     exerciseIndex: number;
     setNumber: number;
-    repsCompleted: number;
-    weightUsed?: number | null;
     completed: boolean;
 }
 

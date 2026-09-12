@@ -21,7 +21,7 @@ import { flushOfflineQueue } from '@/lib/offlineReplay';
 import { rows, writes, firestore, resetWorkoutFirestore } from '@/test/mocks/workoutFirestore';
 
 const DAY = { planId: 'p', weekKey: 'Week 1', dayIndex: 0, workoutDay: '2026-09-07', completed: true };
-const SET = { ...DAY, exerciseIndex: 0, setNumber: 1, repsCompleted: 10, weightUsed: 40 };
+const SET = { ...DAY, exerciseIndex: 0, setNumber: 1 };
 const STORAGE = 'FITSSAI_OFFLINE_QUEUE';
 const createParentLog = firestore.runTransaction.getMockImplementation()!;
 let client: QueryClient;
@@ -379,7 +379,8 @@ describe('a lookup that misses an existing deterministic parent', () => {
     expect((await flush()).completed).toBe(1);
     expect([...rows.keys()]).toEqual([parent, `${parent}/workout_set_logs/set_1`]);
     expect(rows.get(parent)).toEqual(before);
-    expect(rows.get(`${parent}/workout_set_logs/set_1`)).toMatchObject({ setNumber: 1, repsCompleted: 10, weightUsed: 40 });
+    expect(rows.get(`${parent}/workout_set_logs/set_1`)).toMatchObject({ setNumber: 1, performanceSource: 'completion-only' });
+    expect(rows.get(`${parent}/workout_set_logs/set_1`)).not.toHaveProperty('repsCompleted');
   });
 
   it('TOGGLE_DAY_COMPLETION completion changes only completion, keeping unrelated fields', async () => {

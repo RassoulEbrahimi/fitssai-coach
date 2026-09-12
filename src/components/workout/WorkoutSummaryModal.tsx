@@ -12,7 +12,7 @@ import {
   DialogOverlay,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Clock, Dumbbell, CheckCircle2, Repeat, Weight, ArrowLeft, Save } from "lucide-react";
+import { Clock, Dumbbell, CheckCircle2, ArrowLeft, Save } from "lucide-react";
 
 interface Exercise {
   name: string;
@@ -33,22 +33,7 @@ interface WorkoutSummaryModalProps {
   workoutName: string;
   selectedDate: Date;
   getCompletedSetsCount: (exerciseIndex: number) => number;
-  isSetCompleted: (exerciseIndex: number, setNumber: number) => boolean;
 }
-
-// Parse weight string like "10 kg" or "12.5kg" to number
-const parseWeight = (weight?: string): number => {
-  if (!weight) return 0;
-  const match = weight.match(/[\d.]+/);
-  return match ? parseFloat(match[0]) : 0;
-};
-
-// Parse reps string or number
-const parseReps = (reps: number | string): number => {
-  if (typeof reps === 'number') return reps;
-  const match = String(reps).match(/\d+/);
-  return match ? parseInt(match[0], 10) : 0;
-};
 
 // Parse sets count
 const parseSets = (sets: number | string): number => {
@@ -68,24 +53,23 @@ const formatDurationLong = (seconds: number): string => {
   return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
 };
 
-// Calculate comprehensive workout stats
+/*
+  Completion stats only. There is deliberately no total reps or load: a ticked
+  set records that it was done, not how many reps or what weight — multiplying
+  the plan's prescription by the ticked sets would present the plan as a
+  measured result. Until performance is actually recorded, those figures are
+  not shown at all rather than shown as 0 or as the prescription.
+*/
 const calculateWorkoutStats = (
   exercises: Exercise[],
-  getCompletedSetsCount: (exerciseIndex: number) => number,
-  isSetCompleted: (exerciseIndex: number, setNumber: number) => boolean
+  getCompletedSetsCount: (exerciseIndex: number) => number
 ) => {
-  let totalVolume = 0;
   let totalSets = 0;
   let completedSets = 0;
-  let totalReps = 0;
   let exercisesCompleted = 0;
 
   exercises.forEach((exercise, index) => {
-    const numSets = parseSets(exercise.sets);
-    const repsPerSet = parseReps(exercise.reps);
-    const weight = parseWeight(exercise.weight);
-
-    totalSets += numSets;
+    totalSets += parseSets(exercise.sets);
     const completedForExercise = getCompletedSetsCount(index);
     completedSets += completedForExercise;
 
@@ -93,21 +77,11 @@ const calculateWorkoutStats = (
     if (completedForExercise > 0) {
       exercisesCompleted++;
     }
-
-    // Calculate volume and reps for completed sets
-    for (let setNum = 1; setNum <= numSets; setNum++) {
-      if (isSetCompleted(index, setNum)) {
-        totalVolume += weight * repsPerSet;
-        totalReps += repsPerSet;
-      }
-    }
   });
 
   return {
-    totalVolume: Math.round(totalVolume),
     totalSets,
     completedSets,
-    totalReps,
     exercisesCompleted,
     totalExercises: exercises.length,
   };
@@ -149,11 +123,10 @@ const WorkoutSummaryModal: React.FC<WorkoutSummaryModalProps> = ({
   workoutName,
   selectedDate,
   getCompletedSetsCount,
-  isSetCompleted,
 }) => {
   const stats = useMemo(() =>
-    calculateWorkoutStats(exercises, getCompletedSetsCount, isSetCompleted),
-    [exercises, getCompletedSetsCount, isSetCompleted]
+    calculateWorkoutStats(exercises, getCompletedSetsCount),
+    [exercises, getCompletedSetsCount]
   );
 
   const completionPercent = stats.totalSets > 0
@@ -220,23 +193,10 @@ const WorkoutSummaryModal: React.FC<WorkoutSummaryModalProps> = ({
               delay={0.1}
             />
             <StatCard
-              icon={<Weight className="w-4 h-4" />}
-              label="Last"
-              value={stats.totalVolume.toLocaleString('de-DE')}
-              unit="kg"
-              delay={0.15}
-            />
-            <StatCard
               icon={<CheckCircle2 className="w-4 h-4" />}
               label="Sätze"
               value={`${stats.completedSets}/${stats.totalSets}`}
-              delay={0.2}
-            />
-            <StatCard
-              icon={<Repeat className="w-4 h-4" />}
-              label="Reps"
-              value={stats.totalReps.toLocaleString('de-DE')}
-              delay={0.25}
+              delay={0.15}
             />
 
             {/* Full width Exercises count */}
@@ -245,9 +205,13 @@ const WorkoutSummaryModal: React.FC<WorkoutSummaryModalProps> = ({
                 icon={<Dumbbell className="w-4 h-4" />}
                 label="Übungen"
                 value={`${stats.exercisesCompleted} von ${stats.totalExercises}`}
-                delay={0.3}
+                delay={0.2}
               />
             </div>
+
+            <p className="col-span-2 text-xs text-center text-muted-foreground">
+              Abgehakte Sätze zählen als erledigt. Wiederholungen und Gewicht werden dabei nicht erfasst.
+            </p>
           </div>
 
           {/* Footer actions */}
