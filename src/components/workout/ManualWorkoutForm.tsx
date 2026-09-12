@@ -90,12 +90,12 @@ export const ManualWorkoutForm: React.FC<ManualWorkoutFormProps> = ({
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: 10 }}
               transition={{ duration: 0.2, ease: "easeOut" }}
-              className="flex items-center justify-between gap-2 px-3 sm:px-4 py-3 bg-emerald-500/10 rounded-lg border border-emerald-400/30 backdrop-blur-xl min-w-0 w-full"
+              className="flex items-center justify-between gap-2 px-3 sm:px-4 py-3 bg-primary/10 dark:bg-emerald-500/10 rounded-lg border border-border dark:border-emerald-400/30 backdrop-blur-xl min-w-0 w-full"
             >
               <div className="flex items-center gap-2 flex-1 min-w-0">
                 <span className="text-2xl flex-shrink-0">{selectedExercise.icon}</span>
                 <span 
-                  className="font-medium text-emerald-100 truncate" 
+                  className="font-medium text-foreground dark:text-emerald-100 truncate"
                   title={selectedExercise.name}
                 >
                   {selectedExercise.name}
@@ -106,7 +106,7 @@ export const ManualWorkoutForm: React.FC<ManualWorkoutFormProps> = ({
                 variant="ghost"
                 size="sm"
                 onClick={() => setSelectedExercise(null)}
-                className="h-8 w-8 p-0 text-emerald-300 hover:text-emerald-100 flex-shrink-0 ml-2 transition-colors duration-200"
+                className="h-8 w-8 p-0 text-foreground hover:text-foreground dark:text-emerald-300 dark:hover:text-emerald-100 flex-shrink-0 ml-2 transition-colors duration-200"
                 title="Ändern"
               >
                 <Edit3 className="w-5 h-5" />
@@ -131,7 +131,7 @@ export const ManualWorkoutForm: React.FC<ManualWorkoutFormProps> = ({
 
       {/* Dynamic Fields Based on Exercise Type */}
       {selectedExercise && (
-        <div className="space-y-3 sm:space-y-4 pt-3 sm:pt-4 border-t border-emerald-400/20">
+        <div className="space-y-3 sm:space-y-4 pt-3 sm:pt-4 border-t border-border dark:border-emerald-400/20">
           <AnimatePresence mode="wait">
             {selectedExercise.type === 'cardio' ? (
               <motion.div
@@ -145,25 +145,25 @@ export const ManualWorkoutForm: React.FC<ManualWorkoutFormProps> = ({
                 {/* Cardio fields - Compact 2-column grid */}
                 <div className="grid grid-cols-2 gap-3 sm:gap-4">
                   <div className="space-y-1 min-w-0 flex-1">
-                    <Label htmlFor="distance" className="text-xs font-medium text-emerald-200">Distanz</Label>
+                    <Label htmlFor="distance" className="text-xs font-medium text-foreground dark:text-emerald-200">Distanz</Label>
                     <Input
                       id="distance"
                       type="text"
                       placeholder="z.B. 5 km"
                       value={distance}
                       onChange={(e) => setDistance(e.target.value)}
-                      className="bg-emerald-500/5 border-emerald-400/30 text-emerald-100 py-2.5 px-3 sm:py-3"
+                      className="bg-background border-muted-foreground text-foreground dark:bg-emerald-500/5 dark:border-emerald-400/30 dark:text-emerald-100 py-2.5 px-3 sm:py-3"
                     />
                   </div>
                   <div className="space-y-1 min-w-0 flex-1">
-                    <Label htmlFor="duration" className="text-xs font-medium text-emerald-200">Zeit</Label>
+                    <Label htmlFor="duration" className="text-xs font-medium text-foreground dark:text-emerald-200">Zeit</Label>
                     <Input
                       id="duration"
                       type="text"
                       placeholder="z.B. 30 min"
                       value={duration}
                       onChange={(e) => setDuration(e.target.value)}
-                      className="bg-emerald-500/5 border-emerald-400/30 text-emerald-100 py-2.5 px-3 sm:py-3"
+                      className="bg-background border-muted-foreground text-foreground dark:bg-emerald-500/5 dark:border-emerald-400/30 dark:text-emerald-100 py-2.5 px-3 sm:py-3"
                     />
                   </div>
                 </div>
@@ -180,7 +180,7 @@ export const ManualWorkoutForm: React.FC<ManualWorkoutFormProps> = ({
                 {/* Strength training fields - Compact 2×2 grid */}
                 <div className="grid grid-cols-2 gap-3 sm:gap-4">
                   <div className="space-y-1 min-w-0 flex-1">
-                    <Label htmlFor="sets" className="text-xs font-medium text-emerald-200">Sätze *</Label>
+                    <Label htmlFor="sets" className="text-xs font-medium text-foreground dark:text-emerald-200">Sätze *</Label>
                     <Input
                       id="sets"
                       type="number"
@@ -189,11 +189,11 @@ export const ManualWorkoutForm: React.FC<ManualWorkoutFormProps> = ({
                       value={sets}
                       onChange={(e) => setSets(e.target.value)}
                       required
-                      className="bg-emerald-500/5 border-emerald-400/30 text-emerald-100 py-2.5 px-3 sm:py-3"
+                      className="bg-background border-muted-foreground text-foreground dark:bg-emerald-500/5 dark:border-emerald-400/30 dark:text-emerald-100 py-2.5 px-3 sm:py-3"
                     />
                   </div>
                   <div className="space-y-1 min-w-0 flex-1">
-                    <Label htmlFor="reps" className="text-xs font-medium text-emerald-200">Reps *</Label>
+                    <Label htmlFor="reps" className="text-xs font-medium text-foreground dark:text-emerald-200">Reps *</Label>
                     <Input
                       id="reps"
                       type="text"
@@ -201,29 +201,29 @@ export const ManualWorkoutForm: React.FC<ManualWorkoutFormProps> = ({
                       value={reps}
                       onChange={(e) => setReps(e.target.value)}
                       required
-                      className="bg-emerald-500/5 border-emerald-400/30 text-emerald-100 py-2.5 px-3 sm:py-3"
+                      className="bg-background border-muted-foreground text-foreground dark:bg-emerald-500/5 dark:border-emerald-400/30 dark:text-emerald-100 py-2.5 px-3 sm:py-3"
                     />
                   </div>
                   <div className="space-y-1 min-w-0 flex-1">
-                    <Label htmlFor="weight" className="text-xs font-medium text-emerald-200">Gewicht</Label>
+                    <Label htmlFor="weight" className="text-xs font-medium text-foreground dark:text-emerald-200">Gewicht</Label>
                     <Input
                       id="weight"
                       type="text"
                       placeholder="z.B. 60kg"
                       value={weight}
                       onChange={(e) => setWeight(e.target.value)}
-                      className="bg-emerald-500/5 border-emerald-400/30 text-emerald-100 py-2.5 px-3 sm:py-3"
+                      className="bg-background border-muted-foreground text-foreground dark:bg-emerald-500/5 dark:border-emerald-400/30 dark:text-emerald-100 py-2.5 px-3 sm:py-3"
                     />
                   </div>
                   <div className="space-y-1 min-w-0 flex-1">
-                    <Label htmlFor="rest" className="text-xs font-medium text-emerald-200">Pause</Label>
+                    <Label htmlFor="rest" className="text-xs font-medium text-foreground dark:text-emerald-200">Pause</Label>
                     <Input
                       id="rest"
                       type="text"
                       placeholder="z.B. 90s"
                       value={rest}
                       onChange={(e) => setRest(e.target.value)}
-                      className="bg-emerald-500/5 border-emerald-400/30 text-emerald-100 py-2.5 px-3 sm:py-3"
+                      className="bg-background border-muted-foreground text-foreground dark:bg-emerald-500/5 dark:border-emerald-400/30 dark:text-emerald-100 py-2.5 px-3 sm:py-3"
                     />
                   </div>
                 </div>
@@ -241,7 +241,7 @@ export const ManualWorkoutForm: React.FC<ManualWorkoutFormProps> = ({
             variant="outline"
             onClick={onCancel}
             disabled={isLoading}
-            className="border-emerald-400/30 text-emerald-300 hover:bg-emerald-500/10"
+            className="border-border text-foreground hover:bg-accent dark:border-emerald-400/30 dark:text-emerald-300 dark:hover:bg-emerald-500/10"
           >
             Abbrechen
           </Button>
@@ -264,7 +264,7 @@ export const ManualWorkoutForm: React.FC<ManualWorkoutFormProps> = ({
           <Button
             type="submit"
             disabled={!isFormValid() || isLoading}
-            className="flex-1 sm:flex-none bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600 text-white font-medium shadow-lg py-2.5 sm:py-3"
+            className="flex-1 sm:flex-none bg-primary text-foreground dark:bg-gradient-to-r dark:from-emerald-500 dark:to-teal-500 dark:hover:from-emerald-600 dark:hover:to-teal-600 dark:text-white font-medium shadow-lg py-2.5 sm:py-3"
           >
             {isLoading ? 'Wird hinzugefügt...' : 'Hinzufügen'}
           </Button>
