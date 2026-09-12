@@ -1,9 +1,9 @@
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useRef } from "react";
 import { motion, useReducedMotion } from "framer-motion";
 import * as RadioGroupPrimitive from "@radix-ui/react-radio-group";
 import { parseBackgroundMode } from "@/lib/background";
 import { Button } from "@/components/ui/button";
-import { RefreshCw, Sparkles, User, Ruler, Weight, Activity, Settings, Calendar, Crown, Pencil, Target, Utensils, Dumbbell, Camera, Loader2, Flame, Clock, Zap, Sun, Moon, Monitor } from "lucide-react";
+import { RefreshCw, Sparkles, User, Ruler, Weight, Activity, Settings, Calendar, Pencil, Target, Utensils, Dumbbell, Camera, Loader2, Sun, Moon, Monitor } from "lucide-react";
 import { AIAnalyticsCard } from "@/components/AIAnalyticsCard";
 import { NotificationSettingsCard } from "@/components/profile/NotificationSettingsCard";
 import { LogoutButton } from "@/components/LogoutButton";
@@ -11,7 +11,6 @@ import { DeleteAccountButton } from "@/components/DeleteAccountButton";
 import { VERSION_LABEL } from "@/lib/buildInfo";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
-import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import {
@@ -197,23 +196,6 @@ const CircularProgress: React.FC<CircularProgressProps> = ({
   );
 };
 
-// Mini stat item for progress section
-const MiniStat: React.FC<{
-  icon: React.ReactNode;
-  label: string;
-  value: string;
-}> = ({ icon, label, value }) => (
-  <div className="flex items-center gap-2">
-    <div className="p-1.5 rounded-lg bg-muted text-muted-foreground">
-      {icon}
-    </div>
-    <div>
-      <p className="text-xs text-muted-foreground">{label}</p>
-      <p className="text-sm font-semibold text-foreground">{value}</p>
-    </div>
-  </div>
-);
-
 // Stat card component
 const StatCard: React.FC<{
   icon: React.ReactNode;
@@ -275,48 +257,22 @@ const ProfileView: React.FC<ProfileViewProps> = React.memo(({
     dietary_preference: "",
   });
 
-  // User stats from database
-  const [userStats, setUserStats] = useState({
-    streak: 0,
-    minutes: 0,
-    calories: 0,
-  });
-
   // Theme is owned by ThemeProvider (useTheme) — this screen only renders the control.
   const { theme: themeMode, setTheme: setThemeMode } = useTheme();
-
-  // Fetch user stats on mount
-  useEffect(() => {
-    const fetchUserStats = async () => {
-      try {
-        const data = null; // get_user_stats RPC removed — stats disabled during migration
-        const error = null;
-        if (error) {
-          console.error('Error fetching user stats:', error);
-          return;
-        }
-        if (data && typeof data === 'object') {
-          const stats = data as { streak?: number; minutes?: number; calories?: number };
-          setUserStats({
-            streak: stats.streak ?? 0,
-            minutes: stats.minutes ?? 0,
-            calories: stats.calories ?? 0,
-          });
-        }
-      } catch (err) {
-        console.error('Failed to fetch user stats:', err);
-      }
-    };
-
-    fetchUserStats();
-  }, [profile?.id]);
 
   // Get values from profile or show placeholder
   const displayName = profile?.full_name || "--";
   const displayWeight = profile?.weight ?? "--";
   const displayHeight = profile?.height ?? "--";
   const displayAge = profile?.age ?? "--";
-  const isPro = true; // Placeholder - will be connected to subscription later
+  /*
+    A "Pro Mitglied" badge used to sit next to the name, driven by a hardcoded
+    `isPro = true`. The app has no subscriptions: no tier on the profile, no
+    billing, nothing to read a membership from. Swapping the constant for a
+    hardcoded "Free Plan" would be the same untruth in the other direction, so
+    the badge is gone until a real source exists. `memberSince` stays — it is
+    read from created_at and is the one membership fact this screen knows.
+  */
   const memberSince = profile?.created_at ? new Date(profile.created_at).getFullYear() : "--";
 
   // Get avatar URL
@@ -569,15 +525,6 @@ const ProfileView: React.FC<ProfileViewProps> = React.memo(({
                 >
                   <Pencil className="h-3.5 w-3.5" />
                 </Button>
-                <Badge
-                  variant="outline"
-                  className={`shrink-0 ${isPro
-                    ? "border-emerald-400/50 bg-emerald-500/10 text-emerald-400"
-                    : "border-muted-foreground/30 bg-muted/10 text-muted-foreground"}`}
-                >
-                  <Crown className="w-3 h-3 mr-1" />
-                  {isPro ? "Pro Mitglied" : "Free Plan"}
-                </Badge>
               </div>
               <div className="flex items-center gap-1.5 mt-1 text-sm text-muted-foreground">
                 <Calendar className="w-3.5 h-3.5" />
@@ -635,8 +582,15 @@ const ProfileView: React.FC<ProfileViewProps> = React.memo(({
           <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wider">Training & Fortschritt</h2>
         </div>
         <GlassCard className="p-5">
-          <div className="flex items-center gap-6">
-            {/* Left: Circular Progress */}
+          {/*
+            Streak, total time and burned calories used to sit beside this ring,
+            all three fed by a stats backend that no longer exists. They rendered
+            a literal 0 for every user, which reads as a measured result rather
+            than "no data source". The weekly ring is the only figure here backed
+            by real input (workoutProgress), so it stands alone and centered
+            until a trustworthy source for the rest exists.
+          */}
+          <div className="flex items-center justify-center">
             <div className="flex flex-col items-center gap-2">
               <CircularProgress
                 value={workoutProgress.completed}
@@ -651,25 +605,6 @@ const ProfileView: React.FC<ProfileViewProps> = React.memo(({
                 </span>
               </CircularProgress>
               <span className="text-xs text-muted-foreground font-medium">Wochenziel</span>
-            </div>
-
-            {/* Right: Stats Grid */}
-            <div className="flex-1 grid grid-cols-1 gap-3">
-              <MiniStat
-                icon={<Flame className="w-3.5 h-3.5 text-orange-400" />}
-                label="Streak"
-                value={`${userStats.streak} ${userStats.streak === 1 ? 'Tag' : 'Tage'}`}
-              />
-              <MiniStat
-                icon={<Clock className="w-3.5 h-3.5 text-blue-400" />}
-                label="Gesamtzeit"
-                value={`${userStats.minutes} Min`}
-              />
-              <MiniStat
-                icon={<Zap className="w-3.5 h-3.5 text-amber-400" />}
-                label="Kcal"
-                value={userStats.calories.toLocaleString('de-DE')}
-              />
             </div>
           </div>
         </GlassCard>
