@@ -5,9 +5,9 @@ const bench = {
   name: "Bankdrücken",
   prescribedSets: 3,
   sets: [
-    { setNumber: 1, repsCompleted: 10, weightUsed: 60 },
-    { setNumber: 2, repsCompleted: 10, weightUsed: 60 },
-    { setNumber: 3, repsCompleted: 10, weightUsed: 60 },
+    { performanceSource: "user-recorded", setNumber: 1, repsCompleted: 10, weightUsed: 60 },
+    { performanceSource: "user-recorded", setNumber: 2, repsCompleted: 10, weightUsed: 60 },
+    { performanceSource: "user-recorded", setNumber: 3, repsCompleted: 10, weightUsed: 60 },
   ],
 };
 
@@ -47,7 +47,7 @@ describe("summariseSession", () => {
   it("withholds a prescribed total when any exercise declared none", () => {
     // Summing a partial set of prescriptions would flatter completion.
     const summary = summariseSession({
-      exercises: [bench, { name: "Klimmzüge", sets: [{ setNumber: 1, repsCompleted: 8 }] }],
+      exercises: [bench, { name: "Klimmzüge", sets: [{ performanceSource: "user-recorded", setNumber: 1, repsCompleted: 8 }] }],
     });
 
     expect(summary.prescribedSets).toBeNull();
@@ -64,6 +64,18 @@ describe("summariseSession", () => {
     expect(
       summariseSession({ exercises: [heavier], previousExercises: [bench] }).progression
     ).toMatchObject([{ kind: "weight-increase", exerciseName: "Bankdrücken" }]);
+  });
+
+  it("counts completion-only sets as done without inventing reps or progression", () => {
+    const ticked = { ...bench, sets: bench.sets.map(({ setNumber }) => ({ setNumber, performanceSource: "completion-only" })) };
+    const legacy = { ...bench, sets: bench.sets.map(({ setNumber }) => ({ setNumber, repsCompleted: 8, weightUsed: 50 })) };
+
+    const summary = summariseSession({ exercises: [ticked], previousExercises: [legacy] });
+
+    expect(summary.completedSets).toBe(3);
+    expect(summary.isFullyCompleted).toBe(true);
+    expect(summary.totalReps).toBeNull();
+    expect(summary.progression).toEqual([]);
   });
 
   it("handles an empty session without throwing", () => {

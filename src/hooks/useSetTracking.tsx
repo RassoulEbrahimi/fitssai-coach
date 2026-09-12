@@ -8,10 +8,17 @@ import { beginAccountOperation } from "@/lib/accountIdentity";
 import { useSupabaseAction } from "@/hooks/useSupabaseAction";
 import { queryKeys } from "@/lib/queryKeys";
 import { isWorkoutDayString } from "@/lib/workoutLog";
+import { completionOnlySetFields, readActualPerformance, type ActualSetPerformance } from "@/lib/setPerformance";
 
+/**
+ * Ticking a set records completion only. There are deliberately no reps or
+ * weight here: the checkbox knows the plan's prescription, not what the user
+ * performed, and copying one into the other is how set logs came to hold
+ * "measurements" nobody measured.
+ */
 interface ToggleSetParams {
   planId: string; weekKey: string; dayIndex: number; exerciseIndex: number;
-  setNumber: number; repsCompleted: number; weightUsed?: number | null; completed: boolean;
+  setNumber: number; completed: boolean;
   /**
    * `YYYY-MM-DD` for the day being logged, from the date the user actually has
    * selected — not "today". Logging a set against a past day must record that
@@ -21,8 +28,9 @@ interface ToggleSetParams {
 }
 
 interface SetLog {
-  id: string; workout_log_id: string; set_number: number;
-  reps_completed: number; weight_used: number | null; completed_at: string;
+  id: string; workout_log_id: string; set_number: number; completed_at: string;
+  /** Reps/weight only when explicitly recorded as performed; see setPerformance.ts. */
+  actual: ActualSetPerformance;
 }
 
 type SetsMap = Record<number, Record<number, SetLog>>;
@@ -57,8 +65,10 @@ export function useSetTracking(planId: string | undefined, weekKey: string, dayI
           const sd_ = sd.data();
           setsMap[exerciseIndex][sd_.setNumber] = {
             id: sd.id, workout_log_id: logDoc.id,
-            set_number: sd_.setNumber, reps_completed: sd_.repsCompleted,
-            weight_used: sd_.weightUsed ?? null,
+            set_number: sd_.setNumber,
+            // Older documents carry prescription-copied numbers; this reads
+            // them as unverified rather than as performance.
+            actual: readActualPerformance(sd_),
             completed_at: sd_.completedAt instanceof Timestamp ? sd_.completedAt.toDate().toISOString() : "",
           };
         });
@@ -107,8 +117,7 @@ export function useSetTracking(planId: string | undefined, weekKey: string, dayI
       if (params.completed) {
         if (setSnap.empty) {
           await addDoc(setsRef, {
-            setNumber: params.setNumber, repsCompleted: params.repsCompleted,
-            weightUsed: params.weightUsed ?? null, completedAt: Timestamp.now(),
+            setNumber: params.setNumber, completedAt: Timestamp.now(), ...completionOnlySetFields(),
           });
         }
       } else {
@@ -119,6 +128,13 @@ export function useSetTracking(planId: string | undefined, weekKey: string, dayI
       return { success: true };
     },
     offlineActionType: "TOGGLE_SET",
+    // An explicit field list, so the queued entry holds completion only even if
+    // a caller hands over more than the type allows.
+    toOfflinePayload: (params: ToggleSetParams) => ({
+      planId: params.planId, weekKey: params.weekKey, dayIndex: params.dayIndex,
+      exerciseIndex: params.exerciseIndex, setNumber: params.setNumber, completed: params.completed,
+      ...(params.workoutDay !== undefined ? { workoutDay: params.workoutDay } : {}),
+    }),
     queryKey: [...queryKey],
     messages: { error: "Fehler beim Speichern des Satzes" },
     onMutate: async (params: ToggleSetParams) => {
@@ -130,8 +146,8 @@ export function useSetTracking(planId: string | undefined, weekKey: string, dayI
         if (params.completed) {
           newData[params.exerciseIndex][params.setNumber] = {
             id: "optimistic", workout_log_id: "optimistic",
-            set_number: params.setNumber, reps_completed: params.repsCompleted,
-            weight_used: params.weightUsed ?? null, completed_at: new Date().toISOString(),
+            set_number: params.setNumber, completed_at: new Date().toISOString(),
+            actual: readActualPerformance(completionOnlySetFields()),
           };
         } else {
           const ex = { ...newData[params.exerciseIndex] };

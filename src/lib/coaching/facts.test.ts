@@ -175,9 +175,9 @@ describe("exercise facts", () => {
       name: "Bankdrücken",
       prescribedSets: 3,
       sets: [
-        { setNumber: 1, repsCompleted: 10, weightUsed: 60 },
-        { setNumber: 2, repsCompleted: 9, weightUsed: 60 },
-        { setNumber: 3, repsCompleted: 8, weightUsed: 62.5 },
+        { performanceSource: "user-recorded", setNumber: 1, repsCompleted: 10, weightUsed: 60 },
+        { performanceSource: "user-recorded", setNumber: 2, repsCompleted: 9, weightUsed: 60 },
+        { performanceSource: "user-recorded", setNumber: 3, repsCompleted: 8, weightUsed: 62.5 },
       ],
     });
 
@@ -190,7 +190,7 @@ describe("exercise facts", () => {
   it("does not treat a bodyweight exercise as 0 kg", () => {
     const facts = computeExerciseFacts({
       name: "Klimmzüge",
-      sets: [{ setNumber: 1, repsCompleted: 8 }, { setNumber: 2, repsCompleted: 7, weightUsed: null }],
+      sets: [{ performanceSource: "user-recorded", setNumber: 1, repsCompleted: 8 }, { performanceSource: "user-recorded", setNumber: 2, repsCompleted: 7, weightUsed: null }],
     });
 
     expect(facts.hasWeight).toBe(false);
@@ -219,9 +219,9 @@ describe("compareExercise", () => {
       name: "Bankdrücken",
       prescribedSets: 3,
       sets: [
-        { setNumber: 1, repsCompleted: 10, weightUsed: 60 },
-        { setNumber: 2, repsCompleted: 10, weightUsed: 60 },
-        { setNumber: 3, repsCompleted: 10, weightUsed: 60 },
+        { performanceSource: "user-recorded", setNumber: 1, repsCompleted: 10, weightUsed: 60 },
+        { performanceSource: "user-recorded", setNumber: 2, repsCompleted: 10, weightUsed: 60 },
+        { performanceSource: "user-recorded", setNumber: 3, repsCompleted: 10, weightUsed: 60 },
       ],
       ...over,
     });
@@ -229,9 +229,9 @@ describe("compareExercise", () => {
   it("detects a weight increase at comparable reps", () => {
     const heavier = facts({
       sets: [
-        { setNumber: 1, repsCompleted: 9, weightUsed: 62.5 },
-        { setNumber: 2, repsCompleted: 9, weightUsed: 62.5 },
-        { setNumber: 3, repsCompleted: 9, weightUsed: 62.5 },
+        { performanceSource: "user-recorded", setNumber: 1, repsCompleted: 9, weightUsed: 62.5 },
+        { performanceSource: "user-recorded", setNumber: 2, repsCompleted: 9, weightUsed: 62.5 },
+        { performanceSource: "user-recorded", setNumber: 3, repsCompleted: 9, weightUsed: 62.5 },
       ],
     });
 
@@ -245,7 +245,7 @@ describe("compareExercise", () => {
 
   it("does not call it a gain when reps collapsed", () => {
     const heavierButFewer = facts({
-      sets: [{ setNumber: 1, repsCompleted: 3, weightUsed: 70 }],
+      sets: [{ performanceSource: "user-recorded", setNumber: 1, repsCompleted: 3, weightUsed: 70 }],
     });
 
     expect(compareExercise(facts(), heavierButFewer)?.kind).not.toBe("weight-increase");
@@ -254,9 +254,9 @@ describe("compareExercise", () => {
   it("detects more reps at the same weight", () => {
     const moreReps = facts({
       sets: [
-        { setNumber: 1, repsCompleted: 12, weightUsed: 60 },
-        { setNumber: 2, repsCompleted: 12, weightUsed: 60 },
-        { setNumber: 3, repsCompleted: 12, weightUsed: 60 },
+        { performanceSource: "user-recorded", setNumber: 1, repsCompleted: 12, weightUsed: 60 },
+        { performanceSource: "user-recorded", setNumber: 2, repsCompleted: 12, weightUsed: 60 },
+        { performanceSource: "user-recorded", setNumber: 3, repsCompleted: 12, weightUsed: 60 },
       ],
     });
 
@@ -264,17 +264,17 @@ describe("compareExercise", () => {
   });
 
   it("detects reps progress on a bodyweight exercise", () => {
-    const before = computeExerciseFacts({ name: "Klimmzüge", sets: [{ setNumber: 1, repsCompleted: 6 }] });
-    const after = computeExerciseFacts({ name: "Klimmzüge", sets: [{ setNumber: 1, repsCompleted: 9 }] });
+    const before = computeExerciseFacts({ name: "Klimmzüge", sets: [{ performanceSource: "user-recorded", setNumber: 1, repsCompleted: 6 }] });
+    const after = computeExerciseFacts({ name: "Klimmzüge", sets: [{ performanceSource: "user-recorded", setNumber: 1, repsCompleted: 9 }] });
 
     expect(compareExercise(before, after)).toMatchObject({ kind: "reps-increase", previous: 6, current: 9 });
   });
 
   it("makes no weight claim when only one side carried a load", () => {
-    const unweighted = computeExerciseFacts({ name: "Klimmzüge", sets: [{ setNumber: 1, repsCompleted: 8 }] });
+    const unweighted = computeExerciseFacts({ name: "Klimmzüge", sets: [{ performanceSource: "user-recorded", setNumber: 1, repsCompleted: 8 }] });
     const weighted = computeExerciseFacts({
       name: "Klimmzüge",
-      sets: [{ setNumber: 1, repsCompleted: 8, weightUsed: 10 }],
+      sets: [{ performanceSource: "user-recorded", setNumber: 1, repsCompleted: 8, weightUsed: 10 }],
     });
 
     // No "increase from 0 kg" — the earlier session simply had no load recorded.
@@ -286,10 +286,10 @@ describe("compareExercise", () => {
     // informative statement, so only that one is made.
     const extraSet = facts({
       sets: [
-        { setNumber: 1, repsCompleted: 10, weightUsed: 60 },
-        { setNumber: 2, repsCompleted: 10, weightUsed: 60 },
-        { setNumber: 3, repsCompleted: 10, weightUsed: 60 },
-        { setNumber: 4, repsCompleted: 10, weightUsed: 60 },
+        { performanceSource: "user-recorded", setNumber: 1, repsCompleted: 10, weightUsed: 60 },
+        { performanceSource: "user-recorded", setNumber: 2, repsCompleted: 10, weightUsed: 60 },
+        { performanceSource: "user-recorded", setNumber: 3, repsCompleted: 10, weightUsed: 60 },
+        { performanceSource: "user-recorded", setNumber: 4, repsCompleted: 10, weightUsed: 60 },
       ],
     });
 
@@ -300,10 +300,10 @@ describe("compareExercise", () => {
     // 3x10 (30 reps) -> 4x7 (28 reps): the extra set is the only true signal.
     const extraShorterSet = facts({
       sets: [
-        { setNumber: 1, repsCompleted: 7, weightUsed: 60 },
-        { setNumber: 2, repsCompleted: 7, weightUsed: 60 },
-        { setNumber: 3, repsCompleted: 7, weightUsed: 60 },
-        { setNumber: 4, repsCompleted: 7, weightUsed: 60 },
+        { performanceSource: "user-recorded", setNumber: 1, repsCompleted: 7, weightUsed: 60 },
+        { performanceSource: "user-recorded", setNumber: 2, repsCompleted: 7, weightUsed: 60 },
+        { performanceSource: "user-recorded", setNumber: 3, repsCompleted: 7, weightUsed: 60 },
+        { performanceSource: "user-recorded", setNumber: 4, repsCompleted: 7, weightUsed: 60 },
       ],
     });
 
@@ -315,7 +315,7 @@ describe("compareExercise", () => {
   });
 
   it("reports reduced volume without editorialising", () => {
-    const fewer = facts({ sets: [{ setNumber: 1, repsCompleted: 10, weightUsed: 60 }] });
+    const fewer = facts({ sets: [{ performanceSource: "user-recorded", setNumber: 1, repsCompleted: 10, weightUsed: 60 }] });
 
     expect(compareExercise(facts(), fewer)).toMatchObject({ kind: "reduced-volume", previous: 3, current: 1 });
   });
@@ -325,25 +325,90 @@ describe("compareExercise", () => {
   });
 
   it("produces nothing for incomparable exercises", () => {
-    const other = computeExerciseFacts({ name: "Kniebeuge", sets: [{ setNumber: 1, repsCompleted: 20, weightUsed: 100 }] });
+    const other = computeExerciseFacts({ name: "Kniebeuge", sets: [{ performanceSource: "user-recorded", setNumber: 1, repsCompleted: 20, weightUsed: 100 }] });
 
     expect(compareExercise(facts(), other)).toBeNull();
   });
 
   it("pairs the same exercises across two weeks and ignores unmatched ones", () => {
     const week1 = [
-      computeExerciseFacts({ name: "Bankdrücken", sets: [{ setNumber: 1, repsCompleted: 8, weightUsed: 60 }] }),
-      computeExerciseFacts({ name: "Rudern", sets: [{ setNumber: 1, repsCompleted: 10, weightUsed: 40 }] }),
+      computeExerciseFacts({ name: "Bankdrücken", sets: [{ performanceSource: "user-recorded", setNumber: 1, repsCompleted: 8, weightUsed: 60 }] }),
+      computeExerciseFacts({ name: "Rudern", sets: [{ performanceSource: "user-recorded", setNumber: 1, repsCompleted: 10, weightUsed: 40 }] }),
     ];
     const week2 = [
-      computeExerciseFacts({ name: "Bankdrücken", sets: [{ setNumber: 1, repsCompleted: 8, weightUsed: 65 }] }),
-      computeExerciseFacts({ name: "Beinpresse", sets: [{ setNumber: 1, repsCompleted: 10, weightUsed: 120 }] }),
+      computeExerciseFacts({ name: "Bankdrücken", sets: [{ performanceSource: "user-recorded", setNumber: 1, repsCompleted: 8, weightUsed: 65 }] }),
+      computeExerciseFacts({ name: "Beinpresse", sets: [{ performanceSource: "user-recorded", setNumber: 1, repsCompleted: 10, weightUsed: 120 }] }),
     ];
 
     const facts = compareSessions(week1, week2);
 
     expect(facts).toHaveLength(1);
     expect(facts[0]).toMatchObject({ kind: "weight-increase", exerciseName: "Bankdrücken" });
+  });
+});
+
+describe("completion versus recorded performance", () => {
+  type SetFixture = Parameters<typeof computeExerciseFacts>[0]["sets"][number];
+  const sets = (count: number, fields: Omit<SetFixture, "setNumber"> = {}): SetFixture[] =>
+    Array.from({ length: count }, (_, i) => ({ setNumber: i + 1, ...fields }));
+  const bench = (setList: readonly SetFixture[]) =>
+    computeExerciseFacts({ name: "Bankdrücken", prescribedSets: 3, sets: setList });
+
+  it("counts a completion-only set as completed without measured reps or load", () => {
+    const facts = bench(sets(3, { performanceSource: "completion-only" }));
+
+    expect(facts.completedSets).toBe(3);
+    expect(facts.measuredSets).toBe(0);
+    // Absent, not 0 and not the prescription.
+    expect(facts.totalReps).toBeNull();
+    expect(facts.topWeight).toBeNull();
+    expect(facts.hasWeight).toBe(false);
+  });
+
+  it("does not upgrade legacy prescription-copied numbers into measurements", () => {
+    const facts = bench(sets(3, { repsCompleted: 10, weightUsed: 60 }));
+
+    expect(facts.completedSets).toBe(3);
+    expect(facts.measuredSets).toBe(0);
+    expect(facts.totalReps).toBeNull();
+    expect(facts.topWeight).toBeNull();
+  });
+
+  it("makes no weight or reps claim between unverified sessions", () => {
+    const before = bench(sets(3, { repsCompleted: 10, weightUsed: 60 }));
+    const after = bench(sets(3, { repsCompleted: 12, weightUsed: 62.5 }));
+
+    expect(compareExercise(before, after)).toBeNull();
+  });
+
+  it("still reports more completed sets, a completion fact, from completion-only sessions", () => {
+    const before = bench(sets(3, { performanceSource: "completion-only" }));
+    const after = bench(sets(4, { performanceSource: "completion-only" }));
+
+    expect(compareExercise(before, after)).toMatchObject({ kind: "sets-increase", previous: 3, current: 4 });
+  });
+
+  it("makes no load claim when one session is only partly recorded", () => {
+    const recorded = bench(sets(3, { performanceSource: "user-recorded", repsCompleted: 10, weightUsed: 60 }));
+    const mixed = bench([
+      { setNumber: 1, performanceSource: "user-recorded", repsCompleted: 10, weightUsed: 70 },
+      { setNumber: 2, performanceSource: "completion-only" },
+      { setNumber: 3, performanceSource: "completion-only" },
+    ]);
+
+    expect(mixed.totalReps).toBeNull();
+    expect(compareExercise(recorded, mixed)).toBeNull();
+  });
+
+  it("uses explicitly recorded performance when it exists", () => {
+    const before = bench(sets(3, { performanceSource: "user-recorded", repsCompleted: 10, weightUsed: 55 }));
+    const after = bench(sets(3, { performanceSource: "user-recorded", repsCompleted: 10, weightUsed: 57.5 }));
+
+    expect(after.totalReps).toBe(30);
+    expect(after.topWeight).toBe(57.5);
+    expect(compareExercise(before, after)).toEqual({
+      kind: "weight-increase", exerciseName: "Bankdrücken", previous: 55, current: 57.5,
+    });
   });
 });
 

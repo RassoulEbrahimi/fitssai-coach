@@ -177,8 +177,6 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
   const handleToggleSet = useCallback((params: {
     exerciseIndex: number;
     setNumber: number;
-    repsCompleted: number;
-    weightUsed: number | null;
     completed: boolean;
   }) => {
     if (!user || !workoutPlan) return;
@@ -198,8 +196,6 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
       dayIndex,
       exerciseIndex: params.exerciseIndex,
       setNumber: params.setNumber,
-      repsCompleted: params.repsCompleted,
-      weightUsed: params.weightUsed,
       completed: params.completed,
       // The day the user is looking at, which is not always today.
       workoutDay: selectedDateStr,
@@ -640,7 +636,6 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
                     workoutName={workoutName}
                     selectedDate={selectedDate}
                     getCompletedSetsCount={getCompletedSetsCount}
-                    isSetCompleted={isSetCompleted}
                   />
                 </motion.div>
               )}

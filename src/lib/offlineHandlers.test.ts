@@ -108,6 +108,17 @@ describe("offline replay — set logging", () => {
     expect(payload).not.toHaveProperty("workoutDay");
   });
 
+  it("writes completion only, ignoring reps/weight an older queue entry still carries", async () => {
+    // setPayload() is the pre-change shape: prescription copied into
+    // repsCompleted/weightUsed. None of it may reach the set document.
+    await handlers.TOGGLE_SET(setPayload(), "u1");
+    const setDoc = addDoc.mock.calls.map(([, data]) => data).find(data => data.setNumber === 1);
+
+    expect(setDoc).toMatchObject({ setNumber: 1, performanceSource: "completion-only" });
+    expect(setDoc).not.toHaveProperty("repsCompleted");
+    expect(setDoc).not.toHaveProperty("weightUsed");
+  });
+
   it("does not accept a malformed date into the document", async () => {
     await handlers.TOGGLE_SET(setPayload({ workoutDay: "10.03.2026" }), "u1");
 

@@ -2,10 +2,12 @@ import React from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Check } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { formatSetTarget } from "@/lib/setPrescription";
 
 interface ExerciseSetRowProps {
   setNumber: number;
-  targetReps: number | string;
+  /** The prescription as written in the plan, e.g. 10, "8–12", "30 Sekunden". */
+  targetReps?: number | string;
   targetWeight?: string;
   isCompleted: boolean;
   isToggling: boolean;
@@ -20,6 +22,9 @@ export const ExerciseSetRow: React.FC<ExerciseSetRowProps> = ({
   isToggling,
   onToggle,
 }) => {
+  // The plan's target, shown as written. Ticking the row records completion
+  // only; it never claims these were the reps or load performed.
+  const target = formatSetTarget(targetReps, targetWeight);
   return (
     <motion.div
       layout
@@ -40,7 +45,7 @@ export const ExerciseSetRow: React.FC<ExerciseSetRowProps> = ({
       )}
       role="checkbox"
       aria-checked={isCompleted}
-      aria-label={`Satz ${setNumber}: ${targetReps} Wiederholungen${targetWeight ? ` mit ${targetWeight}` : ''} — ${isCompleted ? 'abgeschlossen' : 'offen'}`}
+      aria-label={`Satz ${setNumber}: Vorgabe ${target.spoken} — ${isCompleted ? 'abgeschlossen' : 'offen'}`}
       tabIndex={0}
       onKeyDown={(e) => {
         if (e.key === 'Enter' || e.key === ' ') {
@@ -63,7 +68,7 @@ export const ExerciseSetRow: React.FC<ExerciseSetRowProps> = ({
           "text-sm font-medium",
           isCompleted ? "text-foreground" : "text-muted-foreground"
         )}>
-          {targetReps} {targetWeight ? `× ${targetWeight}` : 'Wdh'}
+          {target.visual}
         </span>
       </div>
 

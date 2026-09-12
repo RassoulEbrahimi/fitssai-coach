@@ -25,7 +25,7 @@ const DAY = '2026-03-10';
 const STARTED = Date.parse('2026-03-10T18:00:00Z');
 const SET = {
   planId: PLAN, weekKey: WEEK, dayIndex: 0, exerciseIndex: 0,
-  setNumber: 1, repsCompleted: 10, completed: true, workoutDay: DAY,
+  setNumber: 1, completed: true, workoutDay: DAY,
 };
 const EXERCISE = { planId: PLAN, weekKey: WEEK, dayIndex: 0, exerciseIndex: 0, completed: true };
 

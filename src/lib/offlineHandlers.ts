@@ -7,10 +7,11 @@ import { writeDaySessionRecord } from "@/lib/daySessionRecord";
 import { queryKeys } from "@/lib/queryKeys";
 import { isWorkoutDayString } from "@/lib/workoutLog";
 import { isLegacyDayCompletionPayload, type ToggleDayPayload } from "@/lib/offlineQueue";
+import { completionOnlySetFields } from "@/lib/setPerformance";
 
 type ToggleSetPayload = {
   planId: string; weekKey: string; dayIndex: number; exerciseIndex: number;
-  setNumber: number; repsCompleted: number; weightUsed?: number | null; completed: boolean;
+  setNumber: number; completed: boolean;
   /** Carried through the queue so a replayed write dates the same day. */
   workoutDay?: string;
 };
@@ -71,7 +72,10 @@ export const handlers = {
     const setSnap = await getDocs(query(setsRef, where("setNumber", "==", payload.setNumber)));
     assertCanWrite();
     if (payload.completed) {
-      if (setSnap.empty) await setDoc(doc(setsRef, `set_${payload.setNumber}`), { setNumber: payload.setNumber, repsCompleted: payload.repsCompleted, weightUsed: payload.weightUsed ?? null, completedAt: Timestamp.now() });
+      // Explicit fields, not a spread of the payload: an entry queued by an
+      // older build still carries prescription-copied reps/weight, and they
+      // must not reach the document as if they had been performed.
+      if (setSnap.empty) await setDoc(doc(setsRef, `set_${payload.setNumber}`), { setNumber: payload.setNumber, completedAt: Timestamp.now(), ...completionOnlySetFields() });
     } else {
       if (!setSnap.empty) await deleteDoc(doc(db, "users", uid, "workout_logs", logId, "workout_set_logs", setSnap.docs[0].id));
     }
