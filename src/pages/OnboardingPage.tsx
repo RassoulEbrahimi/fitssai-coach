@@ -2,8 +2,10 @@ import { useAuth } from "@/hooks/useAuth";
 import { Navigate, useNavigate } from "react-router-dom";
 import OnboardingForm from "@/components/OnboardingForm";
 import Navbar from "@/components/Navbar";
+import { useTranslation } from "react-i18next";
 
 const OnboardingPage = () => {
+  const { t } = useTranslation();
   const { user, loading } = useAuth();
   const navigate = useNavigate();
 
@@ -14,7 +16,7 @@ const OnboardingPage = () => {
   if (loading) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
-        <div className="text-xl">Loading...</div>
+        <div className="text-xl">{t('onboarding.loading')}</div>
       </div>
     );
   }

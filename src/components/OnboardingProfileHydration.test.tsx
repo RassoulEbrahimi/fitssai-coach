@@ -133,11 +133,11 @@ const completeOnboarding = async (onComplete: () => void) => {
   fireEvent.click(screen.getByRole("radio", { name: /Muskeln aufbauen/ }));
   fireEvent.click(screen.getByRole("button", { name: /Weiter/ }));
 
-  const dietTrigger = await screen.findByText("Wähle deine Ernährungsvorliebe");
+  const dietTrigger = await screen.findByRole("combobox", { name: "Ernährungsform" });
   await chooseOption(dietTrigger, /Proteinreich/);
   await chooseOption(
-    screen.getByText("Wähle dein Erfahrungslevel"),
-    /Fortgeschritten \(6 Monate/
+    screen.getByRole("combobox", { name: "Erfahrungslevel" }),
+    /^Fortgeschritten$/
   );
   fireEvent.click(screen.getByRole("button", { name: /Weiter/ }));
 
@@ -145,7 +145,7 @@ const completeOnboarding = async (onComplete: () => void) => {
   await chooseOption(screen.getByLabelText("Trainingstage pro Woche"), /^4 Tage$/);
   await chooseOption(screen.getByLabelText("Gewünschte Trainingsdauer"), /45 Minuten/);
 
-  fireEvent.click(screen.getByRole("button", { name: /Setup abschließen/ }));
+  fireEvent.click(screen.getByRole("button", { name: /Abschließen/ }));
   await waitFor(() => expect(onComplete).toHaveBeenCalled());
 };
 
