@@ -17,6 +17,7 @@ import { useBerlinToday } from "@/hooks/useBerlinToday";
 import { Play, WifiOff, Clock, Dumbbell, Flame, Check, Maximize2, Minimize2 } from "lucide-react";
 import WorkoutErrorBoundary from "@/components/WorkoutErrorBoundary";
 import FocusModePortal from "@/components/FocusModePortal";
+import { isFocusableElement, useFocusModeContainment } from "@/hooks/useFocusModeContainment";
 import { logEvent } from "@/lib/telemetryClient";
 import { CompletionState } from "@/lib/completionUtils";
 import { useWorkoutHelpers } from "@/hooks/useWorkoutHelpers";
@@ -229,6 +230,47 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
     return { totalSets, completedSets, progressPercent, isComplete };
   }, [exercises, getCompletedSetsCount]);
 
+  /*
+    Focus Mode is a keyboard modal. Toggling it swaps FocusModePortal between a
+    fragment and a portal, which remounts the whole card subtree: the control
+    that had focus is detached on every enter and exit. So focus is placed
+    explicitly on the way in (the exit button) and restored on the way out.
+  */
+  const [focusModeContainer, setFocusModeContainer] = useState<HTMLDivElement | null>(null);
+  const fullscreenButtonRef = useRef<HTMLButtonElement>(null);
+  const focusModeEntryRef = useRef<Element | null>(null);
+  const exitFocusMode = useCallback(() => setFocusMode(false), [setFocusMode]);
+
+  useFocusModeContainment({
+    active: isFocusMode,
+    container: focusModeContainer,
+    initialFocusRef: fullscreenButtonRef,
+    onEscape: exitFocusMode,
+  });
+
+  const wasFocusModeRef = useRef(isFocusMode);
+  useEffect(() => {
+    const wasFocusMode = wasFocusModeRef.current;
+    wasFocusModeRef.current = isFocusMode;
+    if (isFocusMode || !wasFocusMode) return;
+
+    const entry = focusModeEntryRef.current;
+    focusModeEntryRef.current = null;
+    // Only recover focus that went down with the portal; never steal it.
+    const current = document.activeElement;
+    if (current && current !== document.body && current.isConnected) return;
+    /*
+      The launching control if it still exists; otherwise the card's own
+      fullscreen toggle. That covers "Training starten", which is gone once the
+      workout has started, and a finished workout, where the toggle is the one
+      control that is always present in the same place.
+    */
+    const target = isFocusableElement(entry)
+      ? entry
+      : fullscreenButtonRef.current ?? document.getElementById("main-content");
+    target?.focus({ preventScroll: true });
+  }, [isFocusMode]);
+
   // Date context logic - using reactive today
   const isToday = selectedDateStr === berlinToday;
   const isPast = isBerlinPast(selectedDateStr);
@@ -412,11 +454,19 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
     } else {
       startSession();
     }
+    if (isFocusMode) {
+      // Already fullscreen: the Start button is about to disappear, so keep
+      // focus inside Focus Mode rather than letting it fall to the body.
+      fullscreenButtonRef.current?.focus({ preventScroll: true });
+      return;
+    }
+    focusModeEntryRef.current = document.activeElement;
     setFocusMode(true);
   };
 
   // Toggle fullscreen mode
   const toggleFullScreen = () => {
+    if (!isFocusMode) focusModeEntryRef.current = document.activeElement;
     setFocusMode(!isFocusMode);
   };
 
@@ -424,6 +474,10 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
     <WorkoutErrorBoundary>
       <FocusModePortal active={isFocusMode}>
       <div
+        ref={setFocusModeContainer}
+        role={isFocusMode ? "dialog" : undefined}
+        aria-modal={isFocusMode ? true : undefined}
+        aria-label={isFocusMode ? "Trainings-Fokusmodus" : undefined}
         className={
           isFocusMode
             ? "fixed inset-0 w-screen h-[100dvh] z-[99999] bg-background m-0 p-0 overflow-y-auto overscroll-contain"
@@ -453,6 +507,7 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
 
             {/* Fullscreen toggle button - top right */}
             <button
+              ref={fullscreenButtonRef}
               onClick={toggleFullScreen}
               className="absolute top-3 right-3 z-30 p-2 rounded-full bg-black/50 text-white/90 backdrop-blur-sm hover:bg-black/70 transition-colors"
               aria-label={isFocusMode ? "Vollbild beenden" : "Vollbild"}
