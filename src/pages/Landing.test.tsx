@@ -51,14 +51,14 @@ describe("Hero CTAs", () => {
     render(<Hero onGetStarted={onGetStarted} />);
     const cta = screen.getByRole("button", { name: "Jetzt starten" });
 
-    await user.click(cta);
-    expect(onGetStarted).toHaveBeenCalledTimes(1);
-
     await user.tab();
     expect(cta).toHaveFocus();
     await user.keyboard("{Enter}");
-    expect(onGetStarted).toHaveBeenCalledTimes(2);
+    expect(onGetStarted).toHaveBeenCalledTimes(1);
     await user.keyboard(" ");
+    expect(onGetStarted).toHaveBeenCalledTimes(2);
+
+    await user.click(cta);
     expect(onGetStarted).toHaveBeenCalledTimes(3);
   });
 
