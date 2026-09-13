@@ -310,7 +310,11 @@
     "sets": "Sätze",
     "reps": "Wiederholungen",
     "weight": "Gewicht",
-    "rest": "Pause",
+    "rest": {
+      "label": "Pause",
+      "note": "Erholungstag — kein Training geplant.",
+      "description": "Ruhetag — kein Training geplant"
+    },
     "detailsTitle": "Workout Details",
     "duration": "Dauer (Minuten)",
     "calories": "Kalorien verbrannt",
@@ -335,6 +339,9 @@
       "title": "Woche"
     },
     "day": {
+      "today": "Heute",
+      "completed": "abgeschlossen",
+      "addExercise": "Übung hinzufügen",
       "rest": "Ruhetag",
       "exercises": "{{count}} Übungen",
       "futureLocked": "Zukünftige Tage sind gesperrt",

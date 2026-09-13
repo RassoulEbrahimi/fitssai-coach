@@ -126,23 +126,33 @@ export const DayAccordion: React.FC<DayAccordionProps> = ({
                                 <CollapsibleTrigger asChild>
                                     <Button
                                         variant="ghost"
-                                        className="w-full px-3 py-2 h-14 justify-between text-left hover:bg-muted/50 rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
+                                        className={cn(
+                                            "w-full px-3 py-2 justify-between text-left hover:bg-muted/50 rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2",
+                                            isRestDay ? "h-auto min-h-14 whitespace-normal" : "h-14"
+                                        )}
                                         aria-expanded={isExpanded}
-                                        aria-label={`${dayName}${isToday ? ' - Heute' : ''}${isRestDay ? ' - Ruhetag' : ` - ${exercises.length} Übungen`}${isCompleted ? ' - abgeschlossen' : ''}`}
+                                        aria-label={`${dayName}${isToday ? ` - ${t('workout.day.today')}` : ''} - ${isRestDay ? t('workout.day.rest') : t('workout.day.exercises', { count: exercises.length })}${isCompleted ? ` - ${t('workout.day.completed')}` : ''}`}
                                     >
-                                        <div className="flex items-center justify-between w-full">
-                                            <div className="flex items-center gap-2">
-                                                <div className="font-medium">{dayName}</div>
-                                                {isToday && <Badge variant="secondary" className="text-xs px-2 py-0.5 h-5">
-                                                    Heute
-                                                </Badge>}
+                                        <div className={cn("flex items-center justify-between w-full", isRestDay && "min-w-0 gap-2")}>
+                                            <div className={cn(isRestDay && "min-w-0 flex-1 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between sm:gap-2")}>
+                                                <div className={cn("flex items-center gap-2", isRestDay && "min-w-0 flex-wrap")}>
+                                                    <div className="font-medium">{dayName}</div>
+                                                    {isToday && <Badge variant="secondary" className="text-xs px-2 py-0.5 h-5 shrink-0">
+                                                        {t('workout.day.today')}
+                                                    </Badge>}
+                                                </div>
+                                                {isRestDay && <span className="min-w-0 text-sm text-muted-foreground">
+                                                    {t('workout.rest.description')}
+                                                </span>}
                                             </div>
-                                            <div className="flex items-baseline gap-2">
-                                                <span className="text-sm text-muted-foreground">
-                                                    {isRestDay ? 'Ruhetag — kein Training geplant' : `${exercises.length} Übungen`}
-                                                </span>
+                                            <div className={cn("flex items-baseline gap-2", isRestDay && "shrink-0")}>
+                                                {!isRestDay && (
+                                                    <span className="text-sm text-muted-foreground">
+                                                        {t('workout.day.exercises', { count: exercises.length })}
+                                                    </span>
+                                                )}
                                                 {!isRestDay && isCompleted && <div className="w-4 h-4 rounded-full bg-green-600 flex-shrink-0" style={{ alignSelf: 'center' }} aria-label="Tag abgeschlossen"></div>}
-                                                {isRestDay && <div className="w-4 h-4 rounded-full bg-muted-foreground/30 flex-shrink-0" style={{ alignSelf: 'center' }} aria-label="Ruhetag"></div>}
+                                                {isRestDay && <div className="w-4 h-4 rounded-full bg-muted-foreground/30 flex-shrink-0" style={{ alignSelf: 'center' }} aria-label={t('workout.day.rest')}></div>}
                                                 {isExpanded
                                                     ? <ChevronUp className="h-4 w-4 text-muted-foreground" style={{ alignSelf: 'center' }} />
                                                     : <ChevronRight className="h-4 w-4 text-muted-foreground" style={{ alignSelf: 'center' }} />
@@ -174,16 +184,16 @@ export const DayAccordion: React.FC<DayAccordionProps> = ({
 
                                                 <div className="relative p-2.5 pt-1.5 px-[8px] py-[7px]">
                                                     {isRestDay ? (
-                                                        <div className="flex items-center justify-between p-3 bg-muted/30 rounded-lg">
-                                                            <div className="text-sm text-muted-foreground">
+                                                        <div className="flex items-center justify-between gap-2 p-3 bg-muted/30 rounded-lg">
+                                                            <div className="min-w-0 text-sm text-muted-foreground">
                                                                 {t('workout.rest.note')}
                                                             </div>
                                                             <Button
                                                                 variant="ghost"
                                                                 size="icon"
                                                                 onClick={() => onOpenAddExercise(wk, dayIndex)}
-                                                                className="h-8 w-8 shrink-0"
-                                                                aria-label="Übung hinzufügen"
+                                                                className="h-11 w-11 shrink-0"
+                                                                aria-label={t('workout.day.addExercise')}
                                                             >
                                                                 <Plus className="h-4 w-4" />
                                                             </Button>
