@@ -192,7 +192,7 @@ const EditableExerciseRow: React.FC<EditableExerciseRowProps> = ({
             </div>
             <div>
               <label className="text-xs text-muted-foreground mb-1 block">
-                {t('workout.rest') || 'Rest'} ({t('workout.optional') || 'optional'})
+                {t('workout.rest.label') || 'Rest'} ({t('workout.optional') || 'optional'})
               </label>
               <Input
                 value={draft.rest || ''}
