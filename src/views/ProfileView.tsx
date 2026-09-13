@@ -159,7 +159,7 @@ const CircularProgress: React.FC<CircularProgressProps> = ({
         className="block"
         style={{ transform: 'rotate(-90deg)' }}
         role="img"
-        aria-label={`Progress ${Math.round(percentage)}%`}
+        aria-label={max > 0 ? `Wochenziel: ${value} von ${max} Trainingstagen` : "Wochenziel: Noch nicht verfügbar"}
       >
         {/* Track */}
         <circle
@@ -492,23 +492,20 @@ const ProfileView: React.FC<ProfileViewProps> = React.memo(({
   };
 
   return (
-    <div className="max-w-2xl mx-auto space-y-8 pb-24">
+    <div className="max-w-2xl mx-auto space-y-8 pb-24 [&_button]:scroll-mb-24">
       {/* Section 1: Profile Header */}
       <motion.section variants={itemVariants} className="pt-4">
         <GlassCard className="p-6">
           <div className="flex items-center gap-4">
-            {/* Avatar with glow ring - clickable */}
-            <div className="relative cursor-pointer group" onClick={handleOpenEdit}>
-              <div className="absolute -inset-1 bg-gradient-to-br from-emerald-400 to-emerald-600 rounded-full blur-md opacity-60 group-hover:opacity-80 transition-opacity" />
-              <Avatar className="relative h-20 w-20 border-2 border-emerald-400/50 shadow-lg shadow-emerald-500/30 group-hover:border-emerald-400 transition-colors">
+            {/* Profile editing has one entry point: the labelled pencil. */}
+            <div className="relative shrink-0">
+              <div className="absolute -inset-1 bg-gradient-to-br from-emerald-400 to-emerald-600 rounded-full blur-md opacity-60" />
+              <Avatar className="relative h-20 w-20 border-2 border-emerald-400/50 shadow-lg shadow-emerald-500/30">
                 <AvatarImage src={avatarUrl || undefined} alt={displayName} />
                 <AvatarFallback className="bg-emerald-500/20 text-emerald-400 text-xl font-bold">
                   {getInitials(profile?.full_name)}
                 </AvatarFallback>
               </Avatar>
-              <div className="absolute inset-0 flex items-center justify-center bg-black/40 rounded-full opacity-0 group-hover:opacity-100 transition-opacity">
-                <Camera className="w-5 h-5 text-white" />
-              </div>
             </div>
 
             {/* User info */}
@@ -520,10 +517,11 @@ const ProfileView: React.FC<ProfileViewProps> = React.memo(({
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="h-7 w-7 shrink-0"
+                  className="h-11 w-11 shrink-0"
                   onClick={handleOpenEdit}
+                  aria-label="Profil bearbeiten"
                 >
-                  <Pencil className="h-3.5 w-3.5" />
+                  <Pencil className="h-3.5 w-3.5" aria-hidden="true" />
                 </Button>
               </div>
               <div className="flex items-center gap-1.5 mt-1 text-sm text-muted-foreground">
@@ -594,14 +592,14 @@ const ProfileView: React.FC<ProfileViewProps> = React.memo(({
             <div className="flex flex-col items-center gap-2">
               <CircularProgress
                 value={workoutProgress.completed}
-                max={workoutProgress.total || 7}
+                max={workoutProgress.total}
                 size={90}
                 strokeWidth={8}
               >
-                <span className="text-lg font-bold text-foreground">
+                <span className="text-lg font-bold text-foreground" aria-hidden="true">
                   {workoutProgress.total > 0
                     ? `${workoutProgress.completed}/${workoutProgress.total}`
-                    : "0/7"}
+                    : "--"}
                 </span>
               </CircularProgress>
               <span className="text-xs text-muted-foreground font-medium">Wochenziel</span>
@@ -617,8 +615,8 @@ const ProfileView: React.FC<ProfileViewProps> = React.memo(({
           <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wider">Ernährung & Ziele</h2>
         </div>
         <GlassCard className="p-4">
-          <div className="flex items-start justify-between">
-            <div className="flex-1 grid grid-cols-2 gap-4">
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex-1 min-w-0 grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="flex items-center gap-3">
                 <div className="p-2 rounded-lg bg-emerald-500/20 text-emerald-400">
                   <Target className="w-4 h-4" />
@@ -633,7 +631,7 @@ const ProfileView: React.FC<ProfileViewProps> = React.memo(({
                   <Utensils className="w-4 h-4" />
                 </div>
                 <div>
-                  <span className="text-xs text-muted-foreground uppercase tracking-wider">Diät</span>
+                  <span className="text-xs text-muted-foreground uppercase tracking-wider">Ernährungsform</span>
                   <p className="text-sm font-medium text-foreground">{displayDiet}</p>
                 </div>
               </div>
@@ -641,10 +639,11 @@ const ProfileView: React.FC<ProfileViewProps> = React.memo(({
             <Button
               variant="ghost"
               size="icon"
-              className="h-8 w-8 shrink-0"
+              className="h-11 w-11 shrink-0"
               onClick={handleOpenGoals}
+              aria-label="Ernährung und Ziele bearbeiten"
             >
-              <Pencil className="h-3.5 w-3.5" />
+              <Pencil className="h-3.5 w-3.5" aria-hidden="true" />
             </Button>
           </div>
         </GlassCard>
@@ -663,7 +662,7 @@ const ProfileView: React.FC<ProfileViewProps> = React.memo(({
                 <span className="text-xs text-muted-foreground uppercase tracking-wider">Ausrüstung</span>
                 <p className="text-sm font-medium text-foreground break-words">{displayEquipment}</p>
               </div>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <span className="text-xs text-muted-foreground uppercase tracking-wider">Tage / Woche</span>
                   <p className="text-sm font-medium text-foreground">{displayDaysPerWeek}</p>
@@ -677,11 +676,11 @@ const ProfileView: React.FC<ProfileViewProps> = React.memo(({
             <Button
               variant="ghost"
               size="icon"
-              className="h-8 w-8 shrink-0"
+              className="h-11 w-11 shrink-0"
               onClick={handleOpenTraining}
               aria-label="Trainingsangaben bearbeiten"
             >
-              <Pencil className="h-3.5 w-3.5" />
+              <Pencil className="h-3.5 w-3.5" aria-hidden="true" />
             </Button>
           </div>
         </GlassCard>
@@ -697,18 +696,18 @@ const ProfileView: React.FC<ProfileViewProps> = React.memo(({
           {/* Appearance / Theme Toggle */}
           <div>
             <div className="flex items-center gap-3 mb-3">
-              <div className="p-2 rounded-lg bg-blue-500/20 text-blue-400">
+              <div className="p-2 rounded-lg bg-blue-500/20 text-blue-400" aria-hidden="true">
                 {themeMode === 'dark' ? <Moon className="w-4 h-4" /> : themeMode === 'light' ? <Sun className="w-4 h-4" /> : <Monitor className="w-4 h-4" />}
               </div>
               <div>
-                <span className="text-sm font-medium text-foreground">Erscheinungsbild</span>
+                <span id="theme-mode-label" className="text-sm font-medium text-foreground">Erscheinungsbild</span>
                 <p className="text-xs text-muted-foreground mt-0.5">
                   Farbschema für die App
                 </p>
               </div>
             </div>
             {/* Segmented Control */}
-            <div className="flex rounded-xl bg-muted/50 p-1 gap-1">
+            <div role="group" aria-labelledby="theme-mode-label" className="flex rounded-xl bg-muted/50 p-1 gap-1">
               {[
                 { value: 'system' as const, icon: Monitor, label: 'System' },
                 { value: 'light' as const, icon: Sun, label: 'Hell' },
@@ -716,13 +715,15 @@ const ProfileView: React.FC<ProfileViewProps> = React.memo(({
               ].map(({ value, icon: Icon, label }) => (
                 <button
                   key={value}
+                  type="button"
+                  aria-pressed={themeMode === value}
                   onClick={() => setThemeMode(value)}
-                  className={`flex-1 flex items-center justify-center gap-1.5 py-2 px-3 rounded-lg text-xs font-medium transition-all ${themeMode === value
+                  className={`flex-1 flex items-center justify-center gap-1.5 min-h-11 py-2 px-2 sm:px-3 rounded-lg text-xs font-medium transition-all ${themeMode === value
                     ? 'bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 shadow-sm'
                     : 'text-muted-foreground hover:bg-accent'
                     }`}
                 >
-                  <Icon className="w-3.5 h-3.5" />
+                  <Icon className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
                   {label}
                 </button>
               ))}
@@ -762,23 +763,24 @@ const ProfileView: React.FC<ProfileViewProps> = React.memo(({
             )}
           </div>
 
-          {/* Premium Glass Toggle */}
-          <div className="flex items-center justify-between pt-2 border-t border-white/5">
-            <div className="flex items-center gap-3">
-              <div className="p-2 rounded-lg bg-emerald-500/20 text-emerald-400">
-                <Sparkles className="w-4 h-4" />
+          {/* Visual effects preference */}
+          <div className="flex items-center justify-between gap-3 pt-2 border-t border-white/5">
+            <div className="flex items-center gap-3 min-w-0">
+              <div className="p-2 shrink-0 rounded-lg bg-emerald-500/20 text-emerald-400">
+                <Sparkles className="w-4 h-4" aria-hidden="true" />
               </div>
               <div>
                 <Label htmlFor="advanced-glass-toggle" className="text-sm font-medium cursor-pointer">
-                  Premium Liquid Glass
+                  Visuelle Effekte
                 </Label>
-                <p className="text-xs text-muted-foreground mt-0.5">
-                  Erweiterte Shimmer-Effekte aktivieren
+                <p id="advanced-glass-description" className="text-xs text-muted-foreground mt-0.5">
+                  Zusätzliche Schimmereffekte in der Navigation anzeigen
                 </p>
               </div>
             </div>
             <Switch
               id="advanced-glass-toggle"
+              aria-describedby="advanced-glass-description"
               checked={enableAdvancedGlass}
               onCheckedChange={setEnableAdvancedGlass}
             />
@@ -845,15 +847,18 @@ const ProfileView: React.FC<ProfileViewProps> = React.memo(({
       {/* Edit Profile Dialog */}
       <Dialog open={isEditOpen} onOpenChange={setIsEditOpen}>
         <DialogContent className="bg-background/95 backdrop-blur-xl border-border">
-          <DialogHeader>
-            <DialogTitle>Profil bearbeiten</DialogTitle>
+          <DialogHeader className="px-6 sm:pl-0">
+            <DialogTitle className="leading-snug">Profil bearbeiten</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-4">
             {/* Avatar Upload Area */}
             <div className="flex flex-col items-center gap-3">
-              <div
-                className="relative cursor-pointer group"
-                onClick={() => !isUploading && fileInputRef.current?.click()}
+              <button
+                type="button"
+                aria-label="Profilbild ändern"
+                disabled={isUploading}
+                className="relative rounded-full cursor-pointer group disabled:cursor-wait"
+                onClick={() => fileInputRef.current?.click()}
               >
                 <div className="absolute -inset-1 bg-gradient-to-br from-emerald-400 to-emerald-600 rounded-full blur-md opacity-40 group-hover:opacity-60 transition-opacity" />
                 <Avatar className="relative h-24 w-24 border-2 border-emerald-400/50 overflow-hidden">
@@ -898,10 +903,10 @@ const ProfileView: React.FC<ProfileViewProps> = React.memo(({
                   </div>
                 ) : (
                   <div className="absolute inset-0 flex items-center justify-center bg-black/50 rounded-full opacity-0 group-hover:opacity-100 transition-opacity">
-                    <Camera className="w-6 h-6 text-white" />
+                    <Camera className="w-6 h-6 text-white" aria-hidden="true" />
                   </div>
                 )}
-              </div>
+              </button>
               <input
                 ref={fileInputRef}
                 type="file"
@@ -910,7 +915,7 @@ const ProfileView: React.FC<ProfileViewProps> = React.memo(({
                 onChange={handleFileSelect}
               />
               <p className="text-xs text-muted-foreground">
-                {isUploading ? "Wird hochgeladen..." : "Klicke zum Ändern"}
+                {isUploading ? "Wird hochgeladen..." : "Profilbild ändern"}
               </p>
             </div>
 
@@ -975,8 +980,8 @@ const ProfileView: React.FC<ProfileViewProps> = React.memo(({
       {/* Edit Training Preferences Dialog */}
       <Dialog open={isTrainingOpen} onOpenChange={setIsTrainingOpen}>
         <DialogContent className="bg-background/95 backdrop-blur-xl border-border max-h-[85vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>Trainingsangaben bearbeiten</DialogTitle>
+          <DialogHeader className="px-6 sm:pl-0">
+            <DialogTitle className="leading-snug">Trainingsangaben bearbeiten</DialogTitle>
           </DialogHeader>
           <div className="space-y-5 py-4">
             <div className="space-y-2">
@@ -1068,8 +1073,8 @@ const ProfileView: React.FC<ProfileViewProps> = React.memo(({
       {/* Edit Goals Dialog */}
       <Dialog open={isGoalsOpen} onOpenChange={setIsGoalsOpen}>
         <DialogContent className="bg-background/95 backdrop-blur-xl border-border">
-          <DialogHeader>
-            <DialogTitle>Ziele bearbeiten</DialogTitle>
+          <DialogHeader className="px-6 sm:pl-0">
+            <DialogTitle className="leading-snug">Ernährung und Ziele bearbeiten</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div className="space-y-2">
@@ -1092,13 +1097,13 @@ const ProfileView: React.FC<ProfileViewProps> = React.memo(({
               </Select>
             </div>
             <div className="space-y-2">
-              <Label htmlFor="edit-diet">Ernährungsweise</Label>
+              <Label htmlFor="edit-diet">Ernährungsform</Label>
               <Select
                 value={goalsData.dietary_preference}
                 onValueChange={(value) => setGoalsData(prev => ({ ...prev, dietary_preference: value }))}
               >
                 <SelectTrigger id="edit-diet">
-                  <SelectValue placeholder="Wähle deine Ernährungsweise" />
+                  <SelectValue placeholder="Wähle deine Ernährungsform" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="standard">Standard</SelectItem>
