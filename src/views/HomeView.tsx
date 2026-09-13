@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useId } from "react";
+import React, { useState, useMemo, useId } from "react";
 import { motion } from "framer-motion";
 import { AnimatedAvatar } from "@/components/ui/animated-avatar";
 import { Button } from "@/components/ui/button";
@@ -10,7 +10,6 @@ import { getAvatarUrl } from "@/lib/avatarUtils";
 import { GradientCard } from "@/components/micro/GradientCard";
 import { ProgressPill } from "@/components/micro/ProgressPill";
 import { WeeklyActivity } from "@/components/charts/WeeklyActivity";
-import { MotivationSkeleton } from "@/components/skeletons/MotivationSkeleton";
 import HomeSkeleton from "@/components/skeletons/HomeSkeleton";
 import WorkoutErrorBoundary from "@/components/WorkoutErrorBoundary";
 import { NotificationPopover } from "@/components/NotificationPopover";
@@ -114,8 +113,9 @@ const HomeView: React.FC<HomeViewProps> = ({
 }) => {
   const { t } = useTranslation();
   const actionId = useId();
-  const [quote, setQuote] = useState<string>("");
-  const [isLoadingQuote, setIsLoadingQuote] = useState(true);
+  // The pool is local and synchronous, so the first quote is available on the
+  // first render — there is nothing to wait for and no skeleton to show.
+  const [quote, setQuote] = useState<string>(getRandomQuote);
   const [quoteKey, setQuoteKey] = useState(0);
 
   // Fetch weekly activity data (shared with Chart)
@@ -275,18 +275,6 @@ const HomeView: React.FC<HomeViewProps> = ({
     );
   }, [nutritionPlan]);
 
-
-  // Load random Goggins quote on mount
-  useEffect(() => {
-    const loadQuote = () => {
-      setQuote(getRandomQuote());
-      setIsLoadingQuote(false);
-    };
-
-    // Small delay for skeleton
-    const timer = setTimeout(loadQuote, 500);
-    return () => clearTimeout(timer);
-  }, []);
 
   /*
     These two must stay above the early returns below. They used to sit after
@@ -575,43 +563,39 @@ const HomeView: React.FC<HomeViewProps> = ({
         </div>
 
         {/* Motivation Quote Card */}
-        {isLoadingQuote ? (
-          <MotivationSkeleton />
-        ) : (
-          <div className="relative">
-            <GradientCard>
-              <motion.blockquote
-                key={quoteKey}
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -10 }}
-                transition={{ duration: 0.3 }}
-                className="pr-10 text-base font-medium text-foreground leading-relaxed"
-              >
-                "{quote}"
-              </motion.blockquote>
-              <cite className="text-xs text-muted-foreground not-italic mt-2 block">
-                — David Goggins
-              </cite>
-            </GradientCard>
-
-            {/* Refresh Button */}
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={refreshQuote}
-              className="absolute top-3 right-3 h-8 w-8 rounded-full hover:bg-background/80 transition-colors"
-              aria-label="Neues Zitat laden"
+        <div className="relative">
+          <GradientCard>
+            <motion.blockquote
+              key={quoteKey}
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              transition={{ duration: 0.3 }}
+              className="pr-10 text-base font-medium text-foreground leading-relaxed"
             >
-              <motion.div
-                whileTap={{ rotate: 180 }}
-                transition={{ duration: 0.3 }}
-              >
-                ↻
-              </motion.div>
-            </Button>
-          </div>
-        )}
+              "{quote}"
+            </motion.blockquote>
+            <cite className="text-xs text-muted-foreground not-italic mt-2 block">
+              — David Goggins
+            </cite>
+          </GradientCard>
+
+          {/* Refresh Button */}
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={refreshQuote}
+            className="absolute top-3 right-3 h-8 w-8 rounded-full hover:bg-background/80 transition-colors"
+            aria-label="Neues Zitat laden"
+          >
+            <motion.div
+              whileTap={{ rotate: 180 }}
+              transition={{ duration: 0.3 }}
+            >
+              ↻
+            </motion.div>
+          </Button>
+        </div>
 
       </div>
     </WorkoutErrorBoundary>
