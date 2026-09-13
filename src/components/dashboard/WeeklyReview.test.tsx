@@ -56,6 +56,9 @@ describe("WeeklyReview", () => {
     expect(screen.getByText("3 von 3")).toBeInTheDocument();
     expect(screen.getByText("100 %")).toBeInTheDocument();
     expect(screen.getByText("2 Std. 15 Min.")).toBeInTheDocument();
+    expect(screen.getByText("Erfasste Dauer").parentElement).toHaveTextContent("2 Std. 15 Min.");
+    expect(screen.queryByText("Dauer", { exact: true })).not.toBeInTheDocument();
+    expect(screen.getByText("Ausgewählt: Planwoche 2")).toBeInTheDocument();
     expect(screen.queryByText("Dauer teilweise erfasst")).not.toBeInTheDocument();
   });
 
@@ -207,4 +210,14 @@ describe("WeeklyReview with a recommendation", () => {
       screen.queryByRole("button", { name: /anpassen|ändern|erstellen|generieren|übernehmen/i })
     ).toBeNull();
   });
+});
+
+
+it('updates the named plan week when browsing without claiming a current calendar week', () => {
+  const { rerender } = render(<WeeklyReview facts={facts()} />);
+  expect(screen.getByText('Ausgewählt: Planwoche 2')).toBeInTheDocument();
+  rerender(<WeeklyReview facts={facts({ weekKey: 'Week 1' })} />);
+  expect(screen.getByText('Ausgewählt: Planwoche 1')).toBeInTheDocument();
+  expect(screen.queryByText('Ausgewählt: Planwoche 2')).not.toBeInTheDocument();
+  expect(screen.queryByText(/Aktuelle Kalenderwoche/)).not.toBeInTheDocument();
 });

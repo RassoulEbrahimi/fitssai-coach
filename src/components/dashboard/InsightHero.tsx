@@ -81,9 +81,9 @@ export const InsightHero: React.FC<InsightHeroProps> = ({ insight, onDismiss, on
 
                         {/* Content */}
                         <div className="flex-1 min-w-0 pt-0.5">
-                            <h3 className="font-semibold text-lg leading-tight text-foreground mb-1">
+                            <h2 className="font-semibold text-lg leading-tight text-foreground mb-1">
                                 {displayTitle}
-                            </h3>
+                            </h2>
                             <p className="text-sm text-muted-foreground leading-relaxed line-clamp-3">
                                 {displayMessage}
                             </p>

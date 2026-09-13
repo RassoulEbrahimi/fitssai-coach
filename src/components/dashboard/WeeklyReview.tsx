@@ -56,7 +56,7 @@ const Metric: React.FC<{
       <Icon className="w-3.5 h-3.5" aria-hidden="true" />
     </div>
     <div className="min-w-0">
-      <span className="block text-[11px] uppercase tracking-wider text-muted-foreground">{label}</span>
+      <span className="block text-xs text-muted-foreground">{label}</span>
       <span className="block text-sm font-semibold text-foreground break-words">{value}</span>
       {caption && <span className="block text-[11px] text-muted-foreground">{caption}</span>}
     </div>
@@ -88,6 +88,10 @@ export const WeeklyReview: React.FC<WeeklyReviewProps> = ({
           Wochenrückblick
         </h2>
       </div>
+
+      <p className="mb-3 px-1 text-sm text-muted-foreground">
+        Ausgewählt: {adherence.weekKey.replace(/^Week /, "Planwoche ")}
+      </p>
 
       <GradientCard className="p-4">
         {!facts.hasAnyData ? (
@@ -122,7 +126,7 @@ export const WeeklyReview: React.FC<WeeklyReviewProps> = ({
               )}
               <Metric
                 icon={Clock}
-                label="Dauer"
+                label="Erfasste Dauer"
                 value={durationText(duration)}
                 caption={durationCaption(duration)}
                 // The longest value of the three ("mind. 2 Std. 15 Min."), so

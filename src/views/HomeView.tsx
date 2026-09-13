@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useId } from "react";
 import { motion } from "framer-motion";
 import { AnimatedAvatar } from "@/components/ui/animated-avatar";
 import { Button } from "@/components/ui/button";
@@ -113,6 +113,7 @@ const HomeView: React.FC<HomeViewProps> = ({
   workoutLogs = []
 }) => {
   const { t } = useTranslation();
+  const actionId = useId();
   const [quote, setQuote] = useState<string>("");
   const [isLoadingQuote, setIsLoadingQuote] = useState(true);
   const [quoteKey, setQuoteKey] = useState(0);
@@ -470,6 +471,84 @@ const HomeView: React.FC<HomeViewProps> = ({
           </div>
         </div>
 
+        {/* Progress Rows */}
+        <motion.div
+          className="space-y-3"
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.4, delay: 0.2 }}
+        >
+          {/* Today's Training Progress */}
+          <motion.section
+            className="relative flex items-center justify-between gap-3 p-4 bg-card/70 backdrop-blur rounded-2xl ring-1 ring-border/50 hover:bg-card/90 transition-colors active:bg-primary/5 active:scale-[0.97]"
+          >
+            <div className="flex min-w-0 items-center gap-3">
+              <div className="shrink-0 p-2 rounded-lg bg-primary/20">
+                <Dumbbell className="h-4 w-4 text-primary" aria-hidden="true" />
+              </div>
+              <div>
+                <h2 id={`${actionId}-today-title`} className="font-medium text-foreground text-base">Heutiges Training</h2>
+                <p id={`${actionId}-today-status`} className="text-xs font-medium text-muted-foreground">
+                  {todayTrainingProgress.label}
+                </p>
+              </div>
+            </div>
+            <ProgressPill
+              value={todayTrainingProgress.value}
+              aria-label={`Training Fortschritt: ${todayTrainingProgress.value} Prozent`}
+            />
+            <button
+              type="button"
+              aria-labelledby={`${actionId}-today-title`}
+              aria-describedby={`${actionId}-today-status`}
+              onClick={() => onNavigate?.('workout')}
+              className="absolute inset-0 rounded-2xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+            />
+          </motion.section>
+
+          {/*
+            The training nudge: deterministic, and only on a planned day whose
+            session record is still open. See src/lib/nudges/eligibility.ts.
+          */}
+          <TrainingNudgeCard
+            nudges={trainingNudges}
+            onOpenPlan={onNavigate ? () => onNavigate('workout') : undefined}
+            onDismiss={dismissTrainingNudge}
+          />
+
+          {/* Nutrition Progress */}
+          <motion.section
+            className="relative flex items-center justify-between gap-3 p-4 bg-card/70 backdrop-blur rounded-2xl ring-1 ring-border/50 hover:bg-card/90 transition-colors active:bg-primary/5 active:scale-[0.97]"
+          >
+            <div className="flex min-w-0 items-center gap-3">
+              <div className="shrink-0 p-2 rounded-lg bg-success/20">
+                <Utensils className="h-4 w-4 text-success" aria-hidden="true" />
+              </div>
+              <div>
+                <h2 id={`${actionId}-nutrition-title`} className="font-medium text-foreground text-base">Ernährung</h2>
+                <p id={`${actionId}-nutrition-status`} className="text-xs font-medium text-muted-foreground">
+                  {nutritionStatus}
+                  {nutritionMealCount > 0 && ` · ${nutritionMealCount} Mahlzeiten`}
+                </p>
+              </div>
+            </div>
+            {/* No percentage: nothing is logged, so there is no progress to show. */}
+            <span
+              className="text-xs font-medium text-muted-foreground whitespace-nowrap"
+              aria-label={`Ernährungsplan-Status: ${nutritionStatus}`}
+            >
+              {nutritionStatus}
+            </span>
+            <button
+              type="button"
+              aria-labelledby={`${actionId}-nutrition-title`}
+              aria-describedby={`${actionId}-nutrition-status`}
+              onClick={() => onNavigate?.('nutrition')}
+              className="absolute inset-0 rounded-2xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+            />
+          </motion.section>
+        </motion.div>
+
         {/* Insight Hero (Smart Insights) */}
         <InsightHero
           insight={activeInsight}
@@ -479,15 +558,21 @@ const HomeView: React.FC<HomeViewProps> = ({
           }}
         />
 
-        {/*
-          The training nudge: deterministic, and only on a planned day whose
-          session record is still open. See src/lib/nudges/eligibility.ts.
-        */}
-        <TrainingNudgeCard
-          nudges={trainingNudges}
-          onOpenPlan={onNavigate ? () => onNavigate('workout') : undefined}
-          onDismiss={dismissTrainingNudge}
-        />
+        {/* Deterministic weekly review — computed, never generated. */}
+        {weeklyFacts && (
+          <WeeklyReview
+            facts={weeklyFacts}
+            metrics={weeklyReviewMetrics}
+            reviewContext={weeklyReviewContext}
+            /* Reading the plan, never rewriting it. */
+            onViewPlan={onNavigate ? () => onNavigate('workout') : undefined}
+          />
+        )}
+
+        {/* Weekly Activity Chart */}
+        <div role="region" aria-label="Aktivitätsübersicht – aktuelle Kalenderwoche oder aktueller Monat">
+          <WeeklyActivity />
+        </div>
 
         {/* Motivation Quote Card */}
         {isLoadingQuote ? (
@@ -501,7 +586,7 @@ const HomeView: React.FC<HomeViewProps> = ({
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -10 }}
                 transition={{ duration: 0.3 }}
-                className="text-base font-medium text-foreground leading-relaxed"
+                className="pr-10 text-base font-medium text-foreground leading-relaxed"
               >
                 "{quote}"
               </motion.blockquote>
@@ -528,80 +613,6 @@ const HomeView: React.FC<HomeViewProps> = ({
           </div>
         )}
 
-        {/* Progress Rows */}
-        <motion.ul
-          className="space-y-3 list-none"
-          role="list"
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.4, delay: 0.2 }}
-        >
-          {/* Today's Training Progress */}
-          <motion.li
-            className="flex items-center justify-between p-4 bg-card/70 backdrop-blur rounded-2xl ring-1 ring-border/50 cursor-pointer hover:bg-card/90 transition-colors active:bg-primary/5 active:scale-[0.97]"
-            onClick={() => onNavigate?.('workout')}
-            whileTap={{ scale: 0.97 }}
-          >
-            <div className="flex items-center gap-3">
-              <div className="p-2 rounded-lg bg-primary/20">
-                <Dumbbell className="h-4 w-4 text-primary" aria-hidden="true" />
-              </div>
-              <div>
-                <h2 className="font-medium text-foreground text-base">Heutiges Training</h2>
-                <p className="text-xs font-medium text-muted-foreground">
-                  {todayTrainingProgress.label}
-                </p>
-              </div>
-            </div>
-            <ProgressPill
-              value={todayTrainingProgress.value}
-              aria-label={`Training Fortschritt: ${todayTrainingProgress.value} Prozent`}
-            />
-          </motion.li>
-
-          {/* Nutrition Progress */}
-          <motion.li
-            className="flex items-center justify-between p-4 bg-card/70 backdrop-blur rounded-2xl ring-1 ring-border/50 cursor-pointer hover:bg-card/90 transition-colors active:bg-primary/5 active:scale-[0.97]"
-            onClick={() => onNavigate?.('nutrition')}
-            whileTap={{ scale: 0.97 }}
-          >
-            <div className="flex items-center gap-3">
-              <div className="p-2 rounded-lg bg-success/20">
-                <Utensils className="h-4 w-4 text-success" aria-hidden="true" />
-              </div>
-              <div>
-                <h2 className="font-medium text-foreground text-base">Ernährung</h2>
-                <p className="text-xs font-medium text-muted-foreground">
-                  {nutritionStatus}
-                  {nutritionMealCount > 0 && ` · ${nutritionMealCount} Mahlzeiten`}
-                </p>
-              </div>
-            </div>
-            {/* No percentage: nothing is logged, so there is no progress to show. */}
-            <span
-              className="text-xs font-medium text-muted-foreground whitespace-nowrap"
-              aria-label={`Ernährungsplan-Status: ${nutritionStatus}`}
-            >
-              {nutritionStatus}
-            </span>
-          </motion.li>
-        </motion.ul>
-
-        {/* Deterministic weekly review — computed, never generated. */}
-        {weeklyFacts && (
-          <WeeklyReview
-            facts={weeklyFacts}
-            metrics={weeklyReviewMetrics}
-            reviewContext={weeklyReviewContext}
-            /* Reading the plan, never rewriting it. */
-            onViewPlan={onNavigate ? () => onNavigate('workout') : undefined}
-          />
-        )}
-
-        {/* Weekly Activity Chart */}
-        <div role="region" aria-label="Wöchentliche Aktivitätsübersicht">
-          <WeeklyActivity />
-        </div>
       </div>
     </WorkoutErrorBoundary>
   );
