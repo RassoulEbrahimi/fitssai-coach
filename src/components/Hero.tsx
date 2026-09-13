@@ -1,5 +1,5 @@
 import { Button } from "@/components/ui/button";
-import { ArrowRight, Play } from "lucide-react";
+import { ArrowRight } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { motion } from "framer-motion";
 
@@ -66,7 +66,7 @@ const Hero = ({ onGetStarted }: HeroProps) => {
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.5, delay: 0.3, ease: "easeOut" }}
-            className="flex flex-col items-center justify-center gap-4 sm:flex-row"
+            className="flex justify-center"
           >
             <Button
               size="lg"
@@ -74,16 +74,7 @@ const Hero = ({ onGetStarted }: HeroProps) => {
               className="w-full sm:w-auto px-8 h-12 text-base font-semibold bg-white text-black hover:bg-zinc-200 hover:scale-105 transition-all duration-300 rounded-full"
             >
               {t('hero.startJourney')}
-              <ArrowRight className="w-4 h-4 ml-2" />
-            </Button>
-
-            <Button
-              size="lg"
-              variant="outline"
-              className="w-full sm:w-auto px-8 h-12 text-base border-zinc-800 text-zinc-400 hover:text-white hover:bg-white/5 hover:border-zinc-700 rounded-full bg-transparent backdrop-blur-sm"
-            >
-              <Play className="w-3.5 h-3.5 mr-2 fill-current" />
-              {t('hero.watchDemo')}
+              <ArrowRight aria-hidden="true" className="w-4 h-4 ml-2" />
             </Button>
           </motion.div>
 
