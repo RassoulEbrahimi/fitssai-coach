@@ -202,7 +202,7 @@ const Dashboard = () => {
     }
 
     return () => observer.disconnect();
-  }, [prefetchOnIntersection]);
+  }, [prefetchOnIntersection, isFocusMode]); // the nav remounts after Focus Mode
 
   const prefersReducedMotion = useReducedMotion();
 
@@ -661,23 +661,31 @@ const Dashboard = () => {
         </motion.div>
       </motion.div>
 
-      <BottomNavPortal>
-        <FitssNavBar
-          ref={bottomNavRef}
-          activeView={activeView}
-          enableAdvancedGlass={enableAdvancedGlass}
-          onChange={(view) => {
-            navigateTo(view);
+      {/*
+        Not rendered in Focus Mode. Sliding it offscreen at opacity 0 left its
+        buttons in the tab order behind the fullscreen workout. The fullscreen
+        layer covers it anyway, and the active view lives in useAppNavigation,
+        so unmounting loses nothing; it slides back in on exit.
+      */}
+      {!isFocusMode && (
+        <BottomNavPortal>
+          <FitssNavBar
+            ref={bottomNavRef}
+            activeView={activeView}
+            enableAdvancedGlass={enableAdvancedGlass}
+            onChange={(view) => {
+              navigateTo(view);
 
-            // Optional haptic feedback for supported devices
-            try {
-              if (navigator.vibrate) navigator.vibrate(8); // very subtle
-            } catch (e) {
-              // no-op
-            }
-          }}
-        />
-      </BottomNavPortal>
+              // Optional haptic feedback for supported devices
+              try {
+                if (navigator.vibrate) navigator.vibrate(8); // very subtle
+              } catch (e) {
+                // no-op
+              }
+            }}
+          />
+        </BottomNavPortal>
+      )}
     </div>
   );
 };

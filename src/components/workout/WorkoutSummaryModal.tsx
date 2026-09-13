@@ -1,4 +1,4 @@
-import React, { useMemo } from "react";
+import React, { useMemo, useRef } from "react";
 import { motion } from "framer-motion";
 import { format } from "date-fns";
 import { de } from "date-fns/locale";
@@ -133,6 +133,26 @@ const WorkoutSummaryModal: React.FC<WorkoutSummaryModalProps> = ({
     ? Math.round((stats.completedSets / stats.totalSets) * 100)
     : 0;
 
+  /*
+    Radix returns focus on close only to a Dialog.Trigger, and this dialog is
+    opened from a plain button, so closing it dropped focus on the body. The
+    opener is remembered at open time and refocused on close while it still
+    exists — "Zurück zum Training" lands back on "Training beenden". After a
+    finish the opener has been unmounted and the card restores focus instead.
+  */
+  const openerRef = useRef<HTMLElement | null>(null);
+  const rememberOpener = () => {
+    const active = document.activeElement;
+    openerRef.current = active instanceof HTMLElement && active !== document.body ? active : null;
+  };
+  const returnFocusToOpener = (event: Event) => {
+    const opener = openerRef.current;
+    openerRef.current = null;
+    if (!opener?.isConnected) return;
+    event.preventDefault();
+    opener.focus({ preventScroll: true });
+  };
+
   // Handle saving
   const handleFinish = () => {
     if (onFinish) {
@@ -146,7 +166,10 @@ const WorkoutSummaryModal: React.FC<WorkoutSummaryModalProps> = ({
     <Dialog open={open} onOpenChange={(isOpen) => !isOpen && onClose()}>
       <DialogPortal>
         <DialogOverlay className="fixed inset-0 z-[99999] bg-black/80 backdrop-blur-md" />
-        <DialogContent className="sm:max-w-md z-[100000] p-0 overflow-hidden bg-background/95 backdrop-blur-xl border-border/50 shadow-2xl">
+        <DialogContent
+          onOpenAutoFocus={rememberOpener}
+          onCloseAutoFocus={returnFocusToOpener}
+          className="sm:max-w-md z-[100000] p-0 overflow-hidden bg-background/95 backdrop-blur-xl border-border/50 shadow-2xl">
           {/* Header */}
           <div className="relative bg-gradient-to-br from-primary/20 via-primary/5 to-transparent px-6 pt-6 pb-6 border-b border-border/40">
             <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-primary/20 via-transparent to-transparent" />
