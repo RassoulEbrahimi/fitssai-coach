@@ -23,7 +23,7 @@ export const WeeklyActivity: React.FC<WeeklyActivityProps> = ({ className }) => 
   const maxValue = Math.max(...dailyData, 1);
   const progressPercentage = (measuredMinutes / targetMinutes) * 100;
   const isTargetAchieved = measuredMinutes >= targetMinutes;
-  const totalDays = viewMode === "weekly" ? 7 : 30;
+  const totalDays = dailyData.length;
   // No real history for this period. The bar chart carries no information at
   // that point, so it is not rendered at all — the previous build kept it and
   // floated the empty-state message on top of it, which is what collided.
@@ -83,9 +83,14 @@ export const WeeklyActivity: React.FC<WeeklyActivityProps> = ({ className }) => 
         </div>
       </div>
 
+      <p className="mb-3 text-sm text-muted-foreground">
+        {viewMode === "weekly" ? "Aktuelle Kalenderwoche" : "Aktueller Kalendermonat"}
+      </p>
+
       {/* View Toggle - Full Width Responsive */}
       <div className="flex w-full bg-muted/50 rounded-full p-1 mb-4">
         <motion.button
+          aria-pressed={viewMode === "weekly"}
           onClick={() => setViewMode("weekly")}
           whileTap={{ scale: 0.95 }}
           className={cn(
@@ -95,9 +100,10 @@ export const WeeklyActivity: React.FC<WeeklyActivityProps> = ({ className }) => 
               : "text-muted-foreground hover:text-foreground"
           )}
         >
-          Wöchentlich
+          Diese Woche
         </motion.button>
         <motion.button
+          aria-pressed={viewMode === "monthly"}
           onClick={() => setViewMode("monthly")}
           whileTap={{ scale: 0.95 }}
           className={cn(
@@ -107,7 +113,7 @@ export const WeeklyActivity: React.FC<WeeklyActivityProps> = ({ className }) => 
               : "text-muted-foreground hover:text-foreground"
           )}
         >
-          Monatlich
+          Dieser Monat
         </motion.button>
       </div>
 
@@ -139,7 +145,7 @@ export const WeeklyActivity: React.FC<WeeklyActivityProps> = ({ className }) => 
         durations would render seven empty bars, which reads as a broken chart
         rather than as "not recorded" — the stats row says that in words.
       */
-      <div className="flex items-end justify-between gap-1.5 mb-4">
+      <div className={cn("flex items-end justify-between mb-4", viewMode === "weekly" ? "gap-1.5" : "gap-0.5")}>
         {dailyData.map((value, index) => {
           // Calculate height proportional to actual minutes (0-60min range typically)
           const heightPercentage = maxValue > 0 ? (value / maxValue) * 100 : 0;
@@ -153,7 +159,7 @@ export const WeeklyActivity: React.FC<WeeklyActivityProps> = ({ className }) => 
           }
 
           return (
-            <div key={dayLabels[index]} className="flex flex-col items-center flex-1 gap-1.5 group">
+            <div key={dayLabels[index]} className="flex min-w-0 flex-col items-center flex-1 gap-1.5 group">
               {/* Gray Track Container with Fixed Height */}
               <div className="w-full h-32 bg-muted/30 rounded-lg flex flex-col justify-end overflow-hidden relative">
                 {/* Colored Fill Bar */}
@@ -182,8 +188,10 @@ export const WeeklyActivity: React.FC<WeeklyActivityProps> = ({ className }) => 
                 )}
               </div>
 
-              {/* Day Label */}
-              <span className="text-[10px] text-muted-foreground font-medium">
+              {/* Keep monthly labels spaced without shrinking readable text. */}
+              <span className={cn("text-[10px] text-muted-foreground font-medium",
+                viewMode === "monthly" && index !== 0 && index !== dailyData.length - 1 && (index + 1) % 7 !== 0 && "invisible"
+              )}>
                 {dayLabels[index]}
               </span>
             </div>
@@ -195,19 +203,23 @@ export const WeeklyActivity: React.FC<WeeklyActivityProps> = ({ className }) => 
       {/* Progress Summary */}
       <div className="space-y-3">
         {/* Stats Row */}
-        <div className="flex items-center justify-between text-sm">
+        <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 text-sm">
           <span className="text-muted-foreground">
             <span className="font-semibold text-foreground">{activeDays}</span> von {totalDays} Tagen aktiv
           </span>
           {hasMeasuredMinutes ? (
             <span className="text-muted-foreground">
-              {isPartialMeasurement && "mind. "}
-              <span className="font-semibold text-foreground">{measuredMinutes}</span> von {targetMinutes} min
+              Erfasste Dauer: {isPartialMeasurement && "mind. "}
+              <span className="font-semibold text-foreground">{measuredMinutes}</span> min
             </span>
           ) : (
             <span className="text-muted-foreground">Dauer nicht erfasst</span>
           )}
         </div>
+
+        <p className="text-sm text-muted-foreground">
+          {viewMode === "weekly" ? "Wochenziel" : "Monatsziel"}: {targetMinutes} min (Standard)
+        </p>
 
         {/*
           The bar tracks measured minutes against the target. With nothing

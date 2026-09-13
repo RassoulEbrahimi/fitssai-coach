@@ -172,7 +172,9 @@ describe("WeeklyActivity — duration honesty", () => {
     expect(container.textContent).toContain("3");
     // ...but there is no measured time to report.
     expect(container.textContent).toContain("Dauer nicht erfasst");
-    expect(container.textContent).not.toMatch(/\d+ von 350 min/);
+    expect(container.textContent).not.toMatch(/\b0 min\b/);
+    expect(screen.queryByText(/Erfasste Dauer:/)).not.toBeInTheDocument();
+    expect(screen.getByText("Wochenziel: 350 min (Standard)")).toBeInTheDocument();
   });
 
   it("drops the minutes chart when there are no minutes to plot", () => {
@@ -191,6 +193,43 @@ describe("WeeklyActivity — duration honesty", () => {
 
     expect(container.textContent).toContain("mind.");
     expect(container.textContent).toContain("30");
-    expect(container.textContent).toContain("von 350 min");
+    expect(screen.getByText(/Erfasste Dauer:/)).toHaveTextContent("Erfasste Dauer: mind. 30 min");
+    expect(screen.getByText("Wochenziel: 350 min (Standard)")).toBeInTheDocument();
+    expect(container.textContent).not.toContain("von 350 min");
   });
+});
+
+
+describe('WeeklyActivity — recorded time, target and period', () => {
+  it('names recorded minutes separately from the fixed standard target', () => {
+    activity.mockReturnValue(WITH_HISTORY);
+    const { container } = render(<WeeklyActivity />);
+    expect(screen.getByText(/Erfasste Dauer:/)).toHaveTextContent('Erfasste Dauer: 95 min');
+    expect(screen.getByText('Wochenziel: 350 min (Standard)')).toBeInTheDocument();
+    expect(screen.getByText('Aktuelle Kalenderwoche')).toBeInTheDocument();
+    expect(container.textContent).not.toContain('95 von 350');
+  });
+
+  it('names the current calendar month and its standard target after switching', async () => {
+    activity.mockImplementation((mode) => ({ ...WITH_HISTORY, targetMinutes: mode === 'monthly' ? 1500 : 350 }));
+    render(<WeeklyActivity />);
+    await userEvent.click(screen.getByRole('button', { name: 'Dieser Monat' }));
+    expect(activity).toHaveBeenLastCalledWith('monthly');
+    expect(screen.getByText('Aktueller Kalendermonat')).toBeInTheDocument();
+    expect(screen.getByText('Monatsziel: 1500 min (Standard)')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Dieser Monat' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.queryByText('Aktuelle Kalenderwoche')).not.toBeInTheDocument();
+  });
+});
+
+
+it.each([28, 29, 30, 31])('uses the actual calendar period length for a %s-day month', async (days) => {
+  activity.mockImplementation((mode) => ({ ...WITH_HISTORY,
+    dailyData: Array(mode === 'monthly' ? days : 7).fill(0),
+    dayLabels: Array.from({ length: mode === 'monthly' ? days : 7 }, (_, i) => String(i + 1)),
+    targetMinutes: mode === 'monthly' ? 1500 : 350,
+  }));
+  const { container } = render(<WeeklyActivity />);
+  await userEvent.click(screen.getByRole('button', { name: 'Dieser Monat' }));
+  expect(container.textContent).toContain(`3 von ${days} Tagen aktiv`);
 });

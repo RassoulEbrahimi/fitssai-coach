@@ -1,7 +1,9 @@
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { BrowserRouter, Route, Routes } from 'react-router-dom';
 import HomeView from './HomeView';
+import userEvent from '@testing-library/user-event';
+import type { TrainingNudge } from '@/lib/nudges';
 import { InsightHero } from '@/components/dashboard/InsightHero';
 import { FitssNavBar } from '@/components/FitssNavBar';
 import { useAppNavigation } from '@/hooks/useAppNavigation';
@@ -14,7 +16,8 @@ import '@/lib/i18n';
 // Only data/secondary surfaces are isolated. Home, its insight engine and CTA,
 // the owning navigation hook, browser router and navbar are the real components.
 vi.mock('@/hooks/useWeeklyActivity', () => ({ useWeeklyActivity: () => ({ activeDays: 0 }) }));
-vi.mock('@/hooks/useTrainingNudge', () => ({ useTrainingNudge: () => ({ nudges: [], dismiss: vi.fn() }) }));
+const nudgeState = vi.hoisted(() => ({ nudges: [] as TrainingNudge[], dismiss: vi.fn() }));
+vi.mock('@/hooks/useTrainingNudge', () => ({ useTrainingNudge: () => nudgeState }));
 vi.mock('@/components/charts/WeeklyActivity', () => ({ WeeklyActivity: () => null }));
 
 const profile = { id: 'fixture-only', full_name: 'Test', created_at: '2020-01-01T12:00:00Z' };
@@ -40,6 +43,8 @@ function renderDashboard(keepHero = false) {
 }
 
 beforeEach(() => {
+    nudgeState.nudges = [];
+    nudgeState.dismiss.mockClear();
     history.replaceState(null, '', '/fitssai-coach/dashboard#/');
     vi.spyOn(window, 'scrollTo').mockImplementation(() => {});
 });
@@ -86,5 +91,61 @@ describe('Home insight dashboard navigation', () => {
         expect(window.location.hash).toBe(`#${getRouteForView('workout')}`);
         expect(screen.getByLabelText('Current view')).toHaveTextContent('workout');
         expect(screen.queryByText('404')).not.toBeInTheDocument();
+    });
+});
+
+
+describe('Home primary actions and hierarchy', () => {
+    it('puts training, its nudge and nutrition before insight, review, activity and motivation in DOM order', async () => {
+        nudgeState.nudges = [{
+            type: 'planned-session-today', key: 'plan|Week 1|0|planned-session-today',
+            dayKey: 'plan|Week 1|0', title: 'Heute ist eine Trainingseinheit geplant.',
+            body: 'Wenn es heute für dich passt, kannst du deinen Plan öffnen.', browserDeliverable: true,
+        }];
+        const { container } = renderDashboard();
+        await screen.findByText('— David Goggins');
+        const ordered = [
+            screen.getByRole('heading', { level: 1 }),
+            screen.getByRole('button', { name: 'Heutiges Training' }),
+            screen.getByRole('region', { name: 'Trainingshinweis' }),
+            screen.getByRole('button', { name: 'Ernährung' }),
+            screen.getByRole('button', { name: /Los geht's/ }),
+            screen.getByRole('region', { name: 'Wochenrückblick' }),
+            screen.getByRole('region', { name: /Aktivitätsübersicht/ }),
+            container.querySelector('blockquote')!,
+        ];
+        for (let index = 1; index < ordered.length; index++) {
+            expect(ordered[index - 1].compareDocumentPosition(ordered[index]) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+        }
+        const nudge = screen.getByRole('region', { name: 'Trainingshinweis' });
+        fireEvent.click(within(nudge).getByRole('button', { name: 'Hinweis ausblenden' }));
+        expect(nudgeState.dismiss).toHaveBeenCalledWith('plan|Week 1|0');
+        fireEvent.click(within(nudge).getByRole('button', { name: 'Plan öffnen' }));
+        expect(screen.getByLabelText('Current view')).toHaveTextContent('workout');
+    });
+
+    it.each([
+        ['Heutiges Training', 'workout', '{Enter}'],
+        ['Heutiges Training', 'workout', ' '],
+        ['Ernährung', 'nutrition', '{Enter}'],
+        ['Ernährung', 'nutrition', ' '],
+    ])('opens %s with keyboard %s %s', async (name, destination, key) => {
+        const user = userEvent.setup();
+        renderDashboard();
+        const action = screen.getByRole('button', { name });
+        expect(action.tagName).toBe('BUTTON');
+        expect(action).toHaveAccessibleDescription(name === 'Heutiges Training' ? 'Kein Plan aktiv' : 'Kein Plan');
+        // Reach the action through native tab order, then activate it.
+        for (let index = 0; index < 8 && document.activeElement !== action; index++) await user.tab();
+        expect(action).toHaveFocus();
+        await user.keyboard(key);
+        expect(screen.getByLabelText('Current view')).toHaveTextContent(destination);
+        expect(window.location.hash).toBe(`#${getRouteForView(destination as 'workout' | 'nutrition')}`);
+    });
+
+    it.each([['Heutiges Training', 'workout'], ['Ernährung', 'nutrition']])('opens %s on click', (name, destination) => {
+        renderDashboard();
+        fireEvent.click(screen.getByRole('button', { name }));
+        expect(screen.getByLabelText('Current view')).toHaveTextContent(destination);
     });
 });
