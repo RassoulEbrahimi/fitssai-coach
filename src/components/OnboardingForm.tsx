@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -26,19 +26,22 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 
 const onboardingSchema = z.object({
-  firstName: z.string().min(2, "Name must be at least 2 characters").max(50, "Name too long"),
-  age: z.number({ invalid_type_error: "Age is required" }).int().min(13, "Must be at least 13").max(120, "Invalid age"),
-  weight: z.number({ invalid_type_error: "Weight is required" }).int().min(30, "Weight must be at least 30kg").max(300, "Invalid weight"),
-  height: z.number({ invalid_type_error: "Height is required" }).int().min(100, "Height must be at least 100cm").max(250, "Invalid height"),
-  goal: z.enum(["gainMuscle", "loseFat", "improveCardio", "maintain"], { required_error: "Please select a goal" }),
-  diet: z.enum(["vegan", "vegetarian", "keto", "highProtein", "noPreference"], { required_error: "Please select a dietary preference" }),
-  experience: z.enum(["beginner", "intermediate", "advanced"], { required_error: "Please select experience level" }),
+  firstName: z.string().min(2).max(50),
+  age: z.number().int().min(13).max(120),
+  weight: z.number().int().min(30).max(300),
+  height: z.number().int().min(100).max(250),
+  goal: z.enum(["gainMuscle", "loseFat", "improveCardio", "maintain"]),
+  diet: z.enum(["vegan", "vegetarian", "keto", "highProtein", "noPreference"]),
+  experience: z.enum(["beginner", "intermediate", "advanced"]),
   // Training preferences a coach needs. Required for new submissions; profiles
   // created before this step existed simply do not carry them.
   equipment: equipmentSchema,
   daysPerWeek: daysPerWeekSchema,
   sessionMinutes: sessionMinutesSchema
 });
+
+type OnboardingValues = z.infer<typeof onboardingSchema>;
+const resolveOnboarding = zodResolver(onboardingSchema);
 
 const OnboardingForm = ({ onComplete }: { onComplete: () => void }) => {
   const { t } = useTranslation();
@@ -53,12 +56,33 @@ const OnboardingForm = ({ onComplete }: { onComplete: () => void }) => {
   const [loading, setLoading] = useState(false);
 
   const { register, handleSubmit, formState: { errors }, trigger, setValue, watch } = useForm<z.infer<typeof onboardingSchema>>({
-    resolver: zodResolver(onboardingSchema),
+    // Localize at the resolver boundary, including messages from shared schemas.
+    // The schema still owns every constraint; profile validation is unaffected.
+    resolver: async (values, context, options) => {
+      const result = await resolveOnboarding(values, context, options);
+      for (const field of Object.keys(result.errors) as (keyof OnboardingValues)[]) {
+        const error = result.errors[field];
+        if (!error) continue;
+        const value = values[field];
+        const code = value === undefined || value === "" || Number.isNaN(value)
+          ? "required"
+          : error.type;
+        error.message = t(`onboarding.validation.${field}.${code}`, {
+          defaultValue: t(`onboarding.validation.${field}.invalid`),
+        });
+      }
+      return result;
+    },
     mode: "onChange"
   });
 
   const formData = watch();
   const totalSteps = 4;
+  const progressText = t('onboarding.progress', { current: step, total: totalSteps });
+  const errorProps = (field: keyof OnboardingValues) => ({
+    'aria-invalid': Boolean(errors[field]),
+    'aria-describedby': errors[field] ? `onboarding-${field}-error` : undefined,
+  });
 
   /** 1..7, so every allowed value is selectable. */
   const dayChoices = Array.from(
@@ -117,10 +141,10 @@ const OnboardingForm = ({ onComplete }: { onComplete: () => void }) => {
         sessionMinutes:     data.sessionMinutes,
       });
 
-      toast.success('Profile saved successfully!');
+      toast.success(t('onboarding.saveSuccess'));
       onComplete();
     } catch (error: any) {
-      toast.error('Failed to save profile. Please try again.');
+      toast.error(t('onboarding.saveError'));
     } finally {
       setLoading(false);
     }
@@ -133,34 +157,37 @@ const OnboardingForm = ({ onComplete }: { onComplete: () => void }) => {
   };
 
   return (
-    <div className="min-h-screen bg-background flex items-center justify-center p-6">
+    <div className="min-h-screen bg-background flex items-center justify-center p-3 sm:p-6">
       <Card className="w-full max-w-2xl gradient-card border-primary/20 shadow-card">
         <CardHeader className="text-center">
-          <CardTitle className="text-3xl font-bold mb-2">{t('onboarding.title')}</CardTitle>
+          <h1 className="text-3xl font-bold mb-2">{t('onboarding.title')}</h1>
           <p className="text-muted-foreground">{t('onboarding.description')}</p>
           <div className="mt-6">
-            <Progress value={progress} className="h-2" />
-            <p className="text-sm text-muted-foreground mt-2">Step {step} of {totalSteps}</p>
+            <Progress value={progress} aria-label={t('onboarding.progressLabel')}
+              aria-valuenow={step} aria-valuemin={0} aria-valuemax={totalSteps}
+              aria-valuetext={progressText} className="h-2" />
+            <p className="text-sm text-muted-foreground mt-2">{progressText}</p>
           </div>
         </CardHeader>
         
         <CardContent className="space-y-6">
           {step === 1 && (
             <div className="space-y-6">
-              <h3 className="text-xl font-semibold text-center mb-6">{t('onboarding.steps.personalInfo')}</h3>
+              <h2 className="text-xl font-semibold text-center mb-6">{t('onboarding.steps.personalInfo')}</h2>
               
               <div className="space-y-4">
                 <div>
-                  <Label htmlFor="firstName">Vorname</Label>
+                  <Label htmlFor="firstName">{t('onboarding.fields.firstName')}</Label>
                   <Input
                     id="firstName"
+                    {...errorProps("firstName")}
                     type="text"
-                    placeholder="Gib deinen Namen ein"
+                    placeholder={t('onboarding.fields.firstNamePlaceholder')}
                     {...register("firstName")}
                     className="mt-1"
                   />
                   {errors.firstName && (
-                    <p className="text-sm text-destructive mt-1">{errors.firstName.message}</p>
+                    <p id="onboarding-firstName-error" className="text-sm text-destructive mt-1">{errors.firstName.message}</p>
                   )}
                 </div>
                 
@@ -168,13 +195,14 @@ const OnboardingForm = ({ onComplete }: { onComplete: () => void }) => {
                   <Label htmlFor="age">{t('onboarding.fields.age')}</Label>
                   <Input
                     id="age"
+                    {...errorProps("age")}
                     type="number"
                     placeholder={t('onboarding.fields.agePlaceholder')}
                     {...register("age", { valueAsNumber: true })}
                     className="mt-1"
                   />
                   {errors.age && (
-                    <p className="text-sm text-destructive mt-1">{errors.age.message}</p>
+                    <p id="onboarding-age-error" className="text-sm text-destructive mt-1">{errors.age.message}</p>
                   )}
                 </div>
                 
@@ -183,13 +211,14 @@ const OnboardingForm = ({ onComplete }: { onComplete: () => void }) => {
                     <Label htmlFor="weight">{t('onboarding.fields.weight')}</Label>
                     <Input
                       id="weight"
+                      {...errorProps("weight")}
                       type="number"
                       placeholder={t('onboarding.fields.weightPlaceholder')}
                       {...register("weight", { valueAsNumber: true })}
                       className="mt-1"
                     />
                     {errors.weight && (
-                      <p className="text-sm text-destructive mt-1">{errors.weight.message}</p>
+                      <p id="onboarding-weight-error" className="text-sm text-destructive mt-1">{errors.weight.message}</p>
                     )}
                   </div>
                   
@@ -197,13 +226,14 @@ const OnboardingForm = ({ onComplete }: { onComplete: () => void }) => {
                     <Label htmlFor="height">{t('onboarding.fields.height')}</Label>
                     <Input
                       id="height"
+                      {...errorProps("height")}
                       type="number"
                       placeholder={t('onboarding.fields.heightPlaceholder')}
                       {...register("height", { valueAsNumber: true })}
                       className="mt-1"
                     />
                     {errors.height && (
-                      <p className="text-sm text-destructive mt-1">{errors.height.message}</p>
+                      <p id="onboarding-height-error" className="text-sm text-destructive mt-1">{errors.height.message}</p>
                     )}
                   </div>
                 </div>
@@ -213,46 +243,48 @@ const OnboardingForm = ({ onComplete }: { onComplete: () => void }) => {
 
           {step === 2 && (
             <div className="space-y-6">
-              <h3 className="text-xl font-semibold text-center mb-6">{t('onboarding.steps.goals')}</h3>
+              <h2 className="text-xl font-semibold text-center mb-6">{t('onboarding.steps.goals')}</h2>
               
               <div>
-                <Label>{t('onboarding.fields.fitnessGoal')}</Label>
-                <RadioGroup 
+                <Label id="onboarding-goal-label">{t('onboarding.fields.fitnessGoal')}</Label>
+                <RadioGroup
+                  aria-labelledby="onboarding-goal-label"
+                  {...errorProps("goal")}
                   value={formData.goal} 
-                  onValueChange={(value) => setValue("goal", value as any)}
+                  onValueChange={(value) => setValue("goal", value as OnboardingValues["goal"], { shouldValidate: true })}
                   className="mt-3"
                 >
                   <div className="flex items-center space-x-2 p-4 rounded-lg border border-border hover:bg-muted/50 transition-smooth">
                     <RadioGroupItem value="gainMuscle" id="gainMuscle" />
                     <Label htmlFor="gainMuscle" className="cursor-pointer flex-1">
                       <div className="font-medium">{t('onboarding.goals.gainMuscle')}</div>
-                      <div className="text-sm text-muted-foreground">Build strength and muscle mass</div>
+                      <div className="text-sm text-muted-foreground">{t('onboarding.goalDescriptions.gainMuscle')}</div>
                     </Label>
                   </div>
                   <div className="flex items-center space-x-2 p-4 rounded-lg border border-border hover:bg-muted/50 transition-smooth">
                     <RadioGroupItem value="loseFat" id="loseFat" />
                     <Label htmlFor="loseFat" className="cursor-pointer flex-1">
                       <div className="font-medium">{t('onboarding.goals.loseFat')}</div>
-                      <div className="text-sm text-muted-foreground">Reduce body fat and get lean</div>
+                      <div className="text-sm text-muted-foreground">{t('onboarding.goalDescriptions.loseFat')}</div>
                     </Label>
                   </div>
                   <div className="flex items-center space-x-2 p-4 rounded-lg border border-border hover:bg-muted/50 transition-smooth">
                     <RadioGroupItem value="improveCardio" id="improveCardio" />
                     <Label htmlFor="improveCardio" className="cursor-pointer flex-1">
                       <div className="font-medium">{t('onboarding.goals.improveCardio')}</div>
-                      <div className="text-sm text-muted-foreground">Enhance cardiovascular endurance</div>
+                      <div className="text-sm text-muted-foreground">{t('onboarding.goalDescriptions.improveCardio')}</div>
                     </Label>
                   </div>
                   <div className="flex items-center space-x-2 p-4 rounded-lg border border-border hover:bg-muted/50 transition-smooth">
                     <RadioGroupItem value="maintain" id="maintain" />
                     <Label htmlFor="maintain" className="cursor-pointer flex-1">
                       <div className="font-medium">{t('onboarding.goals.maintain')}</div>
-                      <div className="text-sm text-muted-foreground">Stay fit and healthy</div>
+                      <div className="text-sm text-muted-foreground">{t('onboarding.goalDescriptions.maintain')}</div>
                     </Label>
                   </div>
                 </RadioGroup>
                 {errors.goal && (
-                  <p className="text-sm text-destructive mt-1">{errors.goal.message}</p>
+                  <p id="onboarding-goal-error" className="text-sm text-destructive mt-1">{errors.goal.message}</p>
                 )}
               </div>
             </div>
@@ -260,12 +292,12 @@ const OnboardingForm = ({ onComplete }: { onComplete: () => void }) => {
 
           {step === 3 && (
             <div className="space-y-6">
-              <h3 className="text-xl font-semibold text-center mb-6">{t('onboarding.steps.review')}</h3>
+              <h2 className="text-xl font-semibold text-center mb-6">{t('onboarding.steps.dietAndExperience')}</h2>
               
               <div>
-                <Label>{t('onboarding.fields.dietaryPreference')}</Label>
-                <Select value={formData.diet} onValueChange={(value) => setValue("diet", value as any)}>
-                  <SelectTrigger className="mt-1">
+                <Label htmlFor="onboarding-diet">{t('onboarding.fields.dietaryPreference')}</Label>
+                <Select value={formData.diet} onValueChange={(value) => setValue("diet", value as OnboardingValues["diet"], { shouldValidate: true })}>
+                  <SelectTrigger id="onboarding-diet" {...errorProps("diet")} className="mt-1 h-auto min-h-10 [&>span]:line-clamp-none [&>span]:text-left">
                     <SelectValue placeholder={t('onboarding.fields.dietaryPreferencePlaceholder')} />
                   </SelectTrigger>
                   <SelectContent>
@@ -277,24 +309,24 @@ const OnboardingForm = ({ onComplete }: { onComplete: () => void }) => {
                   </SelectContent>
                 </Select>
                 {errors.diet && (
-                  <p className="text-sm text-destructive mt-1">{errors.diet.message}</p>
+                  <p id="onboarding-diet-error" className="text-sm text-destructive mt-1">{errors.diet.message}</p>
                 )}
               </div>
               
               <div>
-                <Label>{t('dashboard.experienceLevel.label')}</Label>
-                <Select value={formData.experience} onValueChange={(value) => setValue("experience", value as any)}>
-                  <SelectTrigger className="mt-1">
-                    <SelectValue placeholder={t('dashboard.experienceLevel.placeholder')} />
+                <Label htmlFor="onboarding-experience">{t('onboarding.fields.experience')}</Label>
+                <Select value={formData.experience} onValueChange={(value) => setValue("experience", value as OnboardingValues["experience"], { shouldValidate: true })}>
+                  <SelectTrigger id="onboarding-experience" {...errorProps("experience")} className="mt-1 h-auto min-h-10 [&>span]:line-clamp-none [&>span]:text-left">
+                    <SelectValue placeholder={t('onboarding.fields.experiencePlaceholder')} />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="beginner">{t('dashboard.experienceLevel.beginnerDesc')}</SelectItem>
-                    <SelectItem value="intermediate">{t('dashboard.experienceLevel.intermediateDesc')}</SelectItem>
-                    <SelectItem value="advanced">{t('dashboard.experienceLevel.advancedDesc')}</SelectItem>
+                    <SelectItem value="beginner">{t('dashboard.experienceLevel.beginner')}</SelectItem>
+                    <SelectItem value="intermediate">{t('dashboard.experienceLevel.intermediate')}</SelectItem>
+                    <SelectItem value="advanced">{t('dashboard.experienceLevel.advanced')}</SelectItem>
                   </SelectContent>
                 </Select>
                 {errors.experience && (
-                  <p className="text-sm text-destructive mt-1">{errors.experience.message}</p>
+                  <p id="onboarding-experience-error" className="text-sm text-destructive mt-1">{errors.experience.message}</p>
                 )}
               </div>
             </div>
@@ -302,14 +334,17 @@ const OnboardingForm = ({ onComplete }: { onComplete: () => void }) => {
 
           {step === 4 && (
             <div className="space-y-6">
-              <h3 className="text-xl font-semibold text-center mb-6">Dein Training</h3>
+              <h2 className="text-xl font-semibold text-center mb-6">{t('onboarding.steps.training')}</h2>
 
               <div>
-                <Label>Verfügbare Ausrüstung</Label>
-                <p className="text-sm text-muted-foreground mt-1 mb-3">
-                  Mehrfachauswahl möglich.
+                <Label id="onboarding-equipment-label">{t('onboarding.fields.equipment')}</Label>
+                <p id="onboarding-equipment-hint" className="text-sm text-muted-foreground mt-1 mb-3">
+                  {t('onboarding.fields.equipmentHint')}
                 </p>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <div role="group" aria-labelledby="onboarding-equipment-label"
+                  {...errorProps("equipment")}
+                  aria-describedby={`onboarding-equipment-hint${errors.equipment ? " onboarding-equipment-error" : ""}`}
+                  className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                   {EQUIPMENT_OPTIONS.map((option) => {
                     const selected = (formData.equipment ?? []).includes(option.id);
                     return (
@@ -335,61 +370,61 @@ const OnboardingForm = ({ onComplete }: { onComplete: () => void }) => {
                   })}
                 </div>
                 {errors.equipment && (
-                  <p className="text-sm text-destructive mt-2">{errors.equipment.message}</p>
+                  <p id="onboarding-equipment-error" className="text-sm text-destructive mt-2">{errors.equipment.message}</p>
                 )}
               </div>
 
               <div>
-                <Label htmlFor="onboarding-days">Trainingstage pro Woche</Label>
+                <Label htmlFor="onboarding-days">{t('onboarding.fields.daysPerWeek')}</Label>
                 <Select
                   value={formData.daysPerWeek ? String(formData.daysPerWeek) : undefined}
                   onValueChange={(value) =>
                     setValue("daysPerWeek", Number(value), { shouldValidate: true })
                   }
                 >
-                  <SelectTrigger id="onboarding-days" className="mt-1">
-                    <SelectValue placeholder="Bitte auswählen" />
+                  <SelectTrigger id="onboarding-days" {...errorProps("daysPerWeek")} className="mt-1 h-auto min-h-10 [&>span]:line-clamp-none [&>span]:text-left">
+                    <SelectValue placeholder={t('onboarding.fields.daysPerWeekPlaceholder')} />
                   </SelectTrigger>
                   <SelectContent>
                     {dayChoices.map((days) => (
                       <SelectItem key={days} value={String(days)}>
-                        {days} {days === 1 ? "Tag" : "Tage"}
+                        {t('onboarding.days', { count: days })}
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
                 {errors.daysPerWeek && (
-                  <p className="text-sm text-destructive mt-1">{errors.daysPerWeek.message}</p>
+                  <p id="onboarding-daysPerWeek-error" className="text-sm text-destructive mt-1">{errors.daysPerWeek.message}</p>
                 )}
               </div>
 
               <div>
-                <Label htmlFor="onboarding-session">Gewünschte Trainingsdauer</Label>
+                <Label htmlFor="onboarding-session">{t('onboarding.fields.sessionMinutes')}</Label>
                 <Select
                   value={formData.sessionMinutes ? String(formData.sessionMinutes) : undefined}
                   onValueChange={(value) =>
                     setValue("sessionMinutes", Number(value), { shouldValidate: true })
                   }
                 >
-                  <SelectTrigger id="onboarding-session" className="mt-1">
-                    <SelectValue placeholder="Bitte auswählen" />
+                  <SelectTrigger id="onboarding-session" {...errorProps("sessionMinutes")} className="mt-1 h-auto min-h-10 [&>span]:line-clamp-none [&>span]:text-left">
+                    <SelectValue placeholder={t('onboarding.fields.sessionMinutesPlaceholder')} />
                   </SelectTrigger>
                   <SelectContent>
                     {SESSION_MINUTES_CHOICES.map((minutes) => (
                       <SelectItem key={minutes} value={String(minutes)}>
-                        {minutes} Minuten
+                        {t('onboarding.minutes', { count: minutes })}
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
                 {errors.sessionMinutes && (
-                  <p className="text-sm text-destructive mt-1">{errors.sessionMinutes.message}</p>
+                  <p id="onboarding-sessionMinutes-error" className="text-sm text-destructive mt-1">{errors.sessionMinutes.message}</p>
                 )}
               </div>
             </div>
           )}
 
-          <div className="flex justify-between pt-6">
+          <div className="flex flex-wrap justify-between gap-3 pt-6">
             <Button 
               variant="outline" 
               onClick={handleBack}
@@ -405,7 +440,7 @@ const OnboardingForm = ({ onComplete }: { onComplete: () => void }) => {
               disabled={loading}
               className="gradient-primary text-primary-foreground shadow-glow flex items-center gap-2"
             >
-              {loading ? 'Saving...' : (step === totalSteps ? t('onboarding.buttons.complete') : t('onboarding.buttons.next'))}
+              {loading ? t('onboarding.buttons.saving') : (step === totalSteps ? t('onboarding.buttons.complete') : t('onboarding.buttons.next'))}
               <ArrowRight className="h-4 w-4" />
             </Button>
           </div>

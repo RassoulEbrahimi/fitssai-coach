@@ -117,21 +117,32 @@
     "title": "Lass uns anfangen",
     "description": "Erzähle uns von dir, um deinen personalisierten Fitnessplan zu erstellen",
     "steps": {
-      "personalInfo": "Persönliche Infos",
-      "goals": "Ziele & Vorlieben",
-      "review": "Überprüfung"
+      "personalInfo": "Persönliche Angaben",
+      "goals": "Fitnessziel",
+      "dietAndExperience": "Ernährung & Erfahrung",
+      "training": "Training"
     },
     "fields": {
       "age": "Alter",
       "agePlaceholder": "Gib dein Alter ein",
       "weight": "Gewicht (kg)",
-      "weightPlaceholder": "Gib dein Gewicht in kg ein",
+      "weightPlaceholder": "Gewicht in kg",
       "height": "Größe (cm)",
-      "heightPlaceholder": "Gib deine Größe in cm ein",
+      "heightPlaceholder": "Größe in cm",
       "fitnessGoal": "Fitnessziel",
       "fitnessGoalPlaceholder": "Wähle dein Hauptziel",
-      "dietaryPreference": "Ernährungsvorliebe",
-      "dietaryPreferencePlaceholder": "Wähle deine Ernährungsvorliebe"
+      "dietaryPreference": "Ernährungsform",
+      "dietaryPreferencePlaceholder": "Ernährungsform auswählen",
+      "firstName": "Vorname",
+      "firstNamePlaceholder": "Gib deinen Vornamen ein",
+      "experience": "Erfahrungslevel",
+      "experiencePlaceholder": "Erfahrungslevel auswählen",
+      "equipment": "Verfügbare Ausrüstung",
+      "equipmentHint": "Mehrfachauswahl möglich.",
+      "daysPerWeek": "Trainingstage pro Woche",
+      "daysPerWeekPlaceholder": "Trainingstage auswählen",
+      "sessionMinutes": "Gewünschte Trainingsdauer",
+      "sessionMinutesPlaceholder": "Trainingsdauer auswählen"
     },
     "goals": {
       "gainMuscle": "Muskeln aufbauen",
@@ -153,7 +164,69 @@
     "buttons": {
       "next": "Weiter",
       "previous": "Zurück",
-      "complete": "Setup abschließen"
+      "complete": "Abschließen",
+      "saving": "Wird gespeichert..."
+    },
+    "goalDescriptions": {
+      "gainMuscle": "Kraft und Muskelmasse aufbauen",
+      "loseFat": "Körperfett reduzieren und definierter werden",
+      "improveCardio": "Ausdauer und Herz-Kreislauf-Fitness verbessern",
+      "maintain": "Fitness und Gesundheit erhalten"
+    },
+    "progress": "Schritt {{current}} von {{total}}",
+    "progressLabel": "Fortschritt der Einrichtung",
+    "loading": "Wird geladen...",
+    "saveSuccess": "Profil wurde gespeichert.",
+    "saveError": "Profil konnte nicht gespeichert werden. Bitte versuche es erneut.",
+    "days_one": "{{count}} Tag",
+    "days_other": "{{count}} Tage",
+    "minutes": "{{count}} Minuten",
+    "validation": {
+      "firstName": {
+        "required": "Bitte gib deinen Vornamen ein.",
+        "too_small": "Der Vorname muss mindestens 2 Zeichen lang sein.",
+        "too_big": "Der Vorname darf höchstens 50 Zeichen lang sein.",
+        "invalid": "Bitte gib einen gültigen Vornamen ein."
+      },
+      "age": {
+        "required": "Bitte gib dein Alter ein.",
+        "invalid_type": "Bitte gib dein Alter als ganze Zahl ein.",
+        "too_small": "Du musst mindestens 13 Jahre alt sein.",
+        "too_big": "Das Alter darf höchstens 120 Jahre betragen.",
+        "invalid": "Bitte gib ein gültiges Alter ein."
+      },
+      "weight": {
+        "required": "Bitte gib dein Gewicht ein.",
+        "invalid_type": "Bitte gib dein Gewicht in ganzen Kilogramm ein.",
+        "too_small": "Das Gewicht muss mindestens 30 kg betragen.",
+        "too_big": "Das Gewicht darf höchstens 300 kg betragen.",
+        "invalid": "Bitte gib ein gültiges Gewicht ein."
+      },
+      "height": {
+        "required": "Bitte gib deine Größe ein.",
+        "invalid_type": "Bitte gib deine Größe in ganzen Zentimetern ein.",
+        "too_small": "Die Größe muss mindestens 100 cm betragen.",
+        "too_big": "Die Größe darf höchstens 250 cm betragen.",
+        "invalid": "Bitte gib eine gültige Größe ein."
+      },
+      "goal": {
+        "invalid": "Bitte wähle ein Fitnessziel."
+      },
+      "diet": {
+        "invalid": "Bitte wähle deine Ernährungsform."
+      },
+      "experience": {
+        "invalid": "Bitte wähle dein Erfahrungslevel."
+      },
+      "equipment": {
+        "invalid": "Bitte wähle mindestens eine Ausrüstungsoption."
+      },
+      "daysPerWeek": {
+        "invalid": "Bitte wähle 1 bis 7 Trainingstage pro Woche."
+      },
+      "sessionMinutes": {
+        "invalid": "Bitte wähle eine Trainingsdauer zwischen 15 und 180 Minuten."
+      }
     }
   },
   "dashboard": {
