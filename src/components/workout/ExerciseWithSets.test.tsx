@@ -5,6 +5,9 @@ import userEvent from "@testing-library/user-event";
 import ExerciseWithSets from "./ExerciseWithSets";
 
 const idleTimerState = {
+  status: 'idle' as const,
+  deadlineMs: null,
+  pausedRemainingSeconds: null,
   exerciseIndex: null,
   setNumber: null,
   remainingSeconds: 0,
@@ -16,9 +19,6 @@ const renderExercise = (
   overrides: Partial<React.ComponentProps<typeof ExerciseWithSets>> = {}
 ) => {
   const onToggleSet = vi.fn();
-  const onStartTimer = vi.fn();
-  const onSkipTimer = vi.fn();
-  const onCancelTimerForSet = vi.fn();
 
   render(
     <ExerciseWithSets
@@ -30,14 +30,13 @@ const renderExercise = (
       isToggling={false}
       defaultExpanded={false}
       timerState={idleTimerState}
-      onStartTimer={onStartTimer}
-      onSkipTimer={onSkipTimer}
-      onCancelTimerForSet={onCancelTimerForSet}
+      isRestSheetOpen={false}
+      onOpenRest={vi.fn()}
       {...overrides}
     />
   );
 
-  return { onToggleSet, onStartTimer, onSkipTimer, onCancelTimerForSet };
+  return { onToggleSet };
 };
 
 // The header's accessible name is built from its contents, so the exercise
@@ -162,9 +161,9 @@ describe("ExerciseWithSets activation", () => {
 });
 
 describe("ExerciseWithSets set controls", () => {
-  it("still toggles a set and starts its rest timer after a keyboard expand", async () => {
+  it("delegates set completion after a keyboard expand", async () => {
     const user = userEvent.setup();
-    const { onToggleSet, onStartTimer } = renderExercise();
+    const { onToggleSet } = renderExercise();
 
     await user.tab();
     await user.keyboard("{Enter}");
@@ -175,7 +174,6 @@ describe("ExerciseWithSets set controls", () => {
       setNumber: 1,
       completed: true,
     });
-    expect(onStartTimer).toHaveBeenCalledWith(0, 90, 1);
   });
 
   it("keeps the set rows keyboard-operable", async () => {
@@ -192,7 +190,7 @@ describe("ExerciseWithSets set controls", () => {
 
   it("records completion only, never the prescription as performed reps or weight", async () => {
     const user = userEvent.setup();
-    const { onToggleSet, onStartTimer } = renderExercise({
+    const { onToggleSet } = renderExercise({
       defaultExpanded: true,
       exercise: { name: "Bankdrücken", sets: 3, reps: "8–12", weight: "60 kg", rest: "90s" },
     });
@@ -204,7 +202,6 @@ describe("ExerciseWithSets set controls", () => {
     expect(params).toEqual({ exerciseIndex: 0, setNumber: 1, completed: true });
     expect(params).not.toHaveProperty("repsCompleted");
     expect(params).not.toHaveProperty("weightUsed");
-    expect(onStartTimer).toHaveBeenCalledWith(0, 90, 1);
   });
 
   it("shows the range prescription on every set row", () => {
@@ -229,7 +226,7 @@ describe("ExerciseWithSets set controls", () => {
 
   it("un-completes a range set with the same completion-only shape", async () => {
     const user = userEvent.setup();
-    const { onToggleSet, onCancelTimerForSet } = renderExercise({
+    const { onToggleSet } = renderExercise({
       defaultExpanded: true,
       exercise: { name: "Bankdrücken", sets: 3, reps: "8–12", weight: "60 kg", rest: "90s" },
       isSetCompleted: (_exerciseIndex, setNumber) => setNumber === 2,
@@ -239,20 +236,17 @@ describe("ExerciseWithSets set controls", () => {
     await user.click(screen.getByRole("checkbox", { name: /Satz 2/ }));
 
     expect(onToggleSet).toHaveBeenCalledWith({ exerciseIndex: 0, setNumber: 2, completed: false });
-    expect(onCancelTimerForSet).toHaveBeenCalledWith(0, 2);
   });
 
-  it("cancels only the owning set's timer when a set is un-completed", async () => {
+  it("delegates uncompletion with exact set coordinates", async () => {
     const user = userEvent.setup();
-    const { onCancelTimerForSet, onStartTimer } = renderExercise({
+    const { onToggleSet } = renderExercise({
       defaultExpanded: true,
       isSetCompleted: (_exerciseIndex, setNumber) => setNumber === 1,
       getCompletedSetsCount: () => 1,
     });
 
     await user.click(screen.getByRole("checkbox", { name: /Satz 1/ }));
-
-    expect(onCancelTimerForSet).toHaveBeenCalledWith(0, 1);
-    expect(onStartTimer).not.toHaveBeenCalled();
+    expect(onToggleSet).toHaveBeenCalledWith({ exerciseIndex: 0, setNumber: 1, completed: false });
   });
 });

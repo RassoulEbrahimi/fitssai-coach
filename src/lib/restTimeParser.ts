@@ -99,3 +99,9 @@ export function getRestAnnouncement(
   if (remainingSeconds === 10) return '10 Sekunden Pause verbleibend';
   return null;
 }
+
+/** Stable mm:ss presentation for the active interval. */
+export function formatRestCountdown(seconds: number): string {
+  const safe = Math.max(0, Math.ceil(seconds));
+  return `${Math.floor(safe / 60).toString().padStart(2, '0')}:${(safe % 60).toString().padStart(2, '0')}`;
+}

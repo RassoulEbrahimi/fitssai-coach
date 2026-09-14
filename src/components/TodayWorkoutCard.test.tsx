@@ -49,18 +49,12 @@ vi.mock('@/hooks/useSetTracking', () => ({
         isSetCompleted: () => false,
         getCompletedSetsCount: () => 0,
         toggleSet: vi.fn(),
+        toggleSetAsync: vi.fn().mockResolvedValue({ success: true }),
         isTogglingSet: false,
         isLoadingSets: false,
     }),
 }));
 
-vi.mock('@/hooks/useRestTimer', () => ({
-    useRestTimer: () => ({
-        timerState: { remaining: 0, isActive: false },
-        startTimer: vi.fn(),
-        skipTimer: vi.fn(),
-    }),
-}));
 
 vi.mock('@/hooks/useBerlinToday', () => ({
     useBerlinToday: () => '2025-12-10',

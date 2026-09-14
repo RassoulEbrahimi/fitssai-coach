@@ -1,5 +1,5 @@
 import React from 'react';
-import { cleanup, render, screen, waitFor, within } from '@testing-library/react';
+import { act, cleanup, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -16,17 +16,16 @@ vi.mock('firebase/firestore', async () => (await import('@/test/mocks/workoutFir
 vi.mock('@/lib/firebase', () => ({ db: {}, auth: { currentUser: { uid: 'u1' } } }));
 vi.mock('@/hooks/useAuth', () => ({ useAuth: () => ({ user: { id: 'u1', uid: 'u1' } }) }));
 vi.mock('@/hooks/useThrottledToast', () => ({ useThrottledToast: () => ({ showToast: vi.fn() }) }));
+const persistSet = vi.hoisted(() => vi.fn());
 vi.mock('@/hooks/useSetTracking', () => ({
   useSetTracking: () => ({
     isSetCompleted: () => false,
     getCompletedSetsCount: () => 0,
     toggleSet: vi.fn(),
+    toggleSetAsync: persistSet,
     isTogglingSet: false,
     isLoadingSets: false,
   }),
-}));
-vi.mock('@/hooks/useRestTimer', () => ({
-  useRestTimer: () => ({ timerState: { remaining: 0, isActive: false }, startTimer: vi.fn(), skipTimer: vi.fn() }),
 }));
 // A started workout reads its exercises from the plan day its session is bound
 // to, so the plan reader serves the seeded exercise on Week 1, day 0 - the day
@@ -87,6 +86,7 @@ const mount = () => render(
 );
 
 beforeEach(() => {
+  persistSet.mockReset().mockResolvedValue({ success: true });
   queryClient = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
   resetWorkoutFirestore();
   localStorage.clear();
@@ -300,4 +300,52 @@ describe('Focus Mode keyboard modality', () => {
     expect(activeElement().isConnected).toBe(true);
     expect(writes).toHaveLength(1);
   });
+});
+
+it('rest sheet owns keyboard focus and Escape, and the timer survives Focus Mode transitions', async () => {
+  const user = await setup();
+  await startTraining(user);
+  const set = screen.getByRole('checkbox', { name: /Satz 1/ });
+  await user.click(set);
+  const sheet = await screen.findByRole('dialog', { name: 'Pause' });
+  await waitFor(() => expect(sheet.contains(activeElement())).toBe(true));
+  const saved = localStorage.getItem('fitssai.training.rest:u1');
+  expect(saved).not.toBeNull();
+  for (let i = 0; i < 7; i++) {
+    await user.tab();
+    expect(sheet.contains(activeElement())).toBe(true);
+  }
+  await user.keyboard('{Escape}');
+  await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Pause' })).toBeNull());
+  expect(focusMode()).not.toBeNull();
+  expect(localStorage.getItem('fitssai.training.rest:u1')).toBe(saved);
+  const inline = screen.getByRole('button', { name: 'Pause für Satz 1 öffnen' });
+  await waitFor(() => expect(inline).toHaveFocus());
+  await user.keyboard('{Escape}');
+  await waitFor(() => expect(focusMode()).toBeNull());
+  expect(localStorage.getItem('fitssai.training.rest:u1')).toBe(saved);
+  await enterViaFullscreen(user);
+  await user.click(screen.getByRole('button', { name: 'Pause für Satz 1 öffnen' }));
+  expect(await screen.findByRole('dialog', { name: 'Pause' })).toBeInTheDocument();
+  expect(localStorage.getItem('fitssai.training.rest:u1')).toBe(saved);
+});
+
+it('a failed older completion cannot cancel a newer rest; its own failure can', async () => {
+  const user = await setup();
+  await startTraining(user);
+  let rejectA!: (error: Error) => void;
+  let rejectB!: (error: Error) => void;
+  persistSet.mockImplementationOnce(() => new Promise((_resolve, reject) => { rejectA = reject; }));
+  await user.click(screen.getByRole('checkbox', { name: /Satz 1/ }));
+  await user.click(screen.getByRole('button', { name: 'Pause schließen' }));
+  persistSet.mockImplementationOnce(() => new Promise((_resolve, reject) => { rejectB = reject; }));
+  await user.click(screen.getByRole('checkbox', { name: /Satz 2/ }));
+  const saved = localStorage.getItem('fitssai.training.rest:u1');
+  expect(JSON.parse(saved!).state.setNumber).toBe(2);
+  await act(async () => rejectA(new Error('Older write failed')));
+  expect(localStorage.getItem('fitssai.training.rest:u1')).toBe(saved);
+  expect(screen.getByRole('dialog', { name: 'Pause' })).toBeInTheDocument();
+  await act(async () => rejectB(new Error('Current write failed')));
+  expect(localStorage.getItem('fitssai.training.rest:u1')).toBeNull();
+  expect(screen.queryByRole('dialog', { name: 'Pause' })).toBeNull();
 });

@@ -8,6 +8,7 @@ import ExerciseSetRow from "./ExerciseSetRow";
 import RestTimerBar from "./RestTimerBar";
 import { formatRestDisplay } from "@/lib/restTimeParser";
 import { buildExecutionSetViewModels, parseSetCount, type ExecutionSetViewModel } from "@/lib/workoutExecution";
+import type { RestTimerController } from "@/hooks/useRestTimer";
 
 interface Exercise {
   name: string;
@@ -15,14 +16,6 @@ interface Exercise {
   reps: number | string;
   weight?: string;
   rest?: string;
-}
-
-interface RestTimerState {
-  exerciseIndex: number | null;
-  setNumber: number | null;
-  remainingSeconds: number;
-  totalRestSeconds: number;
-  isComplete: boolean;
 }
 
 interface ExerciseWithSetsProps {
@@ -38,11 +31,9 @@ interface ExerciseWithSetsProps {
   isToggling: boolean;
   defaultExpanded?: boolean;
   // Rest timer props
-  timerState: RestTimerState;
-  onStartTimer: (exerciseIndex: number, durationSeconds: number, setNumber?: number | null) => void;
-  onSkipTimer: () => void;
-  /** Cancels the rest timer only when this exact set owns it. */
-  onCancelTimerForSet?: (exerciseIndex: number, setNumber: number) => void;
+  timerState: RestTimerController['timerState'];
+  isRestSheetOpen: boolean;
+  onOpenRest: () => void;
 }
 
 export const ExerciseWithSets: React.FC<ExerciseWithSetsProps> = ({
@@ -54,9 +45,8 @@ export const ExerciseWithSets: React.FC<ExerciseWithSetsProps> = ({
   isToggling,
   defaultExpanded = true,
   timerState,
-  onStartTimer,
-  onSkipTimer,
-  onCancelTimerForSet,
+  isRestSheetOpen,
+  onOpenRest,
 }) => {
   // Parse number of sets (3 when the plan's count cannot be read)
   const totalSets = parseSetCount(exercise.sets);
@@ -68,14 +58,14 @@ export const ExerciseWithSets: React.FC<ExerciseWithSetsProps> = ({
 
   /*
     One read-only view model per planned set: the prescription as written and
-    completion from set tracking. A tick reads both from here, so the timer
-    starts from the same rest the row was built with.
+    completion from set tracking. The card coordinates rest and persistence
+    using this same session-bound exercise prescription.
   */
   const sets = buildExecutionSetViewModels(exercise, exerciseIndex, isSetCompleted);
 
   // Check if timer is active for this exercise
   const isTimerActive = timerState.exerciseIndex === exerciseIndex && 
-    (timerState.remainingSeconds > 0 || timerState.isComplete);
+    timerState.remainingSeconds > 0;
 
   const handleToggleSet = (set: ExecutionSetViewModel) => {
     const willBeCompleted = !set.completed;
@@ -87,14 +77,6 @@ export const ExerciseWithSets: React.FC<ExerciseWithSetsProps> = ({
       setNumber: set.setNumber,
       completed: willBeCompleted,
     });
-
-    if (willBeCompleted) {
-      // The timer belongs to the set that started it.
-      onStartTimer(exerciseIndex, set.prescription.restSeconds, set.setNumber);
-    } else {
-      // Un-completing that same set cancels its timer; other sets leave it alone.
-      onCancelTimerForSet?.(exerciseIndex, set.setNumber);
-    }
   };
 
   return (
@@ -165,18 +147,19 @@ export const ExerciseWithSets: React.FC<ExerciseWithSetsProps> = ({
           <ChevronDown className="w-5 h-5 text-muted-foreground transition-transform duration-200 collapsible-chevron" />
         </CollapsibleTrigger>
 
+        {isTimerActive && !isRestSheetOpen && (
+          <div className="px-4 pb-3">
+            <RestTimerBar
+              remainingSeconds={timerState.remainingSeconds}
+              setNumber={timerState.setNumber!}
+              isPaused={timerState.status === 'paused'}
+              onOpen={onOpenRest}
+            />
+          </div>
+        )}
         {/* Sets list */}
         <CollapsibleContent>
           <div className="px-4 pb-4 space-y-2">
-            {/* Rest Timer Bar - shown when active for this exercise */}
-            {isTimerActive && (
-              <RestTimerBar
-                remainingSeconds={timerState.remainingSeconds}
-                totalSeconds={timerState.totalRestSeconds}
-                isComplete={timerState.isComplete}
-                onSkip={onSkipTimer}
-              />
-            )}
             
             {sets.map((set) => (
               <ExerciseSetRow
