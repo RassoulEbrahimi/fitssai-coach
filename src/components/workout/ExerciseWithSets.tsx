@@ -6,6 +6,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { Progress } from "@/components/ui/progress";
 import ExerciseSetRow from "./ExerciseSetRow";
 import RestTimerBar from "./RestTimerBar";
+import ExerciseGuidanceDialog from "./ExerciseGuidanceDialog";
 import { formatRestDisplay } from "@/lib/restTimeParser";
 import { buildExecutionSetViewModels, parseSetCount, type ExecutionSetViewModel } from "@/lib/workoutExecution";
 import type { RestTimerController } from "@/hooks/useRestTimer";
@@ -93,16 +94,11 @@ export const ExerciseWithSets: React.FC<ExerciseWithSetsProps> = ({
             : "border-border bg-background"
         )}
       >
-        {/*
-          Exercise header. A native button, not a div with role="button": the
-          browser then gives Enter and Space activation for free instead of us
-          re-implementing keyboard behaviour by hand. w-full/text-left keep the
-          block-level look the div had, since a button shrinks to fit its
-          content and centres its text.
-        */}
+        {/* Sibling controls keep collapse and guidance independently operable. */}
+        <div className="flex items-center">
         <CollapsibleTrigger
           className={cn(
-            "flex w-full items-center gap-3 p-4 text-left cursor-pointer hover:bg-muted/50 transition-colors",
+            "flex min-w-0 flex-1 items-center gap-2 p-3 text-left cursor-pointer hover:bg-muted/50 transition-colors sm:gap-3 sm:p-4",
             "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
           )}
         >
@@ -126,7 +122,7 @@ export const ExerciseWithSets: React.FC<ExerciseWithSetsProps> = ({
                 {exercise.name}
               </span>
             </div>
-            <div className="flex items-center gap-2 mt-1">
+            <div className="flex flex-wrap items-center gap-x-2 mt-1">
               <span className="text-xs text-muted-foreground">
                 {completedCount}/{totalSets} Sätze
               </span>
@@ -144,8 +140,10 @@ export const ExerciseWithSets: React.FC<ExerciseWithSetsProps> = ({
           </div>
 
           {/* Expand indicator */}
-          <ChevronDown className="w-5 h-5 text-muted-foreground transition-transform duration-200 collapsible-chevron" />
+          <ChevronDown className="w-5 h-5 shrink-0 text-muted-foreground transition-transform duration-200 collapsible-chevron" />
         </CollapsibleTrigger>
+        <ExerciseGuidanceDialog exerciseName={exercise.name} disabled={isRestSheetOpen} />
+        </div>
 
         {isTimerActive && !isRestSheetOpen && (
           <div className="px-4 pb-3">

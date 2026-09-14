@@ -330,6 +330,33 @@ it('rest sheet owns keyboard focus and Escape, and the timer survives Focus Mode
   expect(localStorage.getItem('fitssai.training.rest:u1')).toBe(saved);
 });
 
+it.each(['running', 'paused'])('guidance preserves Focus Mode, session and %s rest with useful focus restoration', async status => {
+  const user = await setup();
+  await startTraining(user);
+  await user.click(screen.getByRole('checkbox', { name: /Satz 1/ }));
+  await screen.findByRole('dialog', { name: 'Pause' });
+  if (status === 'paused') await user.click(screen.getByRole('button', { name: 'Timer pausieren' }));
+  await user.click(screen.getByRole('button', { name: 'Pause schließen' }));
+  const session = storedSession();
+  const rest = localStorage.getItem('fitssai.training.rest:u1');
+  const calls = persistSet.mock.calls.length;
+  const info = screen.getByRole('button', { name: 'Informationen zu Bankdrücken' });
+  await user.click(info);
+  const dialog = screen.getByRole('dialog', { name: 'Bankdrücken' });
+  expect(focusMode()).not.toBeNull();
+  for (let i = 0; i < 7; i++) {
+    await user.tab();
+    expect(dialog.contains(activeElement())).toBe(true);
+  }
+  await user.keyboard('{Escape}');
+  await waitFor(() => expect(info).toHaveFocus());
+  expect(focusMode()).not.toBeNull();
+  expect(storedSession()).toBe(session);
+  expect(localStorage.getItem('fitssai.training.rest:u1')).toBe(rest);
+  expect(persistSet).toHaveBeenCalledTimes(calls);
+  expect(writes).toHaveLength(0);
+});
+
 it('a failed older completion cannot cancel a newer rest; its own failure can', async () => {
   const user = await setup();
   await startTraining(user);
