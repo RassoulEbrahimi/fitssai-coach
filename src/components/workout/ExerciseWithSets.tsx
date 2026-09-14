@@ -9,6 +9,8 @@ import RestTimerBar from "./RestTimerBar";
 import ExerciseGuidanceDialog from "./ExerciseGuidanceDialog";
 import { formatRestDisplay } from "@/lib/restTimeParser";
 import { buildExecutionSetViewModels, parseSetCount, type ExecutionSetViewModel } from "@/lib/workoutExecution";
+import type { ActualSetPerformance } from "@/lib/setPerformance";
+import type { SetPerformanceInputs } from "@/lib/setPerformanceDrafts";
 import type { RestTimerController } from "@/hooks/useRestTimer";
 
 interface Exercise {
@@ -24,12 +26,16 @@ interface ExerciseWithSetsProps {
   exerciseIndex: number;
   isSetCompleted: (exerciseIndex: number, setNumber: number) => boolean;
   getCompletedSetsCount: (exerciseIndex: number) => number;
+  /** Recorded performance for a set; trusted values only. */
+  getActualPerformance?: (exerciseIndex: number, setNumber: number) => ActualSetPerformance | undefined;
   onToggleSet: (params: {
     exerciseIndex: number;
     setNumber: number;
     completed: boolean;
   }) => void;
   isToggling: boolean;
+  /** Actual reps/weight entry. Independent of completion and rest. */
+  performance?: SetPerformanceInputs;
   defaultExpanded?: boolean;
   // Rest timer props
   timerState: RestTimerController['timerState'];
@@ -42,8 +48,10 @@ export const ExerciseWithSets: React.FC<ExerciseWithSetsProps> = ({
   exerciseIndex,
   isSetCompleted,
   getCompletedSetsCount,
+  getActualPerformance,
   onToggleSet,
   isToggling,
+  performance,
   defaultExpanded = true,
   timerState,
   isRestSheetOpen,
@@ -58,14 +66,14 @@ export const ExerciseWithSets: React.FC<ExerciseWithSetsProps> = ({
   const isExerciseComplete = completedCount === totalSets;
 
   /*
-    One read-only view model per planned set: the prescription as written and
-    completion from set tracking. The card coordinates rest and persistence
-    using this same session-bound exercise prescription.
+    One view model per planned set: the prescription as written, completion
+    from set tracking and recorded performance, kept apart. The card
+    coordinates rest and persistence using this same session-bound exercise.
   */
-  const sets = buildExecutionSetViewModels(exercise, exerciseIndex, isSetCompleted);
+  const sets = buildExecutionSetViewModels(exercise, exerciseIndex, isSetCompleted, getActualPerformance);
 
   // Check if timer is active for this exercise
-  const isTimerActive = timerState.exerciseIndex === exerciseIndex && 
+  const isTimerActive = timerState.exerciseIndex === exerciseIndex &&
     timerState.remainingSeconds > 0;
 
   const handleToggleSet = (set: ExecutionSetViewModel) => {
@@ -133,8 +141,8 @@ export const ExerciseWithSets: React.FC<ExerciseWithSetsProps> = ({
               )}
             </div>
             {/* Mini progress bar */}
-            <Progress 
-              value={progressPercent} 
+            <Progress
+              value={progressPercent}
               className="h-1 mt-2 bg-muted/50"
             />
           </div>
@@ -157,17 +165,20 @@ export const ExerciseWithSets: React.FC<ExerciseWithSetsProps> = ({
         )}
         {/* Sets list */}
         <CollapsibleContent>
-          <div className="px-4 pb-4 space-y-2">
-            
+          <div className="px-3 pb-3 space-y-2 sm:px-4 sm:pb-4">
+
             {sets.map((set) => (
               <ExerciseSetRow
                 key={set.key}
+                exerciseIndex={exerciseIndex}
                 setNumber={set.setNumber}
                 targetReps={set.prescription.reps}
                 targetWeight={set.prescription.weight}
                 isCompleted={set.completed}
                 isToggling={isToggling}
                 onToggle={() => handleToggleSet(set)}
+                actual={set.actual}
+                performance={performance}
               />
             ))}
           </div>

@@ -1,7 +1,145 @@
 import { describe, it, expect, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { act, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import ExerciseSetRow from "./ExerciseSetRow";
+import { SetPerformanceDraftStore, type SetPerformanceField } from "@/lib/setPerformanceDrafts";
+
+const renderWithInputs = (overrides: Partial<React.ComponentProps<typeof ExerciseSetRow>> = {}) => {
+  const drafts = new SetPerformanceDraftStore();
+  const commit = vi.fn(() => "unchanged" as const);
+  const changeDraft = vi.fn((exerciseIndex: number, setNumber: number, field: SetPerformanceField, text: string) => {
+    const key = `${exerciseIndex}:${setNumber}`;
+    const current = drafts.get(key) ?? {};
+    drafts.set(key, field === "reps"
+      ? { ...current, reps: text, repsError: undefined }
+      : { ...current, weight: text, weightError: undefined });
+  });
+  const onToggle = vi.fn();
+  render(
+    <ExerciseSetRow
+      exerciseIndex={1}
+      setNumber={2}
+      targetReps={12}
+      targetWeight="50 kg"
+      isCompleted={false}
+      isToggling={false}
+      onToggle={onToggle}
+      actual={{ reps: null, weightKg: null }}
+      performance={{ drafts, changeDraft, commit }}
+      {...overrides}
+    />
+  );
+  const reps = () => screen.getByRole("textbox", { name: "Satz 2: ausgeführte Wiederholungen" });
+  const weight = () => screen.getByRole("textbox", { name: "Satz 2: ausgeführtes Gewicht in kg" });
+  return { drafts, commit, changeDraft, onToggle, reps, weight };
+};
+
+describe("ExerciseSetRow actual performance entry", () => {
+  it("labels both inputs visibly and accessibly, beside the prescription", () => {
+    const { reps, weight } = renderWithInputs();
+
+    expect(reps()).toHaveAttribute("inputmode", "numeric");
+    expect(weight()).toHaveAttribute("inputmode", "decimal");
+    expect(screen.getByText("Wdh.")).toBeInTheDocument();
+    expect(screen.getByText("kg")).toBeInTheDocument();
+    expect(screen.getByText("Vorgabe:")).toBeInTheDocument();
+    expect(screen.getByText("12 × 50 kg")).toBeInTheDocument();
+    // Prescription is not a recorded value.
+    expect(reps()).toHaveValue("");
+    expect(weight()).toHaveValue("");
+    expect(reps().className).toContain("h-11");
+    expect(weight().className).toContain("h-11");
+  });
+
+  it("keeps the inputs outside the completion control", () => {
+    renderWithInputs();
+    const checkbox = screen.getByRole("checkbox");
+
+    expect(within(checkbox).queryByRole("textbox")).toBeNull();
+    expect(within(screen.getByRole("group", { name: "2. Satz" })).getAllByRole("textbox")).toHaveLength(2);
+  });
+
+  it("types into reps without completing the set", async () => {
+    const user = userEvent.setup();
+    const { reps, onToggle, changeDraft } = renderWithInputs();
+
+    await user.click(reps());
+    await user.type(reps(), "12");
+
+    expect(reps()).toHaveValue("12");
+    expect(changeDraft).toHaveBeenLastCalledWith(1, 2, "reps", "12");
+    expect(onToggle).not.toHaveBeenCalled();
+  });
+
+  it("commits on blur and on Enter, and neither completes the set", async () => {
+    const user = userEvent.setup();
+    const { reps, weight, commit, onToggle } = renderWithInputs();
+
+    await user.click(reps());
+    await user.type(reps(), "10");
+    await user.tab();
+    expect(weight()).toHaveFocus();
+    expect(commit).toHaveBeenCalledTimes(1);
+    expect(commit).toHaveBeenLastCalledWith(1, 2);
+
+    await user.type(weight(), "52,5{Enter}");
+    expect(commit).toHaveBeenCalledTimes(2);
+    expect(weight()).toHaveFocus();
+    expect(onToggle).not.toHaveBeenCalled();
+  });
+
+  it("moves reps, weight, completion in keyboard order and toggles only from the completion control", async () => {
+    const user = userEvent.setup();
+    const { reps, weight, onToggle } = renderWithInputs();
+
+    await user.tab();
+    expect(reps()).toHaveFocus();
+    await user.keyboard("{Enter}");
+    expect(onToggle).not.toHaveBeenCalled();
+    await user.tab();
+    expect(weight()).toHaveFocus();
+    await user.tab();
+    expect(screen.getByRole("checkbox")).toHaveFocus();
+    await user.keyboard(" ");
+    expect(onToggle).toHaveBeenCalledTimes(1);
+    await user.keyboard("{Enter}");
+    expect(onToggle).toHaveBeenCalledTimes(2);
+  });
+
+  it("shows recorded values in German notation", () => {
+    const { reps, weight } = renderWithInputs({ actual: { reps: 10, weightKg: 52.5 } });
+
+    expect(reps()).toHaveValue("10");
+    expect(weight()).toHaveValue("52,5");
+  });
+
+  it("ties a refused value's reason to its own field", () => {
+    const { drafts, weight, reps } = renderWithInputs();
+
+    act(() => drafts.set("1:2", { weight: "abc", weightError: "Gewicht ungültig." }));
+
+    expect(weight()).toHaveValue("abc");
+    expect(weight()).toHaveAttribute("aria-invalid", "true");
+    expect(weight()).toHaveAccessibleDescription("Gewicht ungültig.");
+    expect(screen.getByRole("alert")).toHaveTextContent("Gewicht ungültig.");
+    expect(reps()).not.toHaveAttribute("aria-invalid");
+  });
+
+  it("conveys completion by shape as well as colour", () => {
+    renderWithInputs({ isCompleted: true });
+    expect(screen.getByRole("checkbox").querySelector("svg")).not.toBeNull();
+  });
+
+  it("leaves the inputs usable while a completion is being saved", async () => {
+    const user = userEvent.setup();
+    const { reps } = renderWithInputs({ isToggling: true });
+
+    await user.type(reps(), "7");
+
+    expect(reps()).toHaveValue("7");
+    expect(screen.getByRole("checkbox").className).toContain("pointer-events-none");
+  });
+});
 
 const renderRow = (overrides: Partial<React.ComponentProps<typeof ExerciseSetRow>> = {}) => {
   const onToggle = vi.fn();

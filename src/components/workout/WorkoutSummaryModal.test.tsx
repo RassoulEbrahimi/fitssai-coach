@@ -1,8 +1,9 @@
 import { describe, it, expect, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import WorkoutSummaryModal from "./WorkoutSummaryModal";
+import type { RecordedExercisePerformance } from "@/lib/workoutExecution";
 
-const renderSummary = (completed: number[]) =>
+const renderSummary = (completed: number[], recordedPerformance?: RecordedExercisePerformance[]) =>
   render(
     <WorkoutSummaryModal
       open
@@ -16,8 +17,11 @@ const renderSummary = (completed: number[]) =>
       workoutName="Push"
       selectedDate={new Date("2026-09-07")}
       getCompletedSetsCount={(index) => completed[index] ?? 0}
+      recordedPerformance={recordedPerformance}
     />
   );
+
+const recordedSection = () => screen.getByRole("region", { name: "Erfasste Leistung" });
 
 describe("WorkoutSummaryModal truthful stats", () => {
   it("shows completion facts from ticked sets", () => {
@@ -42,9 +46,47 @@ describe("WorkoutSummaryModal truthful stats", () => {
     expect(dialog).toHaveTextContent("3/5");
   });
 
-  it("says plainly that ticking a set does not record reps or weight", () => {
-    renderSummary([1, 0]);
+  it("says truthfully that reps and weight are only saved when entered, and lists none when none were", () => {
+    renderSummary([1, 0], []);
 
-    expect(screen.getByText(/Wiederholungen und Gewicht werden dabei nicht erfasst/)).toBeInTheDocument();
+    expect(screen.getByText(/Wiederholungen und Gewicht werden nur gespeichert, wenn du sie selbst einträgst/)).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "Erfasste Leistung" })).not.toBeInTheDocument();
+    expect(screen.queryByText(/nicht erfasst/)).not.toBeInTheDocument();
+  });
+});
+
+describe("WorkoutSummaryModal recorded performance", () => {
+  it("lists explicitly recorded reps and weight set by set", () => {
+    renderSummary([2, 0], [{
+      exerciseIndex: 0,
+      name: "Bankdrücken",
+      sets: [
+        { setNumber: 1, reps: 10, weightKg: 52.5, completed: true },
+        { setNumber: 2, reps: 8, weightKg: 55, completed: true },
+      ],
+    }]);
+
+    const section = recordedSection();
+    expect(within(section).getByText("Bankdrücken")).toBeInTheDocument();
+    expect(within(section).getByText("Satz 1 · 10 Wdh. · 52,5 kg")).toBeInTheDocument();
+    expect(within(section).getByText("Satz 2 · 8 Wdh. · 55 kg")).toBeInTheDocument();
+  });
+
+  it("shows only what was recorded and never fills in the prescription", () => {
+    renderSummary([1, 0], [{
+      exerciseIndex: 0,
+      name: "Bankdrücken",
+      sets: [
+        { setNumber: 1, reps: 10, weightKg: null, completed: true },
+        { setNumber: 3, reps: null, weightKg: 57.5, completed: false },
+      ],
+    }]);
+
+    const section = recordedSection();
+    expect(within(section).getByText("Satz 1 · 10 Wdh.")).toBeInTheDocument();
+    expect(within(section).getByText("Satz 3 · 57,5 kg · offen")).toBeInTheDocument();
+    expect(section.textContent).not.toMatch(/60 kg|8–12|Satz 2|Plank/);
+    // No totals, estimates or records.
+    expect(screen.getByRole("dialog").textContent).not.toMatch(/Tonnage|1RM|Rekord|Gesamt/);
   });
 });

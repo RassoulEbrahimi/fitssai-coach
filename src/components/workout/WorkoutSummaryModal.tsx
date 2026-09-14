@@ -1,7 +1,5 @@
 import React, { useMemo, useRef } from "react";
 import { motion } from "framer-motion";
-import { format } from "date-fns";
-import { de } from "date-fns/locale";
 import {
   Dialog,
   DialogContent,
@@ -13,6 +11,8 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Clock, Dumbbell, CheckCircle2, ArrowLeft, Save } from "lucide-react";
+import { formatRecordedSet } from "@/lib/setPerformanceEntry";
+import type { RecordedExercisePerformance } from "@/lib/workoutExecution";
 
 interface Exercise {
   name: string;
@@ -33,6 +33,8 @@ interface WorkoutSummaryModalProps {
   workoutName: string;
   selectedDate: Date;
   getCompletedSetsCount: (exerciseIndex: number) => number;
+  /** Reps/weight the user explicitly recorded, per exercise. Never the prescription. */
+  recordedPerformance?: RecordedExercisePerformance[];
 }
 
 // Parse sets count
@@ -57,8 +59,8 @@ const formatDurationLong = (seconds: number): string => {
   Completion stats only. There is deliberately no total reps or load: a ticked
   set records that it was done, not how many reps or what weight — multiplying
   the plan's prescription by the ticked sets would present the plan as a
-  measured result. Until performance is actually recorded, those figures are
-  not shown at all rather than shown as 0 or as the prescription.
+  measured result. What the user did record is listed per set below the stats,
+  as entered, without totals.
 */
 const calculateWorkoutStats = (
   exercises: Exercise[],
@@ -123,6 +125,7 @@ const WorkoutSummaryModal: React.FC<WorkoutSummaryModalProps> = ({
   workoutName,
   selectedDate,
   getCompletedSetsCount,
+  recordedPerformance = [],
 }) => {
   const stats = useMemo(() =>
     calculateWorkoutStats(exercises, getCompletedSetsCount),
@@ -169,7 +172,9 @@ const WorkoutSummaryModal: React.FC<WorkoutSummaryModalProps> = ({
         <DialogContent
           onOpenAutoFocus={rememberOpener}
           onCloseAutoFocus={returnFocusToOpener}
-          className="sm:max-w-md z-[100000] p-0 overflow-hidden bg-background/95 backdrop-blur-xl border-border/50 shadow-2xl">
+          // One column no wider than the dialog: the primitive's auto-sized grid
+          // column otherwise grows to its widest content on a narrow phone.
+          className="sm:max-w-md z-[100000] p-0 grid-cols-[minmax(0,1fr)] max-h-[calc(100dvh-2rem)] overflow-x-hidden overflow-y-auto overscroll-contain bg-background/95 backdrop-blur-xl border-border/50 shadow-2xl">
           {/* Header */}
           <div className="relative bg-gradient-to-br from-primary/20 via-primary/5 to-transparent px-6 pt-6 pb-6 border-b border-border/40">
             <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-primary/20 via-transparent to-transparent" />
@@ -233,9 +238,38 @@ const WorkoutSummaryModal: React.FC<WorkoutSummaryModalProps> = ({
             </div>
 
             <p className="col-span-2 text-xs text-center text-muted-foreground">
-              Abgehakte Sätze zählen als erledigt. Wiederholungen und Gewicht werden dabei nicht erfasst.
+              Abgehakte Sätze zählen als erledigt. Wiederholungen und Gewicht werden nur gespeichert, wenn du sie selbst einträgst.
             </p>
           </div>
+
+          {/* Recorded performance: as entered, set by set, nothing derived. */}
+          {recordedPerformance.length > 0 && (
+            <section
+              aria-labelledby="recorded-performance-title"
+              className="mx-5 mb-5 rounded-xl border border-border/50 bg-muted/30 p-3"
+            >
+              <h3
+                id="recorded-performance-title"
+                className="text-xs font-medium uppercase tracking-wide text-muted-foreground"
+              >
+                Erfasste Leistung
+              </h3>
+              <ul className="mt-2 space-y-3">
+                {recordedPerformance.map((exercise) => (
+                  <li key={exercise.exerciseIndex}>
+                    <p className="break-words text-sm font-semibold text-foreground">{exercise.name}</p>
+                    <ul className="mt-1 space-y-0.5">
+                      {exercise.sets.map((set) => (
+                        <li key={set.setNumber} className="text-sm tabular-nums text-muted-foreground">
+                          {formatRecordedSet(set)}
+                        </li>
+                      ))}
+                    </ul>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
 
           {/* Footer actions */}
           <DialogFooter className="px-6 pb-6 pt-0 flex-col sm:flex-col gap-3">
@@ -249,10 +283,10 @@ const WorkoutSummaryModal: React.FC<WorkoutSummaryModalProps> = ({
               <Button
                 disabled={isSaving}
                 onClick={handleFinish}
-                className="w-full h-12 text-base font-bold shadow-md"
+                className="w-full h-auto min-h-12 whitespace-normal text-base font-bold shadow-md"
                 size="lg"
               >
-                <Save className="w-4 h-4 mr-2" />
+                <Save className="w-4 h-4 mr-2 shrink-0" />
                 {isSaving ? 'Training wird gespeichert…' : error ? 'Erneut speichern & beenden' : 'Training speichern & beenden'}
               </Button>
 
@@ -260,7 +294,7 @@ const WorkoutSummaryModal: React.FC<WorkoutSummaryModalProps> = ({
                 disabled={isSaving}
                 onClick={onClose}
                 variant="ghost"
-                className="w-full text-muted-foreground hover:text-foreground"
+                className="w-full h-auto min-h-11 whitespace-normal text-muted-foreground hover:text-foreground"
               >
                 <ArrowLeft className="w-4 h-4 mr-2" />
                 Zurück zum Training

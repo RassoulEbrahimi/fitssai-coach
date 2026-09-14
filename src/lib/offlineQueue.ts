@@ -2,7 +2,7 @@
 import { auth } from '@/lib/firebase';
 import { assertAccountOwner } from '@/lib/accountIdentity';
 
-export type OfflineMutationType = 'TOGGLE_DAY_COMPLETION' | 'TOGGLE_SET' | 'TOGGLE_DAY';
+export type OfflineMutationType = 'TOGGLE_DAY_COMPLETION' | 'TOGGLE_SET' | 'TOGGLE_DAY' | 'UPDATE_SET_PERFORMANCE';
 
 /**
  * Marking one *exercise* complete.
@@ -60,10 +60,31 @@ export interface ToggleSetPayload {
     completed: boolean;
 }
 
+/**
+ * Recording what was actually performed in one set: reps and/or load in kg.
+ *
+ * Its own type rather than more fields on TOGGLE_SET. Completion and
+ * performance are independent, and an entry of this type says nothing about
+ * whether the set was ticked. Each value is optional: absent leaves the stored
+ * value as it is, `null` clears it. The handler validates both and drops a
+ * malformed entry rather than writing it.
+ */
+export interface UpdateSetPerformancePayload {
+    workoutDay?: string;
+    planId: string;
+    weekKey: string;
+    dayIndex: number;
+    exerciseIndex: number;
+    setNumber: number;
+    reps?: number | null;
+    weightKg?: number | null;
+}
+
 export type OfflineMutationPayloads = {
     TOGGLE_DAY_COMPLETION: ToggleDayCompletionPayload;
     TOGGLE_SET: ToggleSetPayload;
     TOGGLE_DAY: ToggleDayPayload;
+    UPDATE_SET_PERFORMANCE: UpdateSetPerformancePayload;
 };
 
 /**
@@ -107,6 +128,26 @@ export interface OfflineMutationEntry<T extends OfflineMutationType = OfflineMut
 
 const STORAGE_KEY = 'FITSSAI_OFFLINE_QUEUE';
 export const QUEUE_CHANGED_EVENT = 'fitssai:offline-queue-changed';
+/** Fired once a replayed entry's write was accepted and the entry removed. `detail` is the entry. */
+export const OFFLINE_ENTRY_REPLAYED_EVENT = 'fitssai:offline-entry-replayed';
+
+export const notifyEntryReplayed = (entry: OfflineMutationEntry): void => {
+    if (typeof window === 'undefined') return;
+    window.dispatchEvent(new CustomEvent(OFFLINE_ENTRY_REPLAYED_EVENT, { detail: entry }));
+};
+
+/**
+ * The persisted queue exactly as stored - no parsing, repair or quarantine -
+ * so it can be read during render without writing anything.
+ */
+export const peekQueueStorage = (): string | null => {
+    if (typeof window === 'undefined') return null;
+    try {
+        return localStorage.getItem(STORAGE_KEY);
+    } catch {
+        return null;
+    }
+};
 export const CLAIM_LEASE_MS = 60_000;
 export const MAX_RETRY_DELAY_MS = 60_000;
 

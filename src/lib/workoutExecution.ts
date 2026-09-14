@@ -1,6 +1,8 @@
 import type { TrainingSessionPayload } from "@/lib/trainingSession";
 import { getWorkoutDateString } from "@/lib/workoutDateUtils";
 import { parseRestTime } from "@/lib/restTimeParser";
+import type { ActualSetPerformance } from "@/lib/setPerformance";
+import type { RecordedSetLine } from "@/lib/setPerformanceEntry";
 
 /**
  * Which workout the execution UI is running.
@@ -136,13 +138,26 @@ export const parseSetCount = (sets: number | string): number => {
   return isNaN(parsed) ? 3 : parsed;
 };
 
+/** What was recorded as performed for one set. `none`: nothing is stored for it. */
+export interface ExecutionSetActual {
+  source: ActualSetPerformance["source"] | "none";
+  reps: number | null;
+  weightKg: number | null;
+}
+
+const NOT_RECORDED: ExecutionSetActual = { source: "none", reps: null, weightKg: null };
+
+type ActualPerformanceReader = (exerciseIndex: number, setNumber: number) => ActualSetPerformance | undefined;
+
 /**
  * One planned set as the execution UI presents it.
  *
- * A view model, not a record: nothing here is stored. `prescription` is the
- * plan's target exactly as written and is only displayed. `completed` comes
- * from set tracking alone and means the planned set was ticked off - not that
- * those reps or that load were performed.
+ * A view model, not a record: nothing here is stored. Three independent layers:
+ * `prescription` is the plan's target exactly as written and is only
+ * displayed. `completed` comes from set tracking alone and means the planned
+ * set was ticked off - not that those reps or that load were performed.
+ * `actual` is what the user explicitly recorded; only a `user-recorded` source
+ * carries numbers, and the prescription is never copied into it.
  */
 export interface ExecutionSetViewModel {
   key: string;
@@ -154,12 +169,14 @@ export interface ExecutionSetViewModel {
     restSeconds: number;
   };
   completed: boolean;
+  actual: ExecutionSetActual;
 }
 
 export const buildExecutionSetViewModels = (
   exercise: ExecutionExercise,
   exerciseIndex: number,
-  isSetCompleted: (exerciseIndex: number, setNumber: number) => boolean
+  isSetCompleted: (exerciseIndex: number, setNumber: number) => boolean,
+  getActualPerformance?: ActualPerformanceReader
 ): ExecutionSetViewModel[] => {
   const restSeconds = parseRestTime(exercise.rest);
   return Array.from({ length: parseSetCount(exercise.sets) }, (_, index) => {
@@ -170,6 +187,40 @@ export const buildExecutionSetViewModels = (
       setNumber,
       prescription: { reps: exercise.reps, weight: exercise.weight, restSeconds },
       completed: isSetCompleted(exerciseIndex, setNumber),
+      actual: getActualPerformance?.(exerciseIndex, setNumber) ?? NOT_RECORDED,
     };
   });
 };
+
+export interface RecordedExercisePerformance {
+  exerciseIndex: number;
+  name: string;
+  sets: RecordedSetLine[];
+}
+
+/**
+ * The finish summary's review of recorded performance, in plan order.
+ *
+ * Explicitly recorded values only. A set with nothing recorded is left out -
+ * it is never filled in from the prescription - and an exercise with no
+ * recorded set is left out entirely. No totals, estimates or records.
+ */
+export const buildRecordedPerformance = (
+  exercises: readonly ExecutionExercise[],
+  isSetCompleted: (exerciseIndex: number, setNumber: number) => boolean,
+  getActualPerformance: ActualPerformanceReader
+): RecordedExercisePerformance[] =>
+  exercises.flatMap((exercise, exerciseIndex) => {
+    const sets = Array.from({ length: parseSetCount(exercise.sets) }, (_, index) => index + 1)
+      .flatMap((setNumber): RecordedSetLine[] => {
+        const actual = getActualPerformance(exerciseIndex, setNumber);
+        if (actual?.source !== "user-recorded" || (actual.reps === null && actual.weightKg === null)) return [];
+        return [{
+          setNumber,
+          reps: actual.reps,
+          weightKg: actual.weightKg,
+          completed: isSetCompleted(exerciseIndex, setNumber),
+        }];
+      });
+    return sets.length > 0 ? [{ exerciseIndex, name: exercise.name, sets }] : [];
+  });

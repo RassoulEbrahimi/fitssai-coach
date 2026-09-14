@@ -1,13 +1,17 @@
 import { assertAccountOwner } from "@/lib/accountIdentity";
 import { db } from "@/lib/firebase";
 import {
-  collection, getDocs, query, where, doc, setDoc, deleteDoc, updateDoc, runTransaction, Timestamp,
+  collection, getDocs, query, where, doc, updateDoc, runTransaction, Timestamp,
 } from "firebase/firestore";
 import { writeDaySessionRecord } from "@/lib/daySessionRecord";
 import { queryKeys } from "@/lib/queryKeys";
 import { isWorkoutDayString } from "@/lib/workoutLog";
-import { isLegacyDayCompletionPayload, type ToggleDayPayload } from "@/lib/offlineQueue";
-import { completionOnlySetFields } from "@/lib/setPerformance";
+import {
+  isLegacyDayCompletionPayload, type ToggleDayPayload, type UpdateSetPerformancePayload,
+} from "@/lib/offlineQueue";
+import { exercisePositionLogId, writeSetLogChange } from "@/lib/setLogWriter";
+import { isValidPerformanceChange } from "@/lib/setPerformance";
+import { readSetWritePosition } from "@/lib/setWriteIntents";
 
 type ToggleSetPayload = {
   planId: string; weekKey: string; dayIndex: number; exerciseIndex: number;
@@ -20,69 +24,50 @@ type ToggleExercisePayload = {
   completed: boolean; durationMinutes?: number; caloriesBurned?: number;
 };
 
-// Same existing position identity; only new replay documents get stable IDs.
-// Existing auto-ID documents remain in place. No historical identity migration.
-//
-// A stable ID makes two replays address one document, which is the point — and
-// the hazard. The lookup that decides "create" or "update" can report empty
-// while the document exists: `getDocs` is served from a cold in-memory cache
-// whenever the SDK considers itself offline, which is exactly the state a
-// reconnecting replay runs in. With an auto-ID that miss cost a duplicate row;
-// with this ID it would land on the real document. So neither create path here
-// writes blind — each re-reads its own address inside a transaction first.
-const replayLogId = (payload: ToggleExercisePayload | ToggleSetPayload) =>
-  `offline-exercise_${encodeURIComponent(JSON.stringify([payload.planId, payload.weekKey, payload.dayIndex, payload.exerciseIndex]))}`;
-
 export const handlers = {
+  /*
+    Both set handlers go through the shared set writer, which finds existing
+    documents by position, creates missing ones at position-derived addresses
+    and re-reads every address inside a transaction - see setLogWriter.ts.
+  */
   TOGGLE_SET: async (payload: ToggleSetPayload, ownerUid: string, checkpoint?: () => void) => {
     const assertCanWrite = () => { assertAccountOwner(ownerUid); checkpoint?.(); };
     const uid = assertAccountOwner(ownerUid);
-    const logsRef = collection(db, "users", uid, "workout_logs");
-    const logSnap = await getDocs(query(logsRef,
-      where("planId",        "==", payload.planId),
-      where("weekKey",       "==", payload.weekKey),
-      where("dayIndex",      "==", payload.dayIndex),
-      where("exerciseIndex", "==", payload.exerciseIndex),
-    ));
-    let logId: string;
-    if (!logSnap.empty) { logId = [...logSnap.docs].sort((a, b) => a.id.localeCompare(b.id))[0].id; }
-    else {
-      // Create if absent, never replace. This branch exists only to give the
-      // set somewhere to hang; it has nothing to say about the exercise. An
-      // existing parent already carries the user's completion, duration and
-      // date, and `completed: false` below is an initial value, not a desired
-      // one — writing it over a finished exercise would un-complete it.
-      logId = replayLogId(payload);
-      const logRef = doc(logsRef, logId);
-      assertCanWrite();
-      await runTransaction(db, async transaction => {
-        const current = await transaction.get(logRef);
-        assertCanWrite();
-        if (current.exists()) return;
-        transaction.set(logRef, {
-          planId: payload.planId, weekKey: payload.weekKey,
-          dayIndex: payload.dayIndex, exerciseIndex: payload.exerciseIndex,
-          ...(isWorkoutDayString(payload.workoutDay) ? { workoutDay: payload.workoutDay } : {}),
-          completed: false, createdAt: Timestamp.now(),
-        });
-      });
-    }
-    assertCanWrite();
-    const setsRef = collection(db, "users", uid, "workout_logs", logId, "workout_set_logs");
-    const setSnap = await getDocs(query(setsRef, where("setNumber", "==", payload.setNumber)));
-    assertCanWrite();
-    if (payload.completed) {
-      // Explicit fields, not a spread of the payload: an entry queued by an
-      // older build still carries prescription-copied reps/weight, and they
-      // must not reach the document as if they had been performed.
-      if (setSnap.empty) await setDoc(doc(setsRef, `set_${payload.setNumber}`), { setNumber: payload.setNumber, completedAt: Timestamp.now(), ...completionOnlySetFields() });
-    } else {
-      if (!setSnap.empty) await deleteDoc(doc(db, "users", uid, "workout_logs", logId, "workout_set_logs", setSnap.docs[0].id));
-    }
+    // Explicit fields, not a spread of the payload: an entry queued by an
+    // older build still carries prescription-copied reps/weight, and they
+    // must not reach the document as if they had been performed. Un-ticking
+    // keeps whatever the user did record on the set.
+    await writeSetLogChange(uid, {
+      planId: payload.planId, weekKey: payload.weekKey, dayIndex: payload.dayIndex,
+      exerciseIndex: payload.exerciseIndex, setNumber: payload.setNumber, workoutDay: payload.workoutDay,
+    }, { kind: "completion", completed: payload.completed === true }, assertCanWrite);
     return [
       queryKeys.sets.byDay(payload.planId, payload.weekKey, payload.dayIndex),
       queryKeys.completion.byWeek(payload.planId, payload.weekKey),
     ];
+  },
+
+  /**
+   * Recorded reps and/or weight for one set, as the user entered them.
+   *
+   * Nothing here touches completion. A malformed entry - an unusable position,
+   * a value out of range, or neither value present - cannot be replayed
+   * truthfully, so it is dropped loudly instead of written.
+   */
+  UPDATE_SET_PERFORMANCE: async (payload: UpdateSetPerformancePayload, ownerUid: string, checkpoint?: () => void) => {
+    const assertCanWrite = () => { assertAccountOwner(ownerUid); checkpoint?.(); };
+    const uid = assertAccountOwner(ownerUid);
+    const position = readSetWritePosition(payload);
+    if (!position || !isValidPerformanceChange(payload)) {
+      console.warn('[OfflineQueue] Dropping a set performance entry with an unusable position or value.', payload);
+      return [];
+    }
+    await writeSetLogChange(uid, { ...position, workoutDay: payload.workoutDay }, {
+      kind: "performance",
+      ...(payload.reps !== undefined ? { reps: payload.reps } : {}),
+      ...(payload.weightKg !== undefined ? { weightKg: payload.weightKg } : {}),
+    }, assertCanWrite);
+    return [queryKeys.sets.byDay(position.planId, position.weekKey, position.dayIndex)];
   },
 
   /**
@@ -134,9 +119,9 @@ export const handlers = {
     if (!snap.empty) {
       await updateDoc(doc(db, "users", uid, "workout_logs", [...snap.docs].sort((a, b) => a.id.localeCompare(b.id))[0].id), completionChange);
     } else {
-      // Same lookup miss as in TOGGLE_SET, same rule: re-read this exact
-      // address before deciding whether this is a create or an edit.
-      const logRef = doc(logsRef, replayLogId(payload));
+      // The same position-derived address the set writer creates, and the
+      // same lookup-miss rule: re-read it before deciding create or edit.
+      const logRef = doc(logsRef, exercisePositionLogId(payload));
       await runTransaction(db, async transaction => {
         const current = await transaction.get(logRef);
         assertAccountOwner(ownerUid);

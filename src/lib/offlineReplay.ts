@@ -2,7 +2,7 @@ import { auth } from '@/lib/firebase';
 import { AccountChangedError } from '@/lib/accountIdentity';
 import { handlers } from '@/lib/offlineHandlers';
 import {
-  assertQueueClaim, claimEntry, isReplayEligible, loadQueue, removeEntry, updateEntry,
+  assertQueueClaim, claimEntry, isReplayEligible, loadQueue, notifyEntryReplayed, removeEntry, updateEntry,
   MAX_RETRY_DELAY_MS, QueueClaimLostError, QueueStorageError,
 } from '@/lib/offlineQueue';
 
@@ -40,6 +40,9 @@ export async function flushOfflineQueue(
         checkpoint();
         // Cleanup failure leaves the durable claim intact. Never report completion.
         removeEntry(entry.id);
+        // Before invalidation: optimistic views keep showing the change until
+        // the refetch this starts has the server's copy.
+        notifyEntryReplayed(entry);
         result.completed++;
         invalidate(keys);
       } catch (error) {

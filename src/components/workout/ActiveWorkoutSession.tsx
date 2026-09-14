@@ -6,6 +6,8 @@ import { Progress } from "@/components/ui/progress";
 import ExerciseWithSets from "@/components/workout/ExerciseWithSets";
 import type { useRestTimer } from "@/hooks/useRestTimer";
 import type { ExecutionProgress, ExecutionSetToggle } from "@/hooks/useWorkoutExecution";
+import type { ActualSetPerformance } from "@/lib/setPerformance";
+import type { SetPerformanceInputs } from "@/lib/setPerformanceDrafts";
 import type { ExecutionExercise } from "@/lib/workoutExecution";
 
 // Format duration in mm:ss
@@ -27,8 +29,12 @@ interface ActiveWorkoutSessionProps {
   durationSeconds: number;
   isSetCompleted: (exerciseIndex: number, setNumber: number) => boolean;
   getCompletedSetsCount: (exerciseIndex: number) => number;
+  /** What was recorded as performed, per set. Trusted values only. */
+  getActualPerformance?: (exerciseIndex: number, setNumber: number) => ActualSetPerformance | undefined;
   onToggleSet: (toggle: ExecutionSetToggle) => void;
   isTogglingSet: boolean;
+  /** Actual reps/weight entry, bound to the same session as the ticks. */
+  performance?: SetPerformanceInputs;
   /**
    * The rest timer. The card owns it, above Focus Mode's portal, so entering
    * or leaving fullscreen - which remounts this subtree - does not reset a
@@ -49,8 +55,10 @@ export const ActiveWorkoutSession: React.FC<ActiveWorkoutSessionProps> = ({
   durationSeconds,
   isSetCompleted,
   getCompletedSetsCount,
+  getActualPerformance,
   onToggleSet,
   isTogglingSet,
+  performance,
   rest,
   onFinish,
 }) => {
@@ -88,8 +96,10 @@ export const ActiveWorkoutSession: React.FC<ActiveWorkoutSessionProps> = ({
             exerciseIndex={index}
             isSetCompleted={isSetCompleted}
             getCompletedSetsCount={getCompletedSetsCount}
+            getActualPerformance={getActualPerformance}
             onToggleSet={onToggleSet}
             isToggling={isTogglingSet}
+            performance={performance}
             defaultExpanded={index === 0}
             timerState={rest.timerState}
             isRestSheetOpen={rest.isSheetOpen}

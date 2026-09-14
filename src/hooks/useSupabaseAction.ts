@@ -50,6 +50,20 @@ export interface UseSupabaseActionOptions<TData, TVariables, TContext = unknown>
      * queued and the caller sees the failure instead of a false success.
      */
     toOfflinePayload?: (variables: TVariables) => unknown | null;
+    /**
+     * Mutations with the same key run one at a time, in the order they were
+     * called - including the decision to queue them. Without it, a slow write
+     * that ends up queued after a network failure can enter the queue behind a
+     * newer write to the same record, and replay the older value last.
+     * `null`/`undefined` runs the mutation unserialized, as before.
+     */
+    serializeKey?: (variables: TVariables) => string | null | undefined;
+    /**
+     * Queue even while online. For a record that still has older entries
+     * waiting, writing a newer value directly would let the older entry
+     * overwrite it when it replays.
+     */
+    queueWhen?: (variables: TVariables) => boolean;
 }
 
 // Exponential backoff retry utility
@@ -85,6 +99,22 @@ export const retryWithBackoff = async <T,>(
     throw lastError;
 };
 
+// Module scope: every mounted action shares one lane per key.
+const lanes = new Map<string, Promise<void>>();
+
+/** Runs `task` once every earlier task with the same key has settled. */
+const runInLane = <T,>(key: string | null | undefined, task: () => Promise<T>): Promise<T> => {
+    if (!key) return task();
+    const previous = lanes.get(key) ?? Promise.resolve();
+    const run = previous.then(task);
+    const settled = run.then(() => undefined, () => undefined);
+    lanes.set(key, settled);
+    void settled.then(() => {
+        if (lanes.get(key) === settled) lanes.delete(key);
+    });
+    return run;
+};
+
 export const useSupabaseAction = <TData = unknown, TVariables = void, TContext = unknown>({
     action,
     queryKey,
@@ -96,7 +126,9 @@ export const useSupabaseAction = <TData = unknown, TVariables = void, TContext =
     messages,
     shouldQueueOffline,
     offlineActionType,
-    toOfflinePayload
+    toOfflinePayload,
+    serializeKey,
+    queueWhen,
 }: UseSupabaseActionOptions<TData, TVariables, TContext>) => {
     const queryClient = useQueryClient();
     const { user } = useAuth();
@@ -115,11 +147,11 @@ export const useSupabaseAction = <TData = unknown, TVariables = void, TContext =
         // FitssAI owns durable offline mutations; TanStack must enter app code.
         networkMode: offlineActionType ? 'always' : undefined,
         retry: false,
-        mutationFn: async (variables: TVariables) => {
+        mutationFn: (variables: TVariables) => runInLane(serializeKey?.(variables), async () => {
             // The mounted action belongs to this account, including delayed retries.
             assertAccountOwner(ownerUid);
-            // 1. Offline Check (Immediate)
-            if ((!navigator.onLine || !isOnline) && offlineActionType) {
+            // 1. Offline, or queued behind older entries (Immediate)
+            if (offlineActionType && (!navigator.onLine || !isOnline || queueWhen?.(variables))) {
                 const payload = buildOfflinePayload(variables);
                 if (payload === null) {
                     throw new Error('Offline-Speichern ist für diese Aktion nicht möglich.');
@@ -143,7 +175,7 @@ export const useSupabaseAction = <TData = unknown, TVariables = void, TContext =
                     error.message?.includes('Network request failed');
 
                 const queuedPayload =
-                    (isNetworkError || (shouldQueueOffline && shouldQueueOffline(error, variables))) && offlineActionType
+                    (isNetworkError || (shouldQueueOffline && shouldQueueOffline(caught, variables))) && offlineActionType
                         ? buildOfflinePayload(variables)
                         : null;
 
@@ -156,7 +188,7 @@ export const useSupabaseAction = <TData = unknown, TVariables = void, TContext =
                 // Real Error
                 throw error;
             }
-        },
+        }),
         onMutate: async (variables) => {
             // Standard logging
             logEvent('action_start', { offlineActionType, isOnline });
