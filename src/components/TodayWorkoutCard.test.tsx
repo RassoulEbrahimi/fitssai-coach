@@ -48,8 +48,11 @@ vi.mock('@/hooks/useSetTracking', () => ({
     useSetTracking: () => ({
         isSetCompleted: () => false,
         getCompletedSetsCount: () => 0,
+        getActualPerformance: () => undefined,
         toggleSet: vi.fn(),
         toggleSetAsync: vi.fn().mockResolvedValue({ success: true }),
+        updateSetPerformanceAsync: vi.fn().mockResolvedValue({ success: true }),
+        whenSetWritesSettled: vi.fn().mockResolvedValue({ failed: 0 }),
         isTogglingSet: false,
         isLoadingSets: false,
     }),

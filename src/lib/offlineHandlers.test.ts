@@ -126,6 +126,49 @@ describe("offline replay — set logging", () => {
   });
 });
 
+describe("offline replay — recorded set performance", () => {
+  const performance = (overrides: Record<string, unknown> = {}) => ({
+    planId: "plan-1", weekKey: "Week 2", dayIndex: 3, exerciseIndex: 0, setNumber: 1,
+    workoutDay: "2026-03-10", reps: 10, weightKg: 52.5, ...overrides,
+  });
+  const setDocPayload = () => addDoc.mock.calls.map(([, data]) => data).find(data => data.setNumber === 1);
+
+  it("writes the explicitly recorded values as user-recorded without completing the set", async () => {
+    await handlers.UPDATE_SET_PERFORMANCE(performance(), "u1");
+
+    expect(parentLogPayload()).toMatchObject({ planId: "plan-1", exerciseIndex: 0, workoutDay: "2026-03-10" });
+    expect(setDocPayload()).toEqual({
+      setNumber: 1, completed: false, performanceSource: "user-recorded", repsCompleted: 10, weightUsed: 52.5,
+    });
+  });
+
+  it("writes only the value the entry carries", async () => {
+    await handlers.UPDATE_SET_PERFORMANCE(performance({ reps: undefined }), "u1");
+
+    expect(setDocPayload()).toEqual({ setNumber: 1, completed: false, performanceSource: "user-recorded", weightUsed: 52.5 });
+  });
+
+  it.each([
+    ["a negative rep count", { reps: -1 }],
+    ["fractional reps", { reps: 8.5 }],
+    ["zero weight", { weightKg: 0 }],
+    ["a text weight", { weightKg: "52,5" }],
+    ["no values at all", { reps: undefined, weightKg: undefined }],
+    ["no set number", { setNumber: undefined }],
+    ["no plan", { planId: "" }],
+  ])("drops an entry with %s instead of writing it", async (_label, overrides) => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    await expect(handlers.UPDATE_SET_PERFORMANCE(performance(overrides) as never, "u1")).resolves.toEqual([]);
+
+    expect(getDocs).not.toHaveBeenCalled();
+    expect(addDoc).not.toHaveBeenCalled();
+    expect(updateDoc).not.toHaveBeenCalled();
+    expect(warn).toHaveBeenCalled();
+    warn.mockRestore();
+  });
+});
+
 describe("offline replay — day completion", () => {
   const dayPayload = (overrides: Record<string, unknown> = {}) => ({
     planId: "plan-1",

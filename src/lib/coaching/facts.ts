@@ -1,5 +1,5 @@
 import type { FitnessGoal } from "./fitnessGoal";
-import { readActualPerformance } from "../setPerformance";
+import { readActualPerformance, readSetCompletion } from "../setPerformance";
 
 /**
  * The deterministic coaching fact layer.
@@ -231,14 +231,17 @@ export const computeHistoryCoverage = (
 /**
  * One logged set, shaped like a `workout_set_logs` document.
  *
- * Every logged set is a completed set. Its reps and weight are only read as
- * performance when `performanceSource` is `"user-recorded"` — see
- * `setPerformance.ts`. A completion-only set, and every older set without the
- * marker (whose numbers were copied from the prescription), still counts as
- * completed but contributes no reps and no load.
+ * A logged set is completed unless it is explicitly open - reps or weight
+ * recorded on a set that was never ticked; see `readSetCompletion`. Its reps
+ * and weight are only read as performance when `performanceSource` is
+ * `"user-recorded"` — see `setPerformance.ts`. A completion-only set, and
+ * every older set without the marker (whose numbers were copied from the
+ * prescription), still counts as completed but contributes no reps and no load.
  */
 export interface SetLogInput {
   setNumber: number;
+  /** As stored. Only `false` beside a performance marker makes a set open. */
+  completed?: boolean | null;
   performanceSource?: string | null;
   repsCompleted?: number | null;
   /**
@@ -302,14 +305,17 @@ export const exerciseKey = (exercise: Pick<ExerciseSessionInput, "exerciseId" | 
 export const computeExerciseFacts = (
   exercise: ExerciseSessionInput
 ): ExerciseProgressFacts => {
-  const actual = exercise.sets.map(readActualPerformance);
+  // Reps or weight recorded on a set that was never ticked do not make it a
+  // completed set, and do not count towards one.
+  const completed = exercise.sets.filter((set) => readSetCompletion(set));
+  const actual = completed.map(readActualPerformance);
   const weights = actual
     .map((set) => set.weightKg)
     .filter((weight): weight is number => weight !== null);
   const reps = actual
     .map((set) => set.reps)
     .filter((count): count is number => count !== null);
-  const completedSets = exercise.sets.length;
+  const completedSets = completed.length;
 
   return {
     key: exerciseKey(exercise),

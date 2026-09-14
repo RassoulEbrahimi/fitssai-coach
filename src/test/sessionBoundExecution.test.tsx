@@ -550,3 +550,189 @@ describe('active rest loop in the session-bound card', () => {
     expect(localStorage.getItem(restKey)).toBeNull();
   });
 });
+
+describe('recorded set performance in the session-bound card (TRAINING-EXEC-02A)', () => {
+  const restKey = 'fitssai.training.rest:u1';
+  const savedRest = () => JSON.parse(localStorage.getItem(restKey) ?? 'null');
+  const reps = (set: number) => screen.getByRole('textbox', { name: `Satz ${set}: ausgeführte Wiederholungen` });
+  const weight = (set: number) => screen.getByRole('textbox', { name: `Satz ${set}: ausgeführtes Gewicht in kg` });
+  const checkbox = (set: number) => screen.getByRole('checkbox', { name: new RegExp(`Satz ${set}: Vorgabe 8 Wiederholungen`) });
+  const closeRest = () => fireEvent.click(screen.getByRole('button', { name: 'Pause schließen' }));
+  /** Type a value and leave the field, the way a user does. */
+  const enter = (input: HTMLElement, text: string) => {
+    fireEvent.change(input, { target: { value: text } });
+    fireEvent.blur(input);
+  };
+
+  beforeEach(async () => {
+    (await import('@/lib/setWriteIntents')).resetSetWriteIntentsForTests();
+  });
+
+  it('recording reps and weight neither completes the set nor starts rest, and a reload restores them open', async () => {
+    const planBefore = structuredClone(PLAN);
+    const view = render(card(MONDAY));
+    await startFromCard();
+
+    enter(reps(1), '8');
+    enter(weight(1), '52,5');
+
+    await waitFor(() => expect(setLogs()).toEqual([
+      { setNumber: 1, completed: false, performanceSource: 'user-recorded', repsCompleted: 8, weightUsed: 52.5 },
+    ]));
+    expect(checkbox(1)).toHaveAttribute('aria-checked', 'false');
+    expect(within(running()).getByText('0/5 Sätze')).toBeInTheDocument();
+    expect(screen.queryByRole('dialog', { name: 'Pause' })).toBeNull();
+    expect(localStorage.getItem(restKey)).toBeNull();
+    expect(PLAN).toEqual(planBefore);
+
+    view.unmount();
+    (await import('@/lib/setWriteIntents')).resetSetWriteIntentsForTests();
+    queryClient = freshQueryClient();
+    render(card(MONDAY));
+
+    await waitFor(() => expect(reps(1)).toHaveValue('8'));
+    expect(weight(1)).toHaveValue('52,5');
+    expect(checkbox(1)).toHaveAttribute('aria-checked', 'false');
+    expect(within(running()).getByText('0/5 Sätze')).toBeInTheDocument();
+  });
+
+  it('writes and reads recorded values on Monday while the calendar shows other days', async () => {
+    const view = render(card(MONDAY));
+    await startFromCard();
+    view.rerender(card(TUESDAY));
+    await waitFor(() => expect(within(running()).getByRole('button', { name: /^Kniebeugen/ })).toBeInTheDocument());
+
+    enter(reps(2), '6');
+
+    await waitFor(() => expect(setLogs()).toHaveLength(1));
+    expect(parentLogs()).toEqual([expect.objectContaining({ ...MONDAY_BINDING, exerciseIndex: 0 })]);
+    expect(setLogs()[0]).toMatchObject({ setNumber: 2, repsCompleted: 6, completed: false });
+
+    view.rerender(card(NEXT_THURSDAY));
+    expect(reps(2)).toHaveValue('6');
+    expect(queryClient.getQueryData(queryKeys.sets.byDay(PLAN_ID, 'Week 1', 1))).toBeUndefined();
+    expect(queryClient.getQueryData(queryKeys.sets.byDay(PLAN_ID, 'Week 2', 3))).toBeUndefined();
+  });
+
+  it.each(['running', 'paused'])('editing recorded values leaves %s rest exactly as it was', async (status) => {
+    render(card(MONDAY));
+    await startFromCard();
+    fireEvent.click(checkbox(1));
+    expect(screen.getByRole('dialog', { name: 'Pause' })).toBeInTheDocument();
+    if (status === 'paused') fireEvent.click(screen.getByRole('button', { name: 'Timer pausieren' }));
+    closeRest();
+    await waitFor(() => expect(setLogs()).toHaveLength(1));
+    const rest = savedRest();
+
+    act(() => { vi.setSystemTime(NOW + 5000); });
+    enter(reps(1), '8');
+    enter(weight(1), '60');
+
+    await waitFor(() => expect(setLogs()[0]).toMatchObject({ completed: true, repsCompleted: 8, weightUsed: 60 }));
+    expect(savedRest()).toEqual(rest);
+    expect(screen.queryByRole('dialog', { name: 'Pause' })).toBeNull();
+    const inline = screen.getByRole('button', { name: 'Pause für Satz 1 öffnen' });
+    act(() => { window.dispatchEvent(new Event('focus')); });
+    expect(within(inline).getByRole('timer')).toHaveTextContent(status === 'running' ? '00:55' : '01:00');
+  });
+
+  it('ticking starts the prescribed rest once, saves an unblurred value first and copies nothing; un-ticking keeps values', async () => {
+    render(card(MONDAY));
+    await startFromCard();
+    enter(weight(1), '52,5');
+    await waitFor(() => expect(setLogs()).toHaveLength(1));
+    expect(localStorage.getItem(restKey)).toBeNull();
+
+    // Typed, never blurred - a tap on the tick does not blur on every phone.
+    fireEvent.change(reps(1), { target: { value: '9' } });
+    fireEvent.click(checkbox(1));
+
+    expect(screen.getAllByRole('dialog', { name: 'Pause' })).toHaveLength(1);
+    expect(savedRest().state).toMatchObject({ exerciseIndex: 0, setNumber: 1, totalRestSeconds: 60 });
+    await waitFor(() => expect(setLogs()).toEqual([{
+      setNumber: 1, completed: true, completedAt: expect.anything(),
+      performanceSource: 'user-recorded', repsCompleted: 9, weightUsed: 52.5,
+    }]));
+
+    closeRest();
+    enter(reps(2), '');
+    fireEvent.click(checkbox(2));
+    expect(savedRest().state).toMatchObject({ setNumber: 2 });
+    closeRest();
+    await waitFor(() => expect(setLogs()).toHaveLength(2));
+    expect(setLogs()[1]).toEqual({ setNumber: 2, completed: true, completedAt: expect.anything(), performanceSource: 'completion-only' });
+
+    fireEvent.click(checkbox(2)); // Exact owner undo cancels its own rest.
+    await waitFor(() => expect(setLogs()).toHaveLength(1));
+    expect(localStorage.getItem(restKey)).toBeNull();
+
+    fireEvent.click(checkbox(1));
+    await waitFor(() => expect(setLogs()[0]).toEqual({
+      setNumber: 1, completed: false, performanceSource: 'user-recorded', repsCompleted: 9, weightUsed: 52.5,
+    }));
+    expect(reps(1)).toHaveValue('9');
+    expect(weight(1)).toHaveValue('52,5');
+  });
+
+  it('does not lose the last edit when finishing straight away, and saves it before the finish', async () => {
+    render(card(MONDAY));
+    await startFromCard();
+
+    // Still in the field when "Training beenden" is pressed.
+    fireEvent.change(weight(1), { target: { value: '52,5' } });
+    fireEvent.click(screen.getByRole('button', { name: /^Training beenden/ }));
+
+    const summary = await screen.findByRole('dialog', { name: 'Training beendet?' });
+    const recordedSection = within(summary).getByRole('region', { name: 'Erfasste Leistung' });
+    expect(within(recordedSection).getByText('Kniebeugen')).toBeInTheDocument();
+    expect(within(recordedSection).getByText('Satz 1 · 52,5 kg · offen')).toBeInTheDocument();
+    expect(recordedSection.textContent).not.toMatch(/8 Wdh/);
+
+    fireEvent.click(within(summary).getByRole('button', { name: /Training speichern & beenden/ }));
+
+    await waitFor(() => expect(localStorage.getItem(SESSION_KEY)).toBeNull());
+    expect(setLogs()).toEqual([{ setNumber: 1, completed: false, performanceSource: 'user-recorded', weightUsed: 52.5 }]);
+    const setWrite = writes.findIndex((write) => write.path.includes('/workout_set_logs/'));
+    const finishWrite = writes.findIndex((write) => write.data.durationSec !== undefined);
+    expect(setWrite).toBeGreaterThanOrEqual(0);
+    expect(setWrite).toBeLessThan(finishWrite);
+  });
+
+  it('keeps the user in the workout, at the field, when a value cannot be saved', async () => {
+    render(card(MONDAY));
+    await startFromCard();
+
+    fireEvent.change(weight(1), { target: { value: '52,555' } });
+    fireEvent.click(screen.getByRole('button', { name: /^Training beenden/ }));
+
+    expect(screen.queryByRole('dialog', { name: 'Training beendet?' })).toBeNull();
+    expect(showToast).toHaveBeenCalledWith(expect.stringContaining('Kniebeugen, Satz 1'), 'error');
+    expect(weight(1)).toHaveValue('52,555');
+    expect(weight(1)).toHaveAttribute('aria-invalid', 'true');
+    expect(weight(1)).toHaveFocus();
+    expect(screen.getByRole('alert')).toHaveTextContent('Gewicht');
+    expect(writes).toHaveLength(0);
+    expect(localStorage.getItem(SESSION_KEY)).not.toBeNull();
+  });
+
+  it('keeps recorded and unsaved values through exercise guidance and collapsing', async () => {
+    render(card(MONDAY));
+    await startFromCard();
+    enter(reps(1), '8');
+    await waitFor(() => expect(setLogs()).toHaveLength(1));
+    const writesBefore = writes.length;
+
+    fireEvent.click(screen.getByRole('button', { name: 'Informationen zu Kniebeugen' }));
+    expect(screen.getByRole('dialog', { name: 'Kniebeugen' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Übungsdetails schließen' }));
+    expect(reps(1)).toHaveValue('8');
+
+    fireEvent.change(weight(1), { target: { value: '40' } });
+    fireEvent.click(screen.getByRole('button', { name: /^Kniebeugen/ }));
+    fireEvent.click(screen.getByRole('button', { name: /^Kniebeugen/ }));
+    expect(weight(1)).toHaveValue('40');
+    expect(reps(1)).toHaveValue('8');
+    expect(writes.length).toBeGreaterThanOrEqual(writesBefore);
+    expect(localStorage.getItem(restKey)).toBeNull();
+  });
+});

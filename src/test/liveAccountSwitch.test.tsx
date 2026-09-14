@@ -174,7 +174,7 @@ describe('the same owner throughout', () => {
 
     await act(async () => { await result.current.toggleSetAsync(SET); });
 
-    expect(firestore.addDoc).toHaveBeenCalled();
+    expect(writes.some(write => write.path.startsWith('users/A/') && write.path.includes('/workout_set_logs/'))).toBe(true);
   });
 
   it('completes an exercise completion normally', async () => {

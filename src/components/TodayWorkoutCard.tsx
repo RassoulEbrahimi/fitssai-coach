@@ -24,7 +24,8 @@ import { TodayWorkoutSkeleton } from "@/components/skeletons/TodayWorkoutSkeleto
 import { useTraining } from "@/contexts/TrainingContext";
 import { useFocusMode } from "@/contexts/FocusModeContext";
 import { useWorkoutExecution } from "@/hooks/useWorkoutExecution";
-import { resolveSessionWorkoutDay, type ExecutionExercise } from "@/lib/workoutExecution";
+import { buildRecordedPerformance, resolveSessionWorkoutDay, type ExecutionExercise } from "@/lib/workoutExecution";
+import { setPerformanceFieldId } from "@/lib/setPerformanceDrafts";
 import { FutureWorkoutDayError, recordSuccessfulWorkoutFinish, type SessionRecordOutcome } from "@/lib/sessionRecord";
 import { useRestTimer } from "@/hooks/useRestTimer";
 import ActiveWorkoutSession from "@/components/workout/ActiveWorkoutSession";
@@ -75,6 +76,20 @@ const FINISH_RETRY_MESSAGE =
   'Training konnte nicht gespeichert werden. Deine Session bleibt aktiv. Bitte erneut versuchen.';
 const FINISH_WITHOUT_DURATION_MESSAGE =
   'Training beendet. Die Dauer konnte nicht gemessen werden und wurde nicht gespeichert.';
+/*
+  A tick or a recorded value that was still being saved failed. Finishing now
+  would record the workout without it, so the session stays open; the set
+  shows its stored value again and can be entered again.
+*/
+const SET_WRITES_NOT_SAVED_MESSAGE =
+  'Einige Satzangaben konnten nicht gespeichert werden. Deine Session bleibt aktiv. Bitte prüfe die Sätze und versuche es erneut.';
+
+class SetWritesNotSavedError extends Error {
+  constructor() {
+    super('A set write that was still in flight failed.');
+    this.name = 'SetWritesNotSavedError';
+  }
+}
 
 const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
   selectedDate,
@@ -143,7 +158,10 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
     progress: progressStats,
     isSetCompleted,
     getCompletedSetsCount,
+    getActualPerformance,
     toggleSetAsync,
+    performance: setPerformance,
+    whenSetWritesSettled,
     isTogglingSet,
     isLoadingSets,
   } = useWorkoutExecution(workoutPlan, { weekKey, dayIndex, workoutDay: selectedDateStr });
@@ -317,6 +335,18 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
   }
 
   const handleFinishTraining = () => {
+    // Typed but unsaved set values are saved before the summary reports on
+    // them. A value that cannot be saved keeps the user in the workout, at it.
+    const [invalid] = setPerformance.commitAll();
+    if (invalid) {
+      const exerciseName = exercises[invalid.exerciseIndex]?.name;
+      showToast(
+        `Ungültige Eingabe${exerciseName ? ` bei ${exerciseName}` : ''}, Satz ${invalid.setNumber}. Bitte korrigieren.`,
+        'error'
+      );
+      document.getElementById(setPerformanceFieldId(invalid.exerciseIndex, invalid.setNumber, invalid.field))?.focus();
+      return;
+    }
     // Show summary modal - timer continues running!
     setShowSummary(true);
   };
@@ -347,6 +377,11 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
       const endedAt = markFinishAttempt();
       if (endedAt === null) throw new Error("Missing session identity");
       if (!isOnline || !navigator.onLine) throw new Error("Offline");
+      // Every tick and recorded value still being saved lands - or is durably
+      // queued - before the workout is recorded as finished. No timer: the
+      // writes themselves are awaited.
+      const setWrites = await whenSetWritesSettled();
+      if (setWrites.failed > 0) throw new SetWritesNotSavedError();
       // Older bound sessions have a plan position but no captured date. Resolve
       // only against that same plan, never against the selected UI day.
       const workoutDay = resolveSessionWorkoutDay(session, workoutPlan);
@@ -371,7 +406,9 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
       });
       const message = error instanceof FutureWorkoutDayError
         ? t('dashboard.futureDay.locked')
-        : FINISH_RETRY_MESSAGE;
+        : error instanceof SetWritesNotSavedError
+          ? SET_WRITES_NOT_SAVED_MESSAGE
+          : FINISH_RETRY_MESSAGE;
       setFinishError(message);
       showToast(message, 'error');
       return;
@@ -602,8 +639,10 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
                     durationSeconds={currentDuration}
                     isSetCompleted={isSetCompleted}
                     getCompletedSetsCount={getCompletedSetsCount}
+                    getActualPerformance={getActualPerformance}
                     onToggleSet={handleToggleSet}
                     isTogglingSet={isTogglingSet}
+                    performance={setPerformance}
                     rest={restTimer}
                     onFinish={handleFinishTraining}
                   />
@@ -620,6 +659,10 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
                     workoutName={workoutName}
                     selectedDate={executionDate ?? selectedDate}
                     getCompletedSetsCount={getCompletedSetsCount}
+                    // Explicitly recorded values only; never the prescription.
+                    recordedPerformance={showSummary
+                      ? buildRecordedPerformance(exercises, isSetCompleted, getActualPerformance)
+                      : []}
                   />
                 </motion.div>
               )}

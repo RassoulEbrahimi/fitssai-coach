@@ -1,12 +1,14 @@
 import { describe, expect, it } from "vitest";
 import {
   buildExecutionSetViewModels,
+  buildRecordedPerformance,
   parseSetCount,
   readTargetDayExercises,
   resolveExecutionTarget,
   resolveSessionWorkoutDay,
   type ExecutionSelection,
 } from "./workoutExecution";
+import type { ActualSetPerformance } from "./setPerformance";
 import { createSessionPayload } from "./trainingSession";
 import { getWorkoutDateString } from "./workoutDateUtils";
 
@@ -108,6 +110,10 @@ describe("the bound day's exercises", () => {
   });
 });
 
+const NOT_RECORDED = { source: "none", reps: null, weightKg: null };
+const recorded = (reps: number | null, weightKg: number | null): ActualSetPerformance =>
+  ({ source: "user-recorded", reps, weightKg });
+
 describe("the set view model", () => {
   const BENCH = { name: "Bankdrücken", sets: 3, reps: "8–12", weight: "60 kg", rest: "90s" };
 
@@ -118,6 +124,7 @@ describe("the set view model", () => {
       setNumber,
       prescription: { reps: "8–12", weight: "60 kg", restSeconds: 90 },
       completed: false,
+      actual: NOT_RECORDED,
     })));
   });
 
@@ -133,13 +140,24 @@ describe("the set view model", () => {
   });
 
   it("never presents a ticked set as performed reps or load", () => {
-    const [ticked] = buildExecutionSetViewModels({ ...BENCH, sets: 1 }, 0, () => true);
+    const [ticked] = buildExecutionSetViewModels({ ...BENCH, sets: 1 }, 0, () => true, () => ({
+      source: "completion-only", reps: null, weightKg: null,
+    }));
 
     expect(ticked.completed).toBe(true);
-    // The prescription stays the plan's target; there is nowhere to put a measurement.
+    // The prescription stays the plan's target and is not copied into actual.
     expect(ticked.prescription).toEqual({ reps: "8–12", weight: "60 kg", restSeconds: 90 });
-    expect(Object.keys(ticked).sort()).toEqual(["completed", "exerciseIndex", "key", "prescription", "setNumber"]);
-    expect(JSON.stringify(ticked)).not.toMatch(/repsCompleted|weightUsed|actual|performance/i);
+    expect(ticked.actual).toEqual({ source: "completion-only", reps: null, weightKg: null });
+    expect(JSON.stringify(ticked)).not.toMatch(/repsCompleted|weightUsed/);
+  });
+
+  it("keeps completion, prescription and recorded performance as three separate layers", () => {
+    const [open, done] = buildExecutionSetViewModels({ ...BENCH, sets: 2 }, 0,
+      (_exerciseIndex, setNumber) => setNumber === 2,
+      (_exerciseIndex, setNumber) => (setNumber === 1 ? recorded(10, 52.5) : recorded(null, 55)));
+
+    expect(open).toMatchObject({ completed: false, actual: recorded(10, 52.5), prescription: { reps: "8–12", weight: "60 kg" } });
+    expect(done).toMatchObject({ completed: true, actual: recorded(null, 55), prescription: { reps: "8–12", weight: "60 kg" } });
   });
 
   it("keeps time, numeric and load-free prescriptions untouched", () => {
@@ -155,5 +173,39 @@ describe("the set view model", () => {
     expect(parseSetCount("5")).toBe(5);
     expect(parseSetCount("drei")).toBe(3);
     expect(buildExecutionSetViewModels({ name: "Rudern", sets: "drei", reps: "10" }, 0, () => false)).toHaveLength(3);
+  });
+});
+
+describe("recorded performance for the finish summary", () => {
+  const EXERCISES = [
+    { name: "Bankdrücken", sets: 3, reps: "8–12", weight: "60 kg" },
+    { name: "Plank", sets: 2, reps: "30 Sekunden" },
+    { name: "Rudern", sets: 2, reps: "10", weight: "40 kg" },
+  ];
+  const stored: Record<string, ActualSetPerformance> = {
+    "0:1": recorded(10, 52.5),
+    "0:3": recorded(null, 57.5),
+    // Ticked but nothing recorded, and a legacy set with copied numbers.
+    "2:1": { source: "completion-only", reps: null, weightKg: null },
+    "2:2": { source: "unverified", reps: null, weightKg: null },
+  };
+
+  it("lists only explicitly recorded values, in plan order, without the prescription", () => {
+    expect(buildRecordedPerformance(
+      EXERCISES,
+      (exerciseIndex, setNumber) => exerciseIndex === 0 && setNumber === 1,
+      (exerciseIndex, setNumber) => stored[`${exerciseIndex}:${setNumber}`],
+    )).toEqual([{
+      exerciseIndex: 0,
+      name: "Bankdrücken",
+      sets: [
+        { setNumber: 1, reps: 10, weightKg: 52.5, completed: true },
+        { setNumber: 3, reps: null, weightKg: 57.5, completed: false },
+      ],
+    }]);
+  });
+
+  it("is empty when nothing was recorded", () => {
+    expect(buildRecordedPerformance(EXERCISES, () => true, () => undefined)).toEqual([]);
   });
 });

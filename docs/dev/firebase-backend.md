@@ -685,6 +685,28 @@ Both carry `weekKey`, `dayIndex` and `completed`, so those three fields cannot
 tell them apart. `exerciseIndex` can: every exercise-position path writes it
 and no day path does.
 
+### Set logs under an exercise position
+
+A `workout_set_logs` document records one planned set. Completion and recorded
+performance are independent of each other (TRAINING-EXEC-02A):
+
+| field | meaning |
+| --- | --- |
+| `setNumber` | the planned set |
+| `completed` | written by every current writer; absent on older documents |
+| `completedAt` | when the set was ticked |
+| `performanceSource` | `completion-only` or `user-recorded`; absent on older documents |
+| `repsCompleted`, `weightUsed` | performed reps and kg, trusted only beside `user-recorded` |
+
+A set is open only when it carries `completed: false` together with a known
+`performanceSource` — reps or weight recorded before the set was ticked. Every
+other set document, including every one written before this rule, reads as
+completed, so nothing is migrated. An open set with nothing recorded is deleted.
+Numbers on a document without `user-recorded` were copied from the prescription
+by an older build and are never read as performance (`src/lib/setPerformance.ts`).
+Online writes and both replayed types (`TOGGLE_SET`, `UPDATE_SET_PERFORMANCE`)
+go through `src/lib/setLogWriter.ts`.
+
 **The rule, in `shared/workoutCompletion.ts` and applied by client and backend
 alike: a workout day is completed only when its day session record says
 `completed: true`.** A completed exercise, all sets of an exercise, a measured

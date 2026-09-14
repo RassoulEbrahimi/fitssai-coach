@@ -264,7 +264,7 @@ describe('owner enforcement at the queue and Firestore boundaries', () => {
     expect(() => enqueue('TOGGLE_DAY', payload, 'A')).toThrow(/account/);
   });
 
-  it.each(['TOGGLE_DAY', 'TOGGLE_SET', 'TOGGLE_DAY_COMPLETION'] as const)('%s rejects A under B before reading or writing', async type => {
+  it.each(['TOGGLE_DAY', 'TOGGLE_SET', 'TOGGLE_DAY_COMPLETION', 'UPDATE_SET_PERFORMANCE'] as const)('%s rejects A under B before reading or writing', async type => {
     identity.currentUser = { uid: 'B' };
     const handler = handlers[type];
     await expect(handler({ ...payload, uid: 'B', ownerUid: 'B' } as never, 'A')).rejects.toThrow(/account/);

@@ -17,12 +17,16 @@ vi.mock('@/lib/firebase', () => ({ db: {}, auth: { currentUser: { uid: 'u1' } } 
 vi.mock('@/hooks/useAuth', () => ({ useAuth: () => ({ user: { id: 'u1', uid: 'u1' } }) }));
 vi.mock('@/hooks/useThrottledToast', () => ({ useThrottledToast: () => ({ showToast: vi.fn() }) }));
 const persistSet = vi.hoisted(() => vi.fn());
+const persistPerformance = vi.hoisted(() => vi.fn());
 vi.mock('@/hooks/useSetTracking', () => ({
   useSetTracking: () => ({
     isSetCompleted: () => false,
     getCompletedSetsCount: () => 0,
+    getActualPerformance: () => undefined,
     toggleSet: vi.fn(),
     toggleSetAsync: persistSet,
+    updateSetPerformanceAsync: persistPerformance,
+    whenSetWritesSettled: vi.fn().mockResolvedValue({ failed: 0 }),
     isTogglingSet: false,
     isLoadingSets: false,
   }),
@@ -375,4 +379,34 @@ it('a failed older completion cannot cancel a newer rest; its own failure can', 
   await act(async () => rejectB(new Error('Current write failed')));
   expect(localStorage.getItem('fitssai.training.rest:u1')).toBeNull();
   expect(screen.queryByRole('dialog', { name: 'Pause' })).toBeNull();
+});
+
+it('records reps and weight from the keyboard inside Focus Mode, without ticking the set or starting rest', async () => {
+  const user = await setup();
+  await startTraining(user);
+  persistPerformance.mockReset().mockResolvedValue({ success: true });
+  const dialog = focusMode()!;
+  const reps = within(dialog).getByRole('textbox', { name: 'Satz 1: ausgeführte Wiederholungen' });
+  const weight = within(dialog).getByRole('textbox', { name: 'Satz 1: ausgeführtes Gewicht in kg' });
+
+  await user.click(reps);
+  await user.keyboard('8');
+  await user.tab();
+
+  expect(weight).toHaveFocus();
+  expect(persistPerformance).toHaveBeenLastCalledWith(expect.objectContaining({
+    planId: 'plan1', weekKey: 'Week 1', dayIndex: 0, exerciseIndex: 0, setNumber: 1, reps: 8,
+  }));
+
+  await user.keyboard('52,5{Enter}');
+  expect(persistPerformance).toHaveBeenLastCalledWith(expect.objectContaining({ setNumber: 1, weightKg: 52.5 }));
+  expect(persistPerformance.mock.calls.at(-1)?.[0]).not.toHaveProperty('reps');
+  expect(weight).toHaveFocus();
+
+  await user.tab();
+  expect(within(dialog).getByRole('checkbox', { name: /Satz 1/ })).toHaveFocus();
+  expect(dialog.contains(activeElement())).toBe(true);
+  expect(focusMode()).not.toBeNull();
+  expect(persistSet).not.toHaveBeenCalled();
+  expect(localStorage.getItem('fitssai.training.rest:u1')).toBeNull();
 });

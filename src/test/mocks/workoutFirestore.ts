@@ -154,6 +154,7 @@ export const firestore = {
     get: (target: Ref) => Promise<ReturnType<typeof snapshot>>;
     set: (target: Ref, data: Row) => void;
     update: (target: Ref, data: Row) => void;
+    delete: (target: Ref) => void;
   }) => Promise<void>) => {
     const task = serial.then(async () => {
       if (control.beforeCommit) await control.beforeCommit();
@@ -161,13 +162,19 @@ export const firestore = {
         control.rejectNext = false;
         throw new Error("Persistence rejected");
       }
-      const pending: { path: string; data: Row; merge: boolean }[] = [];
+      const pending: { path: string; data: Row | null; merge: boolean }[] = [];
       await callback({
         get: async target => snapshot(target.path),
         set: (target, data) => { pending.push({ path: target.path, data, merge: false }); },
         update: (target, data) => { pending.push({ path: target.path, data, merge: true }); },
+        delete: target => { pending.push({ path: target.path, data: null, merge: false }); },
       });
       pending.forEach(({ path, data, merge }) => {
+        if (data === null) {
+          rows.delete(path);
+          writes.push({ path, data: { __deleted: true } });
+          return;
+        }
         rows.set(path, { ...(merge ? rows.get(path) : {}), ...data });
         writes.push({ path, data });
       });
