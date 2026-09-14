@@ -1,159 +1,129 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useLayoutEffect } from 'react';
+import {
+  IDLE_REST, clearStoredRest, persistRest, restoreRest, remainingRestSeconds, restSessionIdentity,
+  type RestTimerState,
+} from '@/lib/restTimer';
+import type { TrainingSessionPayload } from '@/lib/trainingSession';
 
-interface RestTimerState {
-  exerciseIndex: number | null;
-  /**
-   * The set that started this timer. A rest timer belongs to one specific set,
-   * so un-completing that set cancels it — and a change to any other set does
-   * not.
-   */
-  setNumber: number | null;
-  remainingSeconds: number;
-  totalRestSeconds: number;
-  isComplete: boolean;
-}
+/** One clock above the Focus Mode portal; storage writes happen only on transitions. */
+export function useRestTimer(uid?: string, session: TrainingSessionPayload | null = null) {
+  const identity = restSessionIdentity(uid, session);
+  const [state, setState] = useState<RestTimerState>(IDLE_REST);
+  const stateRef = useRef(state);
+  const scopeRef = useRef<string | null>(identity);
+  const generation = useRef(0);
+  const [now, setNow] = useState(Date.now);
+  const [isSheetOpen, setIsSheetOpen] = useState(false);
 
-interface UseRestTimerReturn {
-  timerState: RestTimerState;
-  startTimer: (exerciseIndex: number, durationSeconds: number, setNumber?: number | null) => void;
-  skipTimer: () => void;
-  isTimerActiveFor: (exerciseIndex: number) => boolean;
-  /** True when the running timer was started by exactly this set. */
-  isTimerOwnedBy: (exerciseIndex: number, setNumber: number) => boolean;
-  /** Cancel the timer only if this exact set owns it. */
-  cancelTimerForSet: (exerciseIndex: number, setNumber: number) => void;
-}
+  const commit = useCallback((next: RestTimerState) => {
+    stateRef.current = next;
+    setState(next);
+    setNow(Date.now());
+    if (uid && identity && scopeRef.current === identity) persistRest(uid, identity, next);
+  }, [uid, identity]);
 
-export function useRestTimer(): UseRestTimerReturn {
-  const IDLE: RestTimerState = {
-    exerciseIndex: null,
-    setNumber: null,
-    remainingSeconds: 0,
-    totalRestSeconds: 0,
-    isComplete: false,
-  };
-
-  const [timerState, setTimerState] = useState<RestTimerState>(IDLE);
-
-  /**
-   * Mirrors timerState for the ownership checks. Rapid toggles can fire several
-   * handlers before React re-renders, so ownership is read from the ref rather
-   * than from possibly-stale state.
-   */
-  const ownerRef = useRef<{ exerciseIndex: number; setNumber: number | null } | null>(null);
-
-  const intervalRef = useRef<NodeJS.Timeout | null>(null);
-  const completeTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-
-  // Cleanup on unmount
-  useEffect(() => {
+  useLayoutEffect(() => {
+    scopeRef.current = identity;
+    generation.current++;
+    const next = uid && identity ? restoreRest(uid, identity) : IDLE_REST;
+    if (uid && !identity) clearStoredRest(uid);
+    stateRef.current = next;
+    setState(next);
+    setNow(Date.now());
+    setIsSheetOpen(false); // Recovery is inline; visibility is never persisted.
     return () => {
-      if (intervalRef.current) clearInterval(intervalRef.current);
-      if (completeTimeoutRef.current) clearTimeout(completeTimeoutRef.current);
+      // In-flight writes can settle after navigation remounts the card. Their
+      // callbacks must not erase recovery belonging to the replacement card.
+      scopeRef.current = null;
     };
-  }, []);
+  }, [uid, identity]);
 
-  // Timer countdown effect
+  const finish = useCallback((completed: boolean) => {
+    generation.current++;
+    commit({ ...IDLE_REST, status: completed ? 'finished' : 'idle' });
+    setIsSheetOpen(false);
+  }, [commit]);
+
   useEffect(() => {
-    if (timerState.exerciseIndex !== null && timerState.remainingSeconds > 0) {
-      intervalRef.current = setInterval(() => {
-        setTimerState((prev) => {
-          if (prev.remainingSeconds <= 1) {
-            // Timer complete - show completion message
-            if (intervalRef.current) clearInterval(intervalRef.current);
-            
-            // Haptic feedback - double buzz pattern
-            if ('vibrate' in navigator) {
-              navigator.vibrate([200, 100, 200]);
-            }
-            
-            // Auto-hide after 2.5 seconds
-            completeTimeoutRef.current = setTimeout(() => {
-              ownerRef.current = null;
-              setTimerState({
-                exerciseIndex: null,
-                setNumber: null,
-                remainingSeconds: 0,
-                totalRestSeconds: 0,
-                isComplete: false,
-              });
-            }, 2500);
+    if (state.status !== 'running') return;
+    const refresh = () => {
+      if (stateRef.current.status !== 'running') return;
+      if (remainingRestSeconds(stateRef.current) === 0) finish(true);
+      else setNow(Date.now());
+    };
+    const interval = setInterval(refresh, 250);
+    window.addEventListener('focus', refresh);
+    document.addEventListener('visibilitychange', refresh);
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('focus', refresh);
+      document.removeEventListener('visibilitychange', refresh);
+    };
+  }, [state.status, finish]);
 
-            return {
-              ...prev,
-              remainingSeconds: 0,
-              isComplete: true,
-            };
-          }
-          return {
-            ...prev,
-            remainingSeconds: prev.remainingSeconds - 1,
-          };
-        });
-      }, 1000);
-
-      return () => {
-        if (intervalRef.current) clearInterval(intervalRef.current);
-      };
-    }
-  }, [timerState.exerciseIndex, timerState.remainingSeconds > 0]);
-
-  const startTimer = useCallback(
-    (exerciseIndex: number, durationSeconds: number, setNumber: number | null = null) => {
-      // Clear any existing timers
-      if (intervalRef.current) clearInterval(intervalRef.current);
-      if (completeTimeoutRef.current) clearTimeout(completeTimeoutRef.current);
-
-      ownerRef.current = { exerciseIndex, setNumber };
-      setTimerState({
-        exerciseIndex,
-        setNumber,
-        remainingSeconds: durationSeconds,
-        totalRestSeconds: durationSeconds,
-        isComplete: false,
-      });
-    },
-    []
-  );
-
-  const skipTimer = useCallback(() => {
-    if (intervalRef.current) clearInterval(intervalRef.current);
-    if (completeTimeoutRef.current) clearTimeout(completeTimeoutRef.current);
-
-    ownerRef.current = null;
-    setTimerState({
-      exerciseIndex: null,
-      setNumber: null,
-      remainingSeconds: 0,
-      totalRestSeconds: 0,
-      isComplete: false,
-    });
+  const isTimerOwnedBy = useCallback((exerciseIndex: number, setNumber: number) => {
+    const current = stateRef.current;
+    return (current.status === 'running' || current.status === 'paused') &&
+      current.exerciseIndex === exerciseIndex && current.setNumber === setNumber;
   }, []);
+  const cancelTimerForSet = useCallback((exerciseIndex: number, setNumber: number) => {
+    if (isTimerOwnedBy(exerciseIndex, setNumber)) finish(false);
+  }, [isTimerOwnedBy, finish]);
 
-  const isTimerOwnedBy = useCallback((exerciseIndex: number, setNumber: number): boolean => {
-    const owner = ownerRef.current;
-    return owner !== null && owner.exerciseIndex === exerciseIndex && owner.setNumber === setNumber;
+  const startTimer = useCallback((exerciseIndex: number, durationSeconds: number, setNumber: number) => {
+    const duration = Number.isFinite(durationSeconds) ? Math.max(0, Math.ceil(durationSeconds)) : 60;
+    const instance = ++generation.current;
+    const scope = identity;
+    commit(duration > 0 ? {
+      status: 'running', exerciseIndex, setNumber, totalRestSeconds: duration,
+      deadlineMs: Date.now() + duration * 1000, pausedRemainingSeconds: null,
+    } : { ...IDLE_REST, status: 'finished' });
+    setIsSheetOpen(duration > 0);
+    // Also protects a later completion of the SAME set, or a new session.
+    return () => {
+      if (scopeRef.current === scope && generation.current === instance) cancelTimerForSet(exerciseIndex, setNumber);
+    };
+  }, [identity, commit, cancelTimerForSet]);
+
+  const pauseTimer = useCallback(() => {
+    const current = stateRef.current;
+    if (current.status !== 'running') return;
+    const remaining = remainingRestSeconds(current);
+    if (remaining === 0) return finish(true);
+    commit({ ...current, status: 'paused', deadlineMs: null, pausedRemainingSeconds: remaining });
+  }, [commit, finish]);
+  const resumeTimer = useCallback(() => {
+    const current = stateRef.current;
+    if (current.status !== 'paused') return;
+    commit({ ...current, status: 'running', deadlineMs: Date.now() + remainingRestSeconds(current) * 1000, pausedRemainingSeconds: null });
+  }, [commit]);
+  const adjustTimer = useCallback((seconds: number) => {
+    const current = stateRef.current;
+    if (!Number.isFinite(seconds) || (current.status !== 'running' && current.status !== 'paused')) return;
+    const remaining = remainingRestSeconds(current);
+    if (remaining === 0 || remaining + seconds <= 0) return finish(true);
+    commit(current.status === 'running'
+      ? { ...current, deadlineMs: current.deadlineMs! + seconds * 1000 }
+      : { ...current, pausedRemainingSeconds: remaining + seconds });
+  }, [commit, finish]);
+  const setSheetOpen = useCallback((open: boolean) => {
+    const current = stateRef.current;
+    setIsSheetOpen(open && (current.status === 'running' || current.status === 'paused'));
   }, []);
+  const skipTimer = useCallback(() => finish(false), [finish]);
 
-  const cancelTimerForSet = useCallback(
-    (exerciseIndex: number, setNumber: number) => {
-      if (!isTimerOwnedBy(exerciseIndex, setNumber)) return;
-      skipTimer();
-    },
-    [isTimerOwnedBy, skipTimer]
-  );
-
-  const isTimerActiveFor = useCallback((exerciseIndex: number): boolean => {
-    return timerState.exerciseIndex === exerciseIndex && 
-           (timerState.remainingSeconds > 0 || timerState.isComplete);
-  }, [timerState.exerciseIndex, timerState.remainingSeconds, timerState.isComplete]);
-
+  // Do not display the previous account/session for even one render.
+  const visibleState = scopeRef.current === identity ? state : IDLE_REST;
+  const timerState = {
+    ...visibleState,
+    remainingSeconds: remainingRestSeconds(visibleState, now),
+    isComplete: visibleState.status === 'finished',
+  };
   return {
-    timerState,
-    startTimer,
-    skipTimer,
-    isTimerActiveFor,
-    isTimerOwnedBy,
-    cancelTimerForSet,
+    timerState, isSheetOpen, setSheetOpen, startTimer, skipTimer,
+    pauseTimer, resumeTimer, adjustTimer, isTimerOwnedBy, cancelTimerForSet,
+    isTimerActiveFor: (exerciseIndex: number) => timerState.exerciseIndex === exerciseIndex && timerState.remainingSeconds > 0,
   };
 }
+
+export type RestTimerController = ReturnType<typeof useRestTimer>;

@@ -28,6 +28,8 @@ import { resolveSessionWorkoutDay, type ExecutionExercise } from "@/lib/workoutE
 import { FutureWorkoutDayError, recordSuccessfulWorkoutFinish, type SessionRecordOutcome } from "@/lib/sessionRecord";
 import { useRestTimer } from "@/hooks/useRestTimer";
 import ActiveWorkoutSession from "@/components/workout/ActiveWorkoutSession";
+import RestBottomSheet from "@/components/workout/RestBottomSheet";
+import { parseRestTime } from "@/lib/restTimeParser";
 import workoutHeroBg from "@/assets/workout-hero-bg.jpg";
 
 // Helper to get localStorage key for started state
@@ -141,14 +143,15 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
     progress: progressStats,
     isSetCompleted,
     getCompletedSetsCount,
-    toggleSet,
+    toggleSetAsync,
     isTogglingSet,
     isLoadingSets,
   } = useWorkoutExecution(workoutPlan, { weekKey, dayIndex, workoutDay: selectedDateStr });
 
   // Rest timer hook. Owned here, above Focus Mode's portal, so toggling
   // fullscreen does not reset a running countdown.
-  const restTimer = useRestTimer();
+  const restTimer = useRestTimer(user?.uid, session);
+  const { startTimer, cancelTimerForSet } = restTimer;
 
 
   // Reactive Berlin "today" - updates automatically at midnight
@@ -177,14 +180,16 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
 
     // Written to the execution target: the bound session's day, not the day
     // on screen.
-    toggleSet(params, {
-      onSuccess: (data) => {
-        if (params.completed && !data.queued) {
-          showToast(t('todayWorkout.setCompleted', { set: params.setNumber }));
-        }
-      },
-    });
-  }, [user, workoutPlan, executionTarget.weekKey, executionTarget.dayIndex, exercises, toggleSet, showToast, t]);
+    const rollbackRest = params.completed
+      ? startTimer(params.exerciseIndex, parseRestTime(exercises[params.exerciseIndex]?.rest), params.setNumber)
+      : undefined;
+    if (!params.completed) cancelTimerForSet(params.exerciseIndex, params.setNumber);
+    void toggleSetAsync(params).then((data) => {
+      if (params.completed && !data.queued) {
+        showToast(t('todayWorkout.setCompleted', { set: params.setNumber }));
+      }
+    }).catch(() => rollbackRest?.());
+  }, [user, workoutPlan, executionTarget.weekKey, executionTarget.dayIndex, exercises, toggleSetAsync, startTimer, cancelTimerForSet, showToast, t]);
 
   /*
     Focus Mode is a keyboard modal. Toggling it swaps FocusModePortal between a
@@ -623,6 +628,7 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
         </Card>
       </div>
       </FocusModePortal>
+      <RestBottomSheet rest={restTimer} exercises={exercises} />
     </WorkoutErrorBoundary>
   );
 };

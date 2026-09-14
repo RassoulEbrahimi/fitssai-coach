@@ -81,12 +81,14 @@ describe('TrainingContext', () => {
         act(() => {
             result.current.startSession({ planId: 'plan-1', weekKey: 'Week 1', dayIndex: 0 });
             vi.advanceTimersByTime(2000); // 2 seconds
+            localStorage.setItem('fitssai.training.rest:u1', 'active rest');
             result.current.endSession();
         });
 
         expect(result.current.isStarted).toBe(false);
         expect(result.current.duration).toBe(0);
         expect(localStorage.getItem('fitssai.training.session:u1')).toBeNull();
+        expect(localStorage.getItem('fitssai.training.rest:u1')).toBeNull();
     });
 
     it('persists a bound session across reloads (simulated)', () => {
@@ -146,5 +148,6 @@ describe('TrainingContext', () => {
         expect(result.current.session).toBeNull();
         expect(result.current.rejectionNotice).toBeTruthy();
         expect(localStorage.getItem('fitssai.training.session:u1')).toBeNull();
+        expect(localStorage.getItem('fitssai.training.rest:u1')).toBeNull();
     });
 });

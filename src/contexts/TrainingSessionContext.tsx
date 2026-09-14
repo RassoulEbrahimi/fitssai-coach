@@ -1,5 +1,6 @@
 import { useAuth } from '@/hooks/useAuth';
 import { accountStorageKey } from '@/lib/accountIdentity';
+import { clearStoredRest } from '@/lib/restTimer';
 import React, {
     createContext,
     useContext,
@@ -133,7 +134,7 @@ export function TrainingSessionProvider({ children }: { children: ReactNode }) {
                 // Without a plan day there is nothing to resume into later, so
                 // nothing is persisted — the session runs in memory only.
                 setSession(null);
-                if (ownerUid) clearStoredSession(ownerUid);
+                if (ownerUid) { clearStoredSession(ownerUid); clearStoredRest(ownerUid); }
                 setStartedAt(Date.now());
                 return;
             }
@@ -151,7 +152,7 @@ export function TrainingSessionProvider({ children }: { children: ReactNode }) {
         setSession(null);
         setStartedAt(null);
         setDuration(0);
-        if (ownerUid) clearStoredSession(ownerUid);
+        if (ownerUid) { clearStoredSession(ownerUid); clearStoredRest(ownerUid); }
     }, [setSession, ownerUid]);
 
     /*
@@ -195,7 +196,7 @@ export function TrainingSessionProvider({ children }: { children: ReactNode }) {
         }
 
         // Stale: end it. Never silently rebind to today's workout.
-        if (ownerUid) clearStoredSession(ownerUid);
+        if (ownerUid) { clearStoredSession(ownerUid); clearStoredRest(ownerUid); }
         validatedForRef.current = null;
         setStartedAt(null);
         setSession(null);

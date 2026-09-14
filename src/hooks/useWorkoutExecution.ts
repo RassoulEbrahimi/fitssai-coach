@@ -73,6 +73,7 @@ export function useWorkoutExecution(
     isSetCompleted,
     getCompletedSetsCount,
     toggleSet: toggleTrackedSet,
+    toggleSetAsync: toggleTrackedSetAsync,
     isTogglingSet,
     isLoadingSets,
   } = useSetTracking(target.planId, target.weekKey, target.dayIndex);
@@ -93,6 +94,16 @@ export function useWorkoutExecution(
       workoutDay: target.workoutDay,
     }, options);
   }, [target, toggleTrackedSet]);
+
+  // Awaitable per-action result: mutate's observer callbacks can be replaced by
+  // the next click. Each optimistic rest needs its own failure handler.
+  const toggleSetAsync = useCallback(async (toggle: ExecutionSetToggle) => {
+    if (!target.planId) throw new Error('Missing execution plan');
+    return toggleTrackedSetAsync({
+      ...toggle, planId: target.planId, weekKey: target.weekKey,
+      dayIndex: target.dayIndex, workoutDay: target.workoutDay,
+    });
+  }, [target, toggleTrackedSetAsync]);
 
   /*
     Counted the way the finish summary counts them, so the header and the
@@ -125,6 +136,7 @@ export function useWorkoutExecution(
     isSetCompleted,
     getCompletedSetsCount,
     toggleSet,
+    toggleSetAsync,
     isTogglingSet,
     isLoadingSets,
   };

@@ -214,6 +214,7 @@ describe('a started workout stays bound to the day it was started on', () => {
     expect(queryClient.getQueryData(queryKeys.sets.byDay(PLAN_ID, 'Week 1', 1))).toBeUndefined();
 
     await act(async () => release());
+    if (screen.queryByRole('button', { name: 'Pause schließen' })) fireEvent.click(screen.getByRole('button', { name: 'Pause schließen' }));
     await waitFor(() => expect(setLogs()).toHaveLength(1));
 
     expect(parentLogs()).toEqual([expect.objectContaining({ ...MONDAY_BINDING, exerciseIndex: 1, completed: false })]);
@@ -270,6 +271,7 @@ describe('a reloaded session resumes its own day', () => {
 
     act(() => result.current.execution.toggleSet({ exerciseIndex: 0, setNumber: 1, completed: true }));
 
+    if (screen.queryByRole('button', { name: 'Pause schließen' })) fireEvent.click(screen.getByRole('button', { name: 'Pause schließen' }));
     await waitFor(() => expect(setLogs()).toHaveLength(1));
     expect(parentLogs()).toEqual([expect.objectContaining({ ...MONDAY_BINDING, exerciseIndex: 0 })]);
   });
@@ -342,6 +344,7 @@ describe('the card keeps showing the running workout while the calendar moves', 
 
     fireEvent.click(within(running()).getByRole('checkbox', { name: /Satz 1: Vorgabe 8 Wiederholungen/ }));
 
+    if (screen.queryByRole('button', { name: 'Pause schließen' })) fireEvent.click(screen.getByRole('button', { name: 'Pause schließen' }));
     await waitFor(() => expect(setLogs()).toHaveLength(1));
     expect(parentLogs()).toEqual([expect.objectContaining({ ...MONDAY_BINDING, exerciseIndex: 0 })]);
     await waitFor(() => expect(within(running()).getByText('1/5 Sätze')).toBeInTheDocument());
@@ -435,9 +438,90 @@ describe('the Workout view calendar', () => {
 
     fireEvent.click(within(running()).getByRole('checkbox', { name: /Satz 1: Vorgabe 8 Wiederholungen/ }));
 
+    if (screen.queryByRole('button', { name: 'Pause schließen' })) fireEvent.click(screen.getByRole('button', { name: 'Pause schließen' }));
     await waitFor(() => expect(setLogs()).toHaveLength(1));
     expect(parentLogs()).toEqual([expect.objectContaining({ ...MONDAY_BINDING, exerciseIndex: 0 })]);
     await waitFor(() => expect(within(running()).getByText('1/5 Sätze')).toBeInTheDocument());
     expect(storedSession()).toMatchObject(MONDAY_BINDING);
+  });
+});
+
+describe('active rest loop in the session-bound card', () => {
+  const restKey = 'fitssai.training.rest:u1';
+  const savedRest = () => JSON.parse(localStorage.getItem(restKey) ?? 'null');
+  const closeRest = () => fireEvent.click(screen.getByRole('button', { name: 'Pause schließen' }));
+  const tick = async (set: number) => {
+    const box = await screen.findByRole('checkbox', { name: new RegExp(`Satz ${set}: Vorgabe 8 Wiederholungen`) });
+    await waitFor(() => expect(box).not.toBeDisabled());
+    fireEvent.click(box);
+    await waitFor(() => expect(box).not.toBeDisabled());
+    return box;
+  };
+
+  it('auto-opens prescribed rest, controls it, dismisses/reopens, replaces and skips without changing completed sets', async () => {
+    render(card(MONDAY));
+    await startFromCard();
+    await tick(1);
+    expect(screen.getByRole('dialog', { name: 'Pause' })).toBeInTheDocument();
+    expect(screen.getByRole('timer')).toHaveTextContent('01:00');
+    const original = savedRest();
+    expect(original.state).toMatchObject({ exerciseIndex: 0, setNumber: 1, totalRestSeconds: 60 });
+    act(() => { vi.setSystemTime(NOW + 12000); window.dispatchEvent(new Event('focus')); });
+    expect(screen.getByRole('timer')).toHaveTextContent('00:48');
+    closeRest();
+    expect(savedRest()).toEqual(original);
+    const inline = screen.getByRole('button', { name: 'Pause für Satz 1 öffnen' });
+    expect(within(inline).getByRole('timer')).toHaveTextContent('00:48');
+    fireEvent.click(screen.getByRole('button', { name: /Kniebeugen/ }));
+    expect(inline).toBeVisible(); // A collapsed exercise never strands rest.
+    fireEvent.click(inline);
+    fireEvent.click(screen.getByRole('button', { name: 'Timer pausieren' }));
+    act(() => { vi.setSystemTime(NOW + 72000); window.dispatchEvent(new Event('focus')); });
+    expect(screen.getByRole('timer')).toHaveTextContent('00:48');
+    fireEvent.click(screen.getByRole('button', { name: 'Pause um 15 Sekunden verlängern' }));
+    expect(screen.getByRole('timer')).toHaveTextContent('01:03');
+    fireEvent.click(screen.getByRole('button', { name: 'Pause um 15 Sekunden verkürzen' }));
+    expect(screen.getByRole('timer')).toHaveTextContent('00:48');
+    expect(savedRest().state.totalRestSeconds).toBe(60);
+    fireEvent.click(screen.getByRole('button', { name: 'Pause fortsetzen' }));
+    expect(savedRest().state.deadlineMs).toBe(NOW + 120000);
+    closeRest();
+    fireEvent.click(screen.getByRole('button', { name: /Kniebeugen/ }));
+    await tick(2);
+    expect(savedRest().state).toMatchObject({ setNumber: 2 });
+    closeRest();
+    await tick(1); // Undo the older set.
+    expect(savedRest().state.setNumber).toBe(2);
+    fireEvent.click(screen.getByRole('button', { name: 'Pause für Satz 2 öffnen' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Pause überspringen' }));
+    expect(localStorage.getItem(restKey)).toBeNull();
+    expect(screen.queryByRole('timer')).toBeNull();
+    expect(screen.getByRole('checkbox', { name: /Satz 2: Vorgabe 8 Wiederholungen/ })).toHaveAttribute('aria-checked', 'true');
+    await tick(3);
+    closeRest();
+    await tick(3); // Exact owner undo cancels.
+    expect(localStorage.getItem(restKey)).toBeNull();
+  });
+
+  it('restores the timer with the session while browsing elsewhere, and clears it on finish', async () => {
+    const view = render(card(MONDAY));
+    await startFromCard();
+    await tick(1);
+    await waitFor(() => expect(setLogs()).toHaveLength(1));
+    const saved = savedRest();
+    closeRest();
+    view.rerender(card(TUESDAY));
+    expect(savedRest()).toEqual(saved);
+    view.unmount();
+    vi.setSystemTime(NOW + 17000);
+    queryClient = freshQueryClient();
+    render(card(TUESDAY));
+    const inline = await screen.findByRole('button', { name: 'Pause für Satz 1 öffnen' });
+    expect(within(inline).getByRole('timer')).toHaveTextContent('00:43');
+    expect(savedRest()).toEqual(saved);
+    fireEvent.click(screen.getByRole('button', { name: /^Training beenden/ }));
+    fireEvent.click(await screen.findByRole('button', { name: /Training speichern & beenden/ }));
+    await waitFor(() => expect(localStorage.getItem(SESSION_KEY)).toBeNull());
+    expect(localStorage.getItem(restKey)).toBeNull();
   });
 });

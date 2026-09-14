@@ -17,7 +17,7 @@ const formatDuration = (seconds: number): string => {
 
 type RestTimer = Pick<
   ReturnType<typeof useRestTimer>,
-  "timerState" | "startTimer" | "skipTimer" | "cancelTimerForSet"
+  "timerState" | "isSheetOpen" | "setSheetOpen"
 >;
 
 interface ActiveWorkoutSessionProps {
@@ -92,9 +92,8 @@ export const ActiveWorkoutSession: React.FC<ActiveWorkoutSessionProps> = ({
             isToggling={isTogglingSet}
             defaultExpanded={index === 0}
             timerState={rest.timerState}
-            onStartTimer={rest.startTimer}
-            onSkipTimer={rest.skipTimer}
-            onCancelTimerForSet={rest.cancelTimerForSet}
+            isRestSheetOpen={rest.isSheetOpen}
+            onOpenRest={() => rest.setSheetOpen(true)}
           />
         ))}
       </div>
