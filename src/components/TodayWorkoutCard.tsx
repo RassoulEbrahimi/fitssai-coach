@@ -1,8 +1,7 @@
-import React, { useState, useMemo, useEffect, useCallback, useRef } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Progress } from "@/components/ui/progress";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import WorkoutSummaryModal from "@/components/workout/WorkoutSummaryModal";
 import { motion, AnimatePresence } from "framer-motion";
@@ -10,26 +9,25 @@ import { useTranslation } from "react-i18next";
 import { useAuth } from "@/hooks/useAuth";
 import { useQueryClient } from "@tanstack/react-query";
 import { queryKeys } from "@/lib/queryKeys";
-import { format } from "date-fns";
+import { format, parseISO } from "date-fns";
 import { de } from "date-fns/locale";
 import { isBerlinPast, isBerlinFuture } from "@/lib/dateUtils";
 import { useBerlinToday } from "@/hooks/useBerlinToday";
-import { Play, WifiOff, Clock, Dumbbell, Flame, Check, Maximize2, Minimize2 } from "lucide-react";
+import { Play, WifiOff, Clock, Dumbbell, Maximize2, Minimize2 } from "lucide-react";
 import WorkoutErrorBoundary from "@/components/WorkoutErrorBoundary";
 import FocusModePortal from "@/components/FocusModePortal";
 import { isFocusableElement, useFocusModeContainment } from "@/hooks/useFocusModeContainment";
 import { logEvent } from "@/lib/telemetryClient";
 import { CompletionState } from "@/lib/completionUtils";
-import { useWorkoutHelpers } from "@/hooks/useWorkoutHelpers";
 import { useThrottledToast } from "@/hooks/useThrottledToast";
 import { TodayWorkoutSkeleton } from "@/components/skeletons/TodayWorkoutSkeleton";
 import { useTraining } from "@/contexts/TrainingContext";
 import { useFocusMode } from "@/contexts/FocusModeContext";
-import { useSetTracking } from "@/hooks/useSetTracking";
-import { getWorkoutDateString } from "@/lib/workoutDateUtils";
+import { useWorkoutExecution } from "@/hooks/useWorkoutExecution";
+import { resolveSessionWorkoutDay, type ExecutionExercise } from "@/lib/workoutExecution";
 import { FutureWorkoutDayError, recordSuccessfulWorkoutFinish, type SessionRecordOutcome } from "@/lib/sessionRecord";
 import { useRestTimer } from "@/hooks/useRestTimer";
-import ExerciseWithSets from "@/components/workout/ExerciseWithSets";
+import ActiveWorkoutSession from "@/components/workout/ActiveWorkoutSession";
 import workoutHeroBg from "@/assets/workout-hero-bg.jpg";
 
 // Helper to get localStorage key for started state
@@ -37,13 +35,6 @@ const getStartedStorageKey = (dateStr: string) => `fitssai.workout_started_${dat
 
 // Helper to get localStorage key for timer start time
 const getTimerStorageKey = (dateStr: string) => `fitssai.workout_timer_start_${dateStr}`;
-
-// Format duration in mm:ss
-const formatDuration = (seconds: number): string => {
-  const mins = Math.floor(seconds / 60);
-  const secs = seconds % 60;
-  return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
-};
 
 interface TodayWorkoutCardProps {
   selectedDate: Date;
@@ -70,14 +61,6 @@ interface TodayWorkoutCardProps {
   isOnline?: boolean;
   isCached?: boolean;
   dataUpdatedAt?: number;
-}
-
-interface Exercise {
-  name: string;
-  sets: number | string;
-  reps: number | string;
-  weight?: string;
-  rest?: string;
 }
 
 /*
@@ -111,7 +94,6 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
   const { showToast } = useThrottledToast();
   const { isFocusMode, setFocusMode } = useFocusMode();
   const {
-    todayWorkouts,
     isStarted,
     duration,
     session,
@@ -146,33 +128,35 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
   const [finishError, setFinishError] = useState<string | null>(null);
   const savingSessionRef = useRef(false);
 
-  // Set-based tracking hook
+  /*
+    The running workout. Once a session is bound, its plan day decides the
+    exercises, the set-tracking key, every set write and the progress; the
+    selected calendar day only feeds the pre-start preview and what Start
+    binds. Browsing the calendar mid-workout therefore changes nothing here.
+  */
   const {
+    target: executionTarget,
+    isBound: isExecutionBound,
+    exercises,
+    progress: progressStats,
     isSetCompleted,
     getCompletedSetsCount,
     toggleSet,
     isTogglingSet,
     isLoadingSets,
-  } = useSetTracking(workoutPlan?.id, weekKey, dayIndex);
+  } = useWorkoutExecution(workoutPlan, { weekKey, dayIndex, workoutDay: selectedDateStr });
 
-  // Rest timer hook
-  const {
-    timerState,
-    startTimer,
-    skipTimer,
-    cancelTimerForSet,
-  } = useRestTimer();
+  // Rest timer hook. Owned here, above Focus Mode's portal, so toggling
+  // fullscreen does not reset a running countdown.
+  const restTimer = useRestTimer();
 
 
   // Reactive Berlin "today" - updates automatically at midnight
   const berlinToday = useBerlinToday();
 
-  // Use consolidated workout helpers hook
-  const { getWeekContentWithFallback } = useWorkoutHelpers(workoutPlan);
-
-  // Display exercises ONLY from TrainingContext (reactive to all changes)
-  const exercises = todayWorkouts as Exercise[];
-  const isRestDay = !exercises.length;
+  // A running workout never collapses into the rest-day card, even when its
+  // bound day has nothing to show: finishing has to stay reachable.
+  const isRestDay = !isStarted && !exercises.length;
 
   // Handle toggling a set
   const handleToggleSet = useCallback((params: {
@@ -183,52 +167,24 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
     if (!user || !workoutPlan) return;
 
     logEvent('set_toggle_ui', {
-      weekKey,
-      dayIndex,
+      weekKey: executionTarget.weekKey,
+      dayIndex: executionTarget.dayIndex,
       exerciseIndex: params.exerciseIndex,
       setNumber: params.setNumber,
       completed: params.completed,
       exerciseName: exercises[params.exerciseIndex]?.name,
     });
 
-    toggleSet({
-      planId: workoutPlan.id,
-      weekKey,
-      dayIndex,
-      exerciseIndex: params.exerciseIndex,
-      setNumber: params.setNumber,
-      completed: params.completed,
-      // The day the user is looking at, which is not always today.
-      workoutDay: selectedDateStr,
-    }, {
+    // Written to the execution target: the bound session's day, not the day
+    // on screen.
+    toggleSet(params, {
       onSuccess: (data) => {
         if (params.completed && !data.queued) {
           showToast(t('todayWorkout.setCompleted', { set: params.setNumber }));
         }
       },
     });
-  }, [user, workoutPlan, weekKey, dayIndex, selectedDateStr, exercises, toggleSet, showToast, t]);
-
-  // Calculate total sets and completed sets for progress
-  const progressStats = useMemo(() => {
-    let totalSets = 0;
-    let completedSets = 0;
-
-    exercises.forEach((exercise, index) => {
-      const numSets = typeof exercise.sets === 'number'
-        ? exercise.sets
-        : parseInt(String(exercise.sets), 10) || 3;
-      totalSets += numSets;
-      completedSets += getCompletedSetsCount(index);
-    });
-
-    const progressPercent = totalSets > 0
-      ? Math.round((completedSets / totalSets) * 100)
-      : 0;
-    const isComplete = progressPercent === 100;
-
-    return { totalSets, completedSets, progressPercent, isComplete };
-  }, [exercises, getCompletedSetsCount]);
+  }, [user, workoutPlan, executionTarget.weekKey, executionTarget.dayIndex, exercises, toggleSet, showToast, t]);
 
   /*
     Focus Mode is a keyboard modal. Toggling it swaps FocusModePortal between a
@@ -304,8 +260,9 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
     };
   };
 
-  // Render skeleton loading state
-  if (isLoading || isLoadingSets) {
+  // Render skeleton loading state. The selected week's completion query says
+  // nothing about a bound workout, so browsing never blanks a running one.
+  if ((isLoading && !isExecutionBound) || isLoadingSets) {
     const cardTitle = getCardTitle();
     return <TodayWorkoutSkeleton title={cardTitle.text} titleClassName={cardTitle.className} />;
   }
@@ -315,6 +272,15 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
 
   // Get workout name from plan or use default
   const workoutName = workoutPlan?.content?.name || t('todayWorkout.dailyWorkout');
+
+  /*
+    The day the hero names. A running workout names its own session's date;
+    only before Start does it follow the calendar. An older session whose date
+    cannot be recovered names no day rather than the one on screen.
+  */
+  const executionDate = isExecutionBound
+    ? (executionTarget.workoutDay ? parseISO(executionTarget.workoutDay) : null)
+    : selectedDate;
 
   if (isRestDay) {
     return (
@@ -378,11 +344,7 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
       if (!isOnline || !navigator.onLine) throw new Error("Offline");
       // Older bound sessions have a plan position but no captured date. Resolve
       // only against that same plan, never against the selected UI day.
-      const workoutDay = session.workoutDay ?? (
-        workoutPlan?.id === session.planId && workoutPlan?.created_at
-          ? getWorkoutDateString(workoutPlan.created_at, session.weekKey, session.dayIndex)
-          : undefined
-      );
+      const workoutDay = resolveSessionWorkoutDay(session, workoutPlan);
       if (!workoutDay) throw new Error("Missing session date");
       outcome = await recordSuccessfulWorkoutFinish({
         uid: user.uid,
@@ -548,12 +510,14 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
             {/* Hero content */}
             <div className="relative z-10 p-6 h-full flex flex-col justify-end">
               {/* Date badge */}
-              <Badge
-                variant="secondary"
-                className="w-fit mb-2 bg-primary/30 text-white border-none backdrop-blur-sm"
-              >
-                {format(selectedDate, 'EEEE', { locale: de })}
-              </Badge>
+              {executionDate && (
+                <Badge
+                  variant="secondary"
+                  className="w-fit mb-2 bg-primary/30 text-white border-none backdrop-blur-sm"
+                >
+                  {format(executionDate, 'EEEE', { locale: de })}
+                </Badge>
+              )}
 
               {/* Workout title */}
               <h2 className="text-2xl sm:text-3xl font-bold text-white drop-shadow-lg">
@@ -589,7 +553,7 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
                   {/* Blurred preview of exercises */}
                   <div className="relative">
                     <div className="space-y-2 blur-[2px] opacity-50 pointer-events-none select-none max-h-32 overflow-hidden">
-                      {exercises.slice(0, 3).map((exercise: Exercise, index: number) => (
+                      {exercises.slice(0, 3).map((exercise: ExecutionExercise, index: number) => (
                         <div
                           key={index}
                           className="flex items-center gap-3 p-3 bg-muted/30 rounded-lg"
@@ -627,57 +591,17 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ duration: 0.3 }}
                 >
-                  {/* Progress section */}
-                  <div className="mb-4 space-y-2">
-                    {/* In progress indicator */}
-                    <div className="flex items-center justify-between text-sm">
-                      <div className="flex items-center gap-2 text-primary">
-                        <Flame className="w-4 h-4 animate-pulse" />
-                        <span className="font-medium">{t('todayWorkout.trainingInProgress')}</span>
-                        <span className="text-xs text-muted-foreground ml-1">⏱️ {formatDuration(currentDuration)}</span>
-                      </div>
-                      <span className="text-muted-foreground text-xs">
-                        {progressStats.completedSets}/{progressStats.totalSets} Sätze
-                      </span>
-                    </div>
-
-                    {/* Progress bar */}
-                    <Progress
-                      value={progressStats.progressPercent}
-                      className="h-2 bg-muted/50"
-                    />
-                  </div>
-
-                  {/* Set-based exercise list */}
-                  <div className="space-y-3">
-                    {exercises.map((exercise: Exercise, index: number) => (
-                      <ExerciseWithSets
-                        key={index}
-                        exercise={exercise}
-                        exerciseIndex={index}
-                        isSetCompleted={isSetCompleted}
-                        getCompletedSetsCount={getCompletedSetsCount}
-                        onToggleSet={handleToggleSet}
-                        isToggling={isTogglingSet}
-                        defaultExpanded={index === 0}
-                        timerState={timerState}
-                        onStartTimer={startTimer}
-                        onSkipTimer={skipTimer}
-                        onCancelTimerForSet={cancelTimerForSet}
-                      />
-                    ))}
-                  </div>
-
-                  {/* Finish Training Button */}
-                  <Button
-                    onClick={handleFinishTraining}
-                    variant={progressStats.isComplete ? "default" : "outline"}
-                    className={`w-full mt-4 h-12 text-base font-semibold gap-2 ${progressStats.isComplete ? "animate-pulse" : ""
-                      }`}
-                  >
-                    {progressStats.isComplete && <Check className="w-5 h-5" />}
-                    {t('todayWorkout.finishTraining')}
-                  </Button>
+                  <ActiveWorkoutSession
+                    exercises={exercises}
+                    progress={progressStats}
+                    durationSeconds={currentDuration}
+                    isSetCompleted={isSetCompleted}
+                    getCompletedSetsCount={getCompletedSetsCount}
+                    onToggleSet={handleToggleSet}
+                    isTogglingSet={isTogglingSet}
+                    rest={restTimer}
+                    onFinish={handleFinishTraining}
+                  />
 
                   {/* Summary Modal */}
                   <WorkoutSummaryModal
@@ -689,7 +613,7 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
                     exercises={exercises}
                     duration={summaryDuration}
                     workoutName={workoutName}
-                    selectedDate={selectedDate}
+                    selectedDate={executionDate ?? selectedDate}
                     getCompletedSetsCount={getCompletedSetsCount}
                   />
                 </motion.div>
@@ -712,6 +636,8 @@ export default React.memo(TodayWorkoutCard, (prev, next) => {
     prev.isLoading === next.isLoading &&
     prev.isToggling === next.isToggling &&
     prev.isOnline === next.isOnline &&
-    prev.workoutPlan?.id === next.workoutPlan?.id
+    // The plan itself, not only its id: a bound workout reads its exercises
+    // from the plan, so an edit to the running day has to reach the card.
+    prev.workoutPlan === next.workoutPlan
   );
 });

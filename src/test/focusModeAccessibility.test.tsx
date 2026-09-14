@@ -28,7 +28,15 @@ vi.mock('@/hooks/useSetTracking', () => ({
 vi.mock('@/hooks/useRestTimer', () => ({
   useRestTimer: () => ({ timerState: { remaining: 0, isActive: false }, startTimer: vi.fn(), skipTimer: vi.fn() }),
 }));
-vi.mock('@/hooks/useWorkoutHelpers', () => ({ useWorkoutHelpers: () => ({ getWeekContentWithFallback: () => ({}) }) }));
+// A started workout reads its exercises from the plan day its session is bound
+// to, so the plan reader serves the seeded exercise on Week 1, day 0 - the day
+// CARD_PROPS starts.
+vi.mock('@/hooks/useWorkoutHelpers', () => ({
+  useWorkoutHelpers: () => ({
+    getWeekContentWithFallback: (weekKey: string) =>
+      weekKey === 'Week 1' ? [{ day: 'Tag 1', exercises: SEEDED_EXERCISES }] : [],
+  }),
+}));
 vi.mock('@/hooks/queries/useProfile', () => ({ useProfile: () => ({ data: { id: 'u1' }, isLoading: false }) }));
 vi.mock('@/hooks/queries/useWorkoutPlan', () => ({ useWorkoutPlan: () => ({ data: null, isLoading: false }) }));
 vi.mock('@/hooks/queries/useWorkoutLogs', () => ({ useWorkoutLogs: () => ({ data: [], isToggling: false }) }));
