@@ -1,4 +1,4 @@
-import React, { useMemo } from "react";
+import React from "react";
 import { motion } from "framer-motion";
 import { ChevronDown, Dumbbell } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -6,7 +6,8 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { Progress } from "@/components/ui/progress";
 import ExerciseSetRow from "./ExerciseSetRow";
 import RestTimerBar from "./RestTimerBar";
-import { parseRestTime, formatRestDisplay } from "@/lib/restTimeParser";
+import { formatRestDisplay } from "@/lib/restTimeParser";
+import { buildExecutionSetViewModels, parseSetCount, type ExecutionSetViewModel } from "@/lib/workoutExecution";
 
 interface Exercise {
   name: string;
@@ -57,50 +58,42 @@ export const ExerciseWithSets: React.FC<ExerciseWithSetsProps> = ({
   onSkipTimer,
   onCancelTimerForSet,
 }) => {
-  // Parse number of sets
-  const totalSets = useMemo(() => {
-    if (typeof exercise.sets === 'number') return exercise.sets;
-    const parsed = parseInt(String(exercise.sets), 10);
-    return isNaN(parsed) ? 3 : parsed; // Default to 3 sets
-  }, [exercise.sets]);
+  // Parse number of sets (3 when the plan's count cannot be read)
+  const totalSets = parseSetCount(exercise.sets);
 
   // Calculate progress
   const completedCount = getCompletedSetsCount(exerciseIndex);
   const progressPercent = totalSets > 0 ? Math.round((completedCount / totalSets) * 100) : 0;
   const isExerciseComplete = completedCount === totalSets;
 
-  // Generate set rows
-  const setRows = useMemo(() => {
-    return Array.from({ length: totalSets }, (_, i) => i + 1);
-  }, [totalSets]);
-
-  // Parse rest time for this exercise
-  const restSeconds = useMemo(() => {
-    return parseRestTime(exercise.rest);
-  }, [exercise.rest]);
+  /*
+    One read-only view model per planned set: the prescription as written and
+    completion from set tracking. A tick reads both from here, so the timer
+    starts from the same rest the row was built with.
+  */
+  const sets = buildExecutionSetViewModels(exercise, exerciseIndex, isSetCompleted);
 
   // Check if timer is active for this exercise
   const isTimerActive = timerState.exerciseIndex === exerciseIndex && 
     (timerState.remainingSeconds > 0 || timerState.isComplete);
 
-  const handleToggleSet = (setNumber: number) => {
-    const isCurrentlyCompleted = isSetCompleted(exerciseIndex, setNumber);
-    const willBeCompleted = !isCurrentlyCompleted;
+  const handleToggleSet = (set: ExecutionSetViewModel) => {
+    const willBeCompleted = !set.completed;
 
     // Completion only. The prescription is what the plan asked for, not what
     // was performed, so no reps or weight travel with the tick.
     onToggleSet({
       exerciseIndex,
-      setNumber,
+      setNumber: set.setNumber,
       completed: willBeCompleted,
     });
 
     if (willBeCompleted) {
       // The timer belongs to the set that started it.
-      onStartTimer(exerciseIndex, restSeconds, setNumber);
+      onStartTimer(exerciseIndex, set.prescription.restSeconds, set.setNumber);
     } else {
       // Un-completing that same set cancels its timer; other sets leave it alone.
-      onCancelTimerForSet?.(exerciseIndex, setNumber);
+      onCancelTimerForSet?.(exerciseIndex, set.setNumber);
     }
   };
 
@@ -185,15 +178,15 @@ export const ExerciseWithSets: React.FC<ExerciseWithSetsProps> = ({
               />
             )}
             
-            {setRows.map((setNumber) => (
+            {sets.map((set) => (
               <ExerciseSetRow
-                key={setNumber}
-                setNumber={setNumber}
-                targetReps={exercise.reps}
-                targetWeight={exercise.weight}
-                isCompleted={isSetCompleted(exerciseIndex, setNumber)}
+                key={set.key}
+                setNumber={set.setNumber}
+                targetReps={set.prescription.reps}
+                targetWeight={set.prescription.weight}
+                isCompleted={set.completed}
                 isToggling={isToggling}
-                onToggle={() => handleToggleSet(setNumber)}
+                onToggle={() => handleToggleSet(set)}
               />
             ))}
           </div>
