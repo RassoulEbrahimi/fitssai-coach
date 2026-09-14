@@ -338,7 +338,7 @@ describe('the card keeps showing the running workout while the calendar moves', 
 
     view.rerender(card(TUESDAY));
     await waitFor(() => expect(within(running()).getByText('0/5 Sätze')).toBeInTheDocument());
-    expect(within(running()).getByRole('button', { name: /Kniebeugen/ })).toBeInTheDocument();
+    expect(within(running()).getByRole('button', { name: /^Kniebeugen/ })).toBeInTheDocument();
     expect(within(running()).queryByText(/Bankdrücken/)).not.toBeInTheDocument();
     expect(within(hero()).queryByText('Dienstag')).not.toBeInTheDocument();
 
@@ -432,7 +432,7 @@ describe('the Workout view calendar', () => {
     // The calendar moved to Tuesday...
     await waitFor(() => expect(screen.getByRole('button', { name: /^Di\.? 8/ })).toHaveAttribute('aria-pressed', 'true'));
     // ...the running workout did not.
-    expect(within(running()).getByRole('button', { name: /Kniebeugen/ })).toBeInTheDocument();
+    expect(within(running()).getByRole('button', { name: /^Kniebeugen/ })).toBeInTheDocument();
     expect(within(running()).queryByText(/Bankdrücken/)).not.toBeInTheDocument();
     expect(within(hero()).getByText('Montag')).toBeInTheDocument();
 
@@ -472,7 +472,7 @@ describe('active rest loop in the session-bound card', () => {
     expect(savedRest()).toEqual(original);
     const inline = screen.getByRole('button', { name: 'Pause für Satz 1 öffnen' });
     expect(within(inline).getByRole('timer')).toHaveTextContent('00:48');
-    fireEvent.click(screen.getByRole('button', { name: /Kniebeugen/ }));
+    fireEvent.click(screen.getByRole('button', { name: /^Kniebeugen/ }));
     expect(inline).toBeVisible(); // A collapsed exercise never strands rest.
     fireEvent.click(inline);
     fireEvent.click(screen.getByRole('button', { name: 'Timer pausieren' }));
@@ -486,7 +486,7 @@ describe('active rest loop in the session-bound card', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Pause fortsetzen' }));
     expect(savedRest().state.deadlineMs).toBe(NOW + 120000);
     closeRest();
-    fireEvent.click(screen.getByRole('button', { name: /Kniebeugen/ }));
+    fireEvent.click(screen.getByRole('button', { name: /^Kniebeugen/ }));
     await tick(2);
     expect(savedRest().state).toMatchObject({ setNumber: 2 });
     closeRest();
@@ -501,6 +501,31 @@ describe('active rest loop in the session-bound card', () => {
     closeRest();
     await tick(3); // Exact owner undo cancels.
     expect(localStorage.getItem(restKey)).toBeNull();
+  });
+
+  it.each(['running', 'paused'])('guidance leaves completed sets, prescription, identity and %s rest intact as time passes', async status => {
+    render(card(MONDAY));
+    await startFromCard();
+    await tick(1);
+    await waitFor(() => expect(setLogs()).toHaveLength(1));
+    if (status === 'paused') fireEvent.click(screen.getByRole('button', { name: 'Timer pausieren' }));
+    closeRest();
+    const originalRest = savedRest();
+    const originalSession = storedSession();
+    const originalWrites = structuredClone(writes);
+    const originalPlan = structuredClone(PLAN);
+    fireEvent.click(screen.getByRole('button', { name: 'Informationen zu Kniebeugen' }));
+    expect(screen.getByRole('dialog', { name: 'Kniebeugen' })).toBeInTheDocument();
+    act(() => { vi.setSystemTime(NOW + 12000); window.dispatchEvent(new Event('focus')); });
+    fireEvent.click(screen.getByRole('button', { name: 'Übungsdetails schließen' }));
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(savedRest()).toEqual(originalRest);
+    expect(screen.getByRole('timer')).toHaveTextContent(status === 'running' ? '00:48' : '01:00');
+    expect(storedSession()).toEqual(originalSession);
+    expect(writes).toEqual(originalWrites);
+    expect(PLAN).toEqual(originalPlan);
+    expect(screen.getByRole('checkbox', { name: /Satz 1: Vorgabe 8 Wiederholungen/ })).toHaveAttribute('aria-checked', 'true');
+    expect(screen.getByRole('checkbox', { name: /Satz 2: Vorgabe 8 Wiederholungen/ })).toHaveAttribute('aria-checked', 'false');
   });
 
   it('restores the timer with the session while browsing elsewhere, and clears it on finish', async () => {

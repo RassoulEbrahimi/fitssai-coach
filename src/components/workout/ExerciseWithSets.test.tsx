@@ -41,7 +41,7 @@ const renderExercise = (
 
 // The header's accessible name is built from its contents, so the exercise
 // name is enough to tell it apart from the set rows.
-const header = () => screen.getByRole("button", { name: /Bankdrücken/ });
+const header = () => screen.getByRole("button", { name: /^Bankdrücken/ });
 const setRows = () => screen.queryAllByRole("checkbox");
 
 describe("ExerciseWithSets header semantics", () => {
@@ -137,6 +137,8 @@ describe("ExerciseWithSets activation", () => {
     await user.keyboard("{Enter}");
 
     const firstSet = screen.getByRole("checkbox", { name: /Satz 1/ });
+    await user.tab();
+    expect(screen.getByRole('button', { name: 'Informationen zu Bankdrücken' })).toHaveFocus();
     await user.tab();
 
     expect(firstSet).toHaveFocus();
