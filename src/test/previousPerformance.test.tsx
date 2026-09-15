@@ -185,6 +185,63 @@ afterEach(() => {
 });
 
 describe('last time, beside today', () => {
+  it('reviews dirty actuals against bound history without finishing, resetting rest or adding reads/writes on reopen', async () => {
+    seedLastTuesday();
+    const view = render(card(TUESDAY));
+    await startFromCard();
+    await findCopy(1);
+    fireEvent.change(reps(1), { target: { value: '8' } });
+    fireEvent.change(weight(1), { target: { value: '55' } });
+    fireEvent.click(checkbox(1));
+    closeRest();
+    await waitFor(() => expect(todaySets()).toHaveLength(1));
+    fireEvent.change(reps(2), { target: { value: '10' } });
+    const rest = savedRest();
+    const session = localStorage.getItem(sessionKey());
+    const reads = serverReads().length;
+    finish();
+
+    let summary = await screen.findByRole('dialog', { name: 'Training abschließen?' });
+    const comparison = within(summary).getByRole('region', { name: 'Vergleich zum letzten Mal' });
+    expect(comparison).toHaveTextContent('Wdh. -2');
+    expect(comparison).toHaveTextContent('Gewicht +2,5 kg');
+    expect(comparison).toHaveTextContent('Wdh. +2');
+    expect(comparison).toHaveTextContent('Satz 2 · offen');
+    expect(summary).toHaveTextContent('Übungen abgeschlossen0 von 2');
+    expect(summary).toHaveTextContent('1/5');
+    expect(summary).toHaveTextContent('15.09.2026');
+    expect(localStorage.getItem(sessionKey())).toBe(session);
+    expect(savedRest()).toEqual(rest);
+    await waitFor(() => expect(todaySets()).toHaveLength(2));
+    const writeCount = writes.length;
+    const comparisonText = comparison.textContent;
+    fireEvent.click(within(summary).getByRole('button', { name: 'Zurück zum Training' }));
+    view.rerender(card(MONDAY));
+    view.rerender(card(NEXT_TUESDAY));
+    finish();
+    summary = await screen.findByRole('dialog', { name: 'Training abschließen?' });
+    expect(within(summary).getByRole('region', { name: 'Vergleich zum letzten Mal' }).textContent).toBe(comparisonText);
+    expect(summary).toHaveTextContent('15.09.2026');
+    expect(summary.textContent).not.toMatch(/Rudern|22\.09\.2026|14\.09\.2026/);
+    expect(savedRest()).toEqual(rest);
+    expect(localStorage.getItem(sessionKey())).toBe(session);
+    expect(serverReads()).toHaveLength(reads);
+    expect(writes).toHaveLength(writeCount);
+  });
+
+  it('previous data and completion alone do not become today or create a comparison', async () => {
+    seedLastTuesday();
+    render(card(TUESDAY));
+    await startFromCard();
+    await findCopy(1);
+    fireEvent.click(checkbox(1));
+    closeRest();
+    finish();
+    const summary = await screen.findByRole('dialog', { name: 'Training abschließen?' });
+    expect(within(summary).queryByRole('region', { name: 'Erfasste Leistung' })).toBeNull();
+    expect(within(summary).queryByRole('region', { name: 'Vergleich zum letzten Mal' })).toBeNull();
+    expect(summary.textContent).not.toMatch(/52,5|50 kg|8–12/);
+  });
   it('shows what was recorded last time without filling today\'s inputs or writing anything', async () => {
     seedLastTuesday();
     const stored = structuredClone([...rows.entries()]);
@@ -333,7 +390,7 @@ describe('Übernehmen', () => {
     expect(weight(1)).toHaveValue('52,5');
   });
 
-  it('finishing straight after copying keeps the copied values, and the summary shows only today', async () => {
+  it('finishing straight after copying commits today and compares the same trusted set', async () => {
     seedLastTuesday();
     render(card(TUESDAY));
     await startFromCard();
@@ -341,10 +398,14 @@ describe('Übernehmen', () => {
     fireEvent.click(await findCopy(2));
     finish();
 
-    const summary = await screen.findByRole('dialog', { name: 'Training beendet?' });
+    const summary = await screen.findByRole('dialog', { name: 'Training abschließen?' });
     const recordedSection = within(summary).getByRole('region', { name: 'Erfasste Leistung' });
     expect(within(recordedSection).getByText('Satz 2 · 8 Wdh. · offen')).toBeInTheDocument();
-    expect(summary.textContent).not.toMatch(/Letztes Mal|Zuletzt am|52,5/);
+    expect(recordedSection.textContent).not.toMatch(/Letztes Mal|Zuletzt am|52,5/);
+    const comparison = within(summary).getByRole('region', { name: 'Vergleich zum letzten Mal' });
+    expect(comparison).toHaveTextContent('Satz 2 · offen');
+    expect(within(comparison).getAllByText('8 Wdh.')).toHaveLength(2);
+    expect(comparison).not.toHaveTextContent('Satz 1');
 
     fireEvent.click(within(summary).getByRole('button', { name: /Training speichern & beenden/ }));
 
@@ -444,6 +505,8 @@ describe('an optional hint never gets in the way', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Informationen zu Bankdrücken' }));
     fireEvent.click(screen.getByRole('button', { name: 'Übungsdetails schließen' }));
     finish();
+    expect(within(await screen.findByRole('dialog', { name: 'Training abschließen?' }))
+      .queryByRole('region', { name: 'Vergleich zum letzten Mal' })).toBeNull();
     fireEvent.click(await screen.findByRole('button', { name: /Training speichern & beenden/ }));
     await waitFor(() => expect(localStorage.getItem(sessionKey())).toBeNull());
     expect(todaySets()).toEqual([expect.objectContaining({ setNumber: 1, completed: true, repsCompleted: 9 })]);

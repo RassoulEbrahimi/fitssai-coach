@@ -263,7 +263,7 @@ describe('Focus Mode keyboard modality', () => {
     const session = storedSession();
 
     await press(user, /^Training beenden/i);
-    const summary = await screen.findByRole('dialog', { name: 'Training beendet?' });
+    const summary = await screen.findByRole('dialog', { name: 'Training abschließen?' });
     await waitFor(() => expect(summary.contains(activeElement())).toBe(true));
     // The summary's own trap owns Tab while it is open.
     await user.keyboard('{Tab}');
@@ -271,7 +271,7 @@ describe('Focus Mode keyboard modality', () => {
 
     await user.keyboard('{Escape}');
 
-    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Training beendet?' })).toBeNull());
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Training abschließen?' })).toBeNull());
     expect(focusMode()).not.toBeNull();
     const finish = within(focusMode()!).getByRole('button', { name: /^Training beenden/i });
     await waitFor(() => expect(activeElement()).toBe(finish));
@@ -290,7 +290,7 @@ describe('Focus Mode keyboard modality', () => {
     const user = await setup();
     await startTraining(user);
     await press(user, /^Training beenden/i);
-    await screen.findByRole('dialog', { name: 'Training beendet?' });
+    await screen.findByRole('dialog', { name: 'Training abschließen?' });
 
     await press(user, /Training speichern & beenden/i);
 
