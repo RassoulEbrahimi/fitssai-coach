@@ -1,0 +1,70 @@
+/* Active-workout exercise card. Class names are prefixed: Vite loads this globally. */
+.workout-exercise-unit {
+  container-type: inline-size;
+}
+
+/*
+  Mobile cards are 220-365px wide, too narrow for a 72px thumbnail, a readable
+  title and two 44px actions in one row. The title gets the row beside the
+  thumbnail; progress and the actions share the row below.
+*/
+.workout-exercise-header {
+  display: grid;
+  grid-template-columns: 72px minmax(0, 1fr) auto;
+  grid-template-areas:
+    "thumb title title"
+    "meta meta actions";
+  align-items: center;
+  column-gap: 0.75rem;
+  row-gap: 0.5rem;
+}
+
+.workout-exercise-header > [data-exercise-thumbnail] {
+  grid-area: thumb;
+}
+
+.workout-exercise-title {
+  grid-area: title;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  hyphens: auto;
+  overflow-wrap: anywhere;
+}
+
+.workout-exercise-meta {
+  grid-area: meta;
+  min-width: 0;
+}
+
+.workout-exercise-actions {
+  grid-area: actions;
+}
+
+/* Nested dashboard gutters can leave less than 300px at a 320px viewport.
+   Give names another line here, keeping type and touch targets unchanged. */
+@container (max-width: 299px) {
+  .workout-exercise-title {
+    -webkit-line-clamp: 3;
+  }
+}
+
+/* Wide cards (Focus Mode on tablets, desktop): one row, title and meta beside the thumbnail. */
+@container (min-width: 420px) {
+  .workout-exercise-header {
+    grid-template-areas:
+      "thumb title actions"
+      "thumb meta actions";
+    row-gap: 0.25rem;
+  }
+
+  .workout-exercise-title {
+    align-self: end;
+  }
+
+  .workout-exercise-meta {
+    align-self: start;
+    max-width: 28rem;
+  }
+}

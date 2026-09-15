@@ -1,3 +1,5 @@
+import { normalizeExerciseName } from "./exerciseName";
+
 /** Static product content. Matching/coverage and review sources: docs/exercise-guidance.md. */
 export const muscleLabels = {
   chest: 'Brustmuskulatur',
@@ -79,8 +81,7 @@ export const exerciseDetails: readonly ExerciseDetail[] = [
 ];
 
 /** Preserve qualifiers, accents and punctuation; only known hyphen variants are equivalent. */
-export const normalizeExerciseName = (name: string): string => name
-  .normalize('NFC').trim().toLowerCase().replace(/\s+/g, ' ').replace(/[‐‑]/g, '-');
+export { normalizeExerciseName } from './exerciseName';
 
 // Do not use catalogue classification, substring matching or plan-position IDs here.
 const names = new Map(exerciseDetails.map(detail => [normalizeExerciseName(detail.title), detail]));

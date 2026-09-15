@@ -41,12 +41,52 @@ const renderExercise = (
   return { onToggleSet };
 };
 
-// The header's accessible name is built from its contents, so the exercise
-// name is enough to tell it apart from the set rows.
+// The collapse trigger is named "<exercise> <done>/<total> Sätze", so the
+// exercise name is enough to tell it apart from the set rows and Info.
 const header = () => screen.getByRole("button", { name: /^Bankdrücken/ });
 const setRows = () => screen.queryAllByRole("checkbox");
 
 describe("ExerciseWithSets header semantics", () => {
+  it("renders a thumbnail surface for every exercise: a local asset when reviewed, a fallback otherwise", () => {
+    renderExercise();
+    const known = document.querySelector("[data-exercise-thumbnail]");
+    expect(known?.querySelector("img")?.getAttribute("src")).toContain("bench-press.svg");
+    expect(known?.closest("[aria-hidden='true']")).not.toBeNull();
+  });
+
+  it("does not give a similar name the reviewed asset", () => {
+    renderExercise({ exercise: { name: "Bankdrücken schräg Multipresse", sets: 3, reps: 12 } });
+    const surface = document.querySelector("[data-exercise-thumbnail]");
+    expect(surface).not.toBeNull();
+    expect(surface?.querySelector("img")).toBeNull();
+    expect(surface).toHaveTextContent("BSM");
+    expect(screen.getByRole("heading", { name: "Bankdrücken schräg Multipresse" })).toBeInTheDocument();
+  });
+
+  it.each(['Bankdrücken schräg Multipresse', 'Trizepsstrecken Kabelzug Kordel', 'Beinpresse 45° Plate Loaded'])(
+    'keeps the full name %s beside a decorative thumbnail and independent actions', async (name) => {
+      const user = userEvent.setup();
+      renderExercise({ exercise: { name, sets: 3, reps: 12 } });
+      const title = screen.getByRole('heading', { name });
+      expect(title).toHaveTextContent(name);
+      expect(title.className).not.toContain('truncate');
+      expect(title.parentElement?.querySelector('[data-exercise-thumbnail]')).not.toBeNull();
+      const collapse = screen.getByRole('button', { name: `${name} 0/3 Sätze` });
+      await user.click(collapse);
+      expect(collapse).toHaveAttribute('aria-expanded', 'true');
+      expect(screen.queryByRole('dialog')).toBeNull();
+      await user.click(screen.getByRole('button', { name: `Informationen zu ${name}` }));
+      expect(screen.getByRole('dialog', { name })).toBeVisible();
+      await user.keyboard('{Escape}');
+      expect(collapse).toHaveAttribute('aria-expanded', 'true');
+    });
+
+  it('marks completed exercises with text and a check, as well as colour', () => {
+    renderExercise({ getCompletedSetsCount: () => 3, isSetCompleted: () => true });
+    expect(screen.getByText('abgeschlossen')).toBeInTheDocument();
+    expect(header()).toHaveAccessibleName('Bankdrücken 3/3 Sätze');
+  });
+
   it("renders the collapse trigger as a native button", () => {
     renderExercise();
     const trigger = header();
