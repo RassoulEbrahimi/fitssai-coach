@@ -366,7 +366,7 @@ describe('the card keeps showing the running workout while the calendar moves', 
     view.rerender(card(NEXT_THURSDAY));
 
     fireEvent.click(await screen.findByRole('button', { name: /^Training beenden/ }));
-    const summary = await screen.findByRole('dialog', { name: 'Training beendet?' });
+    const summary = await screen.findByRole('dialog', { name: 'Training abschließen?' });
     // The summary counts the workout being finished, not the day on screen.
     expect(within(summary).getByText('0/5')).toBeInTheDocument();
     expect(within(summary).getByText('0 von 2')).toBeInTheDocument();
@@ -682,7 +682,7 @@ describe('recorded set performance in the session-bound card (TRAINING-EXEC-02A)
     fireEvent.change(weight(1), { target: { value: '52,5' } });
     fireEvent.click(screen.getByRole('button', { name: /^Training beenden/ }));
 
-    const summary = await screen.findByRole('dialog', { name: 'Training beendet?' });
+    const summary = await screen.findByRole('dialog', { name: 'Training abschließen?' });
     const recordedSection = within(summary).getByRole('region', { name: 'Erfasste Leistung' });
     expect(within(recordedSection).getByText('Kniebeugen')).toBeInTheDocument();
     expect(within(recordedSection).getByText('Satz 1 · 52,5 kg · offen')).toBeInTheDocument();
@@ -705,7 +705,7 @@ describe('recorded set performance in the session-bound card (TRAINING-EXEC-02A)
     fireEvent.change(weight(1), { target: { value: '52,555' } });
     fireEvent.click(screen.getByRole('button', { name: /^Training beenden/ }));
 
-    expect(screen.queryByRole('dialog', { name: 'Training beendet?' })).toBeNull();
+    expect(screen.queryByRole('dialog', { name: 'Training abschließen?' })).toBeNull();
     expect(showToast).toHaveBeenCalledWith(expect.stringContaining('Kniebeugen, Satz 1'), 'error');
     expect(weight(1)).toHaveValue('52,555');
     expect(weight(1)).toHaveAttribute('aria-invalid', 'true');

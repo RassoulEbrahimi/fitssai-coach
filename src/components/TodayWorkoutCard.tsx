@@ -659,8 +659,9 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
                     exercises={exercises}
                     duration={summaryDuration}
                     workoutName={workoutName}
-                    selectedDate={executionDate ?? selectedDate}
+                    selectedDate={executionDate}
                     getCompletedSetsCount={getCompletedSetsCount}
+                    getPreviousExercise={getPreviousExercise}
                     // Explicitly recorded values only; never the prescription.
                     recordedPerformance={showSummary
                       ? buildRecordedPerformance(exercises, isSetCompleted, getActualPerformance)

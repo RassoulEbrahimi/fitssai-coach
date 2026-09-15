@@ -1,17 +1,22 @@
 import React, { useMemo, useRef } from "react";
 import { motion } from "framer-motion";
+import { format } from "date-fns";
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogDescription,
   DialogFooter,
   DialogPortal,
   DialogOverlay,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Clock, Dumbbell, CheckCircle2, ArrowLeft, Save } from "lucide-react";
-import { formatRecordedSet } from "@/lib/setPerformanceEntry";
+import { formatRecordedSet, formatPerformanceValues, formatWeightNumber } from "@/lib/setPerformanceEntry";
+import { formatWorkoutDayDate, type PreviousExercisePerformance } from "@/lib/previousPerformance";
+import { buildWorkoutCompletionComparison } from "@/lib/workoutCompletionComparison";
+import { parseSetCount } from "@/lib/workoutExecution";
 import type { RecordedExercisePerformance } from "@/lib/workoutExecution";
 
 interface Exercise {
@@ -31,17 +36,15 @@ interface WorkoutSummaryModalProps {
   exercises: Exercise[];
   duration: number;      // Live duration in seconds
   workoutName: string;
-  selectedDate: Date;
+  selectedDate: Date | null;
   getCompletedSetsCount: (exerciseIndex: number) => number;
   /** Reps/weight the user explicitly recorded, per exercise. Never the prescription. */
   recordedPerformance?: RecordedExercisePerformance[];
+  /** Existing session-bound 02B result; never a new history request. */
+  getPreviousExercise?: (exerciseIndex: number) => PreviousExercisePerformance | undefined;
 }
 
-// Parse sets count
-const parseSets = (sets: number | string): number => {
-  if (typeof sets === 'number') return sets;
-  return parseInt(String(sets), 10) || 3;
-};
+const noPreviousExercise = () => undefined;
 
 // Format duration in mm:ss or h:mm:ss
 const formatDurationLong = (seconds: number): string => {
@@ -71,12 +74,13 @@ const calculateWorkoutStats = (
   let exercisesCompleted = 0;
 
   exercises.forEach((exercise, index) => {
-    totalSets += parseSets(exercise.sets);
+    const plannedSets = parseSetCount(exercise.sets);
+    totalSets += plannedSets;
     const completedForExercise = getCompletedSetsCount(index);
     completedSets += completedForExercise;
 
-    // Count exercises with at least one set completed
-    if (completedForExercise > 0) {
+    // A partially ticked exercise is not fully completed.
+    if (plannedSets > 0 && completedForExercise >= plannedSets) {
       exercisesCompleted++;
     }
   });
@@ -126,7 +130,12 @@ const WorkoutSummaryModal: React.FC<WorkoutSummaryModalProps> = ({
   selectedDate,
   getCompletedSetsCount,
   recordedPerformance = [],
+  getPreviousExercise = noPreviousExercise,
 }) => {
+  const comparisons = useMemo(
+    () => buildWorkoutCompletionComparison(recordedPerformance, getPreviousExercise),
+    [recordedPerformance, getPreviousExercise],
+  );
   const stats = useMemo(() =>
     calculateWorkoutStats(exercises, getCompletedSetsCount),
     [exercises, getCompletedSetsCount]
@@ -187,11 +196,11 @@ const WorkoutSummaryModal: React.FC<WorkoutSummaryModalProps> = ({
             >
               <DialogHeader>
                 <DialogTitle className="text-2xl font-bold text-foreground mx-auto">
-                  Training beendet?
+                  Training abschließen?
                 </DialogTitle>
-                <p className="text-sm text-muted-foreground mt-1 max-w-[80%] mx-auto">
-                  Du hast {completionPercent}% deines Trainingsplans absolviert.
-                </p>
+                <DialogDescription className="mt-1 max-w-[80%] mx-auto">
+                  Du hast {completionPercent}% der geplanten Sätze abgehakt. Speichere, um das Training zu beenden.
+                </DialogDescription>
               </DialogHeader>
             </motion.div>
 
@@ -202,13 +211,11 @@ const WorkoutSummaryModal: React.FC<WorkoutSummaryModalProps> = ({
               transition={{ delay: 0.2, duration: 0.4, type: "spring" }}
               className="flex justify-center mt-4"
             >
-              <div className={`px-4 py-1.5 rounded-full text-sm font-bold tracking-tight shadow-sm ${completionPercent === 100
-                  ? 'bg-primary text-primary-foreground'
-                  : 'bg-amber-500 text-white'
-                }`}>
+              <div className="min-w-0 break-words px-4 py-1.5 rounded-full bg-muted text-foreground text-sm font-bold tracking-tight shadow-sm">
                 {workoutName}
               </div>
             </motion.div>
+            {selectedDate && <p className="relative mt-2 text-center text-xs text-muted-foreground">{format(selectedDate, 'dd.MM.yyyy')}</p>}
           </div>
 
           {/* Stats Grid - 2 Columns */}
@@ -231,7 +238,7 @@ const WorkoutSummaryModal: React.FC<WorkoutSummaryModalProps> = ({
             <div className="col-span-2">
               <StatCard
                 icon={<Dumbbell className="w-4 h-4" />}
-                label="Übungen"
+                label="Übungen abgeschlossen"
                 value={`${stats.exercisesCompleted} von ${stats.totalExercises}`}
                 delay={0.2}
               />
@@ -262,6 +269,37 @@ const WorkoutSummaryModal: React.FC<WorkoutSummaryModalProps> = ({
                       {exercise.sets.map((set) => (
                         <li key={set.setNumber} className="text-sm tabular-nums text-muted-foreground">
                           {formatRecordedSet(set)}
+                        </li>
+                      ))}
+                    </ul>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
+
+          {comparisons.length > 0 && (
+            <section aria-labelledby="completion-comparison-title" className="mx-5 mb-5 min-w-0 rounded-xl border border-border/50 bg-muted/30 p-3">
+              <h3 id="completion-comparison-title" className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                Vergleich zum letzten Mal
+              </h3>
+              <ul className="mt-3 space-y-4">
+                {comparisons.map((exercise) => (
+                  <li key={exercise.exerciseIndex} className="min-w-0">
+                    <h4 className="break-words text-sm font-semibold">{exercise.name}</h4>
+                    <p className="text-xs text-muted-foreground">Letztes Mal · {formatWorkoutDayDate(exercise.previousWorkoutDay)}</p>
+                    <ul className="mt-2 space-y-3">
+                      {exercise.sets.map((set) => (
+                        <li key={set.setNumber} className="space-y-1 text-sm tabular-nums">
+                          <h5 className="font-medium">Satz {set.setNumber}{!set.today.completed && ' · offen'}</h5>
+                          <dl className="space-y-1 text-muted-foreground">
+                            <div><dt className="text-xs">Heute</dt><dd>{formatPerformanceValues(set.today)}</dd></div>
+                            <div><dt className="text-xs">Letztes Mal</dt><dd>{formatPerformanceValues(set.previous)}</dd></div>
+                          </dl>
+                          {(!!set.delta.reps || !!set.delta.weightKg) && <ul aria-label="Unterschied" className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-foreground">
+                            {set.delta.reps !== null && set.delta.reps !== 0 && <li>Wdh. {set.delta.reps > 0 ? '+' : ''}{set.delta.reps}</li>}
+                            {set.delta.weightKg !== null && set.delta.weightKg !== 0 && <li>Gewicht {set.delta.weightKg > 0 ? '+' : ''}{formatWeightNumber(set.delta.weightKg)} kg</li>}
+                          </ul>}
                         </li>
                       ))}
                     </ul>
