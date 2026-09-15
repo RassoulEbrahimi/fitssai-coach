@@ -1,9 +1,11 @@
 import React from "react";
 import { motion } from "framer-motion";
-import { ChevronDown, Dumbbell } from "lucide-react";
+import { Check, ChevronDown } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Progress } from "@/components/ui/progress";
+import ExerciseThumbnail from "./ExerciseThumbnail";
+import "./workoutPresentation.css";
 import ExerciseSetRow from "./ExerciseSetRow";
 import RestTimerBar from "./RestTimerBar";
 import ExerciseGuidanceDialog from "./ExerciseGuidanceDialog";
@@ -103,65 +105,43 @@ export const ExerciseWithSets: React.FC<ExerciseWithSetsProps> = ({
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.2 }}
         className={cn(
-          "rounded-lg border overflow-hidden transition-all",
+          "workout-exercise-unit rounded-xl border overflow-hidden transition-colors",
           isExerciseComplete
             ? "border-primary/30 bg-primary/5"
             : "border-border bg-background"
         )}
       >
-        {/* Sibling controls keep collapse and guidance independently operable. */}
-        <div className="flex items-center">
-        <CollapsibleTrigger
-          className={cn(
-            "flex min-w-0 flex-1 items-center gap-2 p-3 text-left cursor-pointer hover:bg-muted/50 transition-colors sm:gap-3 sm:p-4",
-            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
-          )}
-        >
-          {/* Icon */}
-          <div className={cn(
-            "w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0",
-            isExerciseComplete
-              ? "bg-primary text-primary-foreground"
-              : "bg-muted text-muted-foreground"
-          )}>
-            <Dumbbell className="w-5 h-5" />
-          </div>
-
-          {/* Exercise info */}
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2">
-              <span className={cn(
-                "font-medium text-sm truncate",
-                isExerciseComplete && "text-primary"
-              )}>
-                {exercise.name}
-              </span>
-            </div>
-            <div className="flex flex-wrap items-center gap-x-2 mt-1">
-              <span className="text-xs text-muted-foreground">
+        {/* Layout per card width lives in workoutPresentation.css. */}
+        <div className="workout-exercise-header p-3 sm:p-4">
+          <ExerciseThumbnail name={exercise.name} />
+          <h3 className="workout-exercise-title text-base font-semibold leading-snug sm:text-lg">
+            {exercise.name}
+          </h3>
+          <div className="workout-exercise-meta">
+            <div className="flex flex-wrap items-center gap-x-2 text-xs leading-5 text-muted-foreground">
+              <span className="inline-flex items-center gap-1">
+                {isExerciseComplete && <Check className="h-3.5 w-3.5" aria-hidden="true" />}
                 {completedCount}/{totalSets} Sätze
+                {isExerciseComplete && <span className="sr-only">abgeschlossen</span>}
               </span>
-              {exercise.rest && (
-                <span className="text-xs text-muted-foreground">
-                  • {formatRestDisplay(exercise.rest, { withLabel: true })}
-                </span>
-              )}
+              {exercise.rest && <span>{formatRestDisplay(exercise.rest, { withLabel: true })}</span>}
             </div>
-            {/* Mini progress bar */}
-            <Progress
-              value={progressPercent}
-              className="h-1 mt-2 bg-muted/50"
-            />
+            <Progress value={progressPercent} className="mt-1 h-1 bg-muted/60" />
           </div>
-
-          {/* Expand indicator */}
-          <ChevronDown className="w-5 h-5 shrink-0 text-muted-foreground transition-transform duration-200 collapsible-chevron" />
-        </CollapsibleTrigger>
-        <ExerciseGuidanceDialog exerciseName={exercise.name} disabled={isRestSheetOpen} />
+          {/* Separate 44px sibling controls; neither takes width from the title. */}
+          <div className="workout-exercise-actions flex items-center">
+            <CollapsibleTrigger
+              aria-label={`${exercise.name} ${completedCount}/${totalSets} Sätze`}
+              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
+            >
+              <ChevronDown aria-hidden="true" className="h-5 w-5 collapsible-chevron" />
+            </CollapsibleTrigger>
+            <ExerciseGuidanceDialog exerciseName={exercise.name} disabled={isRestSheetOpen} />
+          </div>
         </div>
 
         {isTimerActive && !isRestSheetOpen && (
-          <div className="px-4 pb-3">
+          <div className="px-3 pb-3 sm:px-4">
             <RestTimerBar
               remainingSeconds={timerState.remainingSeconds}
               setNumber={timerState.setNumber!}
@@ -172,7 +152,7 @@ export const ExerciseWithSets: React.FC<ExerciseWithSetsProps> = ({
         )}
         {/* Sets list */}
         <CollapsibleContent>
-          <div className="px-3 pb-3 space-y-2 sm:px-4 sm:pb-4">
+          <div className="px-3 pb-3 space-y-1 sm:px-4 sm:pb-4">
             {/* The previous workout's date, once per exercise rather than on every row. */}
             {showsPrevious && previous && (
               <p className="text-xs text-muted-foreground">

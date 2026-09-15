@@ -93,35 +93,36 @@ export const ExerciseSetRow: React.FC<ExerciseSetRowProps> = ({
       role="group"
       aria-labelledby={titleId}
       className={cn(
-        "rounded-md border px-3 py-2 transition-colors duration-150",
+        "rounded-lg px-2.5 py-2 transition-colors duration-150",
         isCompleted
-          ? "bg-primary/10 border-primary/20"
-          : "bg-muted/30 border-transparent"
+          ? "bg-primary/10"
+          : "bg-muted/25"
       )}
     >
-      <div className="flex items-center gap-2">
-        <div className="min-w-0 flex-1">
-          <p className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+      {/* Capped width keeps completion beside the inputs on wide cards. */}
+      <div className="grid max-w-md grid-cols-[minmax(0,1fr)_44px] items-end gap-x-2">
+        <div className="contents">
+          <p className="col-span-2 flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-0.5">
             <span
               id={titleId}
-              className={cn("text-xs font-medium", isCompleted ? "text-primary" : "text-muted-foreground")}
+              className="text-sm font-semibold text-foreground"
             >
               {setNumber}. Satz
             </span>
             {target.visual && (
-              <span className="min-w-0 break-words text-sm font-medium text-foreground">
-                <span className="text-xs font-normal text-muted-foreground">Vorgabe: </span>
-                <span>{target.visual}</span>
+              <span className="min-w-0 break-words text-xs text-muted-foreground">
+                <span>Vorgabe: </span>
+                <span className="font-medium text-foreground">{target.visual}</span>
               </span>
             )}
           </p>
 
           {performance && (
             <>
-              <div className="mt-1.5 flex items-end gap-2">
+              <div className="col-start-1 row-start-2 mt-1 flex min-w-0 items-end gap-2">
                 {fields.map((field) => (
-                  <div key={field.name} className="flex flex-col">
-                    <label htmlFor={field.id} className="text-[11px] font-medium leading-4 text-muted-foreground">
+                  <div key={field.name} className="flex min-w-0 flex-col">
+                    <label htmlFor={field.id} className="text-xs font-medium leading-5 text-muted-foreground">
                       <span aria-hidden="true">{FIELD_LABELS[field.name].visible}</span>
                       <span className="sr-only">{`Satz ${setNumber}: ${FIELD_LABELS[field.name].spoken}`}</span>
                     </label>
@@ -143,8 +144,8 @@ export const ExerciseSetRow: React.FC<ExerciseSetRowProps> = ({
                         performance.commit(exerciseIndex, setNumber);
                       }}
                       className={cn(
-                        "h-11 px-2 text-center tabular-nums",
-                        field.name === "reps" ? "w-14" : "w-[4.5rem]",
+                        "h-11 bg-background px-2 text-center text-base tabular-nums",
+                        field.name === "reps" ? "w-14 min-w-11 max-w-full" : "w-[4.5rem] min-w-11 max-w-full",
                         field.error && "border-destructive focus-visible:ring-destructive"
                       )}
                     />
@@ -152,7 +153,7 @@ export const ExerciseSetRow: React.FC<ExerciseSetRowProps> = ({
                 ))}
               </div>
               {fields.map((field) => field.error && (
-                <p key={field.name} id={field.errorId} role="alert" className="mt-1 text-xs text-destructive">
+                <p key={field.name} id={field.errorId} role="alert" className="col-span-2 mt-1 text-xs text-destructive">
                   {field.error}
                 </p>
               ))}
@@ -162,7 +163,7 @@ export const ExerciseSetRow: React.FC<ExerciseSetRowProps> = ({
                 fills empty drafts and does nothing else.
               */}
               {previousText && (
-                <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1">
+                <div className="col-span-2 mt-1.5 flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
                   {/* Labelled like the prescription: a muted label, readable values. */}
                   <p className="flex min-w-0 items-center gap-1 text-xs text-muted-foreground">
                     <History className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
@@ -176,15 +177,20 @@ export const ExerciseSetRow: React.FC<ExerciseSetRowProps> = ({
                       type="button"
                       aria-label={`Übernehmen für Satz ${setNumber}: Letztes Mal ${previousText}`}
                       onClick={() => performance.copyPrevious?.(exerciseIndex, setNumber)}
-                      className={cn(
-                        "relative inline-flex h-8 shrink-0 items-center rounded-md border border-input bg-background px-2.5",
-                        "text-xs font-medium text-foreground transition-colors hover:bg-muted",
-                        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2",
-                        // A 44px touch target without making the row taller.
-                        "after:absolute after:inset-x-0 after:-inset-y-1.5 after:content-['']"
-                      )}
+                      // A real 44px hit box; negative margins keep the row at the 32px face.
+                      // Chromium does not hit-test ::after or children outside a button's box.
+                      className="group -my-1.5 inline-flex h-11 shrink-0 items-center rounded-md focus-visible:outline-none"
                     >
-                      Übernehmen
+                      <span
+                        data-copy-face
+                        className={cn(
+                          "inline-flex h-8 items-center rounded-md border border-input bg-background px-2.5",
+                          "text-xs font-medium text-foreground transition-colors group-hover:bg-muted",
+                          "group-focus-visible:ring-2 group-focus-visible:ring-primary group-focus-visible:ring-offset-2"
+                        )}
+                      >
+                        Übernehmen
+                      </span>
                     </button>
                   )}
                 </div>
@@ -202,7 +208,7 @@ export const ExerciseSetRow: React.FC<ExerciseSetRowProps> = ({
           onClick={onToggle}
           className={cn(
             // 44px minimum touch target.
-            "flex h-11 w-11 min-h-[44px] min-w-[44px] shrink-0 items-center justify-center rounded-full transition-transform",
+            "col-start-2 row-start-2 flex h-11 w-11 min-h-[44px] min-w-[44px] shrink-0 items-center justify-center rounded-full transition-transform",
             "hover:bg-muted/60 active:scale-95",
             "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2",
             isToggling && "opacity-60 pointer-events-none"

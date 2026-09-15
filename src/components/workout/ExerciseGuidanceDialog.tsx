@@ -17,7 +17,7 @@ export default function ExerciseGuidanceDialog({ exerciseName, disabled = false 
   return (
     <Dialog.Root>
       <Dialog.Trigger asChild>
-        <Button type="button" variant="ghost" size="icon" disabled={disabled} className="mr-2 h-11 w-11 shrink-0" aria-label={`Informationen zu ${exerciseName}`}>
+        <Button type="button" variant="ghost" size="icon" disabled={disabled} className="h-11 w-11 shrink-0" aria-label={`Informationen zu ${exerciseName}`}>
           <Info className="h-5 w-5" aria-hidden="true" />
         </Button>
       </Dialog.Trigger>

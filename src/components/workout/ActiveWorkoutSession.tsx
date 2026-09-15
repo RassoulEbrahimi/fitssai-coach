@@ -69,13 +69,13 @@ export const ActiveWorkoutSession: React.FC<ActiveWorkoutSessionProps> = ({
   const { t } = useTranslation();
 
   return (
-    <>
+    <div className="mx-auto w-full max-w-3xl">
       {/* Progress section */}
       <div className="mb-4 space-y-2">
         {/* In progress indicator */}
-        <div className="flex items-center justify-between text-sm">
-          <div className="flex items-center gap-2 text-primary">
-            <Flame className="w-4 h-4 animate-pulse" />
+        <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 text-sm">
+          <div className="flex flex-wrap items-center gap-2 text-primary">
+            <Flame className="w-4 h-4" />
             <span className="font-medium">{t('todayWorkout.trainingInProgress')}</span>
             <span className="text-xs text-muted-foreground ml-1">⏱️ {formatDuration(durationSeconds)}</span>
           </div>
@@ -117,12 +117,12 @@ export const ActiveWorkoutSession: React.FC<ActiveWorkoutSessionProps> = ({
       <Button
         onClick={onFinish}
         variant={progress.isComplete ? "default" : "outline"}
-        className={`w-full mt-4 h-12 text-base font-semibold gap-2 ${progress.isComplete ? "animate-pulse" : ""}`}
+        className="w-full mt-4 h-12 text-base font-semibold gap-2"
       >
         {progress.isComplete && <Check className="w-5 h-5" />}
         {t('todayWorkout.finishTraining')}
       </Button>
-    </>
+    </div>
   );
 };
 

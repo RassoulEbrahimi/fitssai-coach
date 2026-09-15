@@ -256,13 +256,18 @@ describe("ExerciseSetRow previous performance reference", () => {
     expect(screen.getByRole("checkbox")).toHaveFocus();
   });
 
-  it("keeps a 44px touch target without enlarging the row", () => {
+  it("keeps a real 44px touch target without enlarging the row", () => {
     const { copy } = renderWithPrevious({ reps: 10, weightKg: 52.5 });
 
-    // jsdom does not lay out: a 32px control whose hit area extends 6px each way.
-    expect(copy().className).toContain("h-8");
-    expect(copy().className).toContain("after:-inset-y-1.5");
-    expect(copy().className).toContain("focus-visible:ring-2");
+    // jsdom does not lay out. The button's own box is 44px with -6px margins,
+    // so it occupies a 32px line; Chromium does not hit-test a pseudo-element
+    // outside a button, so the hit area has to be the button itself.
+    expect(copy().className).toContain("h-11");
+    expect(copy().className).toContain("-my-1.5");
+    const face = copy().querySelector("[data-copy-face]");
+    expect(face?.className).toContain("h-8");
+    expect(face?.className).toContain("group-focus-visible:ring-2");
+    expect(copy()).toHaveTextContent("Übernehmen");
   });
 
   it("marks the reference with words as well as an icon and colour", () => {
