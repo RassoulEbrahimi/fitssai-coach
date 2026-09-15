@@ -35,7 +35,21 @@ export const queryKeys = {
   // 5. User Profile
   profile: {
     me: (userId: string | undefined) => ['profile', userId] as const,
-  }
+  },
+
+  // 6. Previous performance for a running workout: one lookup per account,
+  // execution day and the exercise identities that day trains.
+  previousPerformance: {
+    all: ['previous-performance'] as const,
+    byExecution: (
+      userId: string | undefined,
+      planId: string | undefined,
+      weekKey: string,
+      dayIndex: number,
+      workoutDay: string | undefined,
+      identityKeys: readonly (string | null)[]
+    ) => ['previous-performance', userId, planId, weekKey, dayIndex, workoutDay, identityKeys] as const,
+  },
 };
 
 // Type helper for consistency in hooks

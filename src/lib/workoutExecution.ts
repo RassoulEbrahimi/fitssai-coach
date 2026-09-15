@@ -3,6 +3,7 @@ import { getWorkoutDateString } from "@/lib/workoutDateUtils";
 import { parseRestTime } from "@/lib/restTimeParser";
 import type { ActualSetPerformance } from "@/lib/setPerformance";
 import type { RecordedSetLine } from "@/lib/setPerformanceEntry";
+import type { PreviousExercisePerformance, PreviousSetPerformance } from "@/lib/previousPerformance";
 
 /**
  * Which workout the execution UI is running.
@@ -158,6 +159,10 @@ type ActualPerformanceReader = (exerciseIndex: number, setNumber: number) => Act
  * set was ticked off - not that those reps or that load were performed.
  * `actual` is what the user explicitly recorded; only a `user-recorded` source
  * carries numbers, and the prescription is never copied into it.
+ *
+ * Beside them, `previous` is a read-only reference: what was recorded for the
+ * same set number the last time this exercise was trained. It never counts as
+ * today's actual and never affects completion.
  */
 export interface ExecutionSetViewModel {
   key: string;
@@ -170,13 +175,15 @@ export interface ExecutionSetViewModel {
   };
   completed: boolean;
   actual: ExecutionSetActual;
+  previous: PreviousSetPerformance | null;
 }
 
 export const buildExecutionSetViewModels = (
   exercise: ExecutionExercise,
   exerciseIndex: number,
   isSetCompleted: (exerciseIndex: number, setNumber: number) => boolean,
-  getActualPerformance?: ActualPerformanceReader
+  getActualPerformance?: ActualPerformanceReader,
+  previous?: PreviousExercisePerformance
 ): ExecutionSetViewModel[] => {
   const restSeconds = parseRestTime(exercise.rest);
   return Array.from({ length: parseSetCount(exercise.sets) }, (_, index) => {
@@ -188,6 +195,8 @@ export const buildExecutionSetViewModels = (
       prescription: { reps: exercise.reps, weight: exercise.weight, restSeconds },
       completed: isSetCompleted(exerciseIndex, setNumber),
       actual: getActualPerformance?.(exerciseIndex, setNumber) ?? NOT_RECORDED,
+      // Same set number only: never shifted, interpolated or invented.
+      previous: previous?.sets[setNumber] ?? null,
     };
   });
 };

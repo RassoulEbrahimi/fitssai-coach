@@ -73,4 +73,9 @@ export interface SetPerformanceInputs {
   changeDraft: (exerciseIndex: number, setNumber: number, field: SetPerformanceField, text: string) => void;
   /** Validates and persists the set's draft. Never touches completion or rest. */
   commit: (exerciseIndex: number, setNumber: number) => SetPerformanceCommit;
+  /**
+   * Copies the previous workout's values for this set into its empty draft
+   * fields. Draft only: never persists, completes the set or touches rest.
+   */
+  copyPrevious?: (exerciseIndex: number, setNumber: number) => void;
 }

@@ -57,6 +57,13 @@ export interface RecordedSetLine {
   completed: boolean;
 }
 
+/** `10 Wdh. · 52,5 kg`, naming only the values present. Empty when there are none. */
+export const formatPerformanceValues = (values: { reps: number | null; weightKg: number | null }): string =>
+  [
+    values.reps !== null ? `${values.reps} Wdh.` : null,
+    values.weightKg !== null ? formatWeightKg(values.weightKg) : null,
+  ].filter((part): part is string => part !== null).join(" · ");
+
 /**
  * `Satz 1 · 10 Wdh. · 52,5 kg`, naming only what was recorded. A set that was
  * recorded but not ticked says so, rather than passing for a completed one.
@@ -64,7 +71,6 @@ export interface RecordedSetLine {
 export const formatRecordedSet = (set: RecordedSetLine): string =>
   [
     `Satz ${set.setNumber}`,
-    set.reps !== null ? `${set.reps} Wdh.` : null,
-    set.weightKg !== null ? formatWeightKg(set.weightKg) : null,
+    formatPerformanceValues(set) || null,
     set.completed ? null : "offen",
   ].filter((part): part is string => part !== null).join(" · ");

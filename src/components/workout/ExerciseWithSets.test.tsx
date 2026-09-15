@@ -3,6 +3,8 @@ import { describe, it, expect, vi } from "vitest";
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import ExerciseWithSets from "./ExerciseWithSets";
+import { SetPerformanceDraftStore } from "@/lib/setPerformanceDrafts";
+import type { PreviousExercisePerformance } from "@/lib/previousPerformance";
 
 const idleTimerState = {
   status: 'idle' as const,
@@ -250,5 +252,58 @@ describe("ExerciseWithSets set controls", () => {
 
     await user.click(screen.getByRole("checkbox", { name: /Satz 1/ }));
     expect(onToggleSet).toHaveBeenCalledWith({ exerciseIndex: 0, setNumber: 1, completed: false });
+  });
+});
+
+describe("ExerciseWithSets previous performance", () => {
+  const inputs = () => ({
+    drafts: new SetPerformanceDraftStore(),
+    changeDraft: vi.fn(),
+    commit: vi.fn(() => "unchanged" as const),
+    copyPrevious: vi.fn(),
+  });
+  const LAST_TUESDAY: PreviousExercisePerformance = {
+    workoutDay: "2026-09-08",
+    sets: { 1: { reps: 10, weightKg: 52.5 }, 2: { reps: 8, weightKg: null } },
+  };
+  const copyButtons = () => screen.queryAllByRole("button", { name: /^Übernehmen für Satz/ });
+
+  it("names the previous workout's date once and references only the set numbers it has", () => {
+    const getPreviousExercise = vi.fn((_exerciseIndex: number) => LAST_TUESDAY);
+    renderExercise({ defaultExpanded: true, performance: inputs(), getPreviousExercise });
+
+    expect(screen.getAllByText("Zuletzt am 08.09.2026")).toHaveLength(1);
+    expect(copyButtons().map((button) => button.getAttribute("aria-label"))).toEqual([
+      "Übernehmen für Satz 1: Letztes Mal 10 Wdh. · 52,5 kg",
+      "Übernehmen für Satz 2: Letztes Mal 8 Wdh.",
+    ]);
+    expect(within(screen.getByRole("group", { name: "3. Satz" })).queryByText(/Letztes Mal/)).toBeNull();
+    expect(getPreviousExercise.mock.calls.every(([exerciseIndex]) => exerciseIndex === 0)).toBe(true);
+  });
+
+  it("stays exactly as before when there is no previous performance", () => {
+    renderExercise({ defaultExpanded: true, performance: inputs(), getPreviousExercise: () => undefined });
+
+    expect(screen.queryByText(/Zuletzt am/)).toBeNull();
+    expect(screen.queryByText(/Letztes Mal/)).toBeNull();
+    expect(copyButtons()).toHaveLength(0);
+  });
+
+  it("shows no date when no set number lines up with today's sets", () => {
+    renderExercise({
+      defaultExpanded: true,
+      performance: inputs(),
+      getPreviousExercise: () => ({ workoutDay: "2026-09-08", sets: { 5: { reps: 10, weightKg: null } } }),
+    });
+
+    expect(screen.queryByText(/Zuletzt am/)).toBeNull();
+    expect(copyButtons()).toHaveLength(0);
+  });
+
+  it("keeps the reference inside the collapsible sets, not in the header", () => {
+    renderExercise({ defaultExpanded: false, performance: inputs(), getPreviousExercise: () => LAST_TUESDAY });
+
+    expect(screen.queryByText(/Zuletzt am/)).toBeNull();
+    expect(header()).not.toHaveTextContent(/Letztes Mal|Zuletzt/);
   });
 });

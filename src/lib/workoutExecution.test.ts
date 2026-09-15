@@ -125,7 +125,20 @@ describe("the set view model", () => {
       prescription: { reps: "8–12", weight: "60 kg", restSeconds: 90 },
       completed: false,
       actual: NOT_RECORDED,
+      previous: null,
     })));
+  });
+
+  it("adds last time as a read-only reference by exact set number, never as today's actual", () => {
+    const sets = buildExecutionSetViewModels(BENCH, 0, () => false, () => undefined, {
+      workoutDay: "2026-09-08",
+      sets: { 1: { reps: 10, weightKg: 52.5 }, 3: { reps: null, weightKg: 40 }, 5: { reps: 6, weightKg: null } },
+    });
+
+    expect(sets.map((set) => set.previous)).toEqual([{ reps: 10, weightKg: 52.5 }, null, { reps: null, weightKg: 40 }]);
+    expect(sets.map((set) => set.actual)).toEqual([NOT_RECORDED, NOT_RECORDED, NOT_RECORDED]);
+    expect(sets.map((set) => set.completed)).toEqual([false, false, false]);
+    expect(sets.map((set) => set.prescription.reps)).toEqual(["8–12", "8–12", "8–12"]);
   });
 
   it("takes completion from set tracking and nowhere else", () => {

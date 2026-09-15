@@ -141,6 +141,138 @@ describe("ExerciseSetRow actual performance entry", () => {
   });
 });
 
+const renderWithPrevious = (
+  previous: React.ComponentProps<typeof ExerciseSetRow>["previous"],
+  overrides: Partial<React.ComponentProps<typeof ExerciseSetRow>> = {},
+  { withCopy = true }: { withCopy?: boolean } = {}
+) => {
+  const drafts = new SetPerformanceDraftStore();
+  const commit = vi.fn(() => "unchanged" as const);
+  const copyPrevious = vi.fn();
+  const onToggle = vi.fn();
+  render(
+    <ExerciseSetRow
+      exerciseIndex={1}
+      setNumber={2}
+      targetReps="8–12"
+      targetWeight="50 kg"
+      isCompleted={false}
+      isToggling={false}
+      onToggle={onToggle}
+      actual={{ reps: null, weightKg: null }}
+      performance={{ drafts, changeDraft: vi.fn(), commit, ...(withCopy ? { copyPrevious } : {}) }}
+      previous={previous}
+      {...overrides}
+    />
+  );
+  const reference = () => screen.getByText("Letztes Mal:").parentElement!;
+  const copy = () => screen.getByRole("button", { name: /^Übernehmen für Satz 2:/ });
+  return { drafts, commit, copyPrevious, onToggle, reference, copy };
+};
+
+describe("ExerciseSetRow previous performance reference", () => {
+  it("shows reps and weight from last time as a labelled reference, not as today's values", () => {
+    const { reference, copy } = renderWithPrevious({ reps: 10, weightKg: 52.5 });
+
+    expect(reference()).toHaveTextContent(/^Letztes Mal: 10 Wdh\. · 52,5 kg$/);
+    expect(copy()).toHaveAccessibleName("Übernehmen für Satz 2: Letztes Mal 10 Wdh. · 52,5 kg");
+    expect(copy()).toHaveTextContent(/^Übernehmen$/);
+    expect(screen.getByText("8–12 × 50 kg")).toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: "Satz 2: ausgeführte Wiederholungen" })).toHaveValue("");
+    expect(screen.getByRole("textbox", { name: "Satz 2: ausgeführtes Gewicht in kg" })).toHaveValue("");
+  });
+
+  it("names only the reps when only reps were recorded", () => {
+    const { reference, copy } = renderWithPrevious({ reps: 10, weightKg: null });
+
+    expect(reference()).toHaveTextContent(/^Letztes Mal: 10 Wdh\.$/);
+    expect(copy()).toHaveAccessibleName("Übernehmen für Satz 2: Letztes Mal 10 Wdh.");
+  });
+
+  it("names only the weight when only weight was recorded", () => {
+    const { reference } = renderWithPrevious({ reps: null, weightKg: 52.5 });
+
+    expect(reference()).toHaveTextContent(/^Letztes Mal: 52,5 kg$/);
+    expect(reference().textContent).not.toMatch(/Wdh|—|\b0\b/);
+  });
+
+  it.each([
+    ["no previous performance", undefined],
+    ["an explicit none", null],
+    ["a previous set without values", { reps: null, weightKg: null }],
+  ])("adds nothing to the row for %s", (_label, previous) => {
+    renderWithPrevious(previous);
+
+    expect(screen.queryByText(/Letztes Mal/)).toBeNull();
+    expect(screen.queryByRole("button", { name: /Übernehmen/ })).toBeNull();
+    expect(screen.getAllByRole("textbox")).toHaveLength(2);
+  });
+
+  it("offers no reference without today's inputs", () => {
+    render(
+      <ExerciseSetRow setNumber={2} targetReps={10} isCompleted={false} isToggling={false} onToggle={vi.fn()}
+        previous={{ reps: 10, weightKg: 52.5 }} />
+    );
+
+    expect(screen.queryByText(/Letztes Mal/)).toBeNull();
+  });
+
+  it("shows the reference without a copy control when copying is not offered", () => {
+    renderWithPrevious({ reps: 10, weightKg: 52.5 }, {}, { withCopy: false });
+
+    expect(screen.getByText("Letztes Mal:")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Übernehmen/ })).toBeNull();
+  });
+
+  it("copies on click without completing, saving or moving focus", async () => {
+    const user = userEvent.setup();
+    const { copy, copyPrevious, onToggle, commit } = renderWithPrevious({ reps: 10, weightKg: 52.5 });
+
+    await user.click(copy());
+
+    expect(copyPrevious).toHaveBeenCalledTimes(1);
+    expect(copyPrevious).toHaveBeenCalledWith(1, 2);
+    expect(onToggle).not.toHaveBeenCalled();
+    expect(commit).not.toHaveBeenCalled();
+    expect(copy()).toHaveFocus();
+    expect(screen.getByRole("checkbox")).toHaveAttribute("aria-checked", "false");
+  });
+
+  it("sits between today's inputs and completion in keyboard order, and works from the keyboard", async () => {
+    const user = userEvent.setup();
+    const { copy, copyPrevious, onToggle } = renderWithPrevious({ reps: 10, weightKg: 52.5 });
+
+    await user.tab();
+    expect(screen.getByRole("textbox", { name: "Satz 2: ausgeführte Wiederholungen" })).toHaveFocus();
+    await user.tab();
+    expect(screen.getByRole("textbox", { name: "Satz 2: ausgeführtes Gewicht in kg" })).toHaveFocus();
+    await user.tab();
+    expect(copy()).toHaveFocus();
+    await user.keyboard("{Enter}");
+    await user.keyboard(" ");
+    expect(copyPrevious).toHaveBeenCalledTimes(2);
+    expect(onToggle).not.toHaveBeenCalled();
+    await user.tab();
+    expect(screen.getByRole("checkbox")).toHaveFocus();
+  });
+
+  it("keeps a 44px touch target without enlarging the row", () => {
+    const { copy } = renderWithPrevious({ reps: 10, weightKg: 52.5 });
+
+    // jsdom does not lay out: a 32px control whose hit area extends 6px each way.
+    expect(copy().className).toContain("h-8");
+    expect(copy().className).toContain("after:-inset-y-1.5");
+    expect(copy().className).toContain("focus-visible:ring-2");
+  });
+
+  it("marks the reference with words as well as an icon and colour", () => {
+    const { reference } = renderWithPrevious({ reps: 10, weightKg: 52.5 });
+
+    expect(reference().closest("p")?.querySelector("svg")).toHaveAttribute("aria-hidden", "true");
+    expect(within(reference()).getByText("Letztes Mal:")).toBeInTheDocument();
+  });
+});
+
 const renderRow = (overrides: Partial<React.ComponentProps<typeof ExerciseSetRow>> = {}) => {
   const onToggle = vi.fn();
   render(
