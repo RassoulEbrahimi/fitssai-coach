@@ -4,9 +4,9 @@ type Row = Record<string, unknown>;
 type Ref = { path: string };
 type Filter = { field: string; op: string; value: unknown };
 type Limit = { __limit: number };
-type Order = { __orderBy: string };
+type Order = { __orderBy: string; __direction: "asc" | "desc" };
 type Constraint = Filter | Limit | Order;
-type Query = { source: Ref; filters: Filter[]; limit?: number };
+type Query = { source: Ref; filters: Filter[]; limit?: number; order?: Order };
 
 const isLimit = (constraint: Constraint): constraint is Limit =>
   typeof (constraint as Limit).__limit === "number";
@@ -74,18 +74,46 @@ const snapshot = (path: string) => ({
   `getDocs(setsRef)` and no constraints, so a query-only double would leave
   that production read untestable.
 */
+/** Equality on any value; ranges on strings, which is all the app filters by range. */
+const passes = (data: Row, filter: Filter): boolean => {
+  const value = data[filter.field];
+  if (filter.op === '==') return value === filter.value;
+  if (typeof value !== 'string' || typeof filter.value !== 'string') return false;
+  switch (filter.op) {
+    case '<': return value < filter.value;
+    case '<=': return value <= filter.value;
+    case '>': return value > filter.value;
+    case '>=': return value >= filter.value;
+    default: return false;
+  }
+};
+
+const sortValue = (value: unknown): string | number | undefined => {
+  if (typeof value === 'string' || typeof value === 'number') return value;
+  const millis = (value as { toMillis?: () => number } | null | undefined)?.toMillis;
+  return typeof millis === 'function' ? millis.call(value) : undefined;
+};
+
+/** Documents without the ordered field sort last, so an ordered read never loses them here. */
+const byOrder = (order: Order) => ([, a]: [string, Row], [, b]: [string, Row]): number => {
+  const left = sortValue(a[order.__orderBy]);
+  const right = sortValue(b[order.__orderBy]);
+  if (left === undefined || right === undefined) return left === right ? 0 : left === undefined ? 1 : -1;
+  const sign = order.__direction === 'desc' ? -1 : 1;
+  return left < right ? -sign : left > right ? sign : 0;
+};
+
 const match = (target: Query | Ref) => {
-  const { source, filters, limit } = isQuery(target)
+  const { source, filters, limit, order } = isQuery(target)
     ? target
-    : { source: target, filters: [] as Filter[], limit: undefined };
+    : { source: target, filters: [] as Filter[], limit: undefined, order: undefined };
   const matched = [...rows.entries()].filter(([path, data]) =>
     path.startsWith(`${source.path}/`) && path.split("/").length === source.path.split("/").length + 1 &&
-    filters.every(f => f.op === '==' ? data[f.field] === f.value :
-      typeof data[f.field] === 'string' && typeof f.value === 'string' &&
-      (f.op === '>=' ? (data[f.field] as string) >= f.value :
-        f.op === '<=' && (data[f.field] as string) <= f.value))
-  ).map(([path]) => snapshot(path));
-  const docs = limit === undefined ? matched : matched.slice(0, limit);
+    filters.every(f => passes(data, f))
+  );
+  if (order) matched.sort(byOrder(order));
+  const snapshots = matched.map(([path]) => snapshot(path));
+  const docs = limit === undefined ? snapshots : snapshots.slice(0, limit);
   return { docs, empty: docs.length === 0 };
 };
 
@@ -118,20 +146,25 @@ export const firestore = {
   }),
   /** Single-document read, used by every workout-plan editing path. */
   getDoc: vi.fn(async (target: Ref) => snapshot(target.path)),
+  /** Server-authoritative single-document read: rejects instead of answering from cache. */
+  getDocFromServer: vi.fn(async (target: Ref) => {
+    if (!serverCanAnswer(target.path)) throw unavailable(target.path);
+    return snapshot(target.path);
+  }),
   where: (field: string, op: string, value: unknown): Filter => ({ field, op, value }),
   /** `limit(n)` is a constraint like `where`, distinguished by its own marker. */
   limit: (count: number): Limit => ({ __limit: count }),
   /*
-    Ordering is recorded but not applied: every caller here pairs it with
-    `limit(1)` over a single plan document, so a sort would change nothing. It
-    exists so the plan read in `AddWorkoutModal` reaches the boundary at all -
-    without it that production path could not be tested.
+    Applied before `limit`, as Firestore does, so a bounded "newest first" read
+    returns the newest documents. The plan reads that pair it with `limit(1)`
+    over a single document are unaffected.
   */
-  orderBy: (field: string): Order => ({ __orderBy: field }),
+  orderBy: (field: string, direction: "asc" | "desc" = "asc"): Order => ({ __orderBy: field, __direction: direction }),
   query: (source: Ref, ...constraints: Constraint[]) => ({
     source,
     filters: constraints.filter(isFilter),
     limit: constraints.find(isLimit)?.__limit,
+    order: constraints.find(isOrder),
   }),
   /** Cache-eligible read, as every reader outside the history guard uses. */
   getDocs: vi.fn(async (target: Query | Ref) => {

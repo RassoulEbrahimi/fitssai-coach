@@ -4,7 +4,7 @@ import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import '@/lib/i18n';
-import { resetWorkoutFirestore, writes } from '@/test/mocks/workoutFirestore';
+import { resetWorkoutFirestore, rows, writes } from '@/test/mocks/workoutFirestore';
 
 /*
   The real Dashboard, Bottom Nav, Focus Mode context, training session and
@@ -379,6 +379,43 @@ it('a failed older completion cannot cancel a newer rest; its own failure can', 
   await act(async () => rejectB(new Error('Current write failed')));
   expect(localStorage.getItem('fitssai.training.rest:u1')).toBeNull();
   expect(screen.queryByRole('dialog', { name: 'Pause' })).toBeNull();
+});
+
+it('keeps a copied previous value as an unsaved draft through leaving and re-entering Focus Mode', async () => {
+  // Last week's Bankdrücken, recorded against an older plan of its own.
+  rows.set('users/u1/workout_plans/old-plan', {
+    content: { 'Week 1': [{ day: 'Tag 1', exercises: [{ name: 'Bankdrücken', sets: 2, reps: '10' }] }] },
+  });
+  rows.set('users/u1/workout_logs/last-bench', {
+    planId: 'old-plan', weekKey: 'Week 1', dayIndex: 0, exerciseIndex: 0, workoutDay: '2025-12-03', completed: true,
+  });
+  rows.set('users/u1/workout_logs/last-bench/workout_set_logs/s1', {
+    setNumber: 1, completed: true, performanceSource: 'user-recorded', repsCompleted: 10, weightUsed: 52.5,
+  });
+  const user = await setup();
+  await startTraining(user);
+  persistPerformance.mockReset().mockResolvedValue({ success: true });
+  const reps = () => screen.getByRole('textbox', { name: 'Satz 1: ausgeführte Wiederholungen' });
+  const weight = () => screen.getByRole('textbox', { name: 'Satz 1: ausgeführtes Gewicht in kg' });
+
+  const copy = await within(focusMode()!).findByRole('button', { name: /^Übernehmen für Satz 1: Letztes Mal 10 Wdh\. · 52,5 kg$/ });
+  await user.click(copy);
+  expect(reps()).toHaveValue('10');
+  expect(weight()).toHaveValue('52,5');
+  expect(copy).toHaveFocus();
+
+  await user.keyboard('{Escape}');
+  await waitFor(() => expect(focusMode()).toBeNull());
+  expect(reps()).toHaveValue('10');
+  expect(weight()).toHaveValue('52,5');
+
+  await enterViaFullscreen(user);
+  expect(within(focusMode()!).getByRole('textbox', { name: 'Satz 1: ausgeführte Wiederholungen' })).toHaveValue('10');
+  expect(within(focusMode()!).getByRole('textbox', { name: 'Satz 1: ausgeführtes Gewicht in kg' })).toHaveValue('52,5');
+  expect(persistPerformance).not.toHaveBeenCalled();
+  expect(persistSet).not.toHaveBeenCalled();
+  expect(localStorage.getItem('fitssai.training.rest:u1')).toBeNull();
+  expect(writes).toHaveLength(0);
 });
 
 it('records reps and weight from the keyboard inside Focus Mode, without ticking the set or starting rest', async () => {

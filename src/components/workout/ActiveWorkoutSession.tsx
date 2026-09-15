@@ -7,6 +7,7 @@ import ExerciseWithSets from "@/components/workout/ExerciseWithSets";
 import type { useRestTimer } from "@/hooks/useRestTimer";
 import type { ExecutionProgress, ExecutionSetToggle } from "@/hooks/useWorkoutExecution";
 import type { ActualSetPerformance } from "@/lib/setPerformance";
+import type { PreviousExercisePerformance } from "@/lib/previousPerformance";
 import type { SetPerformanceInputs } from "@/lib/setPerformanceDrafts";
 import type { ExecutionExercise } from "@/lib/workoutExecution";
 
@@ -31,6 +32,8 @@ interface ActiveWorkoutSessionProps {
   getCompletedSetsCount: (exerciseIndex: number) => number;
   /** What was recorded as performed, per set. Trusted values only. */
   getActualPerformance?: (exerciseIndex: number, setNumber: number) => ActualSetPerformance | undefined;
+  /** What was recorded the last time each exercise was trained. A read-only reference. */
+  getPreviousExercise?: (exerciseIndex: number) => PreviousExercisePerformance | undefined;
   onToggleSet: (toggle: ExecutionSetToggle) => void;
   isTogglingSet: boolean;
   /** Actual reps/weight entry, bound to the same session as the ticks. */
@@ -56,6 +59,7 @@ export const ActiveWorkoutSession: React.FC<ActiveWorkoutSessionProps> = ({
   isSetCompleted,
   getCompletedSetsCount,
   getActualPerformance,
+  getPreviousExercise,
   onToggleSet,
   isTogglingSet,
   performance,
@@ -97,6 +101,7 @@ export const ActiveWorkoutSession: React.FC<ActiveWorkoutSessionProps> = ({
             isSetCompleted={isSetCompleted}
             getCompletedSetsCount={getCompletedSetsCount}
             getActualPerformance={getActualPerformance}
+            getPreviousExercise={getPreviousExercise}
             onToggleSet={onToggleSet}
             isToggling={isTogglingSet}
             performance={performance}

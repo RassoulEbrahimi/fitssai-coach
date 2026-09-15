@@ -1,10 +1,10 @@
 import React, { useSyncExternalStore } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Check } from "lucide-react";
+import { Check, History } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Input } from "@/components/ui/input";
 import { formatSetTarget } from "@/lib/setPrescription";
-import { formatWeightNumber } from "@/lib/setPerformanceEntry";
+import { formatPerformanceValues, formatWeightNumber } from "@/lib/setPerformanceEntry";
 import {
   setPerformanceFieldId,
   setPerformanceKey,
@@ -27,6 +27,8 @@ interface ExerciseSetRowProps {
   actual?: { reps: number | null; weightKg: number | null };
   /** When present, the row offers entry of actual reps and weight. */
   performance?: SetPerformanceInputs;
+  /** What was recorded for this set last time. A reference only - never today's value. */
+  previous?: { reps: number | null; weightKg: number | null } | null;
 }
 
 const FIELDS: readonly SetPerformanceField[] = ["reps", "weight"];
@@ -54,9 +56,12 @@ export const ExerciseSetRow: React.FC<ExerciseSetRowProps> = ({
   onToggle,
   actual,
   performance,
+  previous,
 }) => {
   // The plan's target, shown as written.
   const target = formatSetTarget(targetReps, targetWeight);
+  // Names only what was recorded last time; empty hides the reference entirely.
+  const previousText = previous ? formatPerformanceValues(previous) : "";
   const key = setPerformanceKey(exerciseIndex, setNumber);
   const draft = useSyncExternalStore(
     performance?.drafts.subscribe ?? noSubscription,
@@ -151,6 +156,39 @@ export const ExerciseSetRow: React.FC<ExerciseSetRowProps> = ({
                   {field.error}
                 </p>
               ))}
+              {/*
+                Last time, below today's inputs: a labelled reference, never
+                shown inside them. Copying is a separate explicit control that
+                fills empty drafts and does nothing else.
+              */}
+              {previousText && (
+                <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1">
+                  {/* Labelled like the prescription: a muted label, readable values. */}
+                  <p className="flex min-w-0 items-center gap-1 text-xs text-muted-foreground">
+                    <History className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                    <span className="min-w-0 break-words">
+                      <span className="font-medium">Letztes Mal:</span>{" "}
+                      <span className="text-foreground">{previousText}</span>
+                    </span>
+                  </p>
+                  {performance.copyPrevious && (
+                    <button
+                      type="button"
+                      aria-label={`Übernehmen für Satz ${setNumber}: Letztes Mal ${previousText}`}
+                      onClick={() => performance.copyPrevious?.(exerciseIndex, setNumber)}
+                      className={cn(
+                        "relative inline-flex h-8 shrink-0 items-center rounded-md border border-input bg-background px-2.5",
+                        "text-xs font-medium text-foreground transition-colors hover:bg-muted",
+                        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2",
+                        // A 44px touch target without making the row taller.
+                        "after:absolute after:inset-x-0 after:-inset-y-1.5 after:content-['']"
+                      )}
+                    >
+                      Übernehmen
+                    </button>
+                  )}
+                </div>
+              )}
             </>
           )}
         </div>

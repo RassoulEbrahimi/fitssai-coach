@@ -159,6 +159,7 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
     isSetCompleted,
     getCompletedSetsCount,
     getActualPerformance,
+    getPreviousExercise,
     toggleSetAsync,
     performance: setPerformance,
     whenSetWritesSettled,
@@ -640,6 +641,7 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
                     isSetCompleted={isSetCompleted}
                     getCompletedSetsCount={getCompletedSetsCount}
                     getActualPerformance={getActualPerformance}
+                    getPreviousExercise={getPreviousExercise}
                     onToggleSet={handleToggleSet}
                     isTogglingSet={isTogglingSet}
                     performance={setPerformance}

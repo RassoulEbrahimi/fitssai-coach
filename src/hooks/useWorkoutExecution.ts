@@ -3,6 +3,12 @@ import { useAuth } from "@/hooks/useAuth";
 import { useTrainingData, useTrainingSession } from "@/contexts/TrainingContext";
 import { useSetTracking } from "@/hooks/useSetTracking";
 import { useWorkoutHelpers } from "@/hooks/useWorkoutHelpers";
+import { usePreviousPerformance } from "@/hooks/queries/usePreviousPerformance";
+import {
+  applyPreviousToDraft,
+  exerciseIdentityKeys,
+  type PreviousExercisePerformance,
+} from "@/lib/previousPerformance";
 import type { WorkoutPlan } from "@/lib/types";
 import { parseActualRepsInput, parseActualWeightInput } from "@/lib/setPerformanceEntry";
 import {
@@ -41,6 +47,7 @@ export interface ExecutionSetPerformanceUpdate {
 export interface ExecutionSetPerformance extends SetPerformanceInputs {
   /** Commits every draft. Returns the fields that could not be saved, in plan order. */
   commitAll: () => InvalidSetPerformanceField[];
+  copyPrevious: (exerciseIndex: number, setNumber: number) => void;
 }
 
 export interface ExecutionProgress {
@@ -93,6 +100,26 @@ export function useWorkoutExecution(
   );
   // Before Start the preview follows the calendar, exactly as it always has.
   const exercises: ExecutionExercise[] = boundExercises ?? todayWorkouts;
+
+  /*
+    What was recorded the last time each exercise of the bound day was trained.
+    One lookup for the whole day, keyed by the session rather than the
+    calendar, and read only: loading, failing or finding nothing leaves the
+    workout exactly as it is.
+  */
+  const identityKeys = useMemo(() => exerciseIdentityKeys(exercises), [exercises]);
+  const previousPerformance = usePreviousPerformance({
+    enabled: isBound,
+    planId: target.planId,
+    weekKey: target.weekKey,
+    dayIndex: target.dayIndex,
+    workoutDay: target.workoutDay,
+    identityKeys,
+  });
+  const getPreviousExercise = useCallback((exerciseIndex: number): PreviousExercisePerformance | undefined => {
+    const identity = identityKeys[exerciseIndex];
+    return identity ? previousPerformance[identity] : undefined;
+  }, [identityKeys, previousPerformance]);
 
   const {
     isSetCompleted,
@@ -189,9 +216,23 @@ export function useWorkoutExecution(
   useEffect(() => { commitAllRef.current = commitAll; }, [commitAll]);
   useEffect(() => () => { commitAllRef.current(); }, []);
 
+  /*
+    "Übernehmen": the previous set's values go into today's empty draft fields
+    and nowhere else. Nothing is written, no set is ticked and rest is not
+    touched. The draft is saved - as copied or as edited - at the same
+    boundaries as anything typed, and a value already recorded today is never
+    replaced.
+  */
+  const copyPrevious = useCallback((exerciseIndex: number, setNumber: number) => {
+    const previous = getPreviousExercise(exerciseIndex)?.sets[setNumber];
+    if (!previous) return;
+    const key = setPerformanceKey(exerciseIndex, setNumber);
+    drafts.set(key, applyPreviousToDraft(drafts.get(key) ?? {}, getActualPerformance(exerciseIndex, setNumber), previous));
+  }, [drafts, getPreviousExercise, getActualPerformance]);
+
   const performance = useMemo<ExecutionSetPerformance>(
-    () => ({ drafts, changeDraft, commit, commitAll }),
-    [drafts, changeDraft, commit, commitAll]
+    () => ({ drafts, changeDraft, commit, commitAll, copyPrevious }),
+    [drafts, changeDraft, commit, commitAll, copyPrevious]
   );
 
   /*
@@ -257,6 +298,7 @@ export function useWorkoutExecution(
     isSetCompleted,
     getCompletedSetsCount,
     getActualPerformance,
+    getPreviousExercise,
     toggleSet,
     toggleSetAsync,
     updateSetPerformanceAsync,

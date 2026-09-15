@@ -9,6 +9,7 @@ import RestTimerBar from "./RestTimerBar";
 import ExerciseGuidanceDialog from "./ExerciseGuidanceDialog";
 import { formatRestDisplay } from "@/lib/restTimeParser";
 import { buildExecutionSetViewModels, parseSetCount, type ExecutionSetViewModel } from "@/lib/workoutExecution";
+import { formatWorkoutDayDate, type PreviousExercisePerformance } from "@/lib/previousPerformance";
 import type { ActualSetPerformance } from "@/lib/setPerformance";
 import type { SetPerformanceInputs } from "@/lib/setPerformanceDrafts";
 import type { RestTimerController } from "@/hooks/useRestTimer";
@@ -28,6 +29,8 @@ interface ExerciseWithSetsProps {
   getCompletedSetsCount: (exerciseIndex: number) => number;
   /** Recorded performance for a set; trusted values only. */
   getActualPerformance?: (exerciseIndex: number, setNumber: number) => ActualSetPerformance | undefined;
+  /** The previous recorded occurrence of this exercise, if one is known. Read only. */
+  getPreviousExercise?: (exerciseIndex: number) => PreviousExercisePerformance | undefined;
   onToggleSet: (params: {
     exerciseIndex: number;
     setNumber: number;
@@ -49,6 +52,7 @@ export const ExerciseWithSets: React.FC<ExerciseWithSetsProps> = ({
   isSetCompleted,
   getCompletedSetsCount,
   getActualPerformance,
+  getPreviousExercise,
   onToggleSet,
   isToggling,
   performance,
@@ -70,7 +74,10 @@ export const ExerciseWithSets: React.FC<ExerciseWithSetsProps> = ({
     from set tracking and recorded performance, kept apart. The card
     coordinates rest and persistence using this same session-bound exercise.
   */
-  const sets = buildExecutionSetViewModels(exercise, exerciseIndex, isSetCompleted, getActualPerformance);
+  // Last time is a reference beside today's inputs, so it only appears with them.
+  const previous = performance ? getPreviousExercise?.(exerciseIndex) : undefined;
+  const sets = buildExecutionSetViewModels(exercise, exerciseIndex, isSetCompleted, getActualPerformance, previous);
+  const showsPrevious = !!previous && sets.some((set) => set.previous !== null);
 
   // Check if timer is active for this exercise
   const isTimerActive = timerState.exerciseIndex === exerciseIndex &&
@@ -166,6 +173,12 @@ export const ExerciseWithSets: React.FC<ExerciseWithSetsProps> = ({
         {/* Sets list */}
         <CollapsibleContent>
           <div className="px-3 pb-3 space-y-2 sm:px-4 sm:pb-4">
+            {/* The previous workout's date, once per exercise rather than on every row. */}
+            {showsPrevious && previous && (
+              <p className="text-xs text-muted-foreground">
+                Zuletzt am {formatWorkoutDayDate(previous.workoutDay)}
+              </p>
+            )}
 
             {sets.map((set) => (
               <ExerciseSetRow
@@ -179,6 +192,7 @@ export const ExerciseWithSets: React.FC<ExerciseWithSetsProps> = ({
                 onToggle={() => handleToggleSet(set)}
                 actual={set.actual}
                 performance={performance}
+                previous={set.previous}
               />
             ))}
           </div>
