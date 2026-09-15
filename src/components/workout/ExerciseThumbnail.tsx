@@ -11,8 +11,11 @@ export default function ExerciseThumbnail({ name }: { name: string }) {
     <span aria-hidden="true" data-exercise-thumbnail data-identity={fallback.identity}
       className="relative flex h-[72px] w-[72px] shrink-0 items-center justify-center overflow-hidden rounded-xl border border-border/70 bg-muted text-foreground">
       {src && failedSource !== src ? (
+        // The artwork is drawn for the light surface; dark mode inverts it, which
+        // lifts the neutral ink off the dark tile and keeps the accent green.
         <img key={src} src={src} alt="" width={72} height={72} loading="lazy" decoding="async"
-          className="h-full w-full object-contain" onError={() => setFailedSource(src)} />
+          className="h-full w-full object-contain dark:invert dark:hue-rotate-180"
+          onError={() => setFailedSource(src)} />
       ) : (
         <>
           <svg viewBox="0 0 72 72" className="absolute inset-0 h-full w-full text-primary" fill="currentColor">

@@ -51,105 +51,30 @@ On phones the actions do not share the title row. Measured cards are 238px (320p
 - **`src/lib/exerciseName.ts`:** the exact-identity normaliser (NFC, trim, lowercase, collapsed whitespace, two Unicode hyphen variants). It was moved out of `exerciseGuidance.ts`, which re-exports it; it was not duplicated. `previousPerformance.ts` keeps its own existing normaliser for untyped history data.
 - **`src/lib/exercisePresentation.ts`:** reviewed presentation entries, each with a canonical key, explicit aliases and an optional local thumbnail (`src`, `source`, `status`).
   - Lookup is an exact map of normalised names. There is no substring, fuzzy or category matching.
-  - It is independent of guidance coverage; a test checks that `Crunches` has guidance but no thumbnail.
+  - It is independent of guidance coverage; guidance covers five exercises, presentation covers the whole inventory, and a test checks a thumbnail-only identity such as `Beinstrecker`.
 - **`ExerciseThumbnail`:** a decorative (`aria-hidden`), fixed 72×72 surface.
   - **Reviewed asset:** a local `<img>` with `width`/`height`, `loading="lazy"`, `alt=""` and `object-contain`.
   - **No asset, or `onError`:** a deterministic fallback. It shows a monogram (the first letters of up to three words, or two characters of a single word) over a 32-cell mosaic hashed from the identity, in `text-primary`.
   - The surface element keeps its size and identity when the image fails.
-- **Bundling:** assets are imported through Vite. The 683-byte SVG is inlined as a data URI, so there is no extra request.
+- **Bundling:** assets are imported through Vite. Each one is under the inline limit, so the pack rides in the lazily loaded workout chunk as data URIs rather than 51 extra requests.
 
 ### Adding final artwork
 
-1. Add the file under `src/assets/exercise-thumbnails/` and import it in `exercisePresentation.ts`.
+1. Add a scene to `scripts/generate-exercise-thumbnails.mjs`, regenerate, and import the file in `exercisePresentation.ts`.
 2. Register the exact canonical name and any reviewed aliases, with `source` and `status: 'final'`.
-3. Update the table below.
+3. Update the tables in `docs/TRAINING-UI-01B-thumbnail-assets.md`.
 
 Never register a qualified variant (angle, grip, machine) under a base name: `Bankdrücken schräg Multipresse` must not receive the flat-bench image. Existing plans and logs need no migration.
 
 ## Asset coverage
 
-**Final approved artwork: 0 of 64 identities.**
+TRAINING-UI-01 shipped no approved artwork: one temporary bench-press graphic and a monogram fallback everywhere else.
 
-- `bankdrücken` and its reviewed alias `bench press` share one original local SVG schematic made in this change. It is temporary, not approved product artwork, and its fixed light palette shows as a light tile in dark mode.
-- Every other identity uses the generated fallback, which is also temporary.
+**TRAINING-UI-01B replaced that with an original local vector pack: 72 of 72 known identities (100%) on 51 assets.** The inventory, the canonical movement groups, the art direction and the bundle cost live in [TRAINING-UI-01B — Exercise thumbnail asset pack](TRAINING-UI-01B-thumbnail-assets.md).
 
-**Inventory sources:**
-- production name lists (`exerciseFields.ts`, `exerciseGuidance.ts`);
-- the Functions plan fixture;
-- client test fixtures;
-- the task brief's long-name examples;
-- the ignored local browser fixture.
+The production exercise catalogue loads from Firestore at runtime and is not in the repository, so any name outside that inventory still resolves to the fallback below.
 
-The production exercise catalogue loads from Firestore at runtime and is not in the repository, so this table cannot list every name users see. Any name that is not registered resolves to the fallback.
-
-| Normalised identity | Resolved thumbnail | Asset source | Status | Found in |
-| --- | --- | --- | --- | --- |
-| `ausfallschritte` | Fallback: monogram `AU` + identity mosaic | Generated in the client; no image file | Temporary fallback | `src/lib/exerciseFields.ts`, `src/lib/exerciseCategories.test.ts` |
-| `back extension` | Fallback: monogram `BE` + identity mosaic | Generated in the client; no image file | Temporary fallback | `src/lib/exerciseCategories.test.ts` |
-| `bankdrücken` | `src/assets/exercise-thumbnails/bench-press.svg` | Original local SVG schematic (TRAINING-UI-01) | Temporary local graphic | `src/lib/exerciseFields.ts`, `src/lib/exerciseGuidance.ts`, `functions/src/plan.fixtures.ts`, `src/lib/exerciseCategories.test.ts`, `src/components/ExerciseSelector.test.tsx`, `src/components/TodayWorkoutCard.test.tsx`, `src/components/InlineEditableExercise.test.tsx`, `src/components/workout/ExerciseGuidanceDialog.test.tsx`, execution tests (`src/test/sessionBoundExecution.test.tsx`, `src/lib/workoutExecution.test.ts`, `src/components/workout/DayAccordion.test.tsx`) |
-| `bankdrücken enger griff` | Fallback: monogram `BEG` + identity mosaic | Generated in the client; no image file | Temporary fallback | `src/components/InlineEditableExercise.test.tsx`, `src/components/workout/ExerciseGuidanceDialog.test.tsx` |
-| `bankdrücken schräg multipresse` | Fallback: monogram `BSM` + identity mosaic | Generated in the client; no image file | Temporary fallback | task brief long-name examples |
-| `barbell row` | Fallback: monogram `BR` + identity mosaic | Generated in the client; no image file | Temporary fallback | `src/lib/exerciseCategories.test.ts` |
-| `beinbeuger` | Fallback: monogram `BE` + identity mosaic | Generated in the client; no image file | Temporary fallback | `src/lib/exerciseFields.ts`, `src/lib/exerciseCategories.test.ts`, `src/components/ExerciseSelector.test.tsx` |
-| `beinheben` | Fallback: monogram `BE` + identity mosaic | Generated in the client; no image file | Temporary fallback | `src/lib/exerciseCategories.test.ts` |
-| `beinpresse` | Fallback: monogram `BE` + identity mosaic | Generated in the client; no image file | Temporary fallback | `src/lib/exerciseFields.ts`, `src/lib/exerciseCategories.test.ts` |
-| `beinpresse 45° plate loaded` | Fallback: monogram `B4P` + identity mosaic | Generated in the client; no image file | Temporary fallback | task brief long-name examples |
-| `beinstrecker` | Fallback: monogram `BE` + identity mosaic | Generated in the client; no image file | Temporary fallback | `src/lib/exerciseFields.ts`, `src/lib/exerciseCategories.test.ts` |
-| `bench press` | `src/assets/exercise-thumbnails/bench-press.svg` | Same SVG via the reviewed alias `Bench Press` | Temporary local graphic | `src/lib/exerciseGuidance.ts`, `src/lib/exerciseEditorTestUtils.ts` |
-| `bizepscurls` | Fallback: monogram `BI` + identity mosaic | Generated in the client; no image file | Temporary fallback | `src/lib/exerciseFields.ts`, `src/lib/exerciseCategories.test.ts`, `src/components/ExerciseSelector.test.tsx` |
-| `bulgarian split squat` | Fallback: monogram `BSS` + identity mosaic | Generated in the client; no image file | Temporary fallback | `src/lib/exerciseCategories.test.ts` |
-| `burpees` | Fallback: monogram `BU` + identity mosaic | Generated in the client; no image file | Temporary fallback | `src/components/ExerciseSelector.test.tsx` |
-| `butterfly` | Fallback: monogram `BU` + identity mosaic | Generated in the client; no image file | Temporary fallback | `src/lib/exerciseCategories.test.ts` |
-| `crunches` | Fallback: monogram `CR` + identity mosaic | Generated in the client; no image file | Temporary fallback | `src/lib/exerciseFields.ts`, `src/lib/exerciseGuidance.ts`, `src/lib/exerciseCategories.test.ts`, `src/components/ExerciseSelector.test.tsx` |
-| `curl` | Fallback: monogram `CU` + identity mosaic | Generated in the client; no image file | Temporary fallback | `src/test/addWorkoutModalHistoryGuard.test.tsx` |
-| `deadlift` | Fallback: monogram `DE` + identity mosaic | Generated in the client; no image file | Temporary fallback | `src/lib/exerciseEditorTestUtils.ts` |
-| `dips` | Fallback: monogram `DI` + identity mosaic | Generated in the client; no image file | Temporary fallback | `src/lib/exerciseFields.ts`, `src/lib/exerciseCategories.test.ts`, execution tests (`src/test/sessionBoundExecution.test.tsx`, `src/lib/workoutExecution.test.ts`, `src/components/workout/DayAccordion.test.tsx`) |
-| `face pull` | Fallback: monogram `FP` + identity mosaic | Generated in the client; no image file | Temporary fallback | `src/lib/exerciseCategories.test.ts` |
-| `farmers walk` | Fallback: monogram `FW` + identity mosaic | Generated in the client; no image file | Temporary fallback | `src/lib/exerciseCategories.test.ts`, `src/components/ExerciseSelector.test.tsx` |
-| `gesäßbrücke` | Fallback: monogram `GE` + identity mosaic | Generated in the client; no image file | Temporary fallback | `src/lib/exerciseCategories.test.ts` |
-| `good morning` | Fallback: monogram `GM` + identity mosaic | Generated in the client; no image file | Temporary fallback | `src/lib/exerciseCategories.test.ts` |
-| `hammercurls` | Fallback: monogram `HA` + identity mosaic | Generated in the client; no image file | Temporary fallback | `src/lib/exerciseCategories.test.ts` |
-| `hip thrust` | Fallback: monogram `HT` + identity mosaic | Generated in the client; no image file | Temporary fallback | `src/lib/exerciseCategories.test.ts` |
-| `klimmzüge` | Fallback: monogram `KL` + identity mosaic | Generated in the client; no image file | Temporary fallback | `src/lib/exerciseFields.ts`, `src/lib/exerciseGuidance.ts`, `src/lib/exerciseCategories.test.ts`, `src/components/ExerciseSelector.test.tsx`, `src/components/TodayWorkoutCard.test.tsx` |
-| `kniebeuge` | Fallback: monogram `KN` + identity mosaic | Generated in the client; no image file | Temporary fallback | `src/lib/exerciseCategories.test.ts`, `src/components/ExerciseSelector.test.tsx` |
-| `kniebeugen` | Fallback: monogram `KN` + identity mosaic | Generated in the client; no image file | Temporary fallback | `src/lib/exerciseFields.ts`, execution tests (`src/test/sessionBoundExecution.test.tsx`, `src/lib/workoutExecution.test.ts`, `src/components/workout/DayAccordion.test.tsx`) |
-| `kreuzheben` | Fallback: monogram `KR` + identity mosaic | Generated in the client; no image file | Temporary fallback | `src/lib/exerciseFields.ts`, `src/lib/exerciseCategories.test.ts`, `src/components/ExerciseSelector.test.tsx` |
-| `lat pulldown` | Fallback: monogram `LP` + identity mosaic | Generated in the client; no image file | Temporary fallback | `src/test/historicalExerciseIdentity.test.tsx` |
-| `latziehen` | Fallback: monogram `LA` + identity mosaic | Generated in the client; no image file | Temporary fallback | `src/lib/exerciseFields.ts` |
-| `latzug` | Fallback: monogram `LA` + identity mosaic | Generated in the client; no image file | Temporary fallback | `src/lib/exerciseCategories.test.ts` |
-| `laufen` | Fallback: monogram `LA` + identity mosaic | Generated in the client; no image file | Temporary fallback | `src/lib/exerciseFields.ts`, `src/components/InlineEditableExercise.test.tsx` |
-| `leg curl` | Fallback: monogram `LC` + identity mosaic | Generated in the client; no image file | Temporary fallback | `src/lib/exerciseCategories.test.ts` |
-| `liegestütze` | Fallback: monogram `LI` + identity mosaic | Generated in the client; no image file | Temporary fallback | `src/lib/exerciseFields.ts`, `src/lib/exerciseGuidance.ts`, `src/lib/exerciseCategories.test.ts`, `src/components/InlineEditableExercise.test.tsx` |
-| `lunges` | Fallback: monogram `LU` + identity mosaic | Generated in the client; no image file | Temporary fallback | `src/lib/exerciseEditorTestUtils.ts` |
-| `overhead press` | Fallback: monogram `OP` + identity mosaic | Generated in the client; no image file | Temporary fallback | `src/lib/exerciseCategories.test.ts` |
-| `plank` | Fallback: monogram `PL` + identity mosaic | Generated in the client; no image file | Temporary fallback | `src/lib/exerciseGuidance.ts`, `src/lib/exerciseCategories.test.ts`, `src/components/workout/ExerciseGuidanceDialog.test.tsx`, execution tests (`src/test/sessionBoundExecution.test.tsx`, `src/lib/workoutExecution.test.ts`, `src/components/workout/DayAccordion.test.tsx`) |
-| `planks` | Fallback: monogram `PL` + identity mosaic | Generated in the client; no image file | Temporary fallback | `src/lib/exerciseFields.ts`, `src/lib/exerciseGuidance.ts` |
-| `pull-up` | Fallback: monogram `PU` + identity mosaic | Generated in the client; no image file | Temporary fallback | `src/lib/exerciseGuidance.ts`, `src/lib/exerciseCategories.test.ts` |
-| `pull-ups` | Fallback: monogram `PU` + identity mosaic | Generated in the client; no image file | Temporary fallback | `src/lib/exerciseEditorTestUtils.ts` |
-| `push-ups` | Fallback: monogram `PU` + identity mosaic | Generated in the client; no image file | Temporary fallback | `src/lib/exerciseGuidance.ts`, `src/lib/exerciseCategories.test.ts`, `src/lib/exerciseEditorTestUtils.ts` |
-| `radfahren` | Fallback: monogram `RA` + identity mosaic | Generated in the client; no image file | Temporary fallback | `src/lib/exerciseFields.ts`, `src/components/InlineEditableExercise.test.tsx` |
-| `reverse butterfly` | Fallback: monogram `RB` + identity mosaic | Generated in the client; no image file | Temporary fallback | `src/lib/exerciseCategories.test.ts` |
-| `row` | Fallback: monogram `RO` + identity mosaic | Generated in the client; no image file | Temporary fallback | `src/test/historicalExerciseIdentity.test.tsx` |
-| `rückenstrecker` | Fallback: monogram `RÜ` + identity mosaic | Generated in the client; no image file | Temporary fallback | `src/lib/exerciseCategories.test.ts`, `src/components/ExerciseSelector.test.tsx` |
-| `rudern` | Fallback: monogram `RU` + identity mosaic | Generated in the client; no image file | Temporary fallback | `src/lib/exerciseFields.ts`, `functions/src/plan.fixtures.ts`, `src/lib/exerciseCategories.test.ts`, execution tests (`src/test/sessionBoundExecution.test.tsx`, `src/lib/workoutExecution.test.ts`, `src/components/workout/DayAccordion.test.tsx`) |
-| `rumänisches kreuzheben` | Fallback: monogram `RK` + identity mosaic | Generated in the client; no image file | Temporary fallback | `src/lib/exerciseCategories.test.ts` |
-| `russian twist` | Fallback: monogram `RT` + identity mosaic | Generated in the client; no image file | Temporary fallback | `src/lib/exerciseCategories.test.ts` |
-| `russian twists` | Fallback: monogram `RT` + identity mosaic | Generated in the client; no image file | Temporary fallback | `src/lib/exerciseFields.ts` |
-| `schrägbankdrücken` | Fallback: monogram `SC` + identity mosaic | Generated in the client; no image file | Temporary fallback | `src/lib/exerciseFields.ts`, `src/lib/exerciseCategories.test.ts` |
-| `schulterdrücken` | Fallback: monogram `SC` + identity mosaic | Generated in the client; no image file | Temporary fallback | `src/lib/exerciseFields.ts`, `src/lib/exerciseCategories.test.ts` |
-| `schwimmen` | Fallback: monogram `SC` + identity mosaic | Generated in the client; no image file | Temporary fallback | `src/lib/exerciseFields.ts` |
-| `seilspringen` | Fallback: monogram `SE` + identity mosaic | Generated in the client; no image file | Temporary fallback | `src/components/ExerciseSelector.test.tsx` |
-| `seitheben` | Fallback: monogram `SE` + identity mosaic | Generated in the client; no image file | Temporary fallback | `src/lib/exerciseCategories.test.ts` |
-| `sit-ups` | Fallback: monogram `SU` + identity mosaic | Generated in the client; no image file | Temporary fallback | `src/lib/exerciseCategories.test.ts` |
-| `squat` | Fallback: monogram `SQ` + identity mosaic | Generated in the client; no image file | Temporary fallback | `src/lib/exerciseEditorTestUtils.ts`, `src/components/TodayWorkoutCard.test.tsx` |
-| `superman` | Fallback: monogram `SU` + identity mosaic | Generated in the client; no image file | Temporary fallback | `src/lib/exerciseCategories.test.ts` |
-| `trizepsdrücken` | Fallback: monogram `TR` + identity mosaic | Generated in the client; no image file | Temporary fallback | `src/lib/exerciseCategories.test.ts` |
-| `trizepsstrecken kabelzug kordel` | Fallback: monogram `TKK` + identity mosaic | Generated in the client; no image file | Temporary fallback | task brief long-name examples |
-| `überzüge` | Fallback: monogram `ÜB` + identity mosaic | Generated in the client; no image file | Temporary fallback | `src/lib/exerciseCategories.test.ts` |
-| `unterarmstütz` | Fallback: monogram `UN` + identity mosaic | Generated in the client; no image file | Temporary fallback | local browser fixture only (ignored, not in the repo) |
-| `wadenheben` | Fallback: monogram `WA` + identity mosaic | Generated in the client; no image file | Temporary fallback | `src/lib/exerciseFields.ts`, `src/lib/exerciseCategories.test.ts` |
-
-Monograms and mosaics are presentation only, not unique IDs. For example, `pull-up`, `pull-ups` and `push-ups` all show `PU` and differ only in their mosaic. The name text stays authoritative.
+Monograms and mosaics are presentation only, not unique IDs. Monograms can repeat between exercises, so only the mosaic tells two unknown names apart. The name text stays authoritative.
 
 ## Verification
 
@@ -199,8 +124,8 @@ Run at 320px with DOM events, and repeated across reloads and Focus Mode:
 
 ## Known limitations
 
-- **No final artwork:** there is no approved exercise artwork yet. The bench-press schematic is temporary and keeps its light palette in dark mode.
-- **Monogram collisions:** monograms can repeat between exercises, so only the mosaic tells them apart.
+- **Artwork:** TRAINING-UI-01B supplies the pack; its own limitations are documented there.
+- **Monogram collisions:** for a name outside the registry, monograms can repeat between exercises, so only the mosaic tells them apart.
 - **Collapse target:** expand and collapse work only through the 44×44 chevron button; tapping the title or thumbnail does nothing. This keeps collapse and Info as independent controls, without interactive content nested inside a button.
 - **Very long names:** names longer than two lines (three in cards under 300px) end in an ellipsis. The full name stays in the heading text, in the names of the collapse and Info buttons, and in the guidance dialog title.
 - **Hyphenation:** `hyphens: auto` needs the browser's German dictionary. Without it, long words wrap through `overflow-wrap: anywhere`.
