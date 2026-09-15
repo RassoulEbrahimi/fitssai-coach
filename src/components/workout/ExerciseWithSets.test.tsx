@@ -54,13 +54,19 @@ describe("ExerciseWithSets header semantics", () => {
     expect(known?.closest("[aria-hidden='true']")).not.toBeNull();
   });
 
-  it("does not give a similar name the reviewed asset", () => {
+  it("does not give a qualified variant the flat bench asset", () => {
     renderExercise({ exercise: { name: "Bankdrücken schräg Multipresse", sets: 3, reps: 12 } });
-    const surface = document.querySelector("[data-exercise-thumbnail]");
-    expect(surface).not.toBeNull();
-    expect(surface?.querySelector("img")).toBeNull();
-    expect(surface).toHaveTextContent("BSM");
+    const source = document.querySelector("[data-exercise-thumbnail] img")?.getAttribute("src");
+    expect(source).toContain("incline-smith-bench-press.svg");
+    expect(source).not.toContain("/bench-press.svg");
     expect(screen.getByRole("heading", { name: "Bankdrücken schräg Multipresse" })).toBeInTheDocument();
+  });
+
+  it("falls back for a name the registry does not know", () => {
+    renderExercise({ exercise: { name: "Brustpresse Maschine", sets: 3, reps: 12 } });
+    const surface = document.querySelector("[data-exercise-thumbnail]");
+    expect(surface?.querySelector("img")).toBeNull();
+    expect(surface).toHaveTextContent("BM");
   });
 
   it.each(['Bankdrücken schräg Multipresse', 'Trizepsstrecken Kabelzug Kordel', 'Beinpresse 45° Plate Loaded'])(

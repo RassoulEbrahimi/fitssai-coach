@@ -12,14 +12,22 @@ describe('ExerciseThumbnail', () => {
     expect(image).toHaveAttribute('height', '72');
     expect(image).toHaveAttribute('loading', 'lazy');
     expect(image).toHaveAttribute('alt', '');
+    expect(image?.getAttribute('src')).toContain('bench-press.svg');
   });
 
-  it('renders identity-specific graphics for unknown exercises', () => {
-    const { container, rerender } = render(<ExerciseThumbnail name="Trizepsstrecken Kabelzug Kordel" />);
-    expect(container).toHaveTextContent('TKK');
+  it('inverts the light-surface artwork in dark mode instead of shipping a second file', () => {
+    const { container } = render(<ExerciseThumbnail name="Kniebeugen" />);
+    const image = container.querySelector('img');
+    expect(image?.className).toContain('dark:invert');
+    expect(image?.className).toContain('dark:hue-rotate-180');
+  });
+
+  it('renders identity-specific graphics for exercises outside the registry', () => {
+    const { container, rerender } = render(<ExerciseThumbnail name="Brustpresse Maschine" />);
+    expect(container).toHaveTextContent('BM');
     const first = container.innerHTML;
-    rerender(<ExerciseThumbnail name="Beinpresse 45° Plate Loaded" />);
-    expect(container).toHaveTextContent('B4P');
+    rerender(<ExerciseThumbnail name="Seilzug Crunch Kniend" />);
+    expect(container).toHaveTextContent('SCK');
     expect(container.innerHTML).not.toBe(first);
     expect(container.querySelector('img')).toBeNull();
   });
@@ -32,6 +40,6 @@ describe('ExerciseThumbnail', () => {
     expect(container).toHaveTextContent('BA');
     expect(container.querySelector('[data-exercise-thumbnail]')).toBe(surface);
     rerender(<ExerciseThumbnail name="Plank" />);
-    expect(container).toHaveTextContent('PL');
+    expect(container.querySelector('img')?.getAttribute('src')).toContain('plank.svg');
   });
 });
