@@ -115,6 +115,70 @@
 }
 
 /*
+  Session status above the exercise list: state, elapsed time and set count
+  on one line, the session progress under it. Measured widths: Dashboard
+  238-330px and Focus Mode 288-380px across 320-412px viewports, 768px on
+  desktop. The widest content (118px state, 70px "318:32", 74px "26/26
+  Sätze", two 12px gaps) needs 287px.
+*/
+.workout-session-status {
+  container-type: inline-size;
+}
+
+/*
+  Wide screens do not stretch three short facts across the page. The line
+  and the bar end where the exercise progress lines end on a wide card:
+  border, padding, thumbnail, gap and the 28rem identity column.
+*/
+.workout-session-status > * {
+  max-width: calc(1px + 1rem + 72px + 0.75rem + 28rem);
+}
+
+.workout-session-line {
+  display: grid;
+  grid-template-columns: auto auto auto;
+  grid-template-areas: "state time count";
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.125rem 0.75rem;
+}
+
+.workout-session-state {
+  grid-area: state;
+}
+
+.workout-session-duration {
+  grid-area: time;
+}
+
+.workout-session-count {
+  grid-area: count;
+  justify-self: end;
+}
+
+/*
+  From 30rem (tablets and desktop) evenly spread facts would sit 100px and
+  more apart. The time stays beside the state instead, and the count stays
+  above the end of the bar it describes.
+*/
+@container (min-width: 30rem) {
+  .workout-session-line {
+    grid-template-columns: auto auto minmax(0, 1fr);
+    column-gap: 1.25rem;
+  }
+}
+
+/* Under 18rem (the Dashboard at 320px: 238px) the time moves under the state; the count keeps the first row. */
+@container (max-width: 17.99rem) {
+  .workout-session-line {
+    grid-template-columns: auto auto;
+    grid-template-areas:
+      "state count"
+      "time time";
+  }
+}
+
+/*
   Set rows. Measured card widths: Dashboard 238-330px and Focus Mode
   288-380px across 320-412px viewports.
   - 340px and up: one line, "1. Satz  [12] × [50] kg  • 90 s Pause  ○".

@@ -457,6 +457,8 @@
     "uncompleted": "Übung zurückgesetzt",
     "startTraining": "Training starten",
     "trainingInProgress": "Training läuft",
+    "sessionDuration": "Trainingsdauer",
+    "sessionProgress": "Trainingsfortschritt",
     "dailyWorkout": "Tägliches Training",
     "estimatedDuration": "{{mins}} Min",
     "exercisesCount": "{{count}} Übungen",

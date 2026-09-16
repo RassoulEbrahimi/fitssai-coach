@@ -217,6 +217,9 @@ describe("ExerciseWithSets header layout", () => {
 
     expect(metaLine()).toHaveTextContent(`${done}/${sets} Sätze`);
     expect(bar).toHaveAttribute("aria-hidden", "true");
+    // The shared bar now reports its value (TRAINING-UI-04); this one stays out of the tree.
+    expect(bar).toHaveAttribute("data-state", "loading");
+    expect(screen.queryByRole("progressbar")).toBeNull();
     expect((bar.firstElementChild as HTMLElement).style.transform).toBe(transform);
   });
 

@@ -137,6 +137,7 @@ describe('TodayWorkoutCard', () => {
             expect(screen.getByRole('button', { name: /Training beenden/i })).toBeInTheDocument()
         );
         expect(screen.getByText(/Training läuft/i)).toBeInTheDocument();
+        expect(screen.getByRole('progressbar', { name: 'Trainingsfortschritt' })).toHaveAttribute('aria-valuenow', '0');
         expect(screen.queryByRole('button', { name: /Training starten/i })).not.toBeInTheDocument();
     });
 
