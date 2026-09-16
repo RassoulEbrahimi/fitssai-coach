@@ -1,6 +1,6 @@
 import React from "react";
 import { describe, it, expect, vi } from "vitest";
-import { render, screen, within } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import ExerciseWithSets from "./ExerciseWithSets";
 import { SetPerformanceDraftStore } from "@/lib/setPerformanceDrafts";
@@ -45,6 +45,16 @@ const renderExercise = (
 // exercise name is enough to tell it apart from the set rows and Info.
 const header = () => screen.getByRole("button", { name: /^Bankdrücken/ });
 const setRows = () => screen.queryAllByRole("checkbox");
+const headerBlock = () => document.querySelector<HTMLElement>(".workout-exercise-header")!;
+const metaLine = () => headerBlock().querySelector<HTMLElement>(".workout-exercise-meta")!;
+
+// Info sits above collapse in the action column, and comes first in tab order too.
+const tabToCollapse = async (user: ReturnType<typeof userEvent.setup>) => {
+  await user.tab();
+  expect(screen.getByRole("button", { name: "Informationen zu Bankdrücken" })).toHaveFocus();
+  await user.tab();
+  expect(header()).toHaveFocus();
+};
 
 describe("ExerciseWithSets header semantics", () => {
   it("renders a thumbnail surface for every exercise: a local asset when reviewed, a fallback otherwise", () => {
@@ -69,28 +79,58 @@ describe("ExerciseWithSets header semantics", () => {
     expect(surface).toHaveTextContent("BM");
   });
 
-  it.each(['Bankdrücken schräg Multipresse', 'Trizepsstrecken Kabelzug Kordel', 'Beinpresse 45° Plate Loaded'])(
-    'keeps the full name %s beside a decorative thumbnail and independent actions', async (name) => {
-      const user = userEvent.setup();
-      renderExercise({ exercise: { name, sets: 3, reps: 12 } });
-      const title = screen.getByRole('heading', { name });
-      expect(title).toHaveTextContent(name);
-      expect(title.className).not.toContain('truncate');
-      expect(title.parentElement?.querySelector('[data-exercise-thumbnail]')).not.toBeNull();
-      const collapse = screen.getByRole('button', { name: `${name} 0/3 Sätze` });
-      await user.click(collapse);
-      expect(collapse).toHaveAttribute('aria-expanded', 'true');
-      expect(screen.queryByRole('dialog')).toBeNull();
-      await user.click(screen.getByRole('button', { name: `Informationen zu ${name}` }));
-      expect(screen.getByRole('dialog', { name })).toBeVisible();
-      await user.keyboard('{Escape}');
-      expect(collapse).toHaveAttribute('aria-expanded', 'true');
-    });
+  it.each([
+    'Kreuzheben konventionell',
+    'Schrägbankdrücken mit Kurzhanteln',
+    'Bankdrücken schräg Multipresse',
+    'Trizepsstrecken Kabelzug Kordel',
+    'Beinpresse 45° Plate Loaded',
+  ])('keeps the full name %s beside a decorative thumbnail and independent actions', async (name) => {
+    const user = userEvent.setup();
+    renderExercise({ exercise: { name, sets: 3, reps: 12 } });
+    const title = screen.getByRole('heading', { level: 3, name });
+    expect(title).toHaveTextContent(name);
+    expect(title.className).not.toMatch(/\b(truncate|whitespace-nowrap|line-clamp-1|text-ellipsis)\b/);
+    expect(title.closest('.workout-exercise-header')?.querySelector('[data-exercise-thumbnail]')).not.toBeNull();
+    const collapse = screen.getByRole('button', { name: `${name} 0/3 Sätze` });
+    const info = screen.getByRole('button', { name: `Informationen zu ${name}` });
+
+    // Info opens guidance and leaves the card collapsed.
+    await user.click(info);
+    expect(screen.getByRole('dialog', { name })).toBeVisible();
+    await user.keyboard('{Escape}');
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    expect(collapse).toHaveAttribute('aria-expanded', 'false');
+    expect(setRows()).toHaveLength(0);
+
+    // Collapse opens the sets and no dialog.
+    await user.click(collapse);
+    expect(collapse).toHaveAttribute('aria-expanded', 'true');
+    expect(setRows()).toHaveLength(3);
+    expect(screen.queryByRole('dialog')).toBeNull();
+
+    // Info while expanded keeps the card expanded.
+    await user.click(info);
+    expect(screen.getByRole('dialog', { name })).toBeVisible();
+    await user.keyboard('{Escape}');
+    expect(collapse).toHaveAttribute('aria-expanded', 'true');
+  });
 
   it('marks completed exercises with text and a check, as well as colour', () => {
     renderExercise({ getCompletedSetsCount: () => 3, isSetCompleted: () => true });
-    expect(screen.getByText('abgeschlossen')).toBeInTheDocument();
+    expect(screen.getByText('abgeschlossen')).toHaveClass('sr-only');
+    expect(metaLine()).toHaveTextContent('3/3 Sätze');
+    expect(metaLine().querySelector('svg')).not.toBeNull();
+    expect(headerBlock().closest('.workout-exercise-unit')).toHaveAttribute('data-complete');
     expect(header()).toHaveAccessibleName('Bankdrücken 3/3 Sätze');
+  });
+
+  it('does not mark a partly done exercise as completed', () => {
+    renderExercise({ getCompletedSetsCount: () => 2, isSetCompleted: (_exerciseIndex, setNumber) => setNumber < 3 });
+    expect(metaLine()).toHaveTextContent('2/3 Sätze');
+    expect(metaLine().querySelector('svg')).toBeNull();
+    expect(screen.queryByText('abgeschlossen')).toBeNull();
+    expect(headerBlock().closest('.workout-exercise-unit')).not.toHaveAttribute('data-complete');
   });
 
   it("renders the collapse trigger as a native button", () => {
@@ -127,10 +167,120 @@ describe("ExerciseWithSets header semantics", () => {
     const user = userEvent.setup();
     renderExercise();
 
-    await user.tab();
+    await tabToCollapse(user);
 
-    expect(header()).toHaveFocus();
     expect(header().className).toContain("focus-visible:ring-2");
+    expect(screen.getByRole("button", { name: "Informationen zu Bankdrücken" }).className).toContain("focus-visible:ring-2");
+  });
+});
+
+describe("ExerciseWithSets header layout", () => {
+  it("puts the name, sets, rest and progress in one block beside the thumbnail", () => {
+    renderExercise({
+      exercise: { name: "Bankdrücken", sets: 4, reps: 10, weight: "40 kg", rest: "90s" },
+      getCompletedSetsCount: () => 2,
+      isSetCompleted: (_exerciseIndex, setNumber) => setNumber < 3,
+    });
+    const block = headerBlock();
+    const identity = block.querySelector<HTMLElement>(".workout-exercise-identity")!;
+
+    expect(block.querySelector("[data-exercise-thumbnail]")).not.toBeNull();
+    expect(identity).toContainElement(within(block).getByRole("heading", { level: 3, name: "Bankdrücken" }));
+    expect(identity).toContainElement(metaLine());
+    // Two facts on one line: the dot between them is CSS, a comma is spoken.
+    const facts = metaLine().querySelectorAll(".workout-exercise-facts > span");
+    expect(facts).toHaveLength(2);
+    expect(facts[0]).toHaveTextContent(/^2\/4 Sätze$/);
+    expect(facts[1]).toHaveTextContent(/^, 90 s Pause$/);
+    expect(within(metaLine()).getByText(",")).toHaveClass("sr-only");
+    expect(within(metaLine()).getByText("90 s Pause")).toBeInTheDocument();
+    expect(metaLine()).toHaveTextContent("2/4 Sätze, 90 s Pause");
+  });
+
+  it("leaves the rest out of the meta line when none is prescribed", () => {
+    renderExercise({ exercise: { name: "Bankdrücken", sets: 3, reps: 10 } });
+
+    expect(metaLine().querySelectorAll(".workout-exercise-facts > span")).toHaveLength(1);
+    expect(metaLine()).toHaveTextContent(/^0\/3 Sätze$/);
+  });
+
+  it.each([
+    [0, 3, "translateX(-100%)"],
+    [1, 3, "translateX(-67%)"],
+    [2, 4, "translateX(-50%)"],
+  ])("draws %i of %i sets as progress, decoratively beside the stated count", (done, sets, transform) => {
+    renderExercise({
+      exercise: { name: "Bankdrücken", sets, reps: 10, rest: "90s" },
+      getCompletedSetsCount: () => done,
+    });
+    const bar = metaLine().querySelector<HTMLElement>("[role=progressbar]")!;
+
+    expect(metaLine()).toHaveTextContent(`${done}/${sets} Sätze`);
+    expect(bar).toHaveAttribute("aria-hidden", "true");
+    expect((bar.firstElementChild as HTMLElement).style.transform).toBe(transform);
+  });
+
+  it("offers exactly Info and collapse, in that order, and no exercise completion action", () => {
+    renderExercise();
+    const block = headerBlock();
+    const actions = block.querySelector<HTMLElement>(".workout-exercise-actions")!;
+
+    expect(within(actions).getAllByRole("button").map((button) => button.getAttribute("aria-label"))).toEqual([
+      "Informationen zu Bankdrücken",
+      "Bankdrücken 0/3 Sätze",
+    ]);
+    expect(within(block).getAllByRole("button")).toHaveLength(2);
+    expect(within(block).queryAllByRole("checkbox")).toHaveLength(0);
+    for (const button of within(actions).getAllByRole("button")) {
+      expect(button.tagName).toBe("BUTTON");
+      expect(button.className).toMatch(/\bh-11\b/);
+      expect(button.className).toMatch(/\bw-11\b/);
+      expect(within(button).queryAllByRole("button")).toHaveLength(0);
+    }
+  });
+
+  it("keeps the header identical when expanded, apart from the chevron state", async () => {
+    const user = userEvent.setup();
+    renderExercise();
+    const markup = () => {
+      const copy = headerBlock().cloneNode(true) as HTMLElement;
+      const trigger = copy.querySelector(".workout-exercise-toggle")!;
+      trigger.removeAttribute("aria-expanded");
+      trigger.removeAttribute("data-state");
+      return copy.outerHTML;
+    };
+    const collapsed = markup();
+
+    expect(header()).toHaveAttribute("data-state", "closed");
+    expect(header().querySelector("svg")).toHaveClass("workout-exercise-chevron");
+    await user.click(header());
+
+    expect(header()).toHaveAttribute("data-state", "open");
+    expect(markup()).toBe(collapsed);
+  });
+
+  it("renders no set rows or hidden content while collapsed", async () => {
+    const user = userEvent.setup();
+    renderExercise({ exercise: { name: "Bankdrücken", sets: 4, reps: 10, rest: "90s" } });
+    const content = document.getElementById(header().getAttribute("aria-controls")!)!;
+
+    expect(setRows()).toHaveLength(0);
+    expect(content).toBeEmptyDOMElement();
+    expect(content).toHaveAttribute("hidden");
+
+    await user.click(header());
+    expect(setRows()).toHaveLength(4);
+  });
+
+  it("keeps the inline rest timer below the header, collapsed or not", () => {
+    renderExercise({
+      timerState: { ...idleTimerState, status: "running", exerciseIndex: 0, setNumber: 1, remainingSeconds: 60, totalRestSeconds: 90, deadlineMs: 60_000 },
+    });
+    const bar = screen.getByRole("button", { name: "Pause für Satz 1 öffnen" });
+
+    expect(headerBlock()).not.toContainElement(bar);
+    expect(headerBlock().compareDocumentPosition(bar) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(header()).toHaveAttribute("aria-expanded", "false");
   });
 });
 
@@ -159,7 +309,7 @@ describe("ExerciseWithSets activation", () => {
     const user = userEvent.setup();
     renderExercise();
 
-    await user.tab();
+    await tabToCollapse(user);
     await user.keyboard("{Enter}");
 
     expect(header()).toHaveAttribute("aria-expanded", "true");
@@ -170,7 +320,7 @@ describe("ExerciseWithSets activation", () => {
     const user = userEvent.setup();
     renderExercise();
 
-    await user.tab();
+    await tabToCollapse(user);
     await user.keyboard("[Space]");
 
     expect(header()).toHaveAttribute("aria-expanded", "true");
@@ -181,12 +331,11 @@ describe("ExerciseWithSets activation", () => {
     const user = userEvent.setup();
     renderExercise();
 
-    await user.tab();
+    await tabToCollapse(user);
     await user.keyboard("{Enter}");
 
     const firstSet = screen.getByRole("checkbox", { name: /Satz 1/ });
-    await user.tab();
-    expect(screen.getByRole('button', { name: 'Informationen zu Bankdrücken' })).toHaveFocus();
+    // Collapse sits directly before the sets it controls.
     await user.tab();
 
     expect(firstSet).toHaveFocus();
@@ -196,7 +345,7 @@ describe("ExerciseWithSets activation", () => {
     const user = userEvent.setup();
     renderExercise();
 
-    await user.tab();
+    await tabToCollapse(user);
 
     for (const key of ["{Enter}", "[Space]", "{Enter}"] as const) {
       await user.keyboard(key);
@@ -215,7 +364,7 @@ describe("ExerciseWithSets set controls", () => {
     const user = userEvent.setup();
     const { onToggleSet } = renderExercise();
 
-    await user.tab();
+    await tabToCollapse(user);
     await user.keyboard("{Enter}");
     await user.click(screen.getByRole("checkbox", { name: /Satz 1/ }));
 
