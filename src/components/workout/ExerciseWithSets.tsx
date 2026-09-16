@@ -70,6 +70,7 @@ export const ExerciseWithSets: React.FC<ExerciseWithSetsProps> = ({
   const completedCount = getCompletedSetsCount(exerciseIndex);
   const progressPercent = totalSets > 0 ? Math.round((completedCount / totalSets) * 100) : 0;
   const isExerciseComplete = completedCount === totalSets;
+  const restText = formatRestDisplay(exercise.rest, { withLabel: true });
 
   /*
     One view model per planned set: the prescription as written, completion
@@ -104,6 +105,7 @@ export const ExerciseWithSets: React.FC<ExerciseWithSetsProps> = ({
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.2 }}
+        data-complete={isExerciseComplete ? "" : undefined}
         className={cn(
           "workout-exercise-unit rounded-xl border overflow-hidden transition-colors",
           isExerciseComplete
@@ -111,32 +113,45 @@ export const ExerciseWithSets: React.FC<ExerciseWithSetsProps> = ({
             : "border-border bg-background"
         )}
       >
-        {/* Layout per card width lives in workoutPresentation.css. */}
+        {/* One identity block beside the thumbnail. Layout per card width lives in workoutPresentation.css. */}
         <div className="workout-exercise-header p-3 sm:p-4">
           <ExerciseThumbnail name={exercise.name} />
-          <h3 className="workout-exercise-title text-base font-semibold leading-snug sm:text-lg">
-            {exercise.name}
-          </h3>
-          <div className="workout-exercise-meta">
-            <div className="flex flex-wrap items-center gap-x-2 text-xs leading-5 text-muted-foreground">
-              <span className="inline-flex items-center gap-1">
-                {isExerciseComplete && <Check className="h-3.5 w-3.5" aria-hidden="true" />}
-                {completedCount}/{totalSets} Sätze
-                {isExerciseComplete && <span className="sr-only">abgeschlossen</span>}
-              </span>
-              {exercise.rest && <span>{formatRestDisplay(exercise.rest, { withLabel: true })}</span>}
+          <div className="workout-exercise-identity">
+            <h3 className="workout-exercise-title text-base font-semibold leading-snug sm:text-lg">
+              {exercise.name}
+            </h3>
+            <div className="workout-exercise-meta">
+              {/* Each fact brings its own dot; workoutPresentation.css hides it at a line start. */}
+              <p className="workout-exercise-facts text-xs leading-5 text-muted-foreground">
+                <span>
+                  {isExerciseComplete && <Check className="mr-1 inline h-3.5 w-3.5 align-[-3px]" aria-hidden="true" />}
+                  {completedCount}/{totalSets} Sätze
+                  {isExerciseComplete && <span className="sr-only">abgeschlossen</span>}
+                </span>
+                {restText && (
+                  <span>
+                    <span className="sr-only">, </span>
+                    {restText}
+                  </span>
+                )}
+              </p>
+              {/* The count above states the progress; the bar only draws it. */}
+              <Progress value={progressPercent} aria-hidden="true" className="mt-1 h-1 bg-muted/60" />
             </div>
-            <Progress value={progressPercent} className="mt-1 h-1 bg-muted/60" />
           </div>
-          {/* Separate 44px sibling controls; neither takes width from the title. */}
-          <div className="workout-exercise-actions flex items-center">
+          {/*
+            One 44px column: Info above collapse, in the same order for the
+            keyboard, so collapse comes right before the sets it controls.
+            Sibling controls; neither is nested in the other.
+          */}
+          <div className="workout-exercise-actions">
+            <ExerciseGuidanceDialog exerciseName={exercise.name} disabled={isRestSheetOpen} />
             <CollapsibleTrigger
               aria-label={`${exercise.name} ${completedCount}/${totalSets} Sätze`}
-              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
+              className="workout-exercise-toggle flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
             >
-              <ChevronDown aria-hidden="true" className="h-5 w-5 collapsible-chevron" />
+              <ChevronDown aria-hidden="true" className="workout-exercise-chevron h-5 w-5" />
             </CollapsibleTrigger>
-            <ExerciseGuidanceDialog exerciseName={exercise.name} disabled={isRestSheetOpen} />
           </div>
         </div>
 

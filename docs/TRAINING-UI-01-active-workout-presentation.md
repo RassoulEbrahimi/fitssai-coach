@@ -6,6 +6,8 @@ A presentation-only change to the running-workout exercise card. Execution ident
 
 ### Header
 
+> Superseded by [TRAINING-UI-03 — Exercise card header and collapsed state](TRAINING-UI-03-exercise-card-header.md): one header block at every width, with Info above collapse in a single 44px column.
+
 `ExerciseWithSets` renders the markup; `workoutPresentation.css` lays it out by card width with a container query.
 
 Narrow cards (under 420px: every phone width, in the dashboard and in Focus Mode):

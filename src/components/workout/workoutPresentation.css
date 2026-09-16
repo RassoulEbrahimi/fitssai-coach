@@ -4,27 +4,36 @@
 }
 
 /*
-  Mobile cards are 220-365px wide, too narrow for a 72px thumbnail, a readable
-  title and two 44px actions in one row. The title gets the row beside the
-  thumbnail; progress and the actions share the row below.
+  Header: one block at every card width (measured 238-380px on phones, 768px
+  on desktop). Columns:
+  - the thumbnail;
+  - the name with sets, rest and progress below it;
+  - one 44px action column, Info above collapse.
+  The action column's negative margins reach into the column gap and the card
+  padding, where the buttons' own 12px inset already spaces the icons. The
+  88px stack then takes a 72px x 20px track and the icons line up with the
+  padding, so a name of up to two lines keeps the header at the thumbnail's
+  height.
 */
 .workout-exercise-header {
   display: grid;
-  grid-template-columns: 72px minmax(0, 1fr) auto;
-  grid-template-areas:
-    "thumb title title"
-    "meta meta actions";
+  grid-template-columns: 72px minmax(0, 1fr) 20px;
   align-items: center;
   column-gap: 0.75rem;
-  row-gap: 0.5rem;
 }
 
+/* A taller name block keeps the thumbnail at the top, beside the name. */
 .workout-exercise-header > [data-exercise-thumbnail] {
-  grid-area: thumb;
+  align-self: start;
+}
+
+/* Wide cards stay at a readable measure rather than stretching the progress line. */
+.workout-exercise-identity {
+  min-width: 0;
+  max-width: 28rem;
 }
 
 .workout-exercise-title {
-  grid-area: title;
   display: -webkit-box;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
@@ -33,20 +42,75 @@
   overflow-wrap: anywhere;
 }
 
+/*
+  Sets and rest, split by a middle dot. Every fact starts with its dot, and
+  the line begins one dot-width left of the clipped box. A fact that wraps to
+  a new line (a 238px card) hides its dot instead of leading with it.
+*/
 .workout-exercise-meta {
-  grid-area: meta;
-  min-width: 0;
+  overflow: hidden;
+}
+
+.workout-exercise-facts {
+  display: flex;
+  flex-wrap: wrap;
+  margin-left: -1em;
+}
+
+.workout-exercise-facts > *::before {
+  content: "·";
+  content: "·" / "";
+  display: inline-block;
+  width: 1em;
+  text-align: center;
 }
 
 .workout-exercise-actions {
-  grid-area: actions;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  align-self: stretch;
+  width: 2.75rem;
+  margin: -0.5rem -0.75rem;
 }
 
-/* Nested dashboard gutters can leave less than 300px at a 320px viewport.
-   Give names another line here, keeping type and touch targets unchanged. */
+/* The boxes reach the card's clipped edge, so their focus rings are drawn inside them. */
+.workout-exercise-actions > button:focus-visible {
+  --tw-ring-inset: inset;
+  --tw-ring-offset-width: 0px;
+}
+
+.workout-exercise-toggle[data-state="open"] .workout-exercise-chevron {
+  transform: rotate(180deg);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .workout-exercise-chevron {
+    transition: transform 150ms ease-out;
+  }
+}
+
+/* Under 300px (Focus Mode at 320px, Dashboard at 320-375px) names get a third line.
+   Type and touch targets stay unchanged. */
 @container (max-width: 299px) {
   .workout-exercise-title {
     -webkit-line-clamp: 3;
+  }
+}
+
+/*
+  Under 260px (the Dashboard at 320px: a 238px card), a 72px thumbnail beside
+  the action column would leave the name 96px, where long names took four or
+  five lines. A 56px tile gives it 112px, enough for three.
+*/
+@container (max-width: 259px) {
+  .workout-exercise-header {
+    grid-template-columns: 56px minmax(0, 1fr) 20px;
+  }
+
+  .workout-exercise-header > [data-exercise-thumbnail] {
+    width: 56px;
+    height: 56px;
   }
 }
 
@@ -132,24 +196,5 @@ span.workout-set-entry {
 
   .workout-set-toggle {
     grid-area: 2 / 3;
-  }
-}
-
-/* Wide cards (Focus Mode on tablets, desktop): one row, title and meta beside the thumbnail. */
-@container (min-width: 420px) {
-  .workout-exercise-header {
-    grid-template-areas:
-      "thumb title actions"
-      "thumb meta actions";
-    row-gap: 0.25rem;
-  }
-
-  .workout-exercise-title {
-    align-self: end;
-  }
-
-  .workout-exercise-meta {
-    align-self: start;
-    max-width: 28rem;
   }
 }
