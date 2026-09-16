@@ -32,6 +32,7 @@ import ActiveWorkoutSession from "@/components/workout/ActiveWorkoutSession";
 import RestBottomSheet from "@/components/workout/RestBottomSheet";
 import { parseRestTime } from "@/lib/restTimeParser";
 import workoutHeroBg from "@/assets/workout-hero-bg.jpg";
+import "@/components/workout/workoutPresentation.css";
 
 // Helper to get localStorage key for started state
 const getStartedStorageKey = (dateStr: string) => `fitssai.workout_started_${dateStr}`;
@@ -485,15 +486,16 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
         aria-label={isFocusMode ? "Trainings-Fokusmodus" : undefined}
         className={
           isFocusMode
-            ? "fixed inset-0 w-screen h-[100dvh] z-[99999] bg-background m-0 p-0 overflow-y-auto overscroll-contain"
+            ? "workout-focus-layer fixed inset-0 w-screen h-[100dvh] z-[99999] bg-background m-0 p-0 overflow-y-auto overscroll-contain"
             : ""
         }
         style={isFocusMode ? { isolation: 'isolate' } : undefined}
       >
+        {/* workout-card-clip: clips without becoming a scroll container, so the finish bar can stick to the page. */}
         <Card className={
           isFocusMode
             ? "border-0 rounded-none shadow-none min-h-full bg-background pt-[env(safe-area-inset-top)]"
-            : "border-border overflow-hidden shadow-lg"
+            : "border-border workout-card-clip shadow-lg"
         }>
           {/* Hero Header Section */}
           <div className={isFocusMode ? "relative h-32 sm:h-40" : "relative h-48 sm:h-56"}>

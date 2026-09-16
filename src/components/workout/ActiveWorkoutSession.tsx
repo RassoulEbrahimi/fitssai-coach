@@ -74,7 +74,7 @@ export const ActiveWorkoutSession: React.FC<ActiveWorkoutSessionProps> = ({
   const { t } = useTranslation();
 
   return (
-    <div className="mx-auto w-full max-w-3xl">
+    <div className="workout-session mx-auto w-full max-w-3xl">
       {/*
         Session status: state, elapsed time and set count on one line, the
         session progress below. Layout per width lives in workoutPresentation.css.
@@ -105,7 +105,7 @@ export const ActiveWorkoutSession: React.FC<ActiveWorkoutSessionProps> = ({
       </div>
 
       {/* Set-based exercise list */}
-      <div className="space-y-3">
+      <div className="workout-session-list space-y-3">
         {exercises.map((exercise, index) => (
           <ExerciseWithSets
             key={index}
@@ -126,15 +126,22 @@ export const ActiveWorkoutSession: React.FC<ActiveWorkoutSessionProps> = ({
         ))}
       </div>
 
-      {/* Finish Training Button */}
-      <Button
-        onClick={onFinish}
-        variant={progress.isComplete ? "default" : "outline"}
-        className="w-full mt-4 h-12 text-base font-semibold gap-2"
-      >
-        {progress.isComplete && <Check className="w-5 h-5" />}
-        {t('todayWorkout.finishTraining')}
-      </Button>
+      {/*
+        The one finish control, after the list in DOM and tab order. It sticks
+        to the bottom of the scroll area on phones (workoutPresentation.css).
+        It only opens the summary; nothing is saved until that is confirmed.
+        Primary whether or not every set is done: an unfinished workout can be
+        finished too, so completion adds a check and nothing else.
+      */}
+      <div className="workout-finish">
+        <Button
+          onClick={onFinish}
+          className="h-[3.25rem] w-full gap-2 text-base font-semibold"
+        >
+          {progress.isComplete && <Check aria-hidden="true" />}
+          {t('todayWorkout.finishTraining')}
+        </Button>
+      </div>
     </div>
   );
 };

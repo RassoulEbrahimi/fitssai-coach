@@ -1,5 +1,5 @@
 import React from 'react';
-import { act, cleanup, render, screen, waitFor, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -490,4 +490,81 @@ it('records reps and weight from the keyboard inside Focus Mode, without ticking
   expect(focusMode()).not.toBeNull();
   expect(persistSet).not.toHaveBeenCalled();
   expect(localStorage.getItem('fitssai.training.rest:u1')).toBeNull();
+});
+
+/*
+  TRAINING-UI-05: the one finish action rides along with the workout, in and
+  out of Focus Mode, and stays below every layer that opens over it.
+*/
+describe('Finish action across Focus Mode and overlays', () => {
+  // Includes controls Radix has aria-hidden while a dialog is open.
+  const finishControls = () => screen.queryAllByRole('button', { name: /^Training beenden$/, hidden: true });
+  const repsField = () => screen.getByRole('textbox', { name: 'Wiederholungen für Satz 1' });
+
+  it('keeps exactly one finish action, and unsaved drafts, through leaving and re-entering Focus Mode', async () => {
+    const user = await setup();
+    await startTraining(user);
+    expect(finishControls()).toHaveLength(1);
+    expect(focusMode()!.contains(finishControls()[0])).toBe(true);
+    expect(focusMode()).toHaveClass('workout-focus-layer');
+
+    // A typed value that has not been committed yet (no blur, no Enter).
+    fireEvent.change(repsField(), { target: { value: '9' } });
+    fireEvent.click(within(focusMode()!).getByRole('button', { name: 'Vollbild beenden' }));
+    await waitFor(() => expect(focusMode()).toBeNull());
+
+    expect(finishControls()).toHaveLength(1);
+    expect(finishControls()[0].closest('.workout-card-clip')).not.toBeNull();
+    expect(repsField()).toHaveValue('9');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Vollbild' }));
+    await waitFor(() => expect(focusMode()).not.toBeNull());
+
+    expect(finishControls()).toHaveLength(1);
+    expect(focusMode()!.contains(finishControls()[0])).toBe(true);
+    expect(repsField()).toHaveValue('9');
+    expect(persistPerformance).not.toHaveBeenCalled();
+    expect(writes).toHaveLength(0);
+  });
+
+  it('keeps the finish action out of reach while the rest sheet is open', async () => {
+    const user = await setup();
+    await startTraining(user);
+    const session = storedSession();
+
+    // Completing a set starts rest and opens the sheet.
+    await user.click(within(focusMode()!).getByRole('checkbox', { name: /^Satz 1:/ }));
+    const sheet = await screen.findByRole('dialog', { name: 'Pause' });
+
+    // The sheet is modal: the finish action leaves the accessibility tree and takes no pointer input.
+    expect(screen.queryByRole('button', { name: /^Training beenden$/ })).toBeNull();
+    expect(finishControls()).toHaveLength(1);
+    await expect(user.click(finishControls()[0])).rejects.toThrow(/pointer-events/);
+    expect(screen.queryByRole('dialog', { name: 'Training abschließen?' })).toBeNull();
+    expect(sheet).toBeInTheDocument();
+    expect(storedSession()).toBe(session);
+    expect(writes).toHaveLength(0);
+  });
+
+  it('opens the summary above the finish action, which then takes no input and finishes nothing', async () => {
+    const user = await setup();
+    await startTraining(user);
+    const session = storedSession();
+
+    const layer = focusMode()!;
+    await press(user, /^Training beenden/i);
+    const summary = await screen.findByRole('dialog', { name: 'Training abschließen?' });
+
+    expect(screen.queryByRole('button', { name: /^Training beenden$/ })).toBeNull();
+    expect(finishControls()).toHaveLength(1);
+    await expect(user.click(finishControls()[0])).rejects.toThrow(/pointer-events/);
+    expect(screen.getAllByRole('dialog', { name: 'Training abschließen?' })).toEqual([summary]);
+    expect(within(summary).getByRole('button', { name: /Training speichern & beenden/i })).toBeEnabled();
+    // Opening the summary is a review step only.
+    expect(storedSession()).toBe(session);
+    expect(writes).toHaveLength(0);
+    // Focus Mode stays open underneath, with the action still inside it.
+    expect(layer.isConnected).toBe(true);
+    expect(layer.contains(finishControls()[0])).toBe(true);
+  });
 });

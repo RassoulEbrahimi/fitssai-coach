@@ -1,6 +1,8 @@
 import React from "react";
+import { readFileSync } from "fs";
+import { resolve } from "path";
 import { describe, it, expect, vi } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import "@/lib/i18n";
 import ActiveWorkoutSession from "./ActiveWorkoutSession";
 import type { ExecutionProgress } from "@/hooks/useWorkoutExecution";
@@ -9,6 +11,7 @@ import type { ExecutionExercise } from "@/lib/workoutExecution";
 /*
   TRAINING-UI-04: the session status above the exercise list. State, elapsed
   time and set count on one line, and one labelled progress bar under it.
+  TRAINING-UI-05: the finish action after the list, further down.
 */
 
 const idleTimerState = {
@@ -167,5 +170,186 @@ describe("ActiveWorkoutSession status header", () => {
 
     expect(statusBlock().className).not.toMatch(/\b(border|shadow|bg-|rounded|p-\d)/);
     expect(statusBlock().className).toMatch(/\bmb-3\b/);
+  });
+});
+
+/*
+  TRAINING-UI-05: the finish action. One primary control after the exercise
+  list, whatever the progress. It only asks TodayWorkoutCard for the summary;
+  nothing is saved until the summary is confirmed.
+*/
+const finishButton = () => screen.getByRole("button", { name: "Training beenden" });
+const finishArea = () => document.querySelector<HTMLElement>(".workout-finish")!;
+const classes = (element: Element) => element.getAttribute("class")!.split(/\s+/);
+
+describe("ActiveWorkoutSession finish action", () => {
+  it.each([
+    ["no", 0],
+    ["some", 5],
+    ["every", 26],
+  ])("offers exactly one enabled primary finish control with %s set done", (_done, completed) => {
+    renderSession({ progress: progressOf(completed) });
+    const button = finishButton();
+
+    expect(screen.getAllByRole("button", { name: /beenden/ })).toEqual([button]);
+    expect(button).toHaveTextContent(/^Training beenden$/);
+    expect(button).toBeEnabled();
+    expect(button).not.toHaveAttribute("aria-disabled");
+    // The visible text names it; no aria-label on top.
+    expect(button).not.toHaveAttribute("aria-label");
+    expect(classes(button)).toEqual(expect.arrayContaining([
+      "bg-primary", "text-primary-foreground", "w-full", "h-[3.25rem]", "text-base", "font-semibold",
+    ]));
+  });
+
+  it("does not look secondary, disabled or destructive while sets are still open", () => {
+    renderSession({ progress: progressOf(5) });
+    const tokens = classes(finishButton());
+
+    for (const token of ["border", "border-input", "bg-background", "bg-secondary", "opacity-50", "text-muted-foreground"]) {
+      expect(tokens).not.toContain(token);
+    }
+    expect(tokens.some((token) => /^(bg|text|border)-destructive/.test(token))).toBe(false);
+    expect(finishButton().querySelector("svg")).toBeNull();
+  });
+
+  it("adds only a check once every set is done, with the same name and treatment", () => {
+    const view = renderSession({ progress: progressOf(25) });
+    const open = finishButton().getAttribute("class");
+
+    view.rerender(<ActiveWorkoutSession {...props({ progress: progressOf(26) })} />);
+    const button = finishButton();
+    const icon = button.querySelector("svg")!;
+
+    expect(icon).toHaveAttribute("aria-hidden", "true");
+    expect(icon.getAttribute("class")).toMatch(/\blucide-check\b/);
+    expect(button).toHaveTextContent(/^Training beenden$/);
+    expect(button).toHaveAccessibleName("Training beenden");
+    expect(button.getAttribute("class")).toBe(open);
+    expect(button).toBeEnabled();
+  });
+
+  it("asks for the summary once per press and touches nothing else", () => {
+    const onFinish = vi.fn();
+    const onToggleSet = vi.fn();
+    const setSheetOpen = vi.fn();
+    renderSession({
+      onFinish,
+      onToggleSet,
+      rest: { timerState: idleTimerState, isSheetOpen: false, setSheetOpen },
+    });
+
+    fireEvent.click(finishButton());
+
+    expect(onFinish).toHaveBeenCalledTimes(1);
+    expect(onToggleSet).not.toHaveBeenCalled();
+    expect(setSheetOpen).not.toHaveBeenCalled();
+    // Still the running workout: the press itself ends nothing.
+    expect(screen.getByText("Training läuft")).toBeInTheDocument();
+    expect(finishButton()).toBeInTheDocument();
+  });
+
+  it("places the action after the exercise list, as the last control, inside the session", () => {
+    const view = renderSession();
+    const area = finishArea();
+    const session = area.parentElement!;
+    const list = session.querySelector(".workout-session-list")!;
+    const controls = Array.from(session.querySelectorAll<HTMLElement>("button, input, a[href], [tabindex]"))
+      .filter((element) => element.tabIndex >= 0);
+
+    expect(view.container.contains(area)).toBe(true);
+    expect(session).toHaveClass("workout-session");
+    expect(session.lastElementChild).toBe(area);
+    expect(area.previousElementSibling).toBe(list);
+    expect(Array.from(area.children)).toEqual([finishButton()]);
+    expect(controls.at(-1)).toBe(finishButton());
+  });
+
+  it("stays in the page layer: no fixed overlay, no z-index class of its own", () => {
+    renderSession();
+
+    for (const element of [finishArea(), finishButton()]) {
+      const tokens = classes(element);
+      expect(tokens).not.toContain("fixed");
+      expect(tokens).not.toContain("sticky");
+      expect(tokens.some((token) => /^z-/.test(token))).toBe(false);
+    }
+  });
+});
+
+/*
+  Sticky placement is CSS, which jsdom does not lay out. These pin the
+  contract the browser QA measured.
+*/
+const presentationCss = readFileSync(resolve(__dirname, "workoutPresentation.css"), "utf8");
+const cardSource = readFileSync(resolve(__dirname, "..", "TodayWorkoutCard.tsx"), "utf8");
+/** Every declaration block written for exactly this selector. */
+const blocks = (selector: string, source = presentationCss) => {
+  const found: string[] = [];
+  const pattern = new RegExp(`(^|[\\s}])${selector.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s*\\{([^}]*)\\}`, "g");
+  for (const match of source.matchAll(pattern)) found.push(match[2]);
+  return found;
+};
+const mediaBlock = (query: string) => {
+  const start = presentationCss.indexOf(`@media ${query} {`);
+  if (start < 0) return "";
+  let depth = 0;
+  for (let i = presentationCss.indexOf("{", start); i < presentationCss.length; i += 1) {
+    if (presentationCss[i] === "{") depth += 1;
+    if (presentationCss[i] === "}") depth -= 1;
+    if (depth === 0) return presentationCss.slice(start, i + 1);
+  }
+  return "";
+};
+
+describe("finish action placement contract", () => {
+  it("sticks to the scrollport bottom in the page layer, never as a fixed overlay", () => {
+    const [bar] = blocks(".workout-finish");
+
+    expect(bar).toMatch(/position:\s*sticky;/);
+    expect(bar).toMatch(/\bbottom:\s*0;/);
+    expect(bar).toMatch(/z-index:\s*1;/);
+    expect(bar).not.toMatch(/box-shadow|backdrop-filter/);
+    expect(presentationCss).not.toMatch(/position:\s*fixed/);
+  });
+
+  it("clears the bottom navigation on the Dashboard and the home indicator in Focus Mode", () => {
+    const [dashboard] = blocks(".workout-session");
+    const [focus] = blocks(".workout-focus-layer .workout-session");
+    const [bar] = blocks(".workout-finish");
+
+    // The bar covers the navigation reserve below the button without adding it to the layout.
+    expect(bar).toMatch(/padding-bottom:\s*calc\(var\(--workout-finish-pad\) \+ var\(--workout-finish-inset\)\);/);
+    expect(bar).toMatch(/margin-bottom:\s*calc\(-1 \* var\(--workout-finish-inset\)\);/);
+    expect(dashboard).toMatch(/--workout-finish-inset:\s*calc\(var\(--bottom-nav-offset\) \+ env\(safe-area-inset-bottom, 0px\)\);/);
+    expect(dashboard).toMatch(/--workout-finish-surface:\s*var\(--card\);/);
+    expect(focus).toMatch(/--workout-finish-inset:\s*0px;/);
+    expect(focus).toMatch(/--workout-finish-pad:\s*max\(0\.75rem, env\(safe-area-inset-bottom, 0px\)\);/);
+    expect(focus).toMatch(/--workout-finish-surface:\s*var\(--background\);/);
+  });
+
+  it("keeps focused workout controls scrolled clear of the bar", () => {
+    const [margin] = blocks(".workout-session-list :is(button, input)");
+
+    expect(margin).toMatch(/scroll-margin-bottom:\s*calc\(var\(--workout-finish-inset\) \+ var\(--workout-finish-height\)/);
+  });
+
+  it("stays in normal flow on desktop and on short landscape screens", () => {
+    const media = mediaBlock("(min-width: 64rem), (max-height: 29.99rem)");
+    const [bar] = blocks(".workout-finish", media);
+
+    expect(bar).toMatch(/position:\s*static;/);
+    expect(bar).toMatch(/padding-bottom:\s*var\(--workout-finish-pad\);/);
+    expect(bar).toMatch(/margin-bottom:\s*0;/);
+  });
+
+  it("lets the Dashboard card clip without becoming the sticky scroll container", () => {
+    const [clip] = blocks(".workout-card-clip");
+    const dashboardCard = cardSource.match(/: "border-border [^"]*"/)?.[0] ?? "";
+
+    expect(clip).toMatch(/overflow:\s*hidden;\s*overflow:\s*clip;/);
+    expect(dashboardCard).toContain("workout-card-clip");
+    expect(dashboardCard).not.toContain("overflow-hidden");
+    expect(cardSource).toMatch(/"workout-focus-layer fixed inset-0 [^"]*overflow-y-auto/);
   });
 });
