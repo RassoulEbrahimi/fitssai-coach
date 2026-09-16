@@ -150,31 +150,34 @@ export const ExerciseWithSets: React.FC<ExerciseWithSetsProps> = ({
             />
           </div>
         )}
-        {/* Sets list */}
+        {/* Sets list: rows of this exercise, divided rather than carded. */}
         <CollapsibleContent>
-          <div className="px-3 pb-3 space-y-1 sm:px-4 sm:pb-4">
+          <div className="border-t border-border/60 pb-1">
             {/* The previous workout's date, once per exercise rather than on every row. */}
             {showsPrevious && previous && (
-              <p className="text-xs text-muted-foreground">
+              <p className="px-3 pt-2 text-xs text-muted-foreground sm:px-4">
                 Zuletzt am {formatWorkoutDayDate(previous.workoutDay)}
               </p>
             )}
 
-            {sets.map((set) => (
-              <ExerciseSetRow
-                key={set.key}
-                exerciseIndex={exerciseIndex}
-                setNumber={set.setNumber}
-                targetReps={set.prescription.reps}
-                targetWeight={set.prescription.weight}
-                isCompleted={set.completed}
-                isToggling={isToggling}
-                onToggle={() => handleToggleSet(set)}
-                actual={set.actual}
-                performance={performance}
-                previous={set.previous}
-              />
-            ))}
+            <div className="divide-y divide-border/60">
+              {sets.map((set) => (
+                <ExerciseSetRow
+                  key={set.key}
+                  exerciseIndex={exerciseIndex}
+                  setNumber={set.setNumber}
+                  targetReps={set.prescription.reps}
+                  targetWeight={set.prescription.weight}
+                  rest={exercise.rest}
+                  isCompleted={set.completed}
+                  isToggling={isToggling}
+                  onToggle={() => handleToggleSet(set)}
+                  actual={set.actual}
+                  performance={performance}
+                  previous={set.previous}
+                />
+              ))}
+            </div>
           </div>
         </CollapsibleContent>
       </motion.div>

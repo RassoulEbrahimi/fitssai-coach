@@ -29,27 +29,210 @@ const renderWithInputs = (overrides: Partial<React.ComponentProps<typeof Exercis
       {...overrides}
     />
   );
-  const reps = () => screen.getByRole("textbox", { name: "Satz 2: ausgeführte Wiederholungen" });
-  const weight = () => screen.getByRole("textbox", { name: "Satz 2: ausgeführtes Gewicht in kg" });
-  return { drafts, commit, changeDraft, onToggle, reps, weight };
+  const reps = () => screen.getByRole("textbox", { name: "Wiederholungen für Satz 2" });
+  const weight = () => screen.getByRole("textbox", { name: "Gewicht für Satz 2 in kg" });
+  const row = () => screen.getByRole("group", { name: "2. Satz" });
+  return { drafts, commit, changeDraft, onToggle, reps, weight, row };
 };
 
-describe("ExerciseSetRow actual performance entry", () => {
-  it("labels both inputs visibly and accessibly, beside the prescription", () => {
+/** What a sighted user reads: the row's text without screen-reader-only parts. */
+const visibleText = (element: HTMLElement) => {
+  const clone = element.cloneNode(true) as HTMLElement;
+  clone.querySelectorAll(".sr-only").forEach((node) => node.remove());
+  return clone.textContent ?? "";
+};
+
+describe("ExerciseSetRow compact layout", () => {
+  it("reads as one line: set number, reps × kg, rest, completion", () => {
+    const { reps, weight, row } = renderWithInputs({ rest: "90s" });
+
+    expect(row()).toHaveAccessibleName("2. Satz");
+    expect(within(row()).getByText("2. Satz")).toHaveAttribute("id", row().getAttribute("aria-labelledby"));
+    expect(visibleText(row())).toBe("2. Satz×kg• 90 s Pause");
+    expect(screen.getByText("90 s Pause")).toBeInTheDocument();
+    // × and kg sit between and after the fields; the fields' names carry the meaning.
+    const times = screen.getByText("×");
+    expect(times).toHaveAttribute("aria-hidden", "true");
+    expect(times.compareDocumentPosition(reps()) & Node.DOCUMENT_POSITION_PRECEDING).toBeTruthy();
+    expect(times.compareDocumentPosition(weight()) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(weight().nextElementSibling).toHaveTextContent(/^kg$/);
+    expect(weight().nextElementSibling).toHaveAttribute("aria-hidden", "true");
+  });
+
+  it("shows no visible Wdh. field label and no separate Vorgabe line", () => {
+    const { row } = renderWithInputs();
+
+    expect(screen.queryByText("Wdh.")).toBeNull();
+    expect(screen.queryByText(/Vorgabe/)).toBeNull();
+    expect(visibleText(row())).not.toMatch(/Wdh|Vorgabe/);
+  });
+
+  it("keeps strong accessible names for both fields", () => {
     const { reps, weight } = renderWithInputs();
 
     expect(reps()).toHaveAttribute("inputmode", "numeric");
     expect(weight()).toHaveAttribute("inputmode", "decimal");
-    expect(screen.getByText("Wdh.")).toBeInTheDocument();
-    expect(screen.getByText("kg")).toBeInTheDocument();
-    expect(screen.getByText("Vorgabe:")).toBeInTheDocument();
+    expect(reps()).toHaveAccessibleName("Wiederholungen für Satz 2");
+    expect(weight()).toHaveAccessibleName("Gewicht für Satz 2 in kg");
+    expect(reps().className).toContain("h-10");
+    expect(weight().className).toContain("h-10");
+  });
+
+  it("omits the rest when none is prescribed", () => {
+    renderWithInputs({ rest: undefined });
+    expect(screen.queryByText(/Pause/)).toBeNull();
+
+    renderWithInputs({ rest: "0s" });
+    expect(screen.queryByText(/Pause/)).toBeNull();
+  });
+
+  it("adds no line below the row without last time or an error", () => {
+    const { row } = renderWithInputs();
+
+    expect(row().querySelectorAll(".workout-set-detail")).toHaveLength(0);
+    expect(screen.queryByText(/Letztes Mal/)).toBeNull();
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  it("marks a completed row with state, not only a tint", () => {
+    const { row } = renderWithInputs({ isCompleted: true });
+
+    expect(row()).toHaveAttribute("data-completed");
+    expect(screen.getByRole("checkbox")).toHaveAttribute("aria-checked", "true");
+    expect(screen.getByRole("checkbox").querySelector("svg")).not.toBeNull();
+  });
+
+  it("shows the prescription as text when there are no inputs", () => {
+    render(<ExerciseSetRow setNumber={1} targetReps={12} targetWeight="50 kg" rest="60s"
+      isCompleted={false} isToggling={false} onToggle={vi.fn()} />);
+
     expect(screen.getByText("12 × 50 kg")).toBeInTheDocument();
-    // Prescription is not a recorded value.
+    expect(screen.getByText("60 s Pause")).toBeInTheDocument();
+    expect(screen.queryByText(/Vorgabe/)).toBeNull();
+    expect(screen.queryByRole("textbox")).toBeNull();
+  });
+});
+
+describe("ExerciseSetRow prescription placeholders", () => {
+  it("shows the prescribed reps and weight as placeholders, never as values", () => {
+    const { reps, weight } = renderWithInputs();
+
+    expect(reps()).toHaveAttribute("placeholder", "12");
+    expect(weight()).toHaveAttribute("placeholder", "50");
     expect(reps()).toHaveValue("");
     expect(weight()).toHaveValue("");
-    expect(reps().className).toContain("h-11");
-    expect(weight().className).toContain("h-11");
+    expect(reps()).toHaveAttribute("data-empty");
+    expect(weight()).toHaveAttribute("data-empty");
   });
+
+  it("keeps a rep range as the reps placeholder", () => {
+    const { reps, weight } = renderWithInputs({ targetReps: "8–12", targetWeight: "52,5 kg" });
+
+    expect(reps()).toHaveAttribute("placeholder", "8–12");
+    expect(weight()).toHaveAttribute("placeholder", "52,5");
+    expect(screen.queryByText(/Vorgabe/)).toBeNull();
+  });
+
+  it.each([
+    ["no weight", undefined],
+    ["a load in words", "Körpergewicht"],
+    ["0 kg", "0 kg"],
+    ["a load range", "100–120 kg"],
+  ])("gives no weight placeholder for %s", (_label, targetWeight) => {
+    const { weight } = renderWithInputs({ targetWeight });
+
+    expect(weight()).not.toHaveAttribute("placeholder");
+    expect(weight()).toHaveValue("");
+    expect(document.querySelector("input[placeholder='0']")).toBeNull();
+  });
+
+  it("writes out a prescription the placeholders cannot carry", () => {
+    const { reps, row } = renderWithInputs({ targetReps: "30 Sekunden", targetWeight: undefined });
+
+    expect(reps()).not.toHaveAttribute("placeholder");
+    expect(visibleText(row())).toContain("Vorgabe: 30 Sekunden");
+    expect(screen.queryByText(/30 Wdh/)).toBeNull();
+  });
+
+  it("writes out a load in words next to the reps placeholder", () => {
+    const { reps, row } = renderWithInputs({ targetReps: 6, targetWeight: "Körpergewicht" });
+
+    expect(reps()).toHaveAttribute("placeholder", "6");
+    expect(visibleText(row())).toContain("Vorgabe: 6 × Körpergewicht");
+  });
+
+  it("adds no Vorgabe line for a bodyweight exercise with a plain count", () => {
+    const { reps, weight } = renderWithInputs({ targetReps: 15, targetWeight: undefined });
+
+    expect(reps()).toHaveAttribute("placeholder", "15");
+    expect(weight()).not.toHaveAttribute("placeholder");
+    expect(screen.queryByText(/Vorgabe/)).toBeNull();
+  });
+
+  it("never turns the placeholder into a draft or a commit payload", async () => {
+    const user = userEvent.setup();
+    const { reps, weight, drafts, changeDraft, commit, onToggle } = renderWithInputs();
+
+    await user.click(reps());
+    await user.tab();
+    await user.keyboard("{Enter}");
+    await user.tab();
+
+    // Blur and Enter only ask the owner to commit whatever the draft holds - here nothing.
+    expect(commit).toHaveBeenCalled();
+    expect(changeDraft).not.toHaveBeenCalled();
+    expect(drafts.keys()).toEqual([]);
+    expect(reps()).toHaveValue("");
+    expect(weight()).toHaveValue("");
+    expect(onToggle).not.toHaveBeenCalled();
+  });
+
+  it("completes without copying the placeholder", async () => {
+    const user = userEvent.setup();
+    const { drafts, changeDraft, onToggle, reps } = renderWithInputs();
+
+    await user.click(screen.getByRole("checkbox"));
+
+    expect(onToggle).toHaveBeenCalledTimes(1);
+    expect(changeDraft).not.toHaveBeenCalled();
+    expect(drafts.keys()).toEqual([]);
+    expect(reps()).toHaveValue("");
+  });
+
+  it("shows recorded values instead of the placeholder look", () => {
+    const { reps, weight } = renderWithInputs({ actual: { reps: 10, weightKg: 52.5 } });
+
+    expect(reps()).toHaveValue("10");
+    expect(weight()).toHaveValue("52,5");
+    expect(reps()).not.toHaveAttribute("data-empty");
+    expect(weight()).not.toHaveAttribute("data-empty");
+    expect(reps().className).toContain("font-semibold");
+    expect(reps().className).toContain("placeholder:font-normal");
+  });
+
+  it("shows a draft over the recorded value", () => {
+    const { drafts, reps, weight } = renderWithInputs({ actual: { reps: 10, weightKg: 52.5 } });
+
+    act(() => drafts.set("1:2", { reps: "7", weight: "" }));
+
+    expect(reps()).toHaveValue("7");
+    // A cleared draft shows empty - with the hint - rather than the recorded value.
+    expect(weight()).toHaveValue("");
+    expect(weight()).toHaveAttribute("data-empty");
+  });
+
+  it("accepts a decimal comma as typed", async () => {
+    const user = userEvent.setup();
+    const { weight, changeDraft } = renderWithInputs();
+
+    await user.type(weight(), "52,5");
+
+    expect(weight()).toHaveValue("52,5");
+    expect(changeDraft).toHaveBeenLastCalledWith(1, 2, "weight", "52,5");
+  });
+});
+
+describe("ExerciseSetRow actual performance entry", () => {
 
   it("keeps the inputs outside the completion control", () => {
     renderWithInputs();
@@ -174,12 +357,28 @@ describe("ExerciseSetRow previous performance reference", () => {
   it("shows reps and weight from last time as a labelled reference, not as today's values", () => {
     const { reference, copy } = renderWithPrevious({ reps: 10, weightKg: 52.5 });
 
-    expect(reference()).toHaveTextContent(/^Letztes Mal: 10 Wdh\. · 52,5 kg$/);
+    // Shown compactly, spoken with units.
+    expect(visibleText(reference())).toBe("Letztes Mal: 10 × 52,5 kg");
+    expect(within(reference()).getByText("10 × 52,5 kg")).toHaveAttribute("aria-hidden", "true");
+    expect(within(reference()).getByText("10 Wdh. · 52,5 kg")).toHaveClass("sr-only");
     expect(copy()).toHaveAccessibleName("Übernehmen für Satz 2: Letztes Mal 10 Wdh. · 52,5 kg");
     expect(copy()).toHaveTextContent(/^Übernehmen$/);
-    expect(screen.getByText("8–12 × 50 kg")).toBeInTheDocument();
-    expect(screen.getByRole("textbox", { name: "Satz 2: ausgeführte Wiederholungen" })).toHaveValue("");
-    expect(screen.getByRole("textbox", { name: "Satz 2: ausgeführtes Gewicht in kg" })).toHaveValue("");
+    // Today's fields keep today's prescription as their hint, not last time's values.
+    expect(screen.getByRole("textbox", { name: "Wiederholungen für Satz 2" })).toHaveValue("");
+    expect(screen.getByRole("textbox", { name: "Wiederholungen für Satz 2" })).toHaveAttribute("placeholder", "8–12");
+    expect(screen.getByRole("textbox", { name: "Gewicht für Satz 2 in kg" })).toHaveValue("");
+    expect(screen.getByRole("textbox", { name: "Gewicht für Satz 2 in kg" })).toHaveAttribute("placeholder", "50");
+  });
+
+  it("keeps the reference to one secondary line below today's row", () => {
+    renderWithPrevious({ reps: 10, weightKg: 52.5 });
+    const group = screen.getByRole("group", { name: "2. Satz" });
+    const details = group.querySelectorAll(".workout-set-detail");
+
+    expect(details).toHaveLength(1);
+    expect(details[0]).toHaveTextContent("Letztes Mal:");
+    expect(within(details[0] as HTMLElement).getByRole("button", { name: /^Übernehmen/ })).toBeInTheDocument();
+    expect(within(details[0] as HTMLElement).queryByRole("textbox")).toBeNull();
   });
 
   it("names only the reps when only reps were recorded", () => {
@@ -243,9 +442,9 @@ describe("ExerciseSetRow previous performance reference", () => {
     const { copy, copyPrevious, onToggle } = renderWithPrevious({ reps: 10, weightKg: 52.5 });
 
     await user.tab();
-    expect(screen.getByRole("textbox", { name: "Satz 2: ausgeführte Wiederholungen" })).toHaveFocus();
+    expect(screen.getByRole("textbox", { name: "Wiederholungen für Satz 2" })).toHaveFocus();
     await user.tab();
-    expect(screen.getByRole("textbox", { name: "Satz 2: ausgeführtes Gewicht in kg" })).toHaveFocus();
+    expect(screen.getByRole("textbox", { name: "Gewicht für Satz 2 in kg" })).toHaveFocus();
     await user.tab();
     expect(copy()).toHaveFocus();
     await user.keyboard("{Enter}");
@@ -259,13 +458,15 @@ describe("ExerciseSetRow previous performance reference", () => {
   it("keeps a real 44px touch target without enlarging the row", () => {
     const { copy } = renderWithPrevious({ reps: 10, weightKg: 52.5 });
 
-    // jsdom does not lay out. The button's own box is 44px with -6px margins,
-    // so it occupies a 32px line; Chromium does not hit-test a pseudo-element
-    // outside a button, so the hit area has to be the button itself.
+    // jsdom does not lay out. The button's own box is 44px with -8px margins,
+    // so it occupies a 28px line, and the line's 8px top margin keeps the box
+    // clear of the inputs; Chromium does not hit-test a pseudo-element outside
+    // a button, so the hit area has to be the button itself.
     expect(copy().className).toContain("h-11");
-    expect(copy().className).toContain("-my-1.5");
+    expect(copy().className).toContain("-my-2");
+    expect(copy().parentElement?.className).toContain("mt-2");
     const face = copy().querySelector("[data-copy-face]");
-    expect(face?.className).toContain("h-8");
+    expect(face?.className).toContain("h-7");
     expect(face?.className).toContain("group-focus-visible:ring-2");
     expect(copy()).toHaveTextContent("Übernehmen");
   });

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  formatPerformancePair,
   formatRecordedSet,
   formatWeightKg,
   formatWeightNumber,
@@ -64,5 +65,13 @@ describe("German kilogram formatting", () => {
     expect(formatRecordedSet({ setNumber: 2, reps: 8, weightKg: null, completed: true })).toBe("Satz 2 · 8 Wdh.");
     expect(formatRecordedSet({ setNumber: 3, reps: null, weightKg: 55, completed: true })).toBe("Satz 3 · 55 kg");
     expect(formatRecordedSet({ setNumber: 4, reps: 0, weightKg: null, completed: false })).toBe("Satz 4 · 0 Wdh. · offen");
+  });
+
+  it("pairs reps and weight compactly, and names a single value", () => {
+    expect(formatPerformancePair({ reps: 10, weightKg: 52.5 })).toBe("10 × 52,5 kg");
+    expect(formatPerformancePair({ reps: 0, weightKg: 20 })).toBe("0 × 20 kg");
+    expect(formatPerformancePair({ reps: 8, weightKg: null })).toBe("8 Wdh.");
+    expect(formatPerformancePair({ reps: null, weightKg: 50 })).toBe("50 kg");
+    expect(formatPerformancePair({ reps: null, weightKg: null })).toBe("");
   });
 });
