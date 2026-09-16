@@ -142,8 +142,8 @@ const startFromCard = async () => {
 };
 
 /* Only Bankdrücken is expanded, so these names are unique on screen. */
-const reps = (set: number) => screen.getByRole('textbox', { name: `Satz ${set}: ausgeführte Wiederholungen` });
-const weight = (set: number) => screen.getByRole('textbox', { name: `Satz ${set}: ausgeführtes Gewicht in kg` });
+const reps = (set: number) => screen.getByRole('textbox', { name: `Wiederholungen für Satz ${set}` });
+const weight = (set: number) => screen.getByRole('textbox', { name: `Gewicht für Satz ${set} in kg` });
 const checkbox = (set: number) => screen.getByRole('checkbox', { name: new RegExp(`Satz ${set}: Vorgabe 8–12 Wiederholungen`) });
 const copyName = (set: number) => new RegExp(`^Übernehmen für Satz ${set}:`);
 const copyButton = (set: number) => screen.getByRole('button', { name: copyName(set) });
@@ -483,7 +483,7 @@ describe('Übernehmen', () => {
     expect(weight(1)).toHaveValue('52,5');
 
     fireEvent.click(screen.getByRole('button', { name: /^Bankdrücken/ }));
-    expect(screen.queryByRole('textbox', { name: 'Satz 1: ausgeführte Wiederholungen' })).toBeNull();
+    expect(screen.queryByRole('textbox', { name: 'Wiederholungen für Satz 1' })).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: /^Bankdrücken/ }));
 
     expect(reps(1)).toHaveValue('10');

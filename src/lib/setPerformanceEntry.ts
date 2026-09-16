@@ -65,6 +65,15 @@ export const formatPerformanceValues = (values: { reps: number | null; weightKg:
   ].filter((part): part is string => part !== null).join(" · ");
 
 /**
+ * `10 × 52,5 kg`, the compact form shown beside a set's inputs. With only one
+ * value recorded it falls back to `formatPerformanceValues`, which names it.
+ */
+export const formatPerformancePair = (values: { reps: number | null; weightKg: number | null }): string =>
+  values.reps !== null && values.weightKg !== null
+    ? `${values.reps} × ${formatWeightKg(values.weightKg)}`
+    : formatPerformanceValues(values);
+
+/**
  * `Satz 1 · 10 Wdh. · 52,5 kg`, naming only what was recorded. A set that was
  * recorded but not ticked says so, rather than passing for a completed one.
  */

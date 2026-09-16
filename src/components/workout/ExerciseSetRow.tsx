@@ -3,8 +3,9 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Check, History } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Input } from "@/components/ui/input";
-import { formatSetTarget } from "@/lib/setPrescription";
-import { formatPerformanceValues, formatWeightNumber } from "@/lib/setPerformanceEntry";
+import { formatRestDisplay } from "@/lib/restTimeParser";
+import { formatSetTarget, formatSetTargetPlaceholders } from "@/lib/setPrescription";
+import { formatPerformancePair, formatPerformanceValues, formatWeightNumber } from "@/lib/setPerformanceEntry";
 import {
   setPerformanceFieldId,
   setPerformanceKey,
@@ -20,6 +21,8 @@ interface ExerciseSetRowProps {
   /** The prescription as written in the plan, e.g. 10, "8–12", "30 Sekunden". */
   targetReps?: number | string;
   targetWeight?: string;
+  /** The prescribed rest as written in the plan. Shown only; the timer does not read it here. */
+  rest?: string;
   isCompleted: boolean;
   isToggling: boolean;
   onToggle: () => void;
@@ -32,25 +35,28 @@ interface ExerciseSetRowProps {
 }
 
 const FIELDS: readonly SetPerformanceField[] = ["reps", "weight"];
-const FIELD_LABELS: Record<SetPerformanceField, { visible: string; spoken: string }> = {
-  reps: { visible: "Wdh.", spoken: "ausgeführte Wiederholungen" },
-  weight: { visible: "kg", spoken: "ausgeführtes Gewicht in kg" },
-};
+const fieldLabel = (field: SetPerformanceField, setNumber: number): string =>
+  field === "reps" ? `Wiederholungen für Satz ${setNumber}` : `Gewicht für Satz ${setNumber} in kg`;
 
 const noSubscription = () => () => {};
 const noDraft = (): SetPerformanceDraft | undefined => undefined;
 
 /*
-  One planned set: its number and prescription, the actual reps and weight the
-  user records, and completion. The three are separate controls - the inputs
-  never sit inside the completion control, typing never ticks the set, and
-  ticking never copies the prescription into the inputs.
+  One planned set in a single compact row: its number, today's reps × kg, the
+  prescribed rest and completion. Placement per card width lives in
+  workoutPresentation.css.
+
+  Prescription, actual performance and completion stay separate. The plan's
+  target appears only as input placeholders (or written out when it is not a
+  plain number), never as a value; the inputs never sit inside the completion
+  control, typing never ticks the set, and ticking never copies anything.
 */
 export const ExerciseSetRow: React.FC<ExerciseSetRowProps> = ({
   exerciseIndex = 0,
   setNumber,
   targetReps,
   targetWeight,
+  rest,
   isCompleted,
   isToggling,
   onToggle,
@@ -60,8 +66,11 @@ export const ExerciseSetRow: React.FC<ExerciseSetRowProps> = ({
 }) => {
   // The plan's target, shown as written.
   const target = formatSetTarget(targetReps, targetWeight);
+  const hints = formatSetTargetPlaceholders(targetReps, targetWeight);
+  const restText = formatRestDisplay(rest, { withLabel: true });
   // Names only what was recorded last time; empty hides the reference entirely.
   const previousText = previous ? formatPerformanceValues(previous) : "";
+  const previousPair = previous ? formatPerformancePair(previous) : "";
   const key = setPerformanceKey(exerciseIndex, setNumber);
   const draft = useSyncExternalStore(
     performance?.drafts.subscribe ?? noSubscription,
@@ -80,6 +89,7 @@ export const ExerciseSetRow: React.FC<ExerciseSetRowProps> = ({
       errorId: `${id}-error`,
       value: (name === "reps" ? draft?.reps : draft?.weight) ?? recorded,
       error: name === "reps" ? draft?.repsError : draft?.weightError,
+      hint: name === "reps" ? hints.reps : hints.weight,
     };
   });
 
@@ -92,114 +102,135 @@ export const ExerciseSetRow: React.FC<ExerciseSetRowProps> = ({
       transition={{ duration: 0.15, delay: setNumber * 0.05 }}
       role="group"
       aria-labelledby={titleId}
+      data-completed={isCompleted ? "" : undefined}
+      // A row of the exercise, not a card: a flat band, tinted once completed.
       className={cn(
-        "rounded-lg px-2.5 py-2 transition-colors duration-150",
-        isCompleted
-          ? "bg-primary/10"
-          : "bg-muted/25"
+        "workout-set-row py-1 pl-3 transition-colors duration-150 sm:pl-4",
+        isCompleted && "bg-primary/[0.06]"
       )}
     >
-      {/* Capped width keeps completion beside the inputs on wide cards. */}
-      <div className="grid max-w-md grid-cols-[minmax(0,1fr)_44px] items-end gap-x-2">
-        <div className="contents">
-          <p className="col-span-2 flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-0.5">
-            <span
-              id={titleId}
-              className="text-sm font-semibold text-foreground"
-            >
-              {setNumber}. Satz
-            </span>
-            {target.visual && (
-              <span className="min-w-0 break-words text-xs text-muted-foreground">
-                <span>Vorgabe: </span>
-                <span className="font-medium text-foreground">{target.visual}</span>
-              </span>
-            )}
-          </p>
+      <div className="workout-set-grid">
+        <span id={titleId} className="workout-set-title text-sm font-semibold tabular-nums text-foreground">
+          {setNumber}. Satz
+        </span>
 
-          {performance && (
-            <>
-              <div className="col-start-1 row-start-2 mt-1 flex min-w-0 items-end gap-2">
-                {fields.map((field) => (
-                  <div key={field.name} className="flex min-w-0 flex-col">
-                    <label htmlFor={field.id} className="text-xs font-medium leading-5 text-muted-foreground">
-                      <span aria-hidden="true">{FIELD_LABELS[field.name].visible}</span>
-                      <span className="sr-only">{`Satz ${setNumber}: ${FIELD_LABELS[field.name].spoken}`}</span>
-                    </label>
-                    <Input
-                      id={field.id}
-                      type="text"
-                      inputMode={field.name === "reps" ? "numeric" : "decimal"}
-                      enterKeyHint="done"
-                      autoComplete="off"
-                      spellCheck={false}
-                      value={field.value}
-                      aria-invalid={field.error ? true : undefined}
-                      aria-describedby={field.error ? field.errorId : undefined}
-                      onChange={(event) => performance.changeDraft(exerciseIndex, setNumber, field.name, event.target.value)}
-                      onBlur={() => performance.commit(exerciseIndex, setNumber)}
-                      onKeyDown={(event) => {
-                        if (event.key !== "Enter") return;
-                        event.preventDefault();
-                        performance.commit(exerciseIndex, setNumber);
-                      }}
-                      className={cn(
-                        "h-11 bg-background px-2 text-center text-base tabular-nums",
-                        field.name === "reps" ? "w-14 min-w-11 max-w-full" : "w-[4.5rem] min-w-11 max-w-full",
-                        field.error && "border-destructive focus-visible:ring-destructive"
-                      )}
-                    />
-                  </div>
-                ))}
-              </div>
-              {fields.map((field) => field.error && (
-                <p key={field.name} id={field.errorId} role="alert" className="col-span-2 mt-1 text-xs text-destructive">
-                  {field.error}
-                </p>
-              ))}
-              {/*
-                Last time, below today's inputs: a labelled reference, never
-                shown inside them. Copying is a separate explicit control that
-                fills empty drafts and does nothing else.
-              */}
-              {previousText && (
-                <div className="col-span-2 mt-1.5 flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
-                  {/* Labelled like the prescription: a muted label, readable values. */}
-                  <p className="flex min-w-0 items-center gap-1 text-xs text-muted-foreground">
-                    <History className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-                    <span className="min-w-0 break-words">
-                      <span className="font-medium">Letztes Mal:</span>{" "}
-                      <span className="text-foreground">{previousText}</span>
-                    </span>
-                  </p>
-                  {performance.copyPrevious && (
-                    <button
-                      type="button"
-                      aria-label={`Übernehmen für Satz ${setNumber}: Letztes Mal ${previousText}`}
-                      onClick={() => performance.copyPrevious?.(exerciseIndex, setNumber)}
-                      // A real 44px hit box; negative margins keep the row at the 32px face.
-                      // Chromium does not hit-test ::after or children outside a button's box.
-                      className="group -my-1.5 inline-flex h-11 shrink-0 items-center rounded-md focus-visible:outline-none"
-                    >
-                      <span
-                        data-copy-face
-                        className={cn(
-                          "inline-flex h-8 items-center rounded-md border border-input bg-background px-2.5",
-                          "text-xs font-medium text-foreground transition-colors group-hover:bg-muted",
-                          "group-focus-visible:ring-2 group-focus-visible:ring-primary group-focus-visible:ring-offset-2"
-                        )}
-                      >
-                        Übernehmen
-                      </span>
-                    </button>
+        <div className="workout-set-body">
+          {performance ? (
+            <div className="workout-set-entry flex h-11 items-center">
+              {fields.map((field) => (
+                <React.Fragment key={field.name}>
+                  {field.name === "weight" && (
+                    <span aria-hidden="true" className="mx-0.5 text-base text-muted-foreground">×</span>
                   )}
-                </div>
-              )}
-            </>
+                  <label htmlFor={field.id} className="sr-only">{fieldLabel(field.name, setNumber)}</label>
+                  <Input
+                    id={field.id}
+                    type="text"
+                    inputMode={field.name === "reps" ? "numeric" : "decimal"}
+                    enterKeyHint="done"
+                    autoComplete="off"
+                    spellCheck={false}
+                    value={field.value}
+                    // The prescription as a hint only; it is never the value.
+                    placeholder={field.hint}
+                    data-empty={field.value === "" ? "" : undefined}
+                    aria-invalid={field.error ? true : undefined}
+                    aria-describedby={field.error ? field.errorId : undefined}
+                    onChange={(event) => performance.changeDraft(exerciseIndex, setNumber, field.name, event.target.value)}
+                    onBlur={() => performance.commit(exerciseIndex, setNumber)}
+                    onKeyDown={(event) => {
+                      if (event.key !== "Enter") return;
+                      event.preventDefault();
+                      performance.commit(exerciseIndex, setNumber);
+                    }}
+                    className={cn(
+                      "h-10 shrink-0 px-1 text-center text-base font-semibold tabular-nums md:text-base",
+                      // Hints read lighter than recorded values, and an empty field is dashed.
+                      "placeholder:text-sm placeholder:font-normal data-[empty]:border-dashed",
+                      field.name === "reps" ? "w-12" : "w-[3.75rem]",
+                      field.error && "border-destructive focus-visible:ring-destructive"
+                    )}
+                  />
+                </React.Fragment>
+              ))}
+              <span aria-hidden="true" className="ml-1 text-sm text-muted-foreground">kg</span>
+            </div>
+          ) : (
+            target.visual && (
+              <span className="workout-set-entry text-sm font-medium text-foreground">{target.visual}</span>
+            )
+          )}
+          {restText && (
+            <span className="workout-set-rest whitespace-nowrap text-xs leading-4 text-muted-foreground">
+              <span aria-hidden="true">• </span>{restText}
+            </span>
           )}
         </div>
 
-        {/* Completion: its own control, with a check shape as well as colour. */}
+        {performance && (
+          <>
+            {fields.map((field) => field.error && (
+              <p key={field.name} id={field.errorId} role="alert" className="workout-set-detail pb-1 text-xs text-destructive">
+                {field.error}
+              </p>
+            ))}
+            {/* A prescription the hints cannot carry (a time, AMRAP, a load in words) is written out. */}
+            {!hints.complete && target.visual && (
+              <p className="workout-set-detail pb-1 text-xs text-muted-foreground">
+                <span className="font-medium">Vorgabe:</span>{" "}
+                <span className="text-foreground">{target.visual}</span>
+              </p>
+            )}
+            {/*
+              Last time, below today's inputs: a labelled reference, never
+              shown inside them. Copying is a separate explicit control that
+              fills empty drafts and does nothing else.
+            */}
+            {previousText && (
+              <div className="workout-set-detail mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 pb-0.5">
+                <p className="flex min-w-0 items-center gap-1 text-xs text-muted-foreground">
+                  <History className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                  <span className="min-w-0 break-words">
+                    <span className="font-medium">Letztes Mal:</span>{" "}
+                    {previousPair === previousText ? (
+                      <span className="text-foreground">{previousText}</span>
+                    ) : (
+                      <>
+                        {/* Spoken with units; shown as the compact pair. */}
+                        <span className="sr-only">{previousText}</span>
+                        <span aria-hidden="true" className="text-foreground">{previousPair}</span>
+                      </>
+                    )}
+                  </span>
+                </p>
+                {performance.copyPrevious && (
+                  <button
+                    type="button"
+                    aria-label={`Übernehmen für Satz ${setNumber}: Letztes Mal ${previousText}`}
+                    onClick={() => performance.copyPrevious?.(exerciseIndex, setNumber)}
+                    // A real 44px hit box; negative margins keep the line at the 28px face,
+                    // and the line's top margin keeps the box clear of the inputs above.
+                    // Chromium does not hit-test ::after or children outside a button's box.
+                    className="group -my-2 inline-flex h-11 shrink-0 items-center rounded-md focus-visible:outline-none"
+                  >
+                    <span
+                      data-copy-face
+                      className={cn(
+                        "inline-flex h-7 items-center rounded-md border border-input bg-background px-2",
+                        "text-xs font-medium text-foreground transition-colors group-hover:bg-muted",
+                        "group-focus-visible:ring-2 group-focus-visible:ring-primary group-focus-visible:ring-offset-2"
+                      )}
+                    >
+                      Übernehmen
+                    </span>
+                  </button>
+                )}
+              </div>
+            )}
+          </>
+        )}
+
+        {/* Completion: its own control, with a check shape as well as colour. Last in tab order. */}
         <button
           type="button"
           role="checkbox"
@@ -208,7 +239,7 @@ export const ExerciseSetRow: React.FC<ExerciseSetRowProps> = ({
           onClick={onToggle}
           className={cn(
             // 44px minimum touch target.
-            "col-start-2 row-start-2 flex h-11 w-11 min-h-[44px] min-w-[44px] shrink-0 items-center justify-center rounded-full transition-transform",
+            "workout-set-toggle flex h-11 w-11 min-h-[44px] min-w-[44px] shrink-0 items-center justify-center rounded-full transition-transform",
             "hover:bg-muted/60 active:scale-95",
             "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2",
             isToggling && "opacity-60 pointer-events-none"

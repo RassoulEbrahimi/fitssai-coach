@@ -554,8 +554,8 @@ describe('active rest loop in the session-bound card', () => {
 describe('recorded set performance in the session-bound card (TRAINING-EXEC-02A)', () => {
   const restKey = 'fitssai.training.rest:u1';
   const savedRest = () => JSON.parse(localStorage.getItem(restKey) ?? 'null');
-  const reps = (set: number) => screen.getByRole('textbox', { name: `Satz ${set}: ausgeführte Wiederholungen` });
-  const weight = (set: number) => screen.getByRole('textbox', { name: `Satz ${set}: ausgeführtes Gewicht in kg` });
+  const reps = (set: number) => screen.getByRole('textbox', { name: `Wiederholungen für Satz ${set}` });
+  const weight = (set: number) => screen.getByRole('textbox', { name: `Gewicht für Satz ${set} in kg` });
   const checkbox = (set: number) => screen.getByRole('checkbox', { name: new RegExp(`Satz ${set}: Vorgabe 8 Wiederholungen`) });
   const closeRest = () => fireEvent.click(screen.getByRole('button', { name: 'Pause schließen' }));
   /** Type a value and leave the field, the way a user does. */
@@ -594,6 +594,31 @@ describe('recorded set performance in the session-bound card (TRAINING-EXEC-02A)
     expect(weight(1)).toHaveValue('52,5');
     expect(checkbox(1)).toHaveAttribute('aria-checked', 'false');
     expect(within(running()).getByText('0/5 Sätze')).toBeInTheDocument();
+  });
+
+  it('never records the prescription shown as a placeholder, on blur, Enter or completion (TRAINING-UI-02)', async () => {
+    render(card(MONDAY));
+    await startFromCard();
+
+    expect(reps(1)).toHaveAttribute('placeholder', '8');
+    expect(reps(1)).toHaveValue('');
+    // Leaving and confirming an untouched field saves nothing.
+    fireEvent.focus(reps(1));
+    fireEvent.blur(reps(1));
+    fireEvent.keyDown(reps(1), { key: 'Enter' });
+    fireEvent.blur(weight(1));
+    expect(writes).toHaveLength(0);
+
+    // Completing the set records completion only and starts rest once.
+    fireEvent.click(checkbox(1));
+    expect(screen.getAllByRole('dialog', { name: 'Pause' })).toHaveLength(1);
+    await waitFor(() => expect(setLogs()).toEqual([
+      { setNumber: 1, completed: true, completedAt: expect.anything(), performanceSource: 'completion-only' },
+    ]));
+    closeRest();
+    expect(reps(1)).toHaveValue('');
+    expect(reps(1)).toHaveAttribute('placeholder', '8');
+    expect(checkbox(1)).toHaveAttribute('aria-checked', 'true');
   });
 
   it('writes and reads recorded values on Monday while the calendar shows other days', async () => {

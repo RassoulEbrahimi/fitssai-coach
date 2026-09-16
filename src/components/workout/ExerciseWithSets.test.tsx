@@ -264,6 +264,23 @@ describe("ExerciseWithSets set controls", () => {
     expect(screen.getByRole("checkbox", { name: /Satz 1: Vorgabe 8–12 Wiederholungen mit 60 kg/ })).toBeInTheDocument();
   });
 
+  it("shows the prescribed rest on every set row as well as in the header", () => {
+    renderExercise({
+      defaultExpanded: true,
+      exercise: { name: "Bankdrücken", sets: 3, reps: 10, weight: "40 kg", rest: "90s" },
+      performance: { drafts: new SetPerformanceDraftStore(), changeDraft: vi.fn(), commit: vi.fn(() => "unchanged" as const) },
+    });
+
+    // Once in the header, once per row.
+    expect(screen.getAllByText("90 s Pause")).toHaveLength(4);
+    for (const setNumber of [1, 2, 3]) {
+      const row = screen.getByRole("group", { name: `${setNumber}. Satz` });
+      expect(within(row).getByText("90 s Pause")).toBeInTheDocument();
+      expect(within(row).getByRole("textbox", { name: `Wiederholungen für Satz ${setNumber}` })).toHaveAttribute("placeholder", "10");
+      expect(within(row).getByRole("textbox", { name: `Gewicht für Satz ${setNumber} in kg` })).toHaveAttribute("placeholder", "40");
+    }
+  });
+
   it("does not turn a time prescription into a rep count", () => {
     renderExercise({
       defaultExpanded: true,

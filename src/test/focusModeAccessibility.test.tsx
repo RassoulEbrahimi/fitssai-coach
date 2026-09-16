@@ -395,8 +395,8 @@ it('keeps a copied previous value as an unsaved draft through leaving and re-ent
   const user = await setup();
   await startTraining(user);
   persistPerformance.mockReset().mockResolvedValue({ success: true });
-  const reps = () => screen.getByRole('textbox', { name: 'Satz 1: ausgeführte Wiederholungen' });
-  const weight = () => screen.getByRole('textbox', { name: 'Satz 1: ausgeführtes Gewicht in kg' });
+  const reps = () => screen.getByRole('textbox', { name: 'Wiederholungen für Satz 1' });
+  const weight = () => screen.getByRole('textbox', { name: 'Gewicht für Satz 1 in kg' });
 
   const copy = await within(focusMode()!).findByRole('button', { name: /^Übernehmen für Satz 1: Letztes Mal 10 Wdh\. · 52,5 kg$/ });
   await user.click(copy);
@@ -410,8 +410,8 @@ it('keeps a copied previous value as an unsaved draft through leaving and re-ent
   expect(weight()).toHaveValue('52,5');
 
   await enterViaFullscreen(user);
-  expect(within(focusMode()!).getByRole('textbox', { name: 'Satz 1: ausgeführte Wiederholungen' })).toHaveValue('10');
-  expect(within(focusMode()!).getByRole('textbox', { name: 'Satz 1: ausgeführtes Gewicht in kg' })).toHaveValue('52,5');
+  expect(within(focusMode()!).getByRole('textbox', { name: 'Wiederholungen für Satz 1' })).toHaveValue('10');
+  expect(within(focusMode()!).getByRole('textbox', { name: 'Gewicht für Satz 1 in kg' })).toHaveValue('52,5');
   expect(persistPerformance).not.toHaveBeenCalled();
   expect(persistSet).not.toHaveBeenCalled();
   expect(localStorage.getItem('fitssai.training.rest:u1')).toBeNull();
@@ -423,8 +423,8 @@ it('records reps and weight from the keyboard inside Focus Mode, without ticking
   await startTraining(user);
   persistPerformance.mockReset().mockResolvedValue({ success: true });
   const dialog = focusMode()!;
-  const reps = within(dialog).getByRole('textbox', { name: 'Satz 1: ausgeführte Wiederholungen' });
-  const weight = within(dialog).getByRole('textbox', { name: 'Satz 1: ausgeführtes Gewicht in kg' });
+  const reps = within(dialog).getByRole('textbox', { name: 'Wiederholungen für Satz 1' });
+  const weight = within(dialog).getByRole('textbox', { name: 'Gewicht für Satz 1 in kg' });
 
   await user.click(reps);
   await user.keyboard('8');
