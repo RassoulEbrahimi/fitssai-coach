@@ -306,6 +306,50 @@ describe('Focus Mode keyboard modality', () => {
   });
 });
 
+describe('session status in Focus Mode and on the Dashboard (TRAINING-UI-04)', () => {
+  const statusBlocks = () => document.querySelectorAll<HTMLElement>('.workout-session-status');
+  const sessionProgress = () => screen.getByRole('progressbar', { name: 'Trainingsfortschritt' });
+  const elapsed = () => statusBlocks()[0].querySelector('time')!;
+  const count = () => statusBlocks()[0].querySelector('.workout-session-count')!;
+
+  it('shows one running clock and one progress bar in both modes, without resetting either', async () => {
+    const now = vi.spyOn(Date, 'now');
+    const startedAt = Date.parse('2025-12-10T12:00:00');
+    now.mockReturnValue(startedAt);
+    const user = await setup();
+    await startTraining(user);
+
+    // Focus Mode: the status block sits inside the dialog.
+    expect(statusBlocks()).toHaveLength(1);
+    expect(focusMode()!.contains(statusBlocks()[0])).toBe(true);
+    expect(within(statusBlocks()[0]).getByText('Training läuft')).toBeVisible();
+    expect(count()).toHaveTextContent('0/2 Sätze');
+    expect(sessionProgress()).toHaveAttribute('aria-valuenow', '0');
+    expect(screen.getAllByRole('progressbar')).toEqual([sessionProgress()]);
+    now.mockReturnValue(startedAt + 125_000);
+    await waitFor(() => expect(elapsed()).toHaveTextContent('02:05'), { timeout: 2500 });
+
+    // Dashboard: the same session, time and progress, outside any dialog.
+    await press(user, 'Vollbild beenden');
+    await waitFor(() => expect(focusMode()).toBeNull());
+    expect(statusBlocks()).toHaveLength(1);
+    expect(statusBlocks()[0].closest('[role=dialog]')).toBeNull();
+    expect(elapsed()).toHaveTextContent('02:05');
+    expect(count()).toHaveTextContent('0/2 Sätze');
+    expect(sessionProgress()).toHaveAttribute('aria-valuenow', '0');
+    now.mockReturnValue(startedAt + 3_725_000);
+    await waitFor(() => expect(elapsed()).toHaveTextContent('62:05'), { timeout: 2500 });
+
+    // And back: the clock keeps counting from where it was.
+    await press(user, 'Vollbild');
+    await waitFor(() => expect(focusMode()).not.toBeNull());
+    expect(statusBlocks()).toHaveLength(1);
+    expect(focusMode()!.contains(statusBlocks()[0])).toBe(true);
+    expect(elapsed()).toHaveTextContent('62:05');
+    expect(JSON.parse(storedSession()!).startedAt).toBe(startedAt);
+  });
+});
+
 it('rest sheet owns keyboard focus and Escape, and the timer survives Focus Mode transitions', async () => {
   const user = await setup();
   await startTraining(user);

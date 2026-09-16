@@ -318,6 +318,9 @@ const card = (onScreen: Day) => providers({ children: <CardOnScreen onScreen={on
 
 /** The started view: everything the finish control sits beside. */
 const running = () => screen.getByRole('button', { name: /^Training beenden/ }).parentElement!;
+/** The session status above the exercises: its progress bar and running time. */
+const sessionProgress = () => within(running()).getByRole('progressbar', { name: 'Trainingsfortschritt' });
+const elapsed = () => running().querySelector('.workout-session-status time')!;
 /** The hero header, which names the workout's day. */
 const hero = () => screen.getByRole('button', { name: 'Vollbild' }).parentElement!;
 
@@ -331,6 +334,9 @@ describe('the card keeps showing the running workout while the calendar moves', 
     const view = render(card(MONDAY));
     await startFromCard();
 
+    vi.setSystemTime(NOW + 754_000);
+    await waitFor(() => expect(elapsed()).toHaveTextContent('12:34'), { timeout: 2500 });
+
     view.rerender(card(WEDNESDAY));
     // A rest day on screen no longer swallows the running workout.
     expect(await screen.findByRole('button', { name: /^Training beenden/ })).toBeInTheDocument();
@@ -338,6 +344,9 @@ describe('the card keeps showing the running workout while the calendar moves', 
 
     view.rerender(card(TUESDAY));
     await waitFor(() => expect(within(running()).getByText('0/5 Sätze')).toBeInTheDocument());
+    // The status block still describes Monday: its progress and its clock.
+    expect(sessionProgress()).toHaveAttribute('aria-valuenow', '0');
+    expect(elapsed()).toHaveTextContent('12:34');
     expect(within(running()).getByRole('button', { name: /^Kniebeugen/ })).toBeInTheDocument();
     expect(within(running()).queryByText(/Bankdrücken/)).not.toBeInTheDocument();
     expect(within(hero()).queryByText('Dienstag')).not.toBeInTheDocument();
@@ -348,12 +357,15 @@ describe('the card keeps showing the running workout while the calendar moves', 
     await waitFor(() => expect(setLogs()).toHaveLength(1));
     expect(parentLogs()).toEqual([expect.objectContaining({ ...MONDAY_BINDING, exerciseIndex: 0 })]);
     await waitFor(() => expect(within(running()).getByText('1/5 Sätze')).toBeInTheDocument());
+    expect(sessionProgress()).toHaveAttribute('aria-valuenow', '20');
 
     // Reload on Tuesday: new cache, stored session, Monday resumes with its tick.
     view.unmount();
     queryClient = freshQueryClient();
     render(card(TUESDAY));
     await waitFor(() => expect(within(running()).getByText('1/5 Sätze')).toBeInTheDocument());
+    expect(sessionProgress()).toHaveAttribute('aria-valuenow', '20');
+    expect(elapsed()).toHaveTextContent('12:34');
     expect(within(running()).getByRole('checkbox', { name: /Satz 1: Vorgabe 8 Wiederholungen/ }))
       .toHaveAttribute('aria-checked', 'true');
     expect(within(hero()).getByText('Montag')).toBeInTheDocument();
@@ -433,6 +445,8 @@ describe('the Workout view calendar', () => {
     await waitFor(() => expect(screen.getByRole('button', { name: /^Di\.? 8/ })).toHaveAttribute('aria-pressed', 'true'));
     // ...the running workout did not.
     expect(within(running()).getByRole('button', { name: /^Kniebeugen/ })).toBeInTheDocument();
+    expect(within(running()).getByText('0/5 Sätze')).toBeInTheDocument();
+    expect(sessionProgress()).toHaveAttribute('aria-valuenow', '0');
     expect(within(running()).queryByText(/Bankdrücken/)).not.toBeInTheDocument();
     expect(within(hero()).getByText('Montag')).toBeInTheDocument();
 
@@ -442,6 +456,7 @@ describe('the Workout view calendar', () => {
     await waitFor(() => expect(setLogs()).toHaveLength(1));
     expect(parentLogs()).toEqual([expect.objectContaining({ ...MONDAY_BINDING, exerciseIndex: 0 })]);
     await waitFor(() => expect(within(running()).getByText('1/5 Sätze')).toBeInTheDocument());
+    expect(sessionProgress()).toHaveAttribute('aria-valuenow', '20');
     expect(storedSession()).toMatchObject(MONDAY_BINDING);
   });
 });

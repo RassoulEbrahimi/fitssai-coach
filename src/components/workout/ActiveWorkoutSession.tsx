@@ -1,6 +1,6 @@
 import React from "react";
 import { useTranslation } from "react-i18next";
-import { Check, Flame } from "lucide-react";
+import { Check, Flame, Timer } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import ExerciseWithSets from "@/components/workout/ExerciseWithSets";
@@ -10,6 +10,7 @@ import type { ActualSetPerformance } from "@/lib/setPerformance";
 import type { PreviousExercisePerformance } from "@/lib/previousPerformance";
 import type { SetPerformanceInputs } from "@/lib/setPerformanceDrafts";
 import type { ExecutionExercise } from "@/lib/workoutExecution";
+import "./workoutPresentation.css";
 
 // Format duration in mm:ss
 const formatDuration = (seconds: number): string => {
@@ -17,6 +18,10 @@ const formatDuration = (seconds: number): string => {
   const secs = seconds % 60;
   return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
 };
+
+// The same elapsed time as an ISO 8601 duration, for <time dateTime>.
+const formatIsoDuration = (seconds: number): string =>
+  `PT${Math.floor(seconds / 60)}M${seconds % 60}S`;
 
 type RestTimer = Pick<
   ReturnType<typeof useRestTimer>,
@@ -70,24 +75,32 @@ export const ActiveWorkoutSession: React.FC<ActiveWorkoutSessionProps> = ({
 
   return (
     <div className="mx-auto w-full max-w-3xl">
-      {/* Progress section */}
-      <div className="mb-4 space-y-2">
-        {/* In progress indicator */}
-        <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 text-sm">
-          <div className="flex flex-wrap items-center gap-2 text-primary">
-            <Flame className="w-4 h-4" />
-            <span className="font-medium">{t('todayWorkout.trainingInProgress')}</span>
-            <span className="text-xs text-muted-foreground ml-1">⏱️ {formatDuration(durationSeconds)}</span>
-          </div>
-          <span className="text-muted-foreground text-xs">
+      {/*
+        Session status: state, elapsed time and set count on one line, the
+        session progress below. Layout per width lives in workoutPresentation.css.
+        Hidden commas keep the facts apart when read aloud.
+      */}
+      <div className="workout-session-status mb-3">
+        <div className="workout-session-line">
+          <span className="workout-session-state flex items-center gap-1.5 text-sm font-semibold text-primary">
+            <Flame className="h-4 w-4 shrink-0" aria-hidden="true" />
+            {t('todayWorkout.trainingInProgress')}
+          </span>
+          <span className="workout-session-duration flex items-center gap-1 whitespace-nowrap text-sm font-medium tabular-nums">
+            <Timer className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
+            <span className="sr-only">, {t('todayWorkout.sessionDuration')} </span>
+            <time dateTime={formatIsoDuration(durationSeconds)}>{formatDuration(durationSeconds)}</time>
+          </span>
+          {/* The count states the progress; the bar below carries it as a percentage. */}
+          <span className="workout-session-count whitespace-nowrap text-xs font-medium tabular-nums text-muted-foreground">
+            <span className="sr-only">, </span>
             {progress.completedSets}/{progress.totalSets} Sätze
           </span>
         </div>
-
-        {/* Progress bar */}
         <Progress
           value={progress.progressPercent}
-          className="h-2 bg-muted/50"
+          aria-label={t('todayWorkout.sessionProgress')}
+          className="mt-1.5 h-1.5 bg-muted"
         />
       </div>
 
