@@ -116,8 +116,8 @@ describe("ExerciseSetRow compact layout", () => {
     expect(field().className).toContain("text-lg");
     expect(field().className).toContain("md:text-lg");
     expect(field().className).toContain("placeholder:text-base");
-    // The prescribed rest grew with them and stays the quieter fact.
-    expect(within(row()).getByText("90 s Pause").className).toContain("text-sm");
+    // The prescribed rest grew with them (12px → 13px) and stays the quieter fact.
+    expect(within(row()).getByText("90 s Pause").className).toContain("text-[0.8125rem]");
     expect(within(row()).getByText("90 s Pause").className).not.toContain("text-xs");
   });
 

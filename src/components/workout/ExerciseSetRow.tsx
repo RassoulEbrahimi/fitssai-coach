@@ -159,13 +159,18 @@ export const ExerciseSetRow: React.FC<ExerciseSetRowProps> = ({
                         carries nothing but its value.
                       */
                       "border-b border-transparent data-[empty]:border-dashed data-[empty]:border-muted-foreground/50",
-                      field.name === "reps" ? "w-14" : "w-[4.25rem]",
+                      /*
+                        Narrower than the 16px fields they replace, so 18px
+                        digits do not push the rest onto a second line on a
+                        375px phone. Both still clear 44px in both directions.
+                      */
+                      field.name === "reps" ? "w-11" : "w-14",
                       field.error && "border-solid border-destructive text-destructive"
                     )}
                   />
                 </React.Fragment>
               ))}
-              <span aria-hidden="true" className="ml-1 text-base text-muted-foreground">kg</span>
+              <span aria-hidden="true" className="ml-0.5 text-base text-muted-foreground">kg</span>
             </div>
           ) : (
             target.visual && (
@@ -173,7 +178,7 @@ export const ExerciseSetRow: React.FC<ExerciseSetRowProps> = ({
             )
           )}
           {restText && (
-            <span className="workout-set-rest whitespace-nowrap text-sm leading-5 text-muted-foreground">
+            <span className="workout-set-rest whitespace-nowrap text-[0.8125rem] leading-[1.125rem] text-muted-foreground">
               <span aria-hidden="true">• </span>{restText}
             </span>
           )}

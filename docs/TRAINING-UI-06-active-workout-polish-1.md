@@ -129,15 +129,25 @@ surface:
 | reps and weight | 16px semibold | **18px** semibold |
 | placeholder (the prescription) | 14px | **16px** |
 | `×` / `kg` | 16px / 14px | **18px / 16px** |
-| `• 90 s Pause` | 12px | **14px** |
+| `• 90 s Pause` | 12px | **13px** |
 | static prescription (no inputs) | 14px | **16px** |
 | field box | `border-input` on four sides, `bg-background`, `rounded-md`, focus ring | **no box**: `bg-transparent`, `border-x-0 border-t-0`, `rounded-none`, no ring, no shadow |
 | empty field | dashed box | **dashed hairline underline only** |
-| field size | 48×40 / 60×40 | **56×44 / 68×44** |
+| field size | 48×40 / 60×40 | **44×44 / 56×44** |
 
 Measured in the browser: `background: rgba(0,0,0,0)`, border widths
 `0/0/1px/0`, `border-radius: 0`, `box-shadow: none`, and 44px-tall fields in a
 44px line.
+
+**The row still reads as one line.** 18px digits are wider than 16px ones, and
+the first pass pushed `• 90 s Pause` onto a second line on a 375px phone. The
+fields are therefore *narrower* than before (44px and 56px, still 44px targets
+in both directions), the rest is 13px rather than 14px, `kg` sits 2px closer
+and `.workout-set-body`'s column gap is 6px instead of 8px. Measured: one line
+for every card 340px and wider, including a 150 s rest, with no text clipped in
+any field. Below 340px the rest wraps under the inputs, exactly as it already
+did, and the row is 108px instead of 106px. Where the row is one line it is
+90px, the same as before.
 
 Unchanged: `data-empty`, the prescription as placeholder and never as a value
 (UI-02), recorded values (EXEC-02A), "Letztes Mal" and "Übernehmen" (EXEC-02B),
@@ -178,8 +188,21 @@ gap 0 at every width, in both modes).
 Headless Chrome 153 over CDP against the local fixture (the real Dashboard,
 production CSS, Montserrat, pinned date), Wednesday's 8 exercises / 26 sets
 with 5 done and "Letztes Mal" history. 16 runs: 320×568, 375×812, 412×915 and
-1280×800 × light/dark × Dashboard/Focus Mode. Identical results in all 16
-unless noted.
+1280×800 × light/dark × Dashboard/Focus Mode, before (`main`) and after on the
+same tree. Identical results across all 16 runs unless noted.
+
+### Before → after, same runs
+
+| | before (`main`) | after |
+| --- | --- | --- |
+| Completing a set | Sonner toast reading `todayWorkout.setCompleted`, still up 2.6 s later | no toast, no raw key |
+| Open exercises, tapping the 2nd then the 1st | `[0] → [0,1] → [0] → []` — two at once | `[0] → [1] → [] → [0]` |
+| Subtitle | `1/3 Sätze, 60 s Pause` | `Beine, Gesäß` |
+| Reps field | 16px on `rgb(255,255,255)`, 1px border on four sides, 10px radius, 48×40 | 18px on `rgba(0,0,0,0)`, `0/0/1px/0` dashed, 0 radius, 44×44 |
+| Rest text | 12px | 13px |
+| Set row height | 90 / 106 / 130px by card width | 90 / 108 / 130px — one line wherever it was one line before |
+| Finish CTA | `position: sticky` (static ≥ 64rem), occupying the bottom of the screen mid-workout — the hit test at the bottom returned it | `position: static`, off-screen mid-workout (top 957–1119px); the bottom hits exercise content |
+| Exercise header height | 96–138px | 96–118px, never taller; at the 238px Dashboard card the 138px rows became 98–118px |
 
 | Check | Result |
 | --- | --- |
@@ -187,13 +210,15 @@ unless noted.
 | B. The pause | One "Pause" dialog, `z-index: 100001`, timer at `00:45` (Plank's prescribed rest); the hit test at the bottom of the screen returns the sheet, and the finish action is inside an `aria-hidden` subtree. Dismissing it leaves the inline bar: "Pause Satz 1 00:45" |
 | C/D. Accordion | Open sets, per run: `[0] → [1] → [] → [0]`. Never two |
 | E. Subtitle | Brust, Trizeps · Beine, Gesäß · Brust, Schultern · Trizeps · Bauch. No run contains "Sätze" or "Pause" in a subtitle. One line each; header height unchanged at 96px (98/118px for the names that wrap) |
-| F/G. Set rows | 18px semibold values, transparent background, `0/0/1px/0` dashed border while empty, `border-radius: 0`, no shadow, 56×44 and 68×44 fields, 44×44 completion toggle |
+| F/G. Set rows | 18px semibold values, transparent background, `0/0/1px/0` dashed border while empty, `border-radius: 0`, no shadow, 44×44 and 56×44 fields, 44×44 completion toggle. One line at every card width ≥ 340px (Focus Mode at 375/412/1280 and the desktop Dashboard); below that the rest wraps under the inputs as before. Row height 90px on one line, unchanged from `main` |
 | H. Finish CTA | `position: static` in all 16 runs, exactly one control, the session's last child |
 | I. Mid-workout | The button is off-screen (top 957–1119px) at every width in both modes. The bottom 8px and 40px of the viewport hit exercise content, never the action |
 | J. End of the workout | Scrolled to, the hit test at the button's centre returns "Training beenden" in all 16 runs. Gap between the session's bottom and the action area: 0px |
-| K. Layout | No horizontal overflow of the page or the overlay (`0/0`) at any width; rest, guidance and summary open above as before |
+| K. Layout | No horizontal overflow of the page or the overlay (`0/0`) at any width; exercise headers are the same height or shorter than before; rest, guidance and summary open above as before |
 
-Screenshots: `ui06.local/shots/after-<theme>-<mode>-<width>.png` (local only).
+Measurements: `ui06.local/{before,after}.jsonl`; screenshots:
+`ui06.local/shots/{before,after}-<theme>-<mode>-<width>.png` (local only,
+`*.local` is ignored).
 
 ## Tests
 
