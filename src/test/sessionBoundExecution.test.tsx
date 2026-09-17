@@ -316,8 +316,8 @@ const CardOnScreen = ({ onScreen }: { onScreen: Day }) => {
 };
 const card = (onScreen: Day) => providers({ children: <CardOnScreen onScreen={onScreen} /> });
 
-/** The started view: everything the finish control sits beside. */
-const running = () => screen.getByRole('button', { name: /^Training beenden/ }).parentElement!;
+/** The started view: the session the finish area belongs to. */
+const running = () => screen.getByRole('button', { name: /^Training beenden/ }).closest('.workout-finish')!.parentElement!;
 /** The session status above the exercises: its progress bar and running time. */
 const sessionProgress = () => within(running()).getByRole('progressbar', { name: 'Trainingsfortschritt' });
 const elapsed = () => running().querySelector('.workout-session-status time')!;
