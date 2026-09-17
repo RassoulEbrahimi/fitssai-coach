@@ -2,16 +2,19 @@ import React from "react";
 import { readFileSync } from "fs";
 import { resolve } from "path";
 import { describe, it, expect, vi } from "vitest";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import "@/lib/i18n";
 import ActiveWorkoutSession from "./ActiveWorkoutSession";
+import { SetPerformanceDraftStore, setPerformanceKey } from "@/lib/setPerformanceDrafts";
 import type { ExecutionProgress } from "@/hooks/useWorkoutExecution";
 import type { ExecutionExercise } from "@/lib/workoutExecution";
 
 /*
   TRAINING-UI-04: the session status above the exercise list. State, elapsed
   time and set count on one line, and one labelled progress bar under it.
-  TRAINING-UI-05: the finish action after the list, further down.
+  TRAINING-UI-06: one open exercise at a time, and the finish action at the end
+  of the list rather than stuck to the bottom of the screen.
 */
 
 const idleTimerState = {
@@ -174,9 +177,130 @@ describe("ActiveWorkoutSession status header", () => {
 });
 
 /*
-  TRAINING-UI-05: the finish action. One primary control after the exercise
-  list, whatever the progress. It only asks TodayWorkoutCard for the summary;
-  nothing is saved until the summary is confirmed.
+  TRAINING-UI-06: the session owns which exercise is open. Zero or one, never
+  two, and opening one closes whichever was open. Nothing else in the session
+  moves with it: what was typed, what was recorded and a running rest are all
+  held above this component.
+*/
+const collapseFor = (name: string) => screen.getByRole("button", { name: new RegExp(`^${name} `) });
+const expandedNames = () =>
+  screen.getAllByRole("button", { name: /Sätze$/ })
+    .filter((control) => control.getAttribute("aria-expanded") === "true")
+    .map((control) => control.getAttribute("aria-label")!.replace(/ \d+\/\d+ Sätze$/, ""));
+
+describe("ActiveWorkoutSession exercise expansion", () => {
+  it("opens the first exercise and only that one", () => {
+    renderSession();
+
+    expect(expandedNames()).toEqual(["Bankdrücken"]);
+    expect(screen.getAllByRole("checkbox")).toHaveLength(4);
+  });
+
+  it("closes the open exercise when another one is opened", async () => {
+    const user = userEvent.setup();
+    renderSession();
+
+    await user.click(collapseFor("Kniebeugen"));
+
+    expect(expandedNames()).toEqual(["Kniebeugen"]);
+    expect(collapseFor("Bankdrücken")).toHaveAttribute("aria-expanded", "false");
+    // The second exercise's 22 sets, and none of the first's.
+    expect(screen.getAllByRole("checkbox")).toHaveLength(22);
+  });
+
+  it("closes everything when the open exercise is tapped again", async () => {
+    const user = userEvent.setup();
+    renderSession();
+
+    await user.click(collapseFor("Bankdrücken"));
+
+    expect(expandedNames()).toEqual([]);
+    expect(screen.queryAllByRole("checkbox")).toHaveLength(0);
+  });
+
+  it("never leaves two exercises open across repeated switching", async () => {
+    const user = userEvent.setup();
+    renderSession();
+
+    for (const name of ["Kniebeugen", "Bankdrücken", "Kniebeugen", "Kniebeugen", "Bankdrücken"]) {
+      await user.click(collapseFor(name));
+      expect(expandedNames().length).toBeLessThanOrEqual(1);
+    }
+    expect(expandedNames()).toEqual(["Bankdrücken"]);
+  });
+
+  it("keeps what was typed and what was recorded when the open exercise changes", async () => {
+    const user = userEvent.setup();
+    const drafts = new SetPerformanceDraftStore();
+    const performance = {
+      drafts,
+      changeDraft: (exerciseIndex: number, setNumber: number, field: "reps" | "weight", text: string) => {
+        const key = setPerformanceKey(exerciseIndex, setNumber);
+        drafts.set(key, { ...drafts.get(key), [field]: text });
+      },
+      commit: vi.fn(() => "unchanged" as const),
+    };
+    renderSession({
+      performance,
+      getActualPerformance: (exerciseIndex, setNumber) =>
+        exerciseIndex === 0 && setNumber === 2
+          ? { source: "user-recorded" as const, reps: 11, weightKg: 47.5 }
+          : undefined,
+    });
+
+    // A half-typed value in set 1 and a value already recorded for set 2.
+    const reps = () => screen.getByRole("textbox", { name: "Wiederholungen für Satz 1" });
+    fireEvent.change(reps(), { target: { value: "9" } });
+    expect(reps()).toHaveValue("9");
+
+    await user.click(collapseFor("Kniebeugen"));
+    await user.click(collapseFor("Bankdrücken"));
+
+    expect(reps()).toHaveValue("9");
+    expect(screen.getByRole("textbox", { name: "Wiederholungen für Satz 2" })).toHaveValue("11");
+    expect(screen.getByRole("textbox", { name: "Gewicht für Satz 2 in kg" })).toHaveValue("47,5");
+    expect(performance.commit).not.toHaveBeenCalled();
+  });
+
+  it("leaves a running rest visible on its own exercise, open or not", async () => {
+    const user = userEvent.setup();
+    const setSheetOpen = vi.fn();
+    renderSession({
+      rest: {
+        timerState: { ...idleTimerState, status: "running", exerciseIndex: 0, setNumber: 1, remainingSeconds: 42, totalRestSeconds: 90, deadlineMs: 42_000 },
+        isSheetOpen: false,
+        setSheetOpen,
+      },
+    });
+    const inline = () => screen.getByRole("button", { name: "Pause für Satz 1 öffnen" });
+    expect(inline()).toBeInTheDocument();
+
+    // Opening the other exercise closes this one; its rest keeps running.
+    await user.click(collapseFor("Kniebeugen"));
+
+    expect(inline()).toBeInTheDocument();
+    expect(collapseFor("Bankdrücken")).toHaveAttribute("aria-expanded", "false");
+    expect(setSheetOpen).not.toHaveBeenCalled();
+  });
+
+  it("opens guidance without changing which exercise is open", async () => {
+    const user = userEvent.setup();
+    renderSession();
+
+    await user.click(screen.getByRole("button", { name: "Informationen zu Kniebeugen" }));
+    expect(await screen.findByRole("dialog", { name: "Kniebeugen" })).toBeVisible();
+    await user.keyboard("{Escape}");
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+
+    expect(expandedNames()).toEqual(["Bankdrücken"]);
+  });
+});
+
+/*
+  TRAINING-UI-06: the finish action. One primary control at the end of the
+  exercise list, whatever the progress, scrolling with the workout rather than
+  held at the bottom of the screen. It only asks TodayWorkoutCard for the
+  summary; nothing is saved until the summary is confirmed.
 */
 const finishButton = () => screen.getByRole("button", { name: "Training beenden" });
 const finishArea = () => document.querySelector<HTMLElement>(".workout-finish")!;
@@ -275,6 +399,17 @@ describe("ActiveWorkoutSession finish action", () => {
       expect(tokens.some((token) => /^z-/.test(token))).toBe(false);
     }
   });
+
+  it("reaches the end of the workout with nothing below it", () => {
+    renderSession();
+    const session = finishArea().parentElement!;
+
+    // Nothing follows the action: no spacer, no reserved strip, no second control.
+    expect(session.lastElementChild).toBe(finishArea());
+    expect(finishArea().nextElementSibling).toBeNull();
+    expect(Array.from(finishArea().children)).toEqual([finishButton()]);
+    expect(screen.getAllByRole("button", { name: /beenden/ })).toEqual([finishButton()]);
+  });
 });
 
 /*
@@ -303,53 +438,50 @@ const mediaBlock = (query: string) => {
 };
 
 describe("finish action placement contract", () => {
-  it("sticks to the scrollport bottom in the page layer, never as a fixed overlay", () => {
+  it("is a plain block at the end of the list: nothing sticky, fixed or layered", () => {
     const [bar] = blocks(".workout-finish");
 
-    expect(bar).toMatch(/position:\s*sticky;/);
-    expect(bar).toMatch(/\bbottom:\s*0;/);
-    expect(bar).toMatch(/z-index:\s*1;/);
-    expect(bar).not.toMatch(/box-shadow|backdrop-filter/);
-    expect(presentationCss).not.toMatch(/position:\s*fixed/);
+    expect(bar).toMatch(/margin-top:\s*1rem;/);
+    expect(bar).toMatch(/padding-top:\s*0\.75rem;/);
+    expect(bar).toMatch(/border-top:\s*1px solid hsl\(var\(--border\)\);/);
+    expect(bar).not.toMatch(/position:|bottom:|z-index:|border-image:|box-shadow|backdrop-filter/);
+    expect(presentationCss).not.toMatch(/position:\s*(sticky|fixed)/);
   });
 
-  it("clears the bottom navigation on the Dashboard and the home indicator in Focus Mode", () => {
-    const [dashboard] = blocks(".workout-session");
-    const [focus] = blocks(".workout-focus-layer .workout-session");
-    const [bar] = blocks(".workout-finish");
-
-    // The bar covers the navigation reserve below the button without adding it to the layout.
-    expect(bar).toMatch(/padding-bottom:\s*calc\(var\(--workout-finish-pad\) \+ var\(--workout-finish-inset\)\);/);
-    expect(bar).toMatch(/margin-bottom:\s*calc\(-1 \* var\(--workout-finish-inset\)\);/);
-    expect(dashboard).toMatch(/--workout-finish-inset:\s*calc\(var\(--bottom-nav-offset\) \+ env\(safe-area-inset-bottom, 0px\)\);/);
-    expect(dashboard).toMatch(/--workout-finish-surface:\s*var\(--card\);/);
-    expect(focus).toMatch(/--workout-finish-inset:\s*0px;/);
-    expect(focus).toMatch(/--workout-finish-pad:\s*max\(0\.75rem, env\(safe-area-inset-bottom, 0px\)\);/);
-    expect(focus).toMatch(/--workout-finish-surface:\s*var\(--background\);/);
+  it("leaves no reserve, spacer or negative margin behind the removed bar", () => {
+    expect(presentationCss).not.toMatch(/--workout-finish-(surface|inset|pad|height)/);
+    expect(presentationCss).not.toMatch(/--bottom-nav-offset/);
+    expect(presentationCss).not.toMatch(/margin-bottom:\s*calc\(-/);
+    expect(presentationCss).not.toMatch(/scroll-margin-bottom/);
+    expect(presentationCss).not.toMatch(/safe-area-inset/);
+    // No mode of its own for the action any more.
+    expect(blocks(".workout-focus-layer .workout-session")).toHaveLength(0);
+    expect(mediaBlock("(min-width: 64rem), (max-height: 29.99rem)")).toBe("");
   });
 
-  it("keeps focused workout controls scrolled clear of the bar", () => {
-    const [margin] = blocks(".workout-session-list :is(button, input)");
-
-    expect(margin).toMatch(/scroll-margin-bottom:\s*calc\(var\(--workout-finish-inset\) \+ var\(--workout-finish-height\)/);
-  });
-
-  it("stays in normal flow on desktop and on short landscape screens", () => {
-    const media = mediaBlock("(min-width: 64rem), (max-height: 29.99rem)");
-    const [bar] = blocks(".workout-finish", media);
-
-    expect(bar).toMatch(/position:\s*static;/);
-    expect(bar).toMatch(/padding-bottom:\s*var\(--workout-finish-pad\);/);
-    expect(bar).toMatch(/margin-bottom:\s*0;/);
-  });
-
-  it("lets the Dashboard card clip without becoming the sticky scroll container", () => {
-    const [clip] = blocks(".workout-card-clip");
+  it("gives the Dashboard card its ordinary clipping back", () => {
     const dashboardCard = cardSource.match(/: "border-border [^"]*"/)?.[0] ?? "";
 
-    expect(clip).toMatch(/overflow:\s*hidden;\s*overflow:\s*clip;/);
-    expect(dashboardCard).toContain("workout-card-clip");
-    expect(dashboardCard).not.toContain("overflow-hidden");
-    expect(cardSource).toMatch(/"workout-focus-layer fixed inset-0 [^"]*overflow-y-auto/);
+    expect(dashboardCard).toContain("overflow-hidden");
+    expect(presentationCss).not.toMatch(/workout-card-clip/);
+    expect(cardSource).not.toMatch(/workout-card-clip|workout-focus-layer/);
+    expect(cardSource).toMatch(/"fixed inset-0 [^"]*overflow-y-auto/);
+  });
+
+  /*
+    TRAINING-UI-06: the ring is not painted inside the running session. The rule
+    is scoped to .workout-session, so the dialogs - which portal to the body -
+    keep their own focus handling, and nothing is disabled anywhere else.
+  */
+  it("stops the focus ring being painted, inside the session only", () => {
+    const [ring] = blocks(".workout-session :is(a, button, input, select, textarea, [tabindex]):focus-visible");
+
+    expect(ring).toMatch(/outline:\s*none;/);
+    expect(ring).toMatch(/box-shadow:\s*none;/);
+    expect(presentationCss).not.toMatch(/:focus-visible\s*\{[^}]*ring/);
+    // Nothing unscoped, and nothing that would reach a portalled dialog.
+    const selectors = presentationCss.split("\n").filter((line) => line.includes(":focus-visible"));
+    expect(selectors).toHaveLength(1);
+    expect(selectors[0].trim()).toMatch(/^\.workout-session :is\(/);
   });
 });

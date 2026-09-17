@@ -204,12 +204,14 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
       ? startTimer(params.exerciseIndex, parseRestTime(exercises[params.exerciseIndex]?.rest), params.setNumber)
       : undefined;
     if (!params.completed) cancelTimerForSet(params.exerciseIndex, params.setNumber);
-    void toggleSetAsync(params).then((data) => {
-      if (params.completed && !data.queued) {
-        showToast(t('todayWorkout.setCompleted', { set: params.setNumber }));
-      }
-    }).catch(() => rollbackRest?.());
-  }, [user, workoutPlan, executionTarget.weekKey, executionTarget.dayIndex, exercises, toggleSetAsync, startTimer, cancelTimerForSet, showToast, t]);
+    /*
+      Completing a set is its own feedback: the row ticks and the prescribed
+      rest starts. A success toast on top of that only covered the pause, so
+      there is none (TRAINING-UI-06). A failed write still rolls the rest back,
+      and the error paths below still speak up.
+    */
+    void toggleSetAsync(params).catch(() => rollbackRest?.());
+  }, [user, workoutPlan, executionTarget.weekKey, executionTarget.dayIndex, exercises, toggleSetAsync, startTimer, cancelTimerForSet]);
 
   /*
     Focus Mode is a keyboard modal. Toggling it swaps FocusModePortal between a
@@ -486,16 +488,15 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
         aria-label={isFocusMode ? "Trainings-Fokusmodus" : undefined}
         className={
           isFocusMode
-            ? "workout-focus-layer fixed inset-0 w-screen h-[100dvh] z-[99999] bg-background m-0 p-0 overflow-y-auto overscroll-contain"
+            ? "fixed inset-0 w-screen h-[100dvh] z-[99999] bg-background m-0 p-0 overflow-y-auto overscroll-contain"
             : ""
         }
         style={isFocusMode ? { isolation: 'isolate' } : undefined}
       >
-        {/* workout-card-clip: clips without becoming a scroll container, so the finish bar can stick to the page. */}
         <Card className={
           isFocusMode
             ? "border-0 rounded-none shadow-none min-h-full bg-background pt-[env(safe-area-inset-top)]"
-            : "border-border workout-card-clip shadow-lg"
+            : "border-border overflow-hidden shadow-lg"
         }>
           {/* Hero Header Section */}
           <div className={isFocusMode ? "relative h-32 sm:h-40" : "relative h-48 sm:h-56"}>

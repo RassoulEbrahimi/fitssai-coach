@@ -493,7 +493,7 @@ it('records reps and weight from the keyboard inside Focus Mode, without ticking
 });
 
 /*
-  TRAINING-UI-05: the one finish action rides along with the workout, in and
+  TRAINING-UI-05/06: the one finish action rides along with the workout, in and
   out of Focus Mode, and stays below every layer that opens over it.
 */
 describe('Finish action across Focus Mode and overlays', () => {
@@ -506,7 +506,6 @@ describe('Finish action across Focus Mode and overlays', () => {
     await startTraining(user);
     expect(finishControls()).toHaveLength(1);
     expect(focusMode()!.contains(finishControls()[0])).toBe(true);
-    expect(focusMode()).toHaveClass('workout-focus-layer');
 
     // A typed value that has not been committed yet (no blur, no Enter).
     fireEvent.change(repsField(), { target: { value: '9' } });
@@ -514,7 +513,8 @@ describe('Finish action across Focus Mode and overlays', () => {
     await waitFor(() => expect(focusMode()).toBeNull());
 
     expect(finishControls()).toHaveLength(1);
-    expect(finishControls()[0].closest('.workout-card-clip')).not.toBeNull();
+    // Back on the Dashboard, still the last thing in the running session.
+    expect(finishControls()[0].closest('.workout-session')).not.toBeNull();
     expect(repsField()).toHaveValue('9');
 
     fireEvent.click(screen.getByRole('button', { name: 'Vollbild' }));

@@ -9,7 +9,7 @@ import "./workoutPresentation.css";
 import ExerciseSetRow from "./ExerciseSetRow";
 import RestTimerBar from "./RestTimerBar";
 import ExerciseGuidanceDialog from "./ExerciseGuidanceDialog";
-import { formatRestDisplay } from "@/lib/restTimeParser";
+import { formatExerciseMuscleSubtitle } from "@/lib/exerciseMuscleSummary";
 import { buildExecutionSetViewModels, parseSetCount, type ExecutionSetViewModel } from "@/lib/workoutExecution";
 import { formatWorkoutDayDate, type PreviousExercisePerformance } from "@/lib/previousPerformance";
 import type { ActualSetPerformance } from "@/lib/setPerformance";
@@ -41,7 +41,12 @@ interface ExerciseWithSetsProps {
   isToggling: boolean;
   /** Actual reps/weight entry. Independent of completion and rest. */
   performance?: SetPerformanceInputs;
-  defaultExpanded?: boolean;
+  /**
+   * Whether this exercise's sets are open. Controlled: the running session owns
+   * the one open exercise, so this card keeps no open state of its own.
+   */
+  isExpanded: boolean;
+  onExpandedChange: (expanded: boolean) => void;
   // Rest timer props
   timerState: RestTimerController['timerState'];
   isRestSheetOpen: boolean;
@@ -58,7 +63,8 @@ export const ExerciseWithSets: React.FC<ExerciseWithSetsProps> = ({
   onToggleSet,
   isToggling,
   performance,
-  defaultExpanded = true,
+  isExpanded,
+  onExpandedChange,
   timerState,
   isRestSheetOpen,
   onOpenRest,
@@ -70,7 +76,8 @@ export const ExerciseWithSets: React.FC<ExerciseWithSetsProps> = ({
   const completedCount = getCompletedSetsCount(exerciseIndex);
   const progressPercent = totalSets > 0 ? Math.round((completedCount / totalSets) * 100) : 0;
   const isExerciseComplete = completedCount === totalSets;
-  const restText = formatRestDisplay(exercise.rest, { withLabel: true });
+  // What the exercise trains, in at most two words. An unknown name has no line.
+  const muscleSubtitle = formatExerciseMuscleSubtitle(exercise.name);
 
   /*
     One view model per planned set: the prescription as written, completion
@@ -99,7 +106,7 @@ export const ExerciseWithSets: React.FC<ExerciseWithSetsProps> = ({
   };
 
   return (
-    <Collapsible defaultOpen={defaultExpanded}>
+    <Collapsible open={isExpanded} onOpenChange={onExpandedChange}>
       <motion.div
         layout
         initial={{ opacity: 0, y: 10 }}
@@ -121,21 +128,24 @@ export const ExerciseWithSets: React.FC<ExerciseWithSetsProps> = ({
               {exercise.name}
             </h3>
             <div className="workout-exercise-meta">
-              {/* Each fact brings its own dot; workoutPresentation.css hides it at a line start. */}
-              <p className="workout-exercise-facts text-xs leading-5 text-muted-foreground">
-                <span>
-                  {isExerciseComplete && <Check className="mr-1 inline h-3.5 w-3.5 align-[-3px]" aria-hidden="true" />}
-                  {completedCount}/{totalSets} Sätze
-                  {isExerciseComplete && <span className="sr-only">abgeschlossen</span>}
-                </span>
-                {restText && (
-                  <span>
-                    <span className="sr-only">, </span>
-                    {restText}
-                  </span>
-                )}
-              </p>
-              {/* The count above states the progress; the bar only draws it. */}
+              {/*
+                What the exercise trains, not how it is programmed: sets and
+                rest are on every set row and in the collapse control's name
+                (TRAINING-UI-06). An exercise the repository does not know keeps
+                the line out rather than filling it with something invented.
+              */}
+              {(isExerciseComplete || muscleSubtitle) && (
+                <p className="workout-exercise-facts text-xs leading-5 text-muted-foreground">
+                  {isExerciseComplete && (
+                    <>
+                      <Check className="mr-1 inline h-3.5 w-3.5 align-[-3px]" aria-hidden="true" />
+                      <span className="sr-only">abgeschlossen</span>
+                    </>
+                  )}
+                  {muscleSubtitle}
+                </p>
+              )}
+              {/* The collapse control's name states the progress; the bar only draws it. */}
               <Progress value={progressPercent} aria-hidden="true" className="mt-1 h-1 bg-muted/60" />
             </div>
           </div>
@@ -148,7 +158,7 @@ export const ExerciseWithSets: React.FC<ExerciseWithSetsProps> = ({
             <ExerciseGuidanceDialog exerciseName={exercise.name} disabled={isRestSheetOpen} />
             <CollapsibleTrigger
               aria-label={`${exercise.name} ${completedCount}/${totalSets} Sätze`}
-              className="workout-exercise-toggle flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
+              className="workout-exercise-toggle flex h-11 w-11 shrink-0 items-center justify-center rounded-lg text-muted-foreground hover:bg-muted/50 focus-visible:outline-none"
             >
               <ChevronDown aria-hidden="true" className="workout-exercise-chevron h-5 w-5" />
             </CollapsibleTrigger>

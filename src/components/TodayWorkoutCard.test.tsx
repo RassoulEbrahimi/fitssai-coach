@@ -141,7 +141,7 @@ describe('TodayWorkoutCard', () => {
         expect(screen.queryByRole('button', { name: /Training starten/i })).not.toBeInTheDocument();
     });
 
-    it('shows one primary finish action on the Dashboard, in a card that does not trap sticky positioning', async () => {
+    it('shows one primary finish action on the Dashboard, at the end of the workout', async () => {
         renderWithProvider(<TodayWorkoutCard {...defaultProps} />);
 
         fireEvent.click(screen.getByRole('button', { name: /Training starten/i }));
@@ -152,13 +152,13 @@ describe('TodayWorkoutCard', () => {
         expect(finish.className.split(' ')).toContain('bg-primary');
         // Nothing has been completed: finishing is offered all the same.
         expect(screen.getByRole('progressbar', { name: 'Trainingsfortschritt' })).toHaveAttribute('aria-valuenow', '0');
-        expect(finish.closest('.workout-finish')).not.toBeNull();
-        // An overflow: hidden ancestor would pin the sticky bar to the card instead of the page.
-        const card = finish.closest('.workout-card-clip');
-        expect(card).not.toBeNull();
-        for (let node = finish.parentElement; node; node = node.parentElement) {
-            expect(node.classList.contains('overflow-hidden')).toBe(false);
-        }
+        // TRAINING-UI-06: the last thing in the session, not a bar held at the
+        // bottom of the screen; the card clips its hero the ordinary way again.
+        const area = finish.closest('.workout-finish')!;
+        expect(area).not.toBeNull();
+        expect(area.parentElement!.lastElementChild).toBe(area);
+        expect(finish.closest('.workout-card-clip')).toBeNull();
+        expect(finish.closest('.overflow-hidden')).not.toBeNull();
         expect(screen.queryByRole('dialog')).toBeNull();
     });
 

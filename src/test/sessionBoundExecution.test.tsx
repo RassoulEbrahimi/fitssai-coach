@@ -461,6 +461,54 @@ describe('the Workout view calendar', () => {
   });
 });
 
+/*
+  TRAINING-UI-06: completing a set is its own feedback. The tick lands and the
+  prescribed rest starts, once; nothing is toasted over the pause, and no raw
+  translation key reaches the screen.
+*/
+describe('completing a set speaks through the rest, not a toast', () => {
+  const restKey = 'fitssai.training.rest:u1';
+  const savedRest = () => JSON.parse(localStorage.getItem(restKey) ?? 'null');
+  const firstSet = () => screen.findByRole('checkbox', { name: /Satz 1: Vorgabe 8 Wiederholungen/ });
+
+  it('starts the prescribed rest exactly once and raises no success toast', async () => {
+    render(card(MONDAY));
+    await startFromCard();
+    const box = await firstSet();
+    showToast.mockClear();
+
+    fireEvent.click(box);
+
+    await waitFor(() => expect(box).toHaveAttribute('aria-checked', 'true'));
+    // One pause, for this set, with the prescribed length.
+    expect(screen.getAllByRole('dialog', { name: 'Pause' })).toHaveLength(1);
+    expect(screen.getAllByRole('timer')).toHaveLength(1);
+    expect(savedRest().state).toMatchObject({ exerciseIndex: 0, setNumber: 1, totalRestSeconds: 60 });
+
+    expect(showToast).not.toHaveBeenCalled();
+    expect(document.body.textContent).not.toMatch(/todayWorkout\./);
+    expect(document.body.textContent).not.toMatch(/setCompleted/);
+  });
+
+  it('raises no toast when a set is un-ticked, and takes its rest away', async () => {
+    render(card(MONDAY));
+    await startFromCard();
+    const box = await firstSet();
+
+    fireEvent.click(box);
+    await waitFor(() => expect(box).toHaveAttribute('aria-checked', 'true'));
+    fireEvent.click(screen.getByRole('button', { name: 'Pause schließen' }));
+    showToast.mockClear();
+
+    fireEvent.click(box);
+
+    await waitFor(() => expect(box).toHaveAttribute('aria-checked', 'false'));
+    expect(localStorage.getItem(restKey)).toBeNull();
+    expect(screen.queryByRole('timer')).toBeNull();
+    expect(showToast).not.toHaveBeenCalled();
+  });
+});
+
 describe('active rest loop in the session-bound card', () => {
   const restKey = 'fitssai.training.rest:u1';
   const savedRest = () => JSON.parse(localStorage.getItem(restKey) ?? 'null');
