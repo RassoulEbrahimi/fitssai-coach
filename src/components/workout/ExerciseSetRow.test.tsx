@@ -74,8 +74,51 @@ describe("ExerciseSetRow compact layout", () => {
     expect(weight()).toHaveAttribute("inputmode", "decimal");
     expect(reps()).toHaveAccessibleName("Wiederholungen für Satz 2");
     expect(weight()).toHaveAccessibleName("Gewicht für Satz 2 in kg");
-    expect(reps().className).toContain("h-10");
-    expect(weight().className).toContain("h-10");
+    // A full 44px target each, in a row that is still 44px tall.
+    expect(reps().className).toContain("h-11");
+    expect(weight().className).toContain("h-11");
+    expect(reps().closest(".workout-set-entry")?.className).toContain("h-11");
+  });
+
+  /*
+    TRAINING-UI-06: the numbers are the row. They are written straight on the
+    surface - larger than the words around them, with no box, outline or fill
+    per field - and only an empty field keeps a hairline to type on.
+  */
+  it("writes the values flat on the row, with no box around a field", () => {
+    const { reps, weight, row } = renderWithInputs({ rest: "90s" });
+
+    for (const field of [reps(), weight()]) {
+      const tokens = field.className.split(/\s+/);
+      expect(tokens).toContain("bg-transparent");
+      expect(tokens).toContain("border-x-0");
+      expect(tokens).toContain("border-t-0");
+      expect(tokens).toContain("rounded-none");
+      expect(tokens).not.toContain("bg-background");
+      expect(tokens).not.toContain("border-input");
+      // No painted ring or shadow; `ring-offset-background` only names a colour.
+      expect(tokens.some((token) => /^(shadow|ring)-\d/.test(token))).toBe(false);
+      expect(tokens.some((token) => token.startsWith("shadow"))).toBe(false);
+    }
+    // The hairline is the empty state only, and it is a single rule, not a frame.
+    expect(reps().className).toContain("border-b");
+    expect(reps().className).toContain("data-[empty]:border-dashed");
+    expect(within(row()).getByText("×").className).toContain("text-lg");
+    expect(within(row()).getByText("kg").className).toContain("text-base");
+  });
+
+  it.each([
+    ["reps", () => screen.getByRole("textbox", { name: "Wiederholungen für Satz 2" })],
+    ["weight", () => screen.getByRole("textbox", { name: "Gewicht für Satz 2 in kg" })],
+  ])("draws the %s value larger than its hint and the words beside it", (_name, field) => {
+    const { row } = renderWithInputs({ rest: "90s" });
+
+    expect(field().className).toContain("text-lg");
+    expect(field().className).toContain("md:text-lg");
+    expect(field().className).toContain("placeholder:text-base");
+    // The prescribed rest grew with them (12px → 13px) and stays the quieter fact.
+    expect(within(row()).getByText("90 s Pause").className).toContain("text-[0.8125rem]");
+    expect(within(row()).getByText("90 s Pause").className).not.toContain("text-xs");
   });
 
   it("omits the rest when none is prescribed", () => {
@@ -467,7 +510,8 @@ describe("ExerciseSetRow previous performance reference", () => {
     expect(copy().parentElement?.className).toContain("mt-2");
     const face = copy().querySelector("[data-copy-face]");
     expect(face?.className).toContain("h-7");
-    expect(face?.className).toContain("group-focus-visible:ring-2");
+    // TRAINING-UI-06: no focus ring is painted in the running workout.
+    expect(face?.className).not.toMatch(/focus-visible:ring/);
     expect(copy()).toHaveTextContent("Übernehmen");
   });
 

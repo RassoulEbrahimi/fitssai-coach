@@ -265,12 +265,25 @@ describe('last time, beside today', () => {
     expect([...rows.entries()]).toEqual(stored);
     expect(writes).toEqual([]);
 
-    // An exercise with no history adds nothing to its rows.
+    /*
+      An exercise with no history adds nothing to its rows. Opening it closes
+      Bankdrücken (TRAINING-UI-06), so its two rows are all that is on screen,
+      and the reference comes straight back when Bankdrücken is opened again -
+      it is read from the day's history, not from the open card.
+    */
     fireEvent.click(screen.getByRole('button', { name: /^Kniebeugen/ }));
-    await waitFor(() => expect(screen.getAllByRole('checkbox')).toHaveLength(5));
+    await waitFor(() => expect(screen.getAllByRole('checkbox')).toHaveLength(2));
+    expect(screen.queryAllByText('Letztes Mal:')).toHaveLength(0);
+    expect(screen.queryAllByRole('button', { name: /^Übernehmen/ })).toHaveLength(0);
+    expect(screen.queryAllByText(/^Zuletzt am/)).toHaveLength(0);
+
+    fireEvent.click(screen.getByRole('button', { name: /^Bankdrücken/ }));
+    await waitFor(() => expect(screen.getAllByRole('checkbox')).toHaveLength(3));
     expect(screen.getAllByText('Letztes Mal:')).toHaveLength(2);
     expect(screen.getAllByRole('button', { name: /^Übernehmen/ })).toHaveLength(2);
     expect(screen.getAllByText(/^Zuletzt am/)).toHaveLength(1);
+    expect(logReads()).toHaveLength(1);
+    expect(writes).toEqual([]);
   });
 
   it('reads history once for the whole day, bounded, and keeps it on the running workout while browsing', async () => {

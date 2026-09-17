@@ -17,28 +17,40 @@ const idleTimerState = {
   isComplete: false,
 };
 
-const renderExercise = (
-  overrides: Partial<React.ComponentProps<typeof ExerciseWithSets>> = {}
-) => {
+type CardProps = React.ComponentProps<typeof ExerciseWithSets>;
+type Overrides = Partial<Omit<CardProps, "isExpanded" | "onExpandedChange">> & { expanded?: boolean };
+
+/*
+  TRAINING-UI-06: the running session owns the one open exercise, so the card is
+  controlled. This harness plays that part for a single card - it holds the open
+  state the session would hold and hands it straight back down.
+*/
+const renderExercise = ({ expanded = false, ...overrides }: Overrides = {}) => {
   const onToggleSet = vi.fn();
+  const onExpandedChange = vi.fn();
 
-  render(
-    <ExerciseWithSets
-      exercise={{ name: "Bankdrücken", sets: 3, reps: 10, weight: "40 kg", rest: "90s" }}
-      exerciseIndex={0}
-      isSetCompleted={() => false}
-      getCompletedSetsCount={() => 0}
-      onToggleSet={onToggleSet}
-      isToggling={false}
-      defaultExpanded={false}
-      timerState={idleTimerState}
-      isRestSheetOpen={false}
-      onOpenRest={vi.fn()}
-      {...overrides}
-    />
-  );
+  const Harness = () => {
+    const [isExpanded, setExpanded] = React.useState(expanded);
+    return (
+      <ExerciseWithSets
+        exercise={{ name: "Bankdrücken", sets: 3, reps: 10, weight: "40 kg", rest: "90s" }}
+        exerciseIndex={0}
+        isSetCompleted={() => false}
+        getCompletedSetsCount={() => 0}
+        onToggleSet={onToggleSet}
+        isToggling={false}
+        timerState={idleTimerState}
+        isRestSheetOpen={false}
+        onOpenRest={vi.fn()}
+        {...overrides}
+        isExpanded={isExpanded}
+        onExpandedChange={(open) => { onExpandedChange(open); setExpanded(open); }}
+      />
+    );
+  };
 
-  return { onToggleSet };
+  render(<Harness />);
+  return { onToggleSet, onExpandedChange };
 };
 
 // The collapse trigger is named "<exercise> <done>/<total> Sätze", so the
@@ -119,18 +131,20 @@ describe("ExerciseWithSets header semantics", () => {
   it('marks completed exercises with text and a check, as well as colour', () => {
     renderExercise({ getCompletedSetsCount: () => 3, isSetCompleted: () => true });
     expect(screen.getByText('abgeschlossen')).toHaveClass('sr-only');
-    expect(metaLine()).toHaveTextContent('3/3 Sätze');
+    expect(metaLine()).toHaveTextContent('Brust, Trizeps');
     expect(metaLine().querySelector('svg')).not.toBeNull();
     expect(headerBlock().closest('.workout-exercise-unit')).toHaveAttribute('data-complete');
+    // The progress itself stays on the control that opens the sets.
     expect(header()).toHaveAccessibleName('Bankdrücken 3/3 Sätze');
   });
 
   it('does not mark a partly done exercise as completed', () => {
     renderExercise({ getCompletedSetsCount: () => 2, isSetCompleted: (_exerciseIndex, setNumber) => setNumber < 3 });
-    expect(metaLine()).toHaveTextContent('2/3 Sätze');
+    expect(metaLine()).toHaveTextContent('Brust, Trizeps');
     expect(metaLine().querySelector('svg')).toBeNull();
     expect(screen.queryByText('abgeschlossen')).toBeNull();
     expect(headerBlock().closest('.workout-exercise-unit')).not.toHaveAttribute('data-complete');
+    expect(header()).toHaveAccessibleName('Bankdrücken 2/3 Sätze');
   });
 
   it("renders the collapse trigger as a native button", () => {
@@ -149,13 +163,13 @@ describe("ExerciseWithSets header semantics", () => {
   });
 
   it("exposes the expanded state through aria-expanded", () => {
-    renderExercise({ defaultExpanded: true });
+    renderExercise({ expanded: true });
 
     expect(header()).toHaveAttribute("aria-expanded", "true");
   });
 
   it("holds no nested interactive controls", () => {
-    renderExercise({ defaultExpanded: true });
+    renderExercise({ expanded: true });
     const trigger = header();
 
     expect(within(trigger).queryAllByRole("button")).toHaveLength(0);
@@ -163,19 +177,29 @@ describe("ExerciseWithSets header semantics", () => {
     expect(within(trigger).queryAllByRole("link")).toHaveLength(0);
   });
 
-  it("takes keyboard focus and keeps a visible focus ring", async () => {
+  /*
+    TRAINING-UI-06: the ring is not painted in the running workout. The controls
+    still take focus, keep their order and still activate - only the decoration
+    is gone, and nothing replaces it with an outline of its own.
+  */
+  it("still takes keyboard focus, without a ring drawn around it", async () => {
     const user = userEvent.setup();
     renderExercise();
 
+    // Info first, then collapse: the order is unchanged, both still focusable.
     await tabToCollapse(user);
 
-    expect(header().className).toContain("focus-visible:ring-2");
-    expect(screen.getByRole("button", { name: "Informationen zu Bankdrücken" }).className).toContain("focus-visible:ring-2");
+    expect(header().className).not.toMatch(/focus-visible:ring/);
+    expect(header().className).toContain("focus-visible:outline-none");
+    // The shared Button keeps its own classes; workoutPresentation.css stops
+    // them being painted inside .workout-session (contract in
+    // ActiveWorkoutSession.test.tsx).
+    expect(header()).toHaveFocus();
   });
 });
 
 describe("ExerciseWithSets header layout", () => {
-  it("puts the name, sets, rest and progress in one block beside the thumbnail", () => {
+  it("puts the name, the muscle groups and progress in one block beside the thumbnail", () => {
     renderExercise({
       exercise: { name: "Bankdrücken", sets: 4, reps: 10, weight: "40 kg", rest: "90s" },
       getCompletedSetsCount: () => 2,
@@ -187,35 +211,74 @@ describe("ExerciseWithSets header layout", () => {
     expect(block.querySelector("[data-exercise-thumbnail]")).not.toBeNull();
     expect(identity).toContainElement(within(block).getByRole("heading", { level: 3, name: "Bankdrücken" }));
     expect(identity).toContainElement(metaLine());
-    // Two facts on one line: the dot between them is CSS, a comma is spoken.
-    const facts = metaLine().querySelectorAll(".workout-exercise-facts > span");
-    expect(facts).toHaveLength(2);
-    expect(facts[0]).toHaveTextContent(/^2\/4 Sätze$/);
-    expect(facts[1]).toHaveTextContent(/^, 90 s Pause$/);
-    expect(within(metaLine()).getByText(",")).toHaveClass("sr-only");
-    expect(within(metaLine()).getByText("90 s Pause")).toBeInTheDocument();
-    expect(metaLine()).toHaveTextContent("2/4 Sätze, 90 s Pause");
+    expect(metaLine().querySelector(".workout-exercise-facts")).toHaveTextContent(/^Brust, Trizeps$/);
   });
 
-  it("leaves the rest out of the meta line when none is prescribed", () => {
-    renderExercise({ exercise: { name: "Bankdrücken", sets: 3, reps: 10 } });
+  /*
+    TRAINING-UI-06: the subtitle says what the exercise trains, not how it is
+    programmed. Sets and rest are on every set row and in the collapse
+    control's name; neither is repeated here.
+  */
+  it("keeps the set count and the prescribed rest out of the subtitle", () => {
+    renderExercise({
+      exercise: { name: "Bankdrücken", sets: 4, reps: 10, weight: "40 kg", rest: "90s" },
+      getCompletedSetsCount: () => 2,
+    });
 
-    expect(metaLine().querySelectorAll(".workout-exercise-facts > span")).toHaveLength(1);
-    expect(metaLine()).toHaveTextContent(/^0\/3 Sätze$/);
+    expect(metaLine()).not.toHaveTextContent(/Sätze/);
+    expect(metaLine()).not.toHaveTextContent(/Pause/);
+    expect(metaLine()).not.toHaveTextContent(/2\/4|90 s/);
+    expect(within(headerBlock()).queryByText("90 s Pause")).toBeNull();
+  });
+
+  it.each([
+    ["Klimmzüge", "Rücken, Bizeps"],
+    ["Pull-up", "Rücken, Bizeps"],
+    ["Plank", "Bauch"],
+    ["Seitheben", "Schultern"],
+    ["Kniebeugen", "Beine, Gesäß"],
+    ["Bizepscurls", "Bizeps"],
+    ["Wadenheben", "Waden"],
+  ])("names the muscle groups %s trains as %s", (name, subtitle) => {
+    renderExercise({ exercise: { name, sets: 3, reps: 10, rest: "90s" } });
+
+    expect(metaLine().querySelector(".workout-exercise-facts")).toHaveTextContent(new RegExp(`^${subtitle}$`));
+  });
+
+  it("leaves the subtitle out entirely for an exercise it does not know", () => {
+    renderExercise({ exercise: { name: "Brustpresse Maschine", sets: 3, reps: 10, rest: "90s" } });
+
+    expect(metaLine().querySelector(".workout-exercise-facts")).toBeNull();
+    expect(metaLine().querySelector("[role=progressbar]")).not.toBeNull();
+    expect(screen.getByRole("heading", { level: 3, name: "Brustpresse Maschine" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Brustpresse Maschine 0/3 Sätze" })).toBeInTheDocument();
+  });
+
+  it("still marks an unknown exercise complete, with a check and words", () => {
+    renderExercise({
+      exercise: { name: "Brustpresse Maschine", sets: 3, reps: 10 },
+      getCompletedSetsCount: () => 3,
+      isSetCompleted: () => true,
+    });
+
+    expect(screen.getByText("abgeschlossen")).toHaveClass("sr-only");
+    expect(metaLine().querySelector("svg")).not.toBeNull();
+    expect(headerBlock().closest(".workout-exercise-unit")).toHaveAttribute("data-complete");
   });
 
   it.each([
     [0, 3, "translateX(-100%)"],
     [1, 3, "translateX(-67%)"],
     [2, 4, "translateX(-50%)"],
-  ])("draws %i of %i sets as progress, decoratively beside the stated count", (done, sets, transform) => {
+  ])("draws %i of %i sets as progress, decoratively under the subtitle", (done, sets, transform) => {
     renderExercise({
       exercise: { name: "Bankdrücken", sets, reps: 10, rest: "90s" },
       getCompletedSetsCount: () => done,
     });
     const bar = metaLine().querySelector<HTMLElement>("[role=progressbar]")!;
 
-    expect(metaLine()).toHaveTextContent(`${done}/${sets} Sätze`);
+    // The count itself is the collapse control's name, not a second line here.
+    expect(header()).toHaveAccessibleName(`Bankdrücken ${done}/${sets} Sätze`);
     expect(bar).toHaveAttribute("aria-hidden", "true");
     // The shared bar now reports its value (TRAINING-UI-04); this one stays out of the tree.
     expect(bar).toHaveAttribute("data-state", "loading");
@@ -287,6 +350,82 @@ describe("ExerciseWithSets header layout", () => {
   });
 });
 
+/*
+  TRAINING-UI-06: the card no longer decides whether it is open. It reports
+  every request to the session and draws whatever comes back, so two cards can
+  never both believe they are the open one.
+*/
+describe("ExerciseWithSets controlled expansion", () => {
+  it("draws the open state it is given, not one of its own", () => {
+    const { onExpandedChange } = renderExercise({ expanded: true });
+
+    expect(header()).toHaveAttribute("aria-expanded", "true");
+    expect(setRows()).toHaveLength(3);
+    expect(onExpandedChange).not.toHaveBeenCalled();
+  });
+
+  it("reports opening and closing instead of deciding it", async () => {
+    const user = userEvent.setup();
+    const { onExpandedChange } = renderExercise();
+
+    await user.click(header());
+    expect(onExpandedChange).toHaveBeenNthCalledWith(1, true);
+
+    await user.click(header());
+    expect(onExpandedChange).toHaveBeenNthCalledWith(2, false);
+    expect(onExpandedChange).toHaveBeenCalledTimes(2);
+  });
+
+  it("stays closed when the session does not open it", async () => {
+    const user = userEvent.setup();
+    const onExpandedChange = vi.fn();
+    render(
+      <ExerciseWithSets
+        exercise={{ name: "Bankdrücken", sets: 3, reps: 10, rest: "90s" }}
+        exerciseIndex={0}
+        isSetCompleted={() => false}
+        getCompletedSetsCount={() => 0}
+        onToggleSet={vi.fn()}
+        isToggling={false}
+        isExpanded={false}
+        onExpandedChange={onExpandedChange}
+        timerState={idleTimerState}
+        isRestSheetOpen={false}
+        onOpenRest={vi.fn()}
+      />
+    );
+
+    await user.click(header());
+
+    expect(onExpandedChange).toHaveBeenCalledWith(true);
+    expect(header()).toHaveAttribute("aria-expanded", "false");
+    expect(setRows()).toHaveLength(0);
+  });
+
+  it("keeps the guidance dialog independent of the open state", async () => {
+    const user = userEvent.setup();
+    const { onExpandedChange } = renderExercise();
+    const info = screen.getByRole("button", { name: "Informationen zu Bankdrücken" });
+    // The dialog hides the card from the tree while it is open; hold on to the
+    // control itself, which is the one that has to stay unaffected.
+    const collapse = header();
+
+    await user.click(info);
+
+    expect(screen.getByRole("dialog", { name: "Bankdrücken" })).toBeVisible();
+    expect(onExpandedChange).not.toHaveBeenCalled();
+    expect(collapse).toHaveAttribute("aria-expanded", "false");
+
+    await user.keyboard("{Escape}");
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+
+    // Collapse still opens the sets afterwards, without a second dialog.
+    await user.click(header());
+    expect(onExpandedChange.mock.calls).toEqual([[true]]);
+    expect(setRows()).toHaveLength(3);
+  });
+});
+
 describe("ExerciseWithSets activation", () => {
   it("expands on pointer activation", async () => {
     const user = userEvent.setup();
@@ -300,7 +439,7 @@ describe("ExerciseWithSets activation", () => {
 
   it("collapses on pointer activation when already open", async () => {
     const user = userEvent.setup();
-    renderExercise({ defaultExpanded: true });
+    renderExercise({ expanded: true });
 
     await user.click(header());
 
@@ -380,7 +519,7 @@ describe("ExerciseWithSets set controls", () => {
 
   it("keeps the set rows keyboard-operable", async () => {
     const user = userEvent.setup();
-    const { onToggleSet } = renderExercise({ defaultExpanded: true });
+    const { onToggleSet } = renderExercise({ expanded: true });
 
     screen.getByRole("checkbox", { name: /Satz 2/ }).focus();
     await user.keyboard("{Enter}");
@@ -393,7 +532,7 @@ describe("ExerciseWithSets set controls", () => {
   it("records completion only, never the prescription as performed reps or weight", async () => {
     const user = userEvent.setup();
     const { onToggleSet } = renderExercise({
-      defaultExpanded: true,
+      expanded: true,
       exercise: { name: "Bankdrücken", sets: 3, reps: "8–12", weight: "60 kg", rest: "90s" },
     });
 
@@ -408,7 +547,7 @@ describe("ExerciseWithSets set controls", () => {
 
   it("shows the range prescription on every set row", () => {
     renderExercise({
-      defaultExpanded: true,
+      expanded: true,
       exercise: { name: "Bankdrücken", sets: 2, reps: "8–12", weight: "60 kg", rest: "90s" },
     });
 
@@ -416,15 +555,16 @@ describe("ExerciseWithSets set controls", () => {
     expect(screen.getByRole("checkbox", { name: /Satz 1: Vorgabe 8–12 Wiederholungen mit 60 kg/ })).toBeInTheDocument();
   });
 
-  it("shows the prescribed rest on every set row as well as in the header", () => {
+  it("shows the prescribed rest on every set row, and only there", () => {
     renderExercise({
-      defaultExpanded: true,
+      expanded: true,
       exercise: { name: "Bankdrücken", sets: 3, reps: 10, weight: "40 kg", rest: "90s" },
       performance: { drafts: new SetPerformanceDraftStore(), changeDraft: vi.fn(), commit: vi.fn(() => "unchanged" as const) },
     });
 
-    // Once in the header, once per row.
-    expect(screen.getAllByText("90 s Pause")).toHaveLength(4);
+    // Once per row; the header subtitle no longer repeats it (TRAINING-UI-06).
+    expect(screen.getAllByText("90 s Pause")).toHaveLength(3);
+    expect(within(headerBlock()).queryByText("90 s Pause")).toBeNull();
     for (const setNumber of [1, 2, 3]) {
       const row = screen.getByRole("group", { name: `${setNumber}. Satz` });
       expect(within(row).getByText("90 s Pause")).toBeInTheDocument();
@@ -435,7 +575,7 @@ describe("ExerciseWithSets set controls", () => {
 
   it("does not turn a time prescription into a rep count", () => {
     renderExercise({
-      defaultExpanded: true,
+      expanded: true,
       exercise: { name: "Bankdrücken", sets: 1, reps: "30 Sekunden", rest: "60s" },
     });
 
@@ -446,7 +586,7 @@ describe("ExerciseWithSets set controls", () => {
   it("un-completes a range set with the same completion-only shape", async () => {
     const user = userEvent.setup();
     const { onToggleSet } = renderExercise({
-      defaultExpanded: true,
+      expanded: true,
       exercise: { name: "Bankdrücken", sets: 3, reps: "8–12", weight: "60 kg", rest: "90s" },
       isSetCompleted: (_exerciseIndex, setNumber) => setNumber === 2,
       getCompletedSetsCount: () => 1,
@@ -460,7 +600,7 @@ describe("ExerciseWithSets set controls", () => {
   it("delegates uncompletion with exact set coordinates", async () => {
     const user = userEvent.setup();
     const { onToggleSet } = renderExercise({
-      defaultExpanded: true,
+      expanded: true,
       isSetCompleted: (_exerciseIndex, setNumber) => setNumber === 1,
       getCompletedSetsCount: () => 1,
     });
@@ -485,7 +625,7 @@ describe("ExerciseWithSets previous performance", () => {
 
   it("names the previous workout's date once and references only the set numbers it has", () => {
     const getPreviousExercise = vi.fn((_exerciseIndex: number) => LAST_TUESDAY);
-    renderExercise({ defaultExpanded: true, performance: inputs(), getPreviousExercise });
+    renderExercise({ expanded: true, performance: inputs(), getPreviousExercise });
 
     expect(screen.getAllByText("Zuletzt am 08.09.2026")).toHaveLength(1);
     expect(copyButtons().map((button) => button.getAttribute("aria-label"))).toEqual([
@@ -497,7 +637,7 @@ describe("ExerciseWithSets previous performance", () => {
   });
 
   it("stays exactly as before when there is no previous performance", () => {
-    renderExercise({ defaultExpanded: true, performance: inputs(), getPreviousExercise: () => undefined });
+    renderExercise({ expanded: true, performance: inputs(), getPreviousExercise: () => undefined });
 
     expect(screen.queryByText(/Zuletzt am/)).toBeNull();
     expect(screen.queryByText(/Letztes Mal/)).toBeNull();
@@ -506,7 +646,7 @@ describe("ExerciseWithSets previous performance", () => {
 
   it("shows no date when no set number lines up with today's sets", () => {
     renderExercise({
-      defaultExpanded: true,
+      expanded: true,
       performance: inputs(),
       getPreviousExercise: () => ({ workoutDay: "2026-09-08", sets: { 5: { reps: 10, weightKg: null } } }),
     });
@@ -516,7 +656,7 @@ describe("ExerciseWithSets previous performance", () => {
   });
 
   it("keeps the reference inside the collapsible sets, not in the header", () => {
-    renderExercise({ defaultExpanded: false, performance: inputs(), getPreviousExercise: () => LAST_TUESDAY });
+    renderExercise({ expanded: false, performance: inputs(), getPreviousExercise: () => LAST_TUESDAY });
 
     expect(screen.queryByText(/Zuletzt am/)).toBeNull();
     expect(header()).not.toHaveTextContent(/Letztes Mal|Zuletzt/);

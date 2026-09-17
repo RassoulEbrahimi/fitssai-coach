@@ -72,6 +72,17 @@ export const ActiveWorkoutSession: React.FC<ActiveWorkoutSessionProps> = ({
   onFinish,
 }) => {
   const { t } = useTranslation();
+  /*
+    The one open exercise, by its position in the running day - the same
+    identity set writes and the rest timer use. It lives here, not in the
+    cards, so opening one closes the other without two components holding an
+    opinion about it. `null` is all closed, which is a normal state.
+
+    Only presentation: drafts, recorded values and the rest timer are owned by
+    TodayWorkoutCard above Focus Mode's portal, so collapsing an exercise puts
+    nothing at risk.
+  */
+  const [expandedExercise, setExpandedExercise] = React.useState<number | null>(0);
 
   return (
     <div className="workout-session mx-auto w-full max-w-3xl">
@@ -118,7 +129,8 @@ export const ActiveWorkoutSession: React.FC<ActiveWorkoutSessionProps> = ({
             onToggleSet={onToggleSet}
             isToggling={isTogglingSet}
             performance={performance}
-            defaultExpanded={index === 0}
+            isExpanded={expandedExercise === index}
+            onExpandedChange={(expanded) => setExpandedExercise(expanded ? index : null)}
             timerState={rest.timerState}
             isRestSheetOpen={rest.isSheetOpen}
             onOpenRest={() => rest.setSheetOpen(true)}
@@ -127,11 +139,12 @@ export const ActiveWorkoutSession: React.FC<ActiveWorkoutSessionProps> = ({
       </div>
 
       {/*
-        The one finish control, after the list in DOM and tab order. It sticks
-        to the bottom of the scroll area on phones (workoutPresentation.css).
-        It only opens the summary; nothing is saved until that is confirmed.
-        Primary whether or not every set is done: an unfinished workout can be
-        finished too, so completion adds a check and nothing else.
+        The one finish control, at the end of the workout in DOM, tab order and
+        on screen. It scrolls with the list rather than sitting at the bottom of
+        the viewport, so training is not shadowed by a control for ending it
+        (TRAINING-UI-06). It only opens the summary; nothing is saved until that
+        is confirmed. Primary whether or not every set is done: an unfinished
+        workout can be finished too, so completion adds a check and nothing else.
       */}
       <div className="workout-finish">
         <Button

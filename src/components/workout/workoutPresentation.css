@@ -43,26 +43,17 @@
 }
 
 /*
-  Sets and rest, split by a middle dot. Every fact starts with its dot, and
-  the line begins one dot-width left of the clipped box. A fact that wraps to
-  a new line (a 238px card) hides its dot instead of leading with it.
+  The muscle groups the exercise trains, one short line under the name. Sets
+  and rest left this line with TRAINING-UI-06, so there is one fact and no
+  separator; a two-word line that outgrows a 238px card wraps rather than
+  being cut mid-word.
 */
 .workout-exercise-meta {
   overflow: hidden;
 }
 
 .workout-exercise-facts {
-  display: flex;
-  flex-wrap: wrap;
-  margin-left: -1em;
-}
-
-.workout-exercise-facts > *::before {
-  content: "·";
-  content: "·" / "";
-  display: inline-block;
-  width: 1em;
-  text-align: center;
+  overflow-wrap: anywhere;
 }
 
 .workout-exercise-actions {
@@ -72,12 +63,6 @@
   align-self: stretch;
   width: 2.75rem;
   margin: -0.5rem -0.75rem;
-}
-
-/* The boxes reach the card's clipped edge, so their focus rings are drawn inside them. */
-.workout-exercise-actions > button:focus-visible {
-  --tw-ring-inset: inset;
-  --tw-ring-offset-width: 0px;
 }
 
 .workout-exercise-toggle[data-state="open"] .workout-exercise-chevron {
@@ -212,7 +197,7 @@
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  column-gap: 0.5rem;
+  column-gap: 0.375rem;
   min-width: 0;
 }
 
@@ -264,85 +249,33 @@ span.workout-set-entry {
 }
 
 /*
-  Finish action: the one "Training beenden" control, after the exercise list.
-  On phones and tablets it sticks to the bottom of the scroll area, so it
-  stays in reach through a long workout without a second control, a portal
-  or a scroll listener. It stays in flow: at the end of the list it rests in
-  its own place, below the last set, and covers nothing.
-  - Dashboard: the page scrolls. The button sits above the bottom navigation,
-    in the same reserve DashboardPage keeps at the end of the page.
-  - Focus Mode (.workout-focus-layer): the overlay scrolls and has no
-    navigation. The bar reaches its bottom edge and pads the home indicator.
-  One page layer (z-index 1); the rest sheet, guidance and summary open above.
+  Focus rings inside the running workout.
+
+  The active workout is a phone screen that is tapped, and it has no keyboard
+  flow of its own; a ring drawn around whichever control was touched last only
+  competed with the set the user is working on. So the ring is not painted here
+  (TRAINING-UI-06). This is paint only: roles, names, tab order, activation and
+  the dialogs' own focus handling are untouched, and the guidance dialog, the
+  rest sheet and the summary render in portals outside .workout-session, where
+  this rule cannot reach them.
+
+  It outweighs Tailwind's focus-visible:ring-* utilities on specificity, so it
+  covers the shared Button and Input as well as this screen's own controls.
 */
-.workout-session {
-  --workout-finish-surface: var(--card);
-  --workout-finish-inset: calc(var(--bottom-nav-offset) + env(safe-area-inset-bottom, 0px));
-  --workout-finish-pad: 0.75rem;
-  /* The bar's own height: top padding, the 52px button, bottom padding. */
-  --workout-finish-height: calc(0.75rem + 3.25rem + var(--workout-finish-pad));
+.workout-session :is(a, button, input, select, textarea, [tabindex]):focus-visible {
+  outline: none;
+  box-shadow: none;
 }
 
-.workout-focus-layer .workout-session {
-  --workout-finish-surface: var(--background);
-  --workout-finish-inset: 0px;
-  --workout-finish-pad: max(0.75rem, env(safe-area-inset-bottom, 0px));
-}
-
+/*
+  Finish action: the one "Training beenden" control, at the end of the exercise
+  list. It scrolls with the workout - no sticky bar, no fixed layer, no strip
+  reserved at the bottom of the screen - so it is reached by scrolling past the
+  last set, and training is never shadowed by the control that ends it. A rule
+  separates it from the list; nothing sits below it.
+*/
 .workout-finish {
-  position: sticky;
-  bottom: 0;
-  z-index: 1;
   margin-top: 1rem;
   padding-top: 0.75rem;
-  /*
-    The bar also covers the navigation reserve below the button. The
-    floating navigation then sits on the bar, not on a sliver of exercise
-    content, and a tap beside it lands on the bar. The negative margin takes
-    the reserve out of the layout again, so in flow the bar is only as tall
-    as its button and padding; the card clips the rest.
-  */
-  padding-bottom: calc(var(--workout-finish-pad) + var(--workout-finish-inset));
-  margin-bottom: calc(-1 * var(--workout-finish-inset));
-  /*
-    A solid surface under a 1px rule. The image reaches past the content
-    gutters to the card or overlay edge, which clips it. It is painted
-    overflow only, so it never widens the layout.
-  */
-  border-image: linear-gradient(hsl(var(--border)) 0 1px, hsl(var(--workout-finish-surface)) 0) fill 0 / 0 / 0 100vmax;
-}
-
-/* A control that focus scrolls to (Tab, or a rejected value) lands above the bar, not under it. */
-.workout-session-list :is(button, input) {
-  scroll-margin-bottom: calc(var(--workout-finish-inset) + var(--workout-finish-height) + 0.5rem);
-}
-
-/*
-  Desktop, and phones in landscape, where the bar and the navigation together
-  would cover about half the screen: the action stays at the end of the list,
-  under the same rule.
-*/
-@media (min-width: 64rem), (max-height: 29.99rem) {
-  .workout-finish {
-    position: static;
-    padding-bottom: var(--workout-finish-pad);
-    margin-bottom: 0;
-    border-image: none;
-    border-top: 1px solid hsl(var(--border));
-  }
-
-  .workout-session-list :is(button, input) {
-    scroll-margin-bottom: var(--workout-finish-inset);
-  }
-}
-
-/*
-  The Dashboard workout card clips its hero and corners like overflow:
-  hidden, but clip does not make it a scroll container, which would pin the
-  finish bar to the card instead of the page. Browsers without clip keep
-  hidden, and the bar simply stays at the end of the list.
-*/
-.workout-card-clip {
-  overflow: hidden;
-  overflow: clip;
+  border-top: 1px solid hsl(var(--border));
 }

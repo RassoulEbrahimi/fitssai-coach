@@ -43,7 +43,9 @@ const noDraft = (): SetPerformanceDraft | undefined => undefined;
 
 /*
   One planned set in a single compact row: its number, today's reps × kg, the
-  prescribed rest and completion. Placement per card width lives in
+  prescribed rest and completion. The numbers are the largest thing in the row
+  and are written straight on the surface - no field boxes, no fills, one
+  hairline under a field that is still empty. Placement per card width lives in
   workoutPresentation.css.
 
   Prescription, actual performance and completion stay separate. The plan's
@@ -120,7 +122,7 @@ export const ExerciseSetRow: React.FC<ExerciseSetRowProps> = ({
               {fields.map((field) => (
                 <React.Fragment key={field.name}>
                   {field.name === "weight" && (
-                    <span aria-hidden="true" className="mx-0.5 text-base text-muted-foreground">×</span>
+                    <span aria-hidden="true" className="mx-0.5 text-lg text-muted-foreground">×</span>
                   )}
                   <label htmlFor={field.id} className="sr-only">{fieldLabel(field.name, setNumber)}</label>
                   <Input
@@ -144,24 +146,39 @@ export const ExerciseSetRow: React.FC<ExerciseSetRowProps> = ({
                       performance.commit(exerciseIndex, setNumber);
                     }}
                     className={cn(
-                      "h-10 shrink-0 px-1 text-center text-base font-semibold tabular-nums md:text-base",
-                      // Hints read lighter than recorded values, and an empty field is dashed.
-                      "placeholder:text-sm placeholder:font-normal data-[empty]:border-dashed",
-                      field.name === "reps" ? "w-12" : "w-[3.75rem]",
-                      field.error && "border-destructive focus-visible:ring-destructive"
+                      // The number is the row: bigger than the words around it,
+                      // and written straight on the surface. No box, no fill,
+                      // no rectangle per field (TRAINING-UI-06).
+                      "h-11 shrink-0 rounded-none border-x-0 border-t-0 bg-transparent px-0.5",
+                      "text-center text-lg font-semibold tabular-nums md:text-lg",
+                      // Hints read lighter and smaller than recorded values.
+                      "placeholder:text-base placeholder:font-normal",
+                      /*
+                        The only rule left: a hairline under an empty field, so
+                        it still reads as somewhere to type. A filled field
+                        carries nothing but its value.
+                      */
+                      "border-b border-transparent data-[empty]:border-dashed data-[empty]:border-muted-foreground/50",
+                      /*
+                        Narrower than the 16px fields they replace, so 18px
+                        digits do not push the rest onto a second line on a
+                        375px phone. Both still clear 44px in both directions.
+                      */
+                      field.name === "reps" ? "w-11" : "w-14",
+                      field.error && "border-solid border-destructive text-destructive"
                     )}
                   />
                 </React.Fragment>
               ))}
-              <span aria-hidden="true" className="ml-1 text-sm text-muted-foreground">kg</span>
+              <span aria-hidden="true" className="ml-0.5 text-base text-muted-foreground">kg</span>
             </div>
           ) : (
             target.visual && (
-              <span className="workout-set-entry text-sm font-medium text-foreground">{target.visual}</span>
+              <span className="workout-set-entry text-base font-medium text-foreground">{target.visual}</span>
             )
           )}
           {restText && (
-            <span className="workout-set-rest whitespace-nowrap text-xs leading-4 text-muted-foreground">
+            <span className="workout-set-rest whitespace-nowrap text-[0.8125rem] leading-[1.125rem] text-muted-foreground">
               <span aria-hidden="true">• </span>{restText}
             </span>
           )}
@@ -217,8 +234,7 @@ export const ExerciseSetRow: React.FC<ExerciseSetRowProps> = ({
                       data-copy-face
                       className={cn(
                         "inline-flex h-7 items-center rounded-md border border-input bg-background px-2",
-                        "text-xs font-medium text-foreground transition-colors group-hover:bg-muted",
-                        "group-focus-visible:ring-2 group-focus-visible:ring-primary group-focus-visible:ring-offset-2"
+                        "text-xs font-medium text-foreground transition-colors group-hover:bg-muted"
                       )}
                     >
                       Übernehmen
@@ -240,8 +256,7 @@ export const ExerciseSetRow: React.FC<ExerciseSetRowProps> = ({
           className={cn(
             // 44px minimum touch target.
             "workout-set-toggle flex h-11 w-11 min-h-[44px] min-w-[44px] shrink-0 items-center justify-center rounded-full transition-transform",
-            "hover:bg-muted/60 active:scale-95",
-            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2",
+            "hover:bg-muted/60 active:scale-95 focus-visible:outline-none",
             isToggling && "opacity-60 pointer-events-none"
           )}
         >

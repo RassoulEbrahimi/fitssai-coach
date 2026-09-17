@@ -1,18 +1,25 @@
+import React, { useState } from 'react';
 import { render, screen, within, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import ExerciseWithSets from './ExerciseWithSets';
 import { IDLE_REST } from '@/lib/restTimer';
 
+/* A list of exercises with the one-open-at-a-time state the session owns. */
 function mount() {
   const toggle = vi.fn();
   const rest = vi.fn();
-  render(<>{['Bankdrücken', 'Plank', 'Bankdrücken enger Griff'].map((name, index) => (
-    <ExerciseWithSets key={name} exercise={{ name, sets: 2, reps: '10' }} exerciseIndex={index}
-      isSetCompleted={(_e, s) => s === 1} getCompletedSetsCount={() => 1}
-      onToggleSet={toggle} isToggling={false} defaultExpanded={index === 0}
-      timerState={{ ...IDLE_REST, remainingSeconds: 0, isComplete: false }} isRestSheetOpen={false} onOpenRest={rest} />
-  ))}</>);
+  const List = () => {
+    const [expanded, setExpanded] = useState<number | null>(0);
+    return <>{['Bankdrücken', 'Plank', 'Bankdrücken enger Griff'].map((name, index) => (
+      <ExerciseWithSets key={name} exercise={{ name, sets: 2, reps: '10' }} exerciseIndex={index}
+        isSetCompleted={(_e, s) => s === 1} getCompletedSetsCount={() => 1}
+        onToggleSet={toggle} isToggling={false}
+        isExpanded={expanded === index} onExpandedChange={(open) => setExpanded(open ? index : null)}
+        timerState={{ ...IDLE_REST, remainingSeconds: 0, isComplete: false }} isRestSheetOpen={false} onOpenRest={rest} />
+    ))}</>;
+  };
+  render(<List />);
   return { user: userEvent.setup(), toggle, rest };
 }
 
