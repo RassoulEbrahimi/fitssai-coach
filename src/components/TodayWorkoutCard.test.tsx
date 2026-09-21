@@ -229,7 +229,7 @@ describe('session finish persistence across selected-day navigation', () => {
     };
     const openSummary = async () => {
         fireEvent.click(await screen.findByRole('button', { name: /^Training beenden/i }));
-        return screen.findByRole('button', { name: /Training speichern & beenden/i });
+        return screen.findByRole('button', { name: /^Speichern & beenden$/ });
     };
     const storedSession = () => {
         const raw = localStorage.getItem(SESSION_STORAGE_KEY);

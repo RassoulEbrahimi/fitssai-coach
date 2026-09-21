@@ -321,11 +321,12 @@ const WorkoutSummaryModal: React.FC<WorkoutSummaryModalProps> = ({
               <Button
                 disabled={isSaving}
                 onClick={handleFinish}
-                className="w-full h-auto min-h-12 whitespace-normal text-base font-bold shadow-md"
+                // px-4, not the lg size's px-8: on a 320px phone the label needs that room for one line.
+                className="w-full h-auto min-h-12 whitespace-normal px-4 text-base font-bold shadow-md"
                 size="lg"
               >
                 <Save className="w-4 h-4 mr-2 shrink-0" />
-                {isSaving ? 'Training wird gespeichert…' : error ? 'Erneut speichern & beenden' : 'Training speichern & beenden'}
+                {isSaving ? 'Training wird gespeichert…' : error ? 'Erneut speichern & beenden' : 'Speichern & beenden'}
               </Button>
 
               <Button

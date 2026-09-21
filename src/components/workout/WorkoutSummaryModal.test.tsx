@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import WorkoutSummaryModal from "./WorkoutSummaryModal";
 import type { RecordedExercisePerformance } from "@/lib/workoutExecution";
 import type { PreviousExercisePerformance } from "@/lib/previousPerformance";
@@ -102,7 +102,7 @@ describe("WorkoutSummaryModal factual comparison", () => {
       ] }], previous);
       expect(screen.queryByRole("region", { name: "Vergleich zum letzten Mal" })).toBeNull();
       expect(screen.queryByText(/Keine Daten|Keine Fortschritte/)).toBeNull();
-      expect(screen.getByRole("button", { name: "Training speichern & beenden" })).toBeEnabled();
+      expect(screen.getByRole("button", { name: "Speichern & beenden" })).toBeEnabled();
     },
   );
 });
@@ -140,5 +140,61 @@ describe("WorkoutSummaryModal recorded performance", () => {
     expect(section.textContent).not.toMatch(/60 kg|8–12|Satz 2|Plank/);
     // No totals, estimates or records.
     expect(screen.getByRole("dialog").textContent).not.toMatch(/Tonnage|1RM|Rekord|Gesamt/);
+  });
+});
+
+describe("WorkoutSummaryModal final action", () => {
+  const renderAction = (props: Partial<React.ComponentProps<typeof WorkoutSummaryModal>> = {}) => {
+    const onFinish = vi.fn();
+    const onClose = vi.fn();
+    render(
+      <WorkoutSummaryModal
+        open
+        onClose={onClose}
+        onFinish={onFinish}
+        exercises={[{ name: "Bankdrücken", sets: 3, reps: "8–12", weight: "60 kg", rest: "90s" }]}
+        duration={1500}
+        workoutName="Push"
+        selectedDate={new Date("2026-09-07")}
+        getCompletedSetsCount={() => 1}
+        {...props}
+      />
+    );
+    return { onFinish, onClose };
+  };
+
+  it("labels the save-and-end action briefly, since the title already names the training", () => {
+    renderAction();
+    const action = screen.getByRole("button", { name: "Speichern & beenden" });
+
+    expect(action).toHaveTextContent(/^Speichern & beenden$/);
+    // The lg size's px-8 left a 320px phone too little room for one line.
+    expect(action.className.split(/\s+/)).toContain("px-4");
+    expect(action.className.split(/\s+/)).not.toContain("px-8");
+    expect(screen.getByRole("dialog")).toHaveAccessibleName("Training abschließen?");
+    expect(screen.queryByText(/Training speichern & beenden/)).toBeNull();
+  });
+
+  it("still saves and ends exactly as before when pressed", () => {
+    const { onFinish, onClose } = renderAction();
+
+    fireEvent.click(screen.getByRole("button", { name: "Speichern & beenden" }));
+
+    expect(onFinish).toHaveBeenCalledTimes(1);
+    expect(onFinish.mock.calls).toEqual([[]]);
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
+  it("keeps the saving and retry labels unchanged", () => {
+    renderAction({ isSaving: true });
+    expect(screen.getByRole("button", { name: "Training wird gespeichert…" })).toBeDisabled();
+  });
+
+  it("offers the retry under its own label after a failed save", () => {
+    const { onFinish } = renderAction({ error: "Speichern fehlgeschlagen." });
+
+    fireEvent.click(screen.getByRole("button", { name: "Erneut speichern & beenden" }));
+    expect(onFinish).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole("button", { name: "Speichern & beenden" })).toBeNull();
   });
 });

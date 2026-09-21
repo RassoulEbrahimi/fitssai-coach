@@ -3,6 +3,7 @@ import { act, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import ExerciseSetRow from "./ExerciseSetRow";
 import { SetPerformanceDraftStore, type SetPerformanceField } from "@/lib/setPerformanceDrafts";
+import { applyPreviousToDraft } from "@/lib/previousPerformance";
 
 const renderWithInputs = (overrides: Partial<React.ComponentProps<typeof ExerciseSetRow>> = {}) => {
   const drafts = new SetPerformanceDraftStore();
@@ -515,11 +516,197 @@ describe("ExerciseSetRow previous performance reference", () => {
     expect(copy()).toHaveTextContent("Übernehmen");
   });
 
+  it("is a flat text action, not a bordered pill", () => {
+    const { copy } = renderWithPrevious({ reps: 10, weightKg: 52.5 });
+    const classes = (element: Element | null) => (element?.className ?? "").split(/\s+/);
+    const face = copy().querySelector("[data-copy-face]");
+
+    // TRAINING-UI-07: no border, no fill, no hover fill - only the word.
+    for (const element of [copy(), face]) {
+      expect(classes(element).filter((name) => /^border(-|$)/.test(name))).toEqual([]);
+      expect(classes(element).filter((name) => /^(group-hover:)?bg-(?!transparent)/.test(name))).toEqual([]);
+    }
+    expect(classes(face)).toContain("bg-transparent");
+    expect(classes(face)).toContain("underline");
+    // The hit box stays 44px while the visible face is a 28px line of text.
+    expect(classes(copy())).toContain("h-11");
+    expect(face).toHaveTextContent(/^Übernehmen$/);
+  });
+
   it("marks the reference with words as well as an icon and colour", () => {
     const { reference } = renderWithPrevious({ reps: 10, weightKg: 52.5 });
 
     expect(reference().closest("p")?.querySelector("svg")).toHaveAttribute("aria-hidden", "true");
     expect(within(reference()).getByText("Letztes Mal:")).toBeInTheDocument();
+  });
+});
+
+/*
+  TRAINING-UI-07: "Übernehmen" only while it can still fill something. The
+  copy here is the real one - applyPreviousToDraft over the row's draft and
+  recorded values - so what the row offers and what a click does are checked
+  against the same rule.
+*/
+const renderCopyable = ({
+  previous = { reps: 10, weightKg: 47.5 },
+  actual = { reps: null, weightKg: null },
+  draft,
+  isCompleted = false,
+}: {
+  previous?: { reps: number | null; weightKg: number | null };
+  actual?: { reps: number | null; weightKg: number | null };
+  draft?: { reps?: string; weight?: string };
+  isCompleted?: boolean;
+} = {}) => {
+  const drafts = new SetPerformanceDraftStore();
+  if (draft) drafts.set("1:2", draft);
+  const commit = vi.fn(() => "unchanged" as const);
+  const copyPrevious = vi.fn((exerciseIndex: number, setNumber: number) => {
+    const key = `${exerciseIndex}:${setNumber}`;
+    drafts.set(key, applyPreviousToDraft(drafts.get(key) ?? {}, actual, previous));
+  });
+  const changeDraft = vi.fn((exerciseIndex: number, setNumber: number, field: SetPerformanceField, text: string) => {
+    const key = `${exerciseIndex}:${setNumber}`;
+    drafts.set(key, { ...drafts.get(key), [field]: text });
+  });
+  const onToggle = vi.fn();
+  render(
+    <ExerciseSetRow
+      exerciseIndex={1}
+      setNumber={2}
+      targetReps={12}
+      targetWeight="50 kg"
+      isCompleted={isCompleted}
+      isToggling={false}
+      onToggle={onToggle}
+      actual={actual}
+      performance={{ drafts, changeDraft, commit, copyPrevious }}
+      previous={previous}
+    />
+  );
+  const copy = () => screen.queryByRole("button", { name: /^Übernehmen für Satz 2:/ });
+  const reps = () => screen.getByRole("textbox", { name: "Wiederholungen für Satz 2" });
+  const weight = () => screen.getByRole("textbox", { name: "Gewicht für Satz 2 in kg" });
+  const reference = () => screen.getByText("Letztes Mal:").closest(".workout-set-detail") as HTMLElement;
+  return { drafts, commit, copyPrevious, onToggle, copy, reps, weight, reference };
+};
+
+describe("ExerciseSetRow Übernehmen only while it can fill something", () => {
+  it.each([
+    ["both of today's fields are empty", {}, true],
+    ["reps are typed and the weight is still empty", { draft: { reps: "12" } }, true],
+    ["the weight is typed and the reps are still empty", { draft: { weight: "50" } }, true],
+    ["reps are recorded and the weight is still empty", { actual: { reps: 12, weightKg: null } }, true],
+    ["the weight is recorded and the reps are still empty", { actual: { reps: null, weightKg: 50 } }, true],
+    ["both fields are typed", { draft: { reps: "12", weight: "50" } }, false],
+    ["both fields are recorded", { actual: { reps: 12, weightKg: 50 } }, false],
+    ["one field is recorded and the other typed", { actual: { reps: 12, weightKg: null }, draft: { weight: "50" } }, false],
+    ["a recorded value was cleared in the draft (the copy never replaces it)", { actual: { reps: 12, weightKg: 50 }, draft: { reps: "" } }, false],
+    ["last time has only reps and today's reps are filled", { previous: { reps: 10, weightKg: null }, draft: { reps: "12" } }, false],
+    ["last time has only reps and today's reps are empty", { previous: { reps: 10, weightKg: null }, draft: { weight: "50" } }, true],
+    ["last time has only a weight and today's weight is filled", { previous: { reps: null, weightKg: 47.5 }, actual: { reps: null, weightKg: 50 } }, false],
+  ] as const)("when %s: offered = %s", (_label, state, offered) => {
+    const { copy } = renderCopyable(state);
+
+    if (offered) expect(copy()).toBeInTheDocument();
+    else expect(copy()).toBeNull();
+    expect(screen.queryByText(/^Übernehmen$/)).toBe(offered ? copy()?.querySelector("[data-copy-face]") ?? null : null);
+  });
+
+  it("is still offered on a completed set that lacks a value", () => {
+    const { copy } = renderCopyable({ isCompleted: true, actual: { reps: 12, weightKg: null } });
+
+    expect(screen.getByRole("checkbox")).toHaveAttribute("aria-checked", "true");
+    expect(copy()).toBeInTheDocument();
+  });
+
+  it("is not offered on a completed set with both values, for the values and not the tick", () => {
+    const { copy } = renderCopyable({ isCompleted: true, actual: { reps: 12, weightKg: 50 } });
+
+    expect(copy()).toBeNull();
+  });
+
+  it("fills only the empty field, never the populated one, and then goes away", async () => {
+    const user = userEvent.setup();
+    const { copy, reps, weight, copyPrevious, onToggle, commit } = renderCopyable({ draft: { reps: "12" } });
+
+    await user.click(copy()!);
+
+    expect(copyPrevious.mock.calls).toEqual([[1, 2]]);
+    expect(reps()).toHaveValue("12");
+    expect(weight()).toHaveValue("47,5");
+    expect(copy()).toBeNull();
+    // The focused action went away, so focus moves on to completion - it is not ticked.
+    expect(screen.getByRole("checkbox")).toHaveFocus();
+    expect(screen.getByRole("checkbox")).toHaveAttribute("aria-checked", "false");
+    expect(onToggle).not.toHaveBeenCalled();
+    expect(commit).not.toHaveBeenCalled();
+  });
+
+  it("hands keyboard focus to completion without ticking it", async () => {
+    const user = userEvent.setup();
+    const { copy, reps, onToggle } = renderCopyable();
+
+    await user.tab();
+    await user.tab();
+    await user.tab();
+    expect(copy()).toHaveFocus();
+    await user.keyboard("{Enter}");
+
+    expect(reps()).toHaveValue("10");
+    expect(copy()).toBeNull();
+    expect(screen.getByRole("checkbox")).toHaveFocus();
+    expect(onToggle).not.toHaveBeenCalled();
+  });
+
+  it("never overwrites a recorded value", async () => {
+    const user = userEvent.setup();
+    const { copy, reps, weight } = renderCopyable({ actual: { reps: null, weightKg: 50 } });
+
+    await user.click(copy()!);
+
+    expect(reps()).toHaveValue("10");
+    expect(weight()).toHaveValue("50");
+    expect(copy()).toBeNull();
+  });
+
+  it("comes back when a field is emptied again", async () => {
+    const user = userEvent.setup();
+    const { copy, reps } = renderCopyable({ draft: { reps: "12", weight: "50" } });
+    expect(copy()).toBeNull();
+
+    await user.clear(reps());
+
+    expect(copy()).toBeInTheDocument();
+  });
+
+  it("keeps the reference and leaves no empty slot where the action was", () => {
+    const { copy, reference } = renderCopyable({ actual: { reps: 12, weightKg: 50 } });
+
+    expect(copy()).toBeNull();
+    expect(visibleText(reference())).toBe("Letztes Mal: 10 × 47,5 kg");
+    // The line holds only the reference text: no placeholder button, spacer or hidden face.
+    expect(reference().children).toHaveLength(1);
+    expect(reference().children[0].tagName).toBe("P");
+    expect(reference().querySelector("button, [data-copy-face]")).toBeNull();
+  });
+});
+
+describe("ExerciseSetRow Vorgabe detail spacing", () => {
+  it("sets the written-out prescription a little below the inputs", () => {
+    renderWithInputs({ targetReps: "30 Sekunden", targetWeight: undefined });
+    const detail = screen.getByText("Vorgabe:").closest("p")!;
+
+    expect(visibleText(detail)).toBe("Vorgabe: 30 Sekunden");
+    expect(detail).toHaveClass("workout-set-detail", "mt-1");
+  });
+
+  it("adds no spacing when there is no Vorgabe line", () => {
+    renderWithInputs();
+    const group = screen.getByRole("group", { name: "2. Satz" });
+
+    expect(group.querySelector(".workout-set-detail")).toBeNull();
+    expect(group.querySelector(".mt-1")).toBeNull();
   });
 });
 
