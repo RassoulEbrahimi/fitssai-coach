@@ -391,10 +391,10 @@ describe('the card keeps showing the running workout while the calendar moves', 
   });
 });
 
-describe('the Workout view calendar', () => {
+describe('the Trainingsplan tab (TRAINING-PLAN-V2-01)', () => {
   /** Dashboard's part: it owns the selected date and the plan-to-date mapping. */
   const WorkoutScreen = () => {
-    const [selectedDate, setSelectedDate] = useState(MONDAY.date);
+    const [selectedDate, setSelectedDate] = useState(TUESDAY.date);
     const getWeekKeyForDate = useCallback((date: Date) => getWorkoutWeekDay(PLAN.created_at, date).weekKey, []);
     const getDateFor = useCallback(
       (weekKey: string, dayIndex: number) => getWorkoutDate(PLAN.created_at, weekKey, dayIndex), []);
@@ -424,6 +424,7 @@ describe('the Workout view calendar', () => {
       />
     );
   };
+  const TUESDAY_BINDING = { planId: PLAN_ID, weekKey: 'Week 1', dayIndex: 1, workoutDay: '2026-09-08' };
 
   beforeEach(() => {
     vi.spyOn(window, 'scrollTo').mockImplementation(() => {});
@@ -435,29 +436,35 @@ describe('the Workout view calendar', () => {
   });
   afterEach(() => vi.unstubAllGlobals());
 
-  it('keeps Monday running, ticked and counted after the calendar selects Tuesday', async () => {
+  it('keeps the running workout bound to today while other days are browsed', async () => {
     render(providers({ children: <WorkoutScreen /> }));
-    await startFromCard();
 
-    fireEvent.click(screen.getByRole('button', { name: /^Di\.? 8/ }));
+    fireEvent.click(await screen.findByRole('button', { name: /^Training starten/ }));
+    await waitFor(() => expect(storedSession()).toMatchObject(TUESDAY_BINDING));
+    const today = await screen.findByRole('region', { name: 'Heute' });
+    expect(within(today).getByRole('button', { name: 'Fortsetzen' })).toBeInTheDocument();
+    await waitFor(() => expect(within(today).getByText('Übung 1 von 1 · Bankdrücken')).toBeInTheDocument());
 
-    // The calendar moved to Tuesday...
-    await waitFor(() => expect(screen.getByRole('button', { name: /^Di\.? 8/ })).toHaveAttribute('aria-pressed', 'true'));
-    // ...the running workout did not.
-    expect(within(running()).getByRole('button', { name: /^Kniebeugen/ })).toBeInTheDocument();
-    expect(within(running()).getByText('0/5 Sätze')).toBeInTheDocument();
-    expect(sessionProgress()).toHaveAttribute('aria-valuenow', '0');
-    expect(within(running()).queryByText(/Bankdrücken/)).not.toBeInTheDocument();
-    expect(within(hero()).getByText('Montag')).toBeInTheDocument();
+    // Thursday: another day's detail cannot start a second workout.
+    fireEvent.click(screen.getByRole('button', { name: /^Do 10,/ }));
+    const thursday = await screen.findByTestId('day-detail-footer');
+    expect(within(thursday).getByRole('button', { name: 'Training läuft bereits' })).toBeDisabled();
+    expect(screen.queryByRole('button', { name: /Training starten/ })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Zurück' }));
 
-    fireEvent.click(within(running()).getByRole('checkbox', { name: /Satz 1: Vorgabe 8 Wiederholungen/ }));
+    // Monday, in the past: browsing only.
+    fireEvent.click(await screen.findByRole('button', { name: /^Mo 7,/ }));
+    expect(await screen.findByText('Kniebeugen')).toBeInTheDocument();
+    expect(within(screen.getByTestId('day-detail-footer')).getByRole('button', { name: 'Training läuft bereits' })).toBeDisabled();
+    fireEvent.click(screen.getByRole('button', { name: 'Zurück' }));
 
-    if (screen.queryByRole('button', { name: 'Pause schließen' })) fireEvent.click(screen.getByRole('button', { name: 'Pause schließen' }));
-    await waitFor(() => expect(setLogs()).toHaveLength(1));
-    expect(parentLogs()).toEqual([expect.objectContaining({ ...MONDAY_BINDING, exerciseIndex: 0 })]);
-    await waitFor(() => expect(within(running()).getByText('1/5 Sätze')).toBeInTheDocument());
-    expect(sessionProgress()).toHaveAttribute('aria-valuenow', '20');
-    expect(storedSession()).toMatchObject(MONDAY_BINDING);
+    // Back on the tab: still Tuesday, still the one session, nothing written.
+    const again = await screen.findByRole('region', { name: 'Heute' });
+    expect(within(again).getByText('Übung 1 von 1 · Bankdrücken')).toBeInTheDocument();
+    expect(within(again).getByRole('progressbar', { name: 'Trainingsfortschritt' })).toHaveAttribute('aria-valuenow', '0');
+    expect(storedSession()).toMatchObject(TUESDAY_BINDING);
+    expect(screen.getByRole('button', { name: /^Di 8,.*läuft/ })).toBeInTheDocument();
+    expect(writes).toHaveLength(0);
   });
 });
 

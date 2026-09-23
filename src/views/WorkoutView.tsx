@@ -2,22 +2,20 @@ import React, { useState, useRef, useEffect, useMemo, useCallback } from "react"
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
-import { WifiOff, RefreshCw, AlertCircle, CheckCircle2 } from "lucide-react";
+import { WifiOff, RefreshCw, AlertCircle } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useTranslation } from "react-i18next";
 import { format } from 'date-fns';
-import { getWorkoutWeekDay, getCalendarWeekDates, getCalendarDayIndex, isCalendarToday, shiftCalendarWeeks } from "@/lib/workoutDateUtils";
-import { de } from 'date-fns/locale';
+import { getWorkoutWeekDay } from "@/lib/workoutDateUtils";
 import ExerciseListSkeleton from "@/components/skeletons/ExerciseListSkeleton";
-import TodayWorkoutCard from "@/components/TodayWorkoutCard";
+import TodayWorkoutCard, { type TodayExecutionControls, type TodayExecutionView } from "@/components/TodayWorkoutCard";
 import { useAuth } from "@/hooks/useAuth";
+import { useBerlinToday } from "@/hooks/useBerlinToday";
 import { useWeekCompletion } from "@/hooks/useWeekCompletion";
 import WorkoutErrorBoundary from "@/components/WorkoutErrorBoundary";
 import { logEvent } from "@/lib/telemetryClient";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-// These were used below without ever being imported, so every query that
-// touched Firestore from this file threw "collection is not defined".
-import { collection, doc, getDoc, getDocs, query, where, Timestamp } from "firebase/firestore";
+import { doc, getDoc, Timestamp } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 
 import { useExerciseEditor, type Exercise } from "@/hooks/useExerciseEditor";
@@ -25,22 +23,41 @@ import { useWorkoutHelpers } from "@/hooks/useWorkoutHelpers";
 import { normalizeWeekKey } from "@/lib/workoutPlanUtils";
 import { AddWorkoutModal } from "@/components/workout/AddWorkoutModal";
 import { useAddExercise } from "@/hooks/useAddExercise";
-import { useTrainingData } from "@/contexts/TrainingContext";
+import { useTrainingData, useTrainingSession } from "@/contexts/TrainingContext";
 import { useDeleteExercise } from "@/hooks/useDeleteExercise";
 import { useRestoreExercise } from "@/hooks/useRestoreExercise";
 import { Button as ToastButton } from "@/components/ui/button";
 import { PlanEditBlockedError } from "@/lib/exerciseHistoryGuard";
 import { WorkoutPlan } from "@/lib/types";
 import { WorkoutLog } from "@/lib/types";
+import { resolveSessionWorkoutDay } from "@/lib/workoutExecution";
+import { filterDaySessionLogs, isCompletedDayLog } from "@/lib/workoutCompletion";
+import {
+  buildPlanOverview,
+  buildWeekAgenda,
+  dayToDate,
+  findNextWeekWorkout,
+  getPlanCalendar,
+  readDayExercises,
+  resolveDatedDay,
+  resolveDayDetailAction,
+  resolvePlanPosition,
+  resolveTodayState,
+  summarizeWorkoutDay,
+  WORKOUT_TITLE_FALLBACK,
+  type PlanDayRef,
+  type RunningSession,
+  type TrainingsplanInputs,
+} from "@/lib/trainingsplanModel";
 
-// Extracted Components
-import { WeekNavigation } from "@/components/workout/WeekNavigation";
-import { WeekProgress } from "@/components/workout/WeekProgress";
-import { DayAccordion } from "@/components/workout/DayAccordion";
-
-// Logic helpers
-import { /* isElementVisible, */ updateHash } from "@/lib/workout/viewHelpers";
-import { resolvePlanDay, formatWeekLabel, getWeekDayProgress, PLAN_TOTAL_WEEKS } from "@/lib/planLifecycle";
+// Trainingsplan V2 screens
+import { TodayModule } from "@/components/trainingsplan/TodayModule";
+import { NextWeekTeaser, WeekAgenda } from "@/components/trainingsplan/WeekAgenda";
+import { CurrentPlanRow, TrainingsplanHeader } from "@/components/trainingsplan/PlanHeader";
+import { DayDetail } from "@/components/trainingsplan/DayDetail";
+import { DayEditSurface } from "@/components/trainingsplan/DayEditSurface";
+import { PlanOverview } from "@/components/trainingsplan/PlanOverview";
+import "@/components/trainingsplan/trainingsplan.css";
 
 interface WorkoutViewProps {
   workoutPlan: WorkoutPlan;
@@ -63,23 +80,35 @@ interface WorkoutViewProps {
   // Actions
   toggleDayComplete: (weekKey: string, dayIndex: number) => void;
   handleDateChange: (date: Date) => void;
+  /** Day detail and editing are focused tasks: the global navigation steps aside. */
+  onBottomNavHiddenChange?: (hidden: boolean) => void;
 }
+
+/**
+ * Where the Trainingsplan tab is. Level 0 is the tab itself; day detail and
+ * the plan overview are pushed from it, and editing is pushed from a day.
+ * Browsing never touches the running workout: the card below is always given
+ * today, and a bound session ignores even that.
+ */
+type Screen =
+  | { kind: "main" }
+  | { kind: "detail"; day: PlanDayRef }
+  | { kind: "edit"; day: PlanDayRef }
+  | { kind: "plan" };
 
 const WorkoutView: React.FC<WorkoutViewProps> = ({
   workoutPlan,
+  workoutLogs,
   selectedDate,
   isDayCompleted,
-  isDayInFuture,
-  isTodayInWeekDay,
-  getDateFor,
-  getWeekKeyForDate,
-  handleDateChange
+  onBottomNavHiddenChange,
 }) => {
   const { t } = useTranslation();
   const { toast } = useToast();
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const { syncFromPlan } = useTrainingData();
+  const { isStarted, session } = useTrainingSession();
   const { deleteExercise } = useDeleteExercise();
   const { restoreExercise } = useRestoreExercise();
 
@@ -118,7 +147,7 @@ const WorkoutView: React.FC<WorkoutViewProps> = ({
   });
 
   // Use consolidated workout helpers hook
-  const { getWeekContentWithFallback, calcWeekStats, getProgressColor, getWeekMirrorInfo } = useWorkoutHelpers(livePlan);
+  const { getWeekContentWithFallback, getWeekMirrorInfo } = useWorkoutHelpers(livePlan);
 
   // Add exercise dialog state
   const [addExerciseDialog, setAddExerciseDialog] = useState<{
@@ -136,54 +165,28 @@ const WorkoutView: React.FC<WorkoutViewProps> = ({
   const { updateExercise, isUpdating } = useExerciseEditor();
   const { addExercise } = useAddExercise();
 
-  // Scroll container ref for scroll stabilization
-  const scrollContainerRef = useRef<HTMLDivElement | null>(null);
-
-  // Derive all state from selectedDate (single source of truth)
-  const activeWeek = useMemo(() => getWeekKeyForDate(selectedDate), [selectedDate, getWeekKeyForDate]);
-
-  const activeDayIndex = useMemo(() => {
-    if (!livePlan?.created_at) return 0;
-    const { dayIndex } = getWorkoutWeekDay(livePlan.created_at, selectedDate);
-    return dayIndex;
-  }, [selectedDate, livePlan?.created_at]);
-
-  // Expanded day is always the currently selected day
-  const expandedDay = activeDayIndex;
+  const [screen, setScreen] = useState<Screen>({ kind: "main" });
 
   /*
-    Calendar strip. Dates come from the real week around `selectedDate`, never
-    from `plan.created_at`: the plan grid clamps anything past week 4 back onto
-    week 4, which is why a plan created in November 2025 kept rendering
-    "Nov. 2025". Each cell still reports the plan day its date maps to, so
-    completion marks stay correct without the display borrowing the plan's
-    calendar.
+    Today, in Berlin. The card is always given today's plan day: it is what
+    "Training starten" binds, and nothing the user browses can change it. A
+    running session is resolved by the card from the session itself.
   */
-  const calendarDayIndex = useMemo(() => getCalendarDayIndex(selectedDate), [selectedDate]);
-
-  const calendarCells = useMemo(() => {
-    return getCalendarWeekDates(selectedDate).map((date) => {
-      const planDay = livePlan?.created_at
-        ? getWorkoutWeekDay(livePlan.created_at, date)
-        : null;
-      const withinPlan = planDay ? !planDay.isBeforeStart && !planDay.isAfterPlan : false;
-      return {
-        date,
-        isToday: isCalendarToday(date),
-        isCompleted:
-          withinPlan && planDay
-            ? isDayCompleted(normalizeWeekKey(planDay.weekKey), planDay.dayIndex)
-            : false,
-      };
-    });
-  }, [selectedDate, livePlan?.created_at, isDayCompleted]);
-
-  // Canonical week key used everywhere in this component
-  const wk = normalizeWeekKey(activeWeek);
-
-  // Robust week number for titles like "Woche 3"
-  const currentWeekNum = Number(wk.match(/\d+/)?.[0] ?? 1);
-  const [focusedWeek, setFocusedWeek] = useState<number>(currentWeekNum);
+  const todayStr = useBerlinToday();
+  const cardDate = useMemo(() => dayToDate(todayStr), [todayStr]);
+  const calendar = useMemo(() => getPlanCalendar(livePlan?.created_at), [livePlan?.created_at]);
+  const { cardWeekKey, cardDayIndex } = useMemo(() => {
+    const position = calendar ? resolvePlanPosition(calendar, todayStr) : null;
+    if (position?.status === "active") {
+      return { cardWeekKey: position.weekKey, cardDayIndex: position.dayIndex };
+    }
+    // Outside the programme the card offers nothing to start; keep the
+    // clamped position it has always been given.
+    if (!livePlan?.created_at) return { cardWeekKey: "Week 1", cardDayIndex: 0 };
+    const clamped = getWorkoutWeekDay(livePlan.created_at, cardDate);
+    return { cardWeekKey: normalizeWeekKey(clamped.weekKey), cardDayIndex: clamped.dayIndex };
+  }, [calendar, todayStr, livePlan?.created_at, cardDate]);
+  const wk = cardWeekKey;
 
   // React Query: Fetch week completion data with batched API call
   const {
@@ -214,155 +217,130 @@ const WorkoutView: React.FC<WorkoutViewProps> = ({
   const showLoadError =
     isCompletionError && isOnline && !isLoadingCompletion && !hasCompletionData;
 
-  // Helper function to fetch week completion
-  const fetchWeekCompletion = async (weekKey: string) => {
-    if (!user || !livePlan?.id) throw new Error('User or planId not available');
-    const logsRef = collection(db, 'users', user.uid, 'workout_logs');
-    const snap = await getDocs(query(logsRef,
-      where('planId',  '==', livePlan.id),
-      where('weekKey', '==', weekKey),
-    ));
-    const completionMap: Record<string, boolean> = {};
-    snap.forEach(d => {
-      const data = d.data();
-      if (data.completed && data.exerciseIndex != null && data.dayIndex != null) {
-        completionMap[`${data.weekKey}_${data.dayIndex}_${data.exerciseIndex}`] = true;
-      }
-    });
-    return completionMap;
-  };
+  // --- Trainingsplan V2 model ---------------------------------------------
 
-  // Subscribe to all 4 weeks for reactive progress ring updates
-  const { data: week1Completion } = useQuery<Record<string, boolean>>({
-    queryKey: ['week-completion', livePlan?.id, 'Week 1'],
-    queryFn: () => fetchWeekCompletion('Week 1'),
-    enabled: !!livePlan?.id && !!user,
-    staleTime: 30000,
-  });
-  const { data: week2Completion } = useQuery<Record<string, boolean>>({
-    queryKey: ['week-completion', livePlan?.id, 'Week 2'],
-    queryFn: () => fetchWeekCompletion('Week 2'),
-    enabled: !!livePlan?.id && !!user,
-    staleTime: 30000,
-  });
-  const { data: week3Completion } = useQuery<Record<string, boolean>>({
-    queryKey: ['week-completion', livePlan?.id, 'Week 3'],
-    queryFn: () => fetchWeekCompletion('Week 3'),
-    enabled: !!livePlan?.id && !!user,
-    staleTime: 30000,
-  });
-  const { data: week4Completion } = useQuery<Record<string, boolean>>({
-    queryKey: ['week-completion', livePlan?.id, 'Week 4'],
-    queryFn: () => fetchWeekCompletion('Week 4'),
-    enabled: !!livePlan?.id && !!user,
-    staleTime: 30000,
-  });
-
-  // Refetch all 4 weeks on mount to ensure fresh progress data
-  useEffect(() => {
-    if (!livePlan?.id || !user) return;
-
-    // Invalidate all week completion queries to trigger immediate refetch
-    ['Week 1', 'Week 2', 'Week 3', 'Week 4'].forEach(weekKey => {
-      queryClient.invalidateQueries({
-        queryKey: ['week-completion', livePlan.id, weekKey],
-        refetchType: 'active'
-      });
-    });
-  }, [user, livePlan?.id, queryClient]);
-
-  /**
-   * Week progress in DAYS — how many of the week's training days are done.
-   * The visible label and the screen-reader text below use this same unit;
-   * previously the number came from exercise counts while the label said
-   * "Tage".
-   */
-  const weekProgress = useMemo(
-    () => getWeekDayProgress(livePlan, wk, (weekKey, dayIndex) => isDayCompleted(weekKey, dayIndex)),
-    [livePlan, wk, isDayCompleted]
-  );
-
-  /** Lifecycle state for the currently selected date. */
-  const planDay = useMemo(
-    () => resolvePlanDay(livePlan, selectedDate),
-    [livePlan, selectedDate]
-  );
-  const planFinished = planDay.planFinished;
-
-  // Handle week navigation
-  /*
-    Navigation walks real calendar weeks. It used to step through plan weeks
-    and derive a date from the plan, which meant the arrows could not leave the
-    plan's own month and never reached the current one.
-  */
-  const handlePrevWeek = useCallback(() => {
-    logEvent('week_navigation', { direction: 'prev', fromWeek: wk });
-    handleDateChange(shiftCalendarWeeks(selectedDate, -1));
-  }, [wk, selectedDate, handleDateChange]);
-
-  const handleNextWeek = useCallback(() => {
-    logEvent('week_navigation', { direction: 'next', fromWeek: wk });
-    handleDateChange(shiftCalendarWeeks(selectedDate, 1));
-  }, [wk, selectedDate, handleDateChange]);
-
-  // Keyboard shortcuts for week navigation
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
-        return;
-      }
-
-      if (e.key === 'ArrowLeft' && !e.ctrlKey && !e.metaKey) {
-        e.preventDefault();
-        handlePrevWeek();
-        logEvent('keyboard_shortcut_used', { action: 'prev_week', key: 'ArrowLeft' });
-      } else if (e.key === 'ArrowRight' && !e.ctrlKey && !e.metaKey) {
-        e.preventDefault();
-        handleNextWeek();
-        logEvent('keyboard_shortcut_used', { action: 'next_week', key: 'ArrowRight' });
-      }
+  const runningSession = useMemo<RunningSession | null>(() => {
+    if (!isStarted) return null;
+    // A session from another plan names no day here; the Dashboard ends it.
+    if (!session || session.planId !== livePlan?.id) return { weekKey: null, dayIndex: null, workoutDay: null };
+    return {
+      weekKey: session.weekKey,
+      dayIndex: session.dayIndex,
+      workoutDay: resolveSessionWorkoutDay(session, livePlan) ?? null,
     };
+  }, [isStarted, session, livePlan]);
 
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [handlePrevWeek, handleNextWeek]);
+  const inputs = useMemo<TrainingsplanInputs | null>(() => calendar && {
+    calendar,
+    readWeek: getWeekContentWithFallback,
+    today: todayStr,
+    isDayCompleted,
+    session: runningSession,
+  }, [calendar, getWeekContentWithFallback, todayStr, isDayCompleted, runningSession]);
 
-  // Update hash whenever activeWeek or activeDayIndex changes
-  useEffect(() => {
-    const weekNum = Number(wk.match(/\d+/)?.[0] ?? 1);
-    updateHash(weekNum, activeDayIndex);
-  }, [activeWeek, activeDayIndex, wk]);
+  const todayState = useMemo(() => inputs && resolveTodayState(inputs, isStarted), [inputs, isStarted]);
+  const agenda = useMemo(() => inputs && buildWeekAgenda(inputs), [inputs]);
+  const nextWeekWorkout = useMemo(() => inputs && findNextWeekWorkout(inputs), [inputs]);
+  const overview = useMemo(() => inputs && buildPlanOverview(inputs), [inputs]);
 
-  // Handle day click in calendar
-  const handleDayClick = useCallback((dayIndex: number) => {
-    // Select the real calendar date of that cell; the plan day follows from it.
-    const newDate = calendarCells[dayIndex]?.date;
-    if (newDate) {
-      handleDateChange(newDate);
+  /** Today's measured duration, only when the day session record stored one. */
+  const completedMinutes = useMemo(() => {
+    const record = filterDaySessionLogs(workoutLogs ?? []).find(
+      (log) => isCompletedDayLog(log) && log.workout_day === todayStr
+    );
+    const seconds = record?.duration_sec;
+    return typeof seconds === "number" && seconds > 0 ? Math.max(1, Math.round(seconds / 60)) : null;
+  }, [workoutLogs, todayStr]);
+
+  const activeTitle = useMemo(() => {
+    if (!runningSession || runningSession.weekKey === null || runningSession.dayIndex === null) {
+      return WORKOUT_TITLE_FALLBACK;
     }
-  }, [calendarCells, handleDateChange]);
+    return summarizeWorkoutDay(getWeekContentWithFallback(runningSession.weekKey)[runningSession.dayIndex]).title;
+  }, [runningSession, getWeekContentWithFallback]);
 
-  // Handle week activation with animation - set selectedDate to that week's Monday + current dayIndex
-  const handleWeekActivation = (weekNum: number) => {
-    const newWeekKey = normalizeWeekKey(`Week ${weekNum}`);
+  // --- Navigation between the V2 screens ----------------------------------
 
-    logEvent('week_activation', { fromWeek: wk, toWeek: newWeekKey, dayIndex: activeDayIndex });
-
-    // Update selected date to keep current day within the new week
-    const dayOfWeek = getDateFor(newWeekKey, activeDayIndex);
-    if (dayOfWeek) {
-      handleDateChange(dayOfWeek);
-    }
-
-    // Optional haptic feedback on mobile
-    if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
-      try {
-        navigator.vibrate(8);
-      } catch (e) {
-        // Ignore vibration errors
+  const mainScrollRef = useRef(0);
+  const openerRef = useRef<Element | null>(null);
+  const push = useCallback((next: Screen) => {
+    setScreen((current) => {
+      if (current.kind === "main") {
+        mainScrollRef.current = window.scrollY;
+        openerRef.current = document.activeElement;
       }
+      return next;
+    });
+    window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+  }, []);
+
+  const openDay = useCallback((day: PlanDayRef) => {
+    logEvent('trainingsplan_day_opened', { weekKey: day.weekKey, dayIndex: day.dayIndex });
+    push({ kind: "detail", day: { weekKey: day.weekKey, dayIndex: day.dayIndex, workoutDay: day.workoutDay } });
+  }, [push]);
+  const openPlan = useCallback(() => {
+    logEvent('trainingsplan_plan_opened', {});
+    push({ kind: "plan" });
+  }, [push]);
+  const backToMain = useCallback(() => {
+    setScreen({ kind: "main" });
+    requestAnimationFrame(() => {
+      window.scrollTo({ top: mainScrollRef.current, left: 0, behavior: "auto" });
+      const opener = openerRef.current as HTMLElement | null;
+      if (opener?.isConnected) opener.focus({ preventScroll: true });
+    });
+  }, []);
+
+  // Pushed screens start at their heading, for keyboard and screen readers.
+  useEffect(() => {
+    if (screen.kind === "main") return;
+    const heading = document.querySelector<HTMLElement>(`[data-screen] h1`);
+    if (heading) {
+      heading.tabIndex = -1;
+      heading.focus({ preventScroll: true });
     }
-  };
+  }, [screen]);
+
+  useEffect(() => {
+    onBottomNavHiddenChange?.(screen.kind === "detail" || screen.kind === "edit");
+  }, [screen.kind, onBottomNavHiddenChange]);
+  useEffect(() => () => onBottomNavHiddenChange?.(false), [onBottomNavHiddenChange]);
+
+  /*
+    A workout deep link (#/workout?w=&d=) is applied by the Dashboard as a
+    date change after the plan loads. The V2 tab has no selected day of its
+    own, so a changed date opens that day's detail instead.
+  */
+  const selectedDayStr = format(selectedDate, 'yyyy-MM-dd');
+  const lastSelectedDayRef = useRef(selectedDayStr);
+  useEffect(() => {
+    if (selectedDayStr === lastSelectedDayRef.current || !inputs) return;
+    lastSelectedDayRef.current = selectedDayStr;
+    const dated = resolveDatedDay(inputs, selectedDayStr);
+    if (dated && readDayExercises(dated.day).length > 0) openDay(dated);
+  }, [selectedDayStr, inputs, openDay]);
+
+  // --- Start / resume, always through the card ----------------------------
+
+  const controlsRef = useRef<TodayExecutionControls | null>(null);
+  // The visible screen's primary action; focus returns here after the workout.
+  const primaryActionRef = useRef<HTMLButtonElement>(null);
+  const startToday = useCallback(() => controlsRef.current?.start(), []);
+  const resumeWorkout = useCallback(() => controlsRef.current?.resume(), []);
+  /** Day Detail's start: only the card's own day, so it can never bind another. */
+  const startDay = useCallback((day: PlanDayRef) => {
+    if (normalizeWeekKey(day.weekKey) !== normalizeWeekKey(cardWeekKey) || day.dayIndex !== cardDayIndex) return;
+    if (day.workoutDay !== todayStr) return;
+    controlsRef.current?.start();
+  }, [cardWeekKey, cardDayIndex, todayStr]);
+
+  // --- Editing (existing semantics, unchanged) ----------------------------
+
+  const isCardDay = useCallback(
+    (weekKey: string, dayIndex: number) =>
+      normalizeWeekKey(weekKey) === normalizeWeekKey(cardWeekKey) && dayIndex === cardDayIndex,
+    [cardWeekKey, cardDayIndex]
+  );
 
   // Inline exercise update handler (returns promise for async handling)
   const handleUpdateExercise = async (
@@ -391,11 +369,14 @@ const WorkoutView: React.FC<WorkoutViewProps> = ({
               });
             });
 
-            // Sync updated exercises to TrainingContext for instant UI update
-            const weekData = getWeekContentWithFallback(weekKey);
-            const dayData = weekData[dayIndex];
-            const updatedExercises = dayData?.exercises || [];
-            syncFromPlan(updatedExercises, weekKey, dayIndex);
+            // The pre-start cache holds today's day only; an edit to another
+            // day must not replace it.
+            if (isCardDay(weekKey, dayIndex)) {
+              const weekData = getWeekContentWithFallback(weekKey);
+              const dayData = weekData[dayIndex];
+              const updatedExercises = dayData?.exercises || [];
+              syncFromPlan(updatedExercises, weekKey, dayIndex);
+            }
 
             resolve();
           },
@@ -423,18 +404,11 @@ const WorkoutView: React.FC<WorkoutViewProps> = ({
       return;
     }
 
-    const targetWeekKey = addExerciseDialog.weekKey;
-    const targetDayIndex = addExerciseDialog.dayIndex;
-
-    // Capture scroll position before adding
-    const prevScroll = scrollContainerRef.current?.scrollTop ?? 0;
-
-    // Add to backend via mutation
     addExercise(
       {
         planId: livePlan.id,
-        weekKey: targetWeekKey,
-        dayIndex: targetDayIndex,
+        weekKey: addExerciseDialog.weekKey,
+        dayIndex: addExerciseDialog.dayIndex,
         exercise,
       },
       {
@@ -444,13 +418,6 @@ const WorkoutView: React.FC<WorkoutViewProps> = ({
             queryClient.invalidateQueries({
               queryKey: ['week-completion', livePlan.id, weekKey]
             });
-          });
-
-          // Restore scroll position after DOM update
-          requestAnimationFrame(() => {
-            if (scrollContainerRef.current) {
-              scrollContainerRef.current.scrollTop = prevScroll;
-            }
           });
         }
       }
@@ -468,9 +435,6 @@ const WorkoutView: React.FC<WorkoutViewProps> = ({
   // Delete exercise with undo toast
   const handleDeleteExercise = (weekKey: string, dayIndex: number, exerciseIndex: number) => {
     if (!livePlan?.id) return;
-
-    // Capture scroll position before deleting
-    const prevScroll = scrollContainerRef.current?.scrollTop ?? 0;
 
     // Get the exercise from weekData before deleting
     const weekContent = getWeekContentWithFallback(weekKey);
@@ -500,13 +464,6 @@ const WorkoutView: React.FC<WorkoutViewProps> = ({
       },
       {
         onSuccess: () => {
-          // Restore scroll position after DOM update
-          requestAnimationFrame(() => {
-            if (scrollContainerRef.current) {
-              scrollContainerRef.current.scrollTop = prevScroll;
-            }
-          });
-
           // Show undo toast
           toast({
             title: "Exercise deleted",
@@ -545,9 +502,6 @@ const WorkoutView: React.FC<WorkoutViewProps> = ({
 
     const { exercise, weekKey, dayIndex, exerciseIndex } = lastDeletedRef.current;
 
-    // Capture scroll position before restoring
-    const prevScroll = scrollContainerRef.current?.scrollTop ?? 0;
-
     // Restore to backend (TrainingContext will sync via useEffect when weekData updates)
     restoreExercise(
       {
@@ -559,13 +513,6 @@ const WorkoutView: React.FC<WorkoutViewProps> = ({
       },
       {
         onSuccess: () => {
-          // Restore scroll position after DOM update
-          requestAnimationFrame(() => {
-            if (scrollContainerRef.current) {
-              scrollContainerRef.current.scrollTop = prevScroll;
-            }
-          });
-
           toast({
             title: "Exercise restored",
             description: exercise.name,
@@ -597,15 +544,39 @@ const WorkoutView: React.FC<WorkoutViewProps> = ({
   // Get mirror info for the current week - Moved up for Hook Rules
   const mirrorInfo = useMemo(() => getWeekMirrorInfo(wk), [wk, getWeekMirrorInfo]);
 
-  // Sync exercises to TrainingContext whenever selected date/week/day changes - Moved up for Hook Rules
+  // Keep the pre-start cache on today's plan day. Browsing never changes it.
   useEffect(() => {
-    // Only sync if we have a plan and data
     if (!livePlan) return;
 
-    const dayData = weekData[activeDayIndex];
+    const dayData = weekData[cardDayIndex];
     const exercises = dayData?.exercises || [];
-    syncFromPlan(exercises, wk, activeDayIndex);
-  }, [wk, activeDayIndex, weekData, syncFromPlan, livePlan]);
+    syncFromPlan(exercises, wk, cardDayIndex);
+  }, [wk, cardDayIndex, weekData, syncFromPlan, livePlan]);
+
+  /*
+    The Today module, rendered by the card so it reads the running session
+    straight from execution. Only the main tab shows it; on pushed screens the
+    card stays mounted (so resume and the rest timer keep working) but draws
+    nothing outside Focus Mode.
+  */
+  const isMain = screen.kind === "main";
+  const renderOverview = useCallback((exec: TodayExecutionView) => {
+    if (!isMain || !todayState || !calendar) return null;
+    return (
+      <TodayModule
+        state={todayState}
+        exec={exec}
+        today={todayStr}
+        activeTitle={activeTitle}
+        completedMinutes={completedMinutes}
+        planStartDay={calendar.startDay}
+        primaryRef={primaryActionRef}
+        onStart={startToday}
+        onResume={resumeWorkout}
+        onOpenDay={openDay}
+      />
+    );
+  }, [isMain, todayState, calendar, todayStr, activeTitle, completedMinutes, startToday, resumeWorkout, openDay]);
 
   // Show loading skeleton while plan is being fetched
   if (isLoadingPlan) {
@@ -633,97 +604,101 @@ const WorkoutView: React.FC<WorkoutViewProps> = ({
     </motion.div>;
   }
 
-  // Header shows the month/year of the date the user is actually looking at.
-  const monthYear = format(selectedDate, 'MMM yyyy', { locale: de });
+  const planFinished = todayState?.kind === "plan-finished";
+  const planWeekNumber = agenda?.weekNumber ?? overview?.weekNumber ?? null;
+  const totalWeeks = calendar?.totalWeeks ?? 4;
+
+  const detailDay = screen.kind === "detail" || screen.kind === "edit" ? screen.day : null;
+  const detailContent = detailDay
+    ? getWeekContentWithFallback(detailDay.weekKey)[detailDay.dayIndex] ?? null
+    : null;
+  const detailSummary = summarizeWorkoutDay(detailContent);
+  const detailInPlan = !!(detailDay && inputs && resolveDatedDay(inputs, detailDay.workoutDay));
 
   return (
     <WorkoutErrorBoundary>
-      <div
-        className="space-y-3"
-      >
-        {/* Screen reader announcement for week changes */}
-        <div
-          role="status"
-          aria-live="polite"
-          aria-atomic="true"
-          className="sr-only"
-        >
-          {formatWeekLabel(currentWeekNum, PLAN_TOTAL_WEEKS)} geladen. {weekProgress.completed} von {weekProgress.total} Tagen abgeschlossen.
-        </div>
+      {/*
+        One stable container: the card keeps its place in the tree whichever
+        screen is showing, so pushing a screen never remounts the running
+        workout, its drafts or its rest timer.
+      */}
+      <div className={isMain ? "tp-root" : undefined} data-screen={isMain ? "main" : undefined}>
+        {isMain && (
+          <TrainingsplanHeader
+            weekNumber={planWeekNumber}
+            totalWeeks={totalWeeks}
+            finished={planFinished}
+            onOpenPlan={openPlan}
+          />
+        )}
 
         {/* Offline Indicator */}
-        <AnimatePresence>
-          {!isOnline && (
-            <motion.div
-              initial={{ opacity: 0, y: -10 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -10 }}
-              transition={{ duration: 0.2 }}
-            >
-              <Card className="border-warning bg-warning/5">
-                <CardContent className="py-3 px-4">
-                  <div className="flex items-center gap-2 text-warning">
-                    <WifiOff className="h-4 w-4" aria-hidden="true" />
-                    <span className="text-sm font-medium" role="status" aria-live="polite">
-                      Offline-Modus - Änderungen werden synchronisiert
-                    </span>
-                  </div>
-                </CardContent>
-              </Card>
-            </motion.div>
-          )}
-        </AnimatePresence>
-
-        {/* Error State */}
-        <AnimatePresence>
-          {showLoadError && (
-            <motion.div
-              initial={{ opacity: 0, y: -10 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -10 }}
-              transition={{ duration: 0.2 }}
-            >
-              <Card className="border-destructive/50 bg-destructive/5">
-                <CardContent className="py-3 px-4">
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="flex items-center gap-2 text-destructive">
-                      <AlertCircle className="h-4 w-4" aria-hidden="true" />
-                      <span className="text-sm font-medium" role="alert" aria-live="assertive">
-                        Trainingsfortschritt konnte nicht geladen werden
+        {isMain && (
+          <AnimatePresence>
+            {!isOnline && (
+              <motion.div
+                initial={{ opacity: 0, y: -10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -10 }}
+                transition={{ duration: 0.2 }}
+              >
+                <Card className="border-warning bg-warning/5">
+                  <CardContent className="py-3 px-4">
+                    <div className="flex items-center gap-2 text-warning">
+                      <WifiOff className="h-4 w-4" aria-hidden="true" />
+                      <span className="text-sm font-medium" role="status" aria-live="polite">
+                        Offline-Modus - Änderungen werden synchronisiert
                       </span>
                     </div>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => refetchCompletion()}
-                      className="h-8"
-                      aria-label="Trainingsplan erneut laden"
-                    >
-                      <RefreshCw className="h-4 w-4 mr-1" aria-hidden="true" />
-                      Erneut versuchen
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
-            </motion.div>
-          )}
-        </AnimatePresence>
+                  </CardContent>
+                </Card>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        )}
 
-        {/* Weekly Calendar Navigation */}
-        <WeekNavigation
-          monthYear={monthYear}
-          cells={calendarCells}
-          activeDayIndex={calendarDayIndex}
-          onPrevWeek={handlePrevWeek}
-          onNextWeek={handleNextWeek}
-          onDayClick={handleDayClick}
-        />
+        {/* Error State */}
+        {isMain && (
+          <AnimatePresence>
+            {showLoadError && (
+              <motion.div
+                initial={{ opacity: 0, y: -10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -10 }}
+                transition={{ duration: 0.2 }}
+              >
+                <Card className="border-destructive/50 bg-destructive/5">
+                  <CardContent className="py-3 px-4">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-2 text-destructive">
+                        <AlertCircle className="h-4 w-4" aria-hidden="true" />
+                        <span className="text-sm font-medium" role="alert" aria-live="assertive">
+                          Trainingsfortschritt konnte nicht geladen werden
+                        </span>
+                      </div>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => refetchCompletion()}
+                        className="h-8"
+                        aria-label="Trainingsplan erneut laden"
+                      >
+                        <RefreshCw className="h-4 w-4 mr-1" aria-hidden="true" />
+                        Erneut versuchen
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        )}
 
-        {/* Today's Workout Card */}
+        {/* The execution host. On the main tab it draws the Today module. */}
         <TodayWorkoutCard
-          selectedDate={selectedDate}
+          selectedDate={cardDate}
           weekKey={wk}
-          dayIndex={activeDayIndex}
+          dayIndex={cardDayIndex}
           workoutPlan={livePlan}
           mirrorInfo={mirrorInfo}
           completionMap={completionMap}
@@ -733,78 +708,71 @@ const WorkoutView: React.FC<WorkoutViewProps> = ({
           isOnline={isOnline}
           isCached={isCached}
           dataUpdatedAt={dataUpdatedAt}
+          renderOverview={renderOverview}
+          controlsRef={controlsRef}
+          focusReturnRef={primaryActionRef}
         />
 
-        {/*
-          Completed state: the four-week programme is over. The plan content
-          below stays reachable as history, but nothing here offers to start a
-          training day, and no week resets to Week 1.
-        */}
-        {planFinished && (
-          <Card className="border-emerald-500/40 bg-emerald-500/5" role="status">
-            <CardContent className="py-4 px-4 space-y-2">
-              <div className="flex items-center gap-2">
-                <CheckCircle2 className="h-5 w-5 text-emerald-600 dark:text-emerald-400" aria-hidden="true" />
-                <p className="font-semibold text-foreground">4-Wochen-Plan abgeschlossen</p>
-              </div>
-              <p className="text-sm text-muted-foreground">
-                Du hast alle {PLAN_TOTAL_WEEKS} Wochen dieses Plans hinter dir. Dein bisheriger
-                Plan bleibt unten einsehbar.
-              </p>
-              <p className="text-sm text-muted-foreground">
-                Neue Pläne können derzeit nicht erstellt werden, da die KI-Planerstellung
-                vorübergehend nicht verfügbar ist.
-              </p>
-            </CardContent>
-          </Card>
+        {isMain && agenda && !planFinished && (
+          <WeekAgenda agenda={agenda} onOpenDay={openDay} onResume={resumeWorkout} />
         )}
 
-        {/* Plan Progress Stepper */}
-        <WeekProgress
-          currentWeekNum={currentWeekNum}
-          focusedWeek={focusedWeek}
-          setFocusedWeek={setFocusedWeek}
-          handleWeekActivation={handleWeekActivation}
-          getWeekStats={(weekNum) => {
-            const weekKey = `Week ${weekNum}`;
-            // Get completion data from subscribed queries
-            const weekCompletionData = weekNum === 1 ? week1Completion :
-              weekNum === 2 ? week2Completion :
-                weekNum === 3 ? week3Completion :
-                  week4Completion;
-            return calcWeekStats(weekKey, weekCompletionData);
-          }}
-          getProgressColor={getProgressColor}
-        />
+        {isMain && nextWeekWorkout && !planFinished && (
+          <NextWeekTeaser workout={nextWeekWorkout} onOpenDay={openDay} />
+        )}
 
-        {/* Week Section (Day Accordion) */}
-        <DayAccordion
-          wk={wk}
-          currentWeekNum={currentWeekNum}
-          weekProgress={weekProgress}
-          weekData={weekData}
-          expandedDay={expandedDay}
-          getDateFor={getDateFor}
-          isDayCompleted={isDayCompleted}
-          isDayInFuture={isDayInFuture}
-          isTodayInWeekDay={isTodayInWeekDay}
-          onDayExpand={(dayIndex: number) => {
-            // Update selected date - this will automatically sync expandedDay
-            const newDate = getDateFor(wk, dayIndex);
-            if (newDate) {
-              handleDateChange(newDate);
+        {isMain && overview && (
+          <CurrentPlanRow
+            weekNumber={planWeekNumber}
+            totalWeeks={totalWeeks}
+            finished={planFinished}
+            trainingDaysPerWeek={overview.trainingDaysPerWeek}
+            onOpenPlan={openPlan}
+          />
+        )}
+
+        {screen.kind === "detail" && inputs && (
+          <DayDetail
+            day={screen.day}
+            summary={detailSummary}
+            exercises={readDayExercises(detailContent)}
+            action={resolveDayDetailAction(inputs, screen.day, isStarted)}
+            isToday={screen.day.workoutDay === todayStr}
+            isCompleted={isDayCompleted(screen.day.weekKey, screen.day.dayIndex)}
+            onBack={backToMain}
+            onEdit={detailInPlan ? () => setScreen({ kind: "edit", day: screen.day }) : undefined}
+            onStart={() => startDay(screen.day)}
+            onResume={resumeWorkout}
+            primaryRef={primaryActionRef}
+          />
+        )}
+
+        {screen.kind === "edit" && (
+          <DayEditSurface
+            day={screen.day}
+            title={detailSummary.title}
+            exercises={(detailContent?.exercises ?? []) as Exercise[]}
+            isUpdating={isUpdating}
+            onDone={() => setScreen({ kind: "detail", day: screen.day })}
+            onUpdateExercise={(exerciseIndex, updatedExercise) =>
+              handleUpdateExercise(screen.day.weekKey, screen.day.dayIndex, exerciseIndex, updatedExercise)
             }
-          }}
-          onOpenAddExercise={handleOpenAddExercise}
-          onAutoFill={handleAutoFill}
-          onUpdateExercise={(dayIndex, exerciseIndex, updatedExercise) =>
-            handleUpdateExercise(wk, dayIndex, exerciseIndex, updatedExercise)
-          }
-          onDeleteExercise={(dayIndex, exerciseIndex) =>
-            handleDeleteExercise(wk, dayIndex, exerciseIndex)
-          }
-          isUpdating={isUpdating}
-        />
+            onDeleteExercise={(exerciseIndex) =>
+              handleDeleteExercise(screen.day.weekKey, screen.day.dayIndex, exerciseIndex)
+            }
+            onAddExercise={() => handleOpenAddExercise(screen.day.weekKey, screen.day.dayIndex)}
+            onAutoFill={() => handleAutoFill(screen.day.weekKey, screen.day.dayIndex)}
+          />
+        )}
+
+        {screen.kind === "plan" && overview && (
+          <PlanOverview
+            model={overview}
+            createdDay={livePlan.created_at ? format(new Date(livePlan.created_at), 'yyyy-MM-dd') : null}
+            onBack={backToMain}
+            onOpenDay={openDay}
+          />
+        )}
 
         {/* Add Workout Modal */}
         <AddWorkoutModal
