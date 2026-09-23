@@ -1,4 +1,4 @@
-import React, { useSyncExternalStore } from "react";
+import React, { useRef, useSyncExternalStore } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Check, History } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { formatRestDisplay } from "@/lib/restTimeParser";
 import { formatSetTarget, formatSetTargetPlaceholders } from "@/lib/setPrescription";
 import { formatPerformancePair, formatPerformanceValues, formatWeightNumber } from "@/lib/setPerformanceEntry";
+import { applyPreviousToDraft } from "@/lib/previousPerformance";
 import {
   setPerformanceFieldId,
   setPerformanceKey,
@@ -79,6 +80,19 @@ export const ExerciseSetRow: React.FC<ExerciseSetRowProps> = ({
     performance ? () => performance.drafts.get(key) : noDraft,
   );
   const titleId = `set-${exerciseIndex}-${setNumber}-title`;
+  /*
+    "Übernehmen" is offered only while it would still fill something: the same
+    rule the copy applies (a previous value, nothing recorded today, an empty
+    draft), asked of the copy itself so the two cannot drift apart. Completion
+    plays no part - a ticked set can still lack its reps or weight.
+  */
+  const couldCopyInto = (current: SetPerformanceDraft | undefined): boolean => {
+    if (!previous || !performance?.copyPrevious) return false;
+    const copied = applyPreviousToDraft(current ?? {}, actual, previous);
+    return copied.reps !== current?.reps || copied.weight !== current?.weight;
+  };
+  const canCopyPrevious = couldCopyInto(draft);
+  const toggleRef = useRef<HTMLButtonElement>(null);
 
   const fields = FIELDS.map((name) => {
     const id = setPerformanceFieldId(exerciseIndex, setNumber, name);
@@ -193,7 +207,8 @@ export const ExerciseSetRow: React.FC<ExerciseSetRowProps> = ({
             ))}
             {/* A prescription the hints cannot carry (a time, AMRAP, a load in words) is written out. */}
             {!hints.complete && target.visual && (
-              <p className="workout-set-detail pb-1 text-xs text-muted-foreground">
+              // A little air under the dashed hairline of the empty inputs above.
+              <p className="workout-set-detail mt-1 pb-1 text-xs text-muted-foreground">
                 <span className="font-medium">Vorgabe:</span>{" "}
                 <span className="text-foreground">{target.visual}</span>
               </p>
@@ -220,11 +235,19 @@ export const ExerciseSetRow: React.FC<ExerciseSetRowProps> = ({
                     )}
                   </span>
                 </p>
-                {performance.copyPrevious && (
+                {canCopyPrevious && (
                   <button
                     type="button"
                     aria-label={`Übernehmen für Satz ${setNumber}: Letztes Mal ${previousText}`}
-                    onClick={() => performance.copyPrevious?.(exerciseIndex, setNumber)}
+                    onClick={(event) => {
+                      const hadFocus = document.activeElement === event.currentTarget;
+                      performance.copyPrevious?.(exerciseIndex, setNumber);
+                      // Once nothing is left to fill the button goes away; focus moves on
+                      // to completion, the next control, instead of falling to the page.
+                      if (hadFocus && !couldCopyInto(performance.drafts.get(key))) {
+                        toggleRef.current?.focus({ preventScroll: true });
+                      }
+                    }}
                     // A real 44px hit box; negative margins keep the line at the 28px face,
                     // and the line's top margin keeps the box clear of the inputs above.
                     // Chromium does not hit-test ::after or children outside a button's box.
@@ -233,8 +256,11 @@ export const ExerciseSetRow: React.FC<ExerciseSetRowProps> = ({
                     <span
                       data-copy-face
                       className={cn(
-                        "inline-flex h-7 items-center rounded-md border border-input bg-background px-2",
-                        "text-xs font-medium text-foreground transition-colors group-hover:bg-muted"
+                        // A text action, not a pill: no border, no fill, as flat
+                        // as the inputs it fills (TRAINING-UI-07).
+                        "inline-flex h-7 items-center bg-transparent px-1",
+                        "text-xs font-semibold text-foreground underline decoration-muted-foreground/50 underline-offset-2",
+                        "transition-colors group-hover:decoration-foreground"
                       )}
                     >
                       Übernehmen
@@ -248,6 +274,7 @@ export const ExerciseSetRow: React.FC<ExerciseSetRowProps> = ({
 
         {/* Completion: its own control, with a check shape as well as colour. Last in tab order. */}
         <button
+          ref={toggleRef}
           type="button"
           role="checkbox"
           aria-checked={isCompleted}

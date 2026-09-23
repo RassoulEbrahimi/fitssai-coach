@@ -331,7 +331,9 @@ describe('Übernehmen', () => {
 
     expect(reps(1)).toHaveValue('10');
     expect(weight(1)).toHaveValue('52,5');
-    expect(copyButton(1)).toHaveFocus();
+    // Nothing is left to fill, so the action goes and focus moves on to completion.
+    expect(screen.queryByRole('button', { name: copyName(1) })).toBeNull();
+    expect(checkbox(1)).toHaveFocus();
     expect(todaySets()).toEqual([]);
     expect(writes).toEqual([]);
     expect(loadQueue()).toEqual([]);
@@ -394,8 +396,8 @@ describe('Übernehmen', () => {
     closeRest();
     const rest = savedRest();
 
-    // Copying again changes neither the recorded values nor the running rest.
-    fireEvent.click(copyButton(1));
+    // Nothing is left to copy into, so there is no action to press again.
+    expect(screen.queryByRole('button', { name: copyName(1) })).toBeNull();
     expect(savedRest()).toEqual(rest);
     expect(screen.queryByRole('dialog', { name: 'Pause' })).toBeNull();
     expect(screen.getByRole('button', { name: 'Pause für Satz 1 öffnen' })).toBeInTheDocument();
@@ -420,7 +422,7 @@ describe('Übernehmen', () => {
     expect(within(comparison).getAllByText('8 Wdh.')).toHaveLength(2);
     expect(comparison).not.toHaveTextContent('Satz 1');
 
-    fireEvent.click(within(summary).getByRole('button', { name: /Training speichern & beenden/ }));
+    fireEvent.click(within(summary).getByRole('button', { name: /^Speichern & beenden$/ }));
 
     await waitFor(() => expect(localStorage.getItem(sessionKey())).toBeNull());
     expect(todaySets()).toEqual([{ setNumber: 2, completed: false, performanceSource: 'user-recorded', repsCompleted: 8 }]);
@@ -442,10 +444,13 @@ describe('Übernehmen', () => {
     expect(weight(1)).toHaveValue('52,5');
     expect(rows.get(`${today}/workout_set_logs/t1`)).toEqual({ setNumber: 1, completed: false, performanceSource: 'user-recorded', repsCompleted: 12 });
 
-    // Typed and not yet saved: tapping Übernehmen saves the typed value, and it stays.
+    // Typed and not yet saved: last time has only reps for set 2, so there is
+    // nothing left to copy and the action goes; the typed value stays and saves.
+    expect(copyButton(2)).toBeInTheDocument();
     await user.click(reps(2));
     await user.keyboard('6');
-    await user.click(copyButton(2));
+    expect(screen.queryByRole('button', { name: copyName(2) })).toBeNull();
+    await user.tab();
     expect(reps(2)).toHaveValue('6');
     expect(weight(2)).toHaveValue('');
     await waitFor(() => expect(todaySets()).toContainEqual({ setNumber: 2, completed: false, performanceSource: 'user-recorded', repsCompleted: 6 }));
@@ -475,8 +480,10 @@ describe('Übernehmen', () => {
 
     await waitFor(() => expect(reps(1)).toHaveValue('11'));
     expect(weight(1)).toHaveValue('52,5');
-    await findCopy(1);
+    // Both values are today's now: last time stays as a reference, with nothing left to copy.
     expect(setRow(1)).toHaveTextContent('Letztes Mal: 10 Wdh. · 52,5 kg');
+    expect(screen.queryByRole('button', { name: copyName(1) })).toBeNull();
+    expect(await findCopy(2)).toBeInTheDocument();
     // A set only referenced last time comes back empty, not pre-filled.
     expect(reps(2)).toHaveValue('');
     expect(weight(2)).toHaveValue('');
@@ -520,7 +527,7 @@ describe('an optional hint never gets in the way', () => {
     finish();
     expect(within(await screen.findByRole('dialog', { name: 'Training abschließen?' }))
       .queryByRole('region', { name: 'Vergleich zum letzten Mal' })).toBeNull();
-    fireEvent.click(await screen.findByRole('button', { name: /Training speichern & beenden/ }));
+    fireEvent.click(await screen.findByRole('button', { name: /^Speichern & beenden$/ }));
     await waitFor(() => expect(localStorage.getItem(sessionKey())).toBeNull());
     expect(todaySets()).toEqual([expect.objectContaining({ setNumber: 1, completed: true, repsCompleted: 9 })]);
   };

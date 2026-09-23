@@ -292,7 +292,7 @@ describe('Focus Mode keyboard modality', () => {
     await press(user, /^Training beenden/i);
     await screen.findByRole('dialog', { name: 'Training abschließen?' });
 
-    await press(user, /Training speichern & beenden/i);
+    await press(user, /^Speichern & beenden$/);
 
     await waitFor(() => expect(storedSession()).toBeNull());
     await waitFor(() => expect(focusMode()).toBeNull());
@@ -446,7 +446,9 @@ it('keeps a copied previous value as an unsaved draft through leaving and re-ent
   await user.click(copy);
   expect(reps()).toHaveValue('10');
   expect(weight()).toHaveValue('52,5');
-  expect(copy).toHaveFocus();
+  // Nothing is left to fill: the action goes and focus stays inside Focus Mode, on completion.
+  expect(copy).not.toBeInTheDocument();
+  expect(within(focusMode()!).getByRole('checkbox', { name: /^Satz 1:/ })).toHaveFocus();
 
   await user.keyboard('{Escape}');
   await waitFor(() => expect(focusMode()).toBeNull());
@@ -559,7 +561,7 @@ describe('Finish action across Focus Mode and overlays', () => {
     expect(finishControls()).toHaveLength(1);
     await expect(user.click(finishControls()[0])).rejects.toThrow(/pointer-events/);
     expect(screen.getAllByRole('dialog', { name: 'Training abschließen?' })).toEqual([summary]);
-    expect(within(summary).getByRole('button', { name: /Training speichern & beenden/i })).toBeEnabled();
+    expect(within(summary).getByRole('button', { name: /^Speichern & beenden$/ })).toBeEnabled();
     // Opening the summary is a review step only.
     expect(storedSession()).toBe(session);
     expect(writes).toHaveLength(0);

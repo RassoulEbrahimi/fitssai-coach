@@ -382,7 +382,7 @@ describe('the card keeps showing the running workout while the calendar moves', 
     // The summary counts the workout being finished, not the day on screen.
     expect(within(summary).getByText('0/5')).toBeInTheDocument();
     expect(within(summary).getByText('0 von 2')).toBeInTheDocument();
-    fireEvent.click(within(summary).getByRole('button', { name: /Training speichern & beenden/ }));
+    fireEvent.click(within(summary).getByRole('button', { name: /^Speichern & beenden$/ }));
 
     await waitFor(() => expect(localStorage.getItem(SESSION_KEY)).toBeNull());
     expect([...rows.values()].filter((row) => row.completed === true))
@@ -608,7 +608,7 @@ describe('active rest loop in the session-bound card', () => {
     expect(within(inline).getByRole('timer')).toHaveTextContent('00:43');
     expect(savedRest()).toEqual(saved);
     fireEvent.click(screen.getByRole('button', { name: /^Training beenden/ }));
-    fireEvent.click(await screen.findByRole('button', { name: /Training speichern & beenden/ }));
+    fireEvent.click(await screen.findByRole('button', { name: /^Speichern & beenden$/ }));
     await waitFor(() => expect(localStorage.getItem(SESSION_KEY)).toBeNull());
     expect(localStorage.getItem(restKey)).toBeNull();
   });
@@ -776,7 +776,7 @@ describe('recorded set performance in the session-bound card (TRAINING-EXEC-02A)
     expect(within(recordedSection).getByText('Satz 1 · 52,5 kg · offen')).toBeInTheDocument();
     expect(recordedSection.textContent).not.toMatch(/8 Wdh/);
 
-    fireEvent.click(within(summary).getByRole('button', { name: /Training speichern & beenden/ }));
+    fireEvent.click(within(summary).getByRole('button', { name: /^Speichern & beenden$/ }));
 
     await waitFor(() => expect(localStorage.getItem(SESSION_KEY)).toBeNull());
     expect(setLogs()).toEqual([{ setNumber: 1, completed: false, performanceSource: 'user-recorded', weightUsed: 52.5 }]);
