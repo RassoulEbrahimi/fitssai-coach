@@ -115,6 +115,8 @@ beforeEach(() => {
   resetWorkoutFirestore();
   localStorage.clear();
   today.value = '2026-09-08';
+  // Each case starts on a fresh Trainingsplan entry: no pushed screens carried over.
+  history.replaceState(null, '', '#/workout');
   Object.defineProperty(navigator, 'onLine', { configurable: true, value: true });
   onlineManager.setOnline(true);
   vi.useFakeTimers({ toFake: ['Date'] });
@@ -379,7 +381,7 @@ describe('editing compatibility', () => {
     fireEvent.blur(rest);
     await waitFor(() => expect(planContent()['Week 1'][3].exercises[0]).toMatchObject({ rest: '180s' }));
     fireEvent.click(screen.getByRole('button', { name: 'Fertig' }));
-    back();
+    fireEvent.click(await screen.findByRole('button', { name: 'Zurück' }));
     const card = await todayCard();
     await act(async () => {});
     expect(within(card).getByRole('heading', { name: 'Push A' })).toBeInTheDocument();
@@ -387,5 +389,184 @@ describe('editing compatibility', () => {
     await waitFor(() => expect(storedSession()).toMatchObject(TUESDAY_BINDING));
     await waitFor(() => expect(focusMode()).not.toBeNull());
     expect(within(focusMode()!).getByRole('button', { name: /^Bankdrücken/ })).toBeInTheDocument();
+  });
+});
+
+/*
+  The pushed screens form a stack kept in the browser history: the in-app
+  Zurück / Fertig and browser (or Android) Back walk the same hierarchy, and
+  none of it reaches the running workout or the app's tab routing.
+*/
+describe('navigation hierarchy', () => {
+  const heading = (name: string | RegExp) => screen.findByRole('heading', { level: 1, name });
+  const onMain = async () => {
+    await todayCard();
+    expect(screen.getByRole('heading', { level: 1, name: 'Trainingsplan' })).toBeInTheDocument();
+  };
+  const onPlan = () => heading('4-Wochen-Plan');
+  const onThursday = () => screen.findByText(/^Donnerstag · 10/);
+  const openPlan = () => fireEvent.click(screen.getByRole('button', { name: /^Planübersicht öffnen/ }));
+  const browserBack = () => act(() => { history.back(); });
+  const stored = () => (history.state as Record<string, { stack?: unknown[] }> | null)?.trainingsplanV2?.stack ?? [];
+
+  it('Main → Day Detail → Zurück returns to Main, with focus and scroll back on the row', async () => {
+    mount();
+    await todayCard();
+    Object.defineProperty(window, 'scrollY', { configurable: true, value: 420 });
+    const thursday = row(/^Do 10,/);
+    thursday.focus();
+    fireEvent.click(thursday);
+    await onThursday();
+    expect(stored()).toHaveLength(1);
+    expect(window.location.hash).toBe('#/workout');
+
+    back();
+    await onMain();
+    expect(stored()).toHaveLength(0);
+    await waitFor(() => expect(document.activeElement).toBe(row(/^Do 10,/)));
+    await waitFor(() => expect(window.scrollTo).toHaveBeenLastCalledWith({ top: 420, left: 0, behavior: 'auto' }));
+    Object.defineProperty(window, 'scrollY', { configurable: true, value: 0 });
+  });
+
+  it('Main → Plan Overview → Zurück returns to Main', async () => {
+    mount();
+    await todayCard();
+    openPlan();
+    await onPlan();
+    back();
+    await onMain();
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByRole('button', { name: /^Planübersicht öffnen/ })));
+  });
+
+  it('Plan Overview → Day Detail → Zurück returns to Plan Overview, then to Main', async () => {
+    mount();
+    await todayCard();
+    openPlan();
+    await onPlan();
+    fireEvent.click(screen.getByRole('button', { name: /^Do .*1 Übung/ }));
+    await onThursday();
+    expect(stored()).toHaveLength(2);
+
+    back();
+    await onPlan();
+    // Focus goes back to the weekday row that opened the day.
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByRole('button', { name: /^Do .*1 Übung/ })));
+
+    back();
+    await onMain();
+  });
+
+  it('Day Detail → Bearbeiten → Fertig returns to that day, and Back still follows the origin', async () => {
+    mount();
+    await todayCard();
+    openPlan();
+    await onPlan();
+    fireEvent.click(screen.getByRole('button', { name: /^Do .*1 Übung/ }));
+    await onThursday();
+    fireEvent.click(screen.getByRole('button', { name: 'Bearbeiten' }));
+    await heading(/bearbeiten$/);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Fertig' }));
+    await onThursday();
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Bearbeiten' })));
+    back();
+    await onPlan();
+  });
+
+  it('browser Back and Forward walk the same hierarchy', async () => {
+    mount();
+    await todayCard();
+    openPlan();
+    await onPlan();
+    fireEvent.click(screen.getByRole('button', { name: /^Do .*1 Übung/ }));
+    await onThursday();
+    fireEvent.click(screen.getByRole('button', { name: 'Bearbeiten' }));
+    await heading(/bearbeiten$/);
+    expect(navHidden).toHaveBeenLastCalledWith(true);
+
+    await browserBack();
+    await onThursday();
+    expect(screen.queryByRole('heading', { name: /bearbeiten$/ })).toBeNull();
+    await browserBack();
+    await onPlan();
+    expect(navHidden).toHaveBeenLastCalledWith(false);
+    await browserBack();
+    await onMain();
+
+    // Forward restores the screen from the history entry itself.
+    await act(() => { history.forward(); });
+    await onPlan();
+    await act(() => { history.forward(); });
+    await onThursday();
+    expect(window.location.hash).toBe('#/workout');
+  });
+
+  it("ignores history entries of other tabs and other plans", async () => {
+    mount();
+    await todayCard();
+    openPlan();
+    await onPlan();
+
+    // Another tab's entry: the router owns it, the tab stays where it is.
+    history.pushState(null, '', '#/dashboard');
+    act(() => { window.dispatchEvent(new PopStateEvent('popstate', { state: null })); });
+    expect(screen.getByRole('heading', { level: 1, name: '4-Wochen-Plan' })).toBeInTheDocument();
+    history.replaceState(null, '', '#/workout');
+
+    // An entry for a different plan never opens its screens here.
+    act(() => {
+      window.dispatchEvent(new PopStateEvent('popstate', {
+        state: { trainingsplanV2: { planId: 'old-plan', stack: [{ kind: 'plan' }] } },
+      }));
+    });
+    await onMain();
+  });
+
+  it('restores the pushed screen when the tab is mounted again on its entry', async () => {
+    const view = mount();
+    await todayCard();
+    openPlan();
+    await onPlan();
+    fireEvent.click(screen.getByRole('button', { name: /^Do .*1 Übung/ }));
+    await onThursday();
+
+    // Leaving the tab and coming back to this entry (or reloading on it).
+    view.unmount();
+    mount();
+    await onThursday();
+    back();
+    await onPlan();
+  });
+
+  it('never touches the running workout while navigating', async () => {
+    mount();
+    fireEvent.click(within(await todayCard()).getByRole('button', { name: /Training starten/ }));
+    await waitFor(() => expect(storedSession()).toMatchObject(TUESDAY_BINDING));
+    const session = storedSession();
+    await waitFor(() => expect(focusMode()).not.toBeNull());
+    fireEvent.click(within(focusMode()!).getByRole('button', { name: 'Vollbild beenden' }));
+    await waitFor(() => expect(focusMode()).toBeNull());
+
+    openPlan();
+    await onPlan();
+    fireEvent.click(screen.getByRole('button', { name: /^Do .*1 Übung/ }));
+    await onThursday();
+    expect(within(footer()).getByRole('button', { name: 'Training läuft bereits' })).toBeDisabled();
+    fireEvent.click(screen.getByRole('button', { name: 'Bearbeiten' }));
+    await heading(/bearbeiten$/);
+    await browserBack();
+    await onThursday();
+    back();
+    await onPlan();
+    await browserBack();
+    await onMain();
+
+    expect(storedSession()).toEqual(session);
+    const card = await todayCard();
+    expect(within(card).getByText('Übung 1 von 1 · Bankdrücken')).toBeInTheDocument();
+    fireEvent.click(within(card).getByRole('button', { name: 'Fortsetzen' }));
+    await waitFor(() => expect(focusMode()).not.toBeNull());
+    expect(within(focusMode()!).getByRole('button', { name: /^Bankdrücken/ })).toBeInTheDocument();
+    expect(storedSession()).toEqual(session);
   });
 });

@@ -21,6 +21,25 @@ persistence changed.
   (Today state, agenda rows, rest merging, next-week teaser, Day Detail
   action, Plan Overview).
 
+## Navigation
+
+Main is the root; Day Detail, Plan Overview and the edit surface are pushed
+on top and popped in reverse (`useTrainingsplanNavigation`):
+
+- Main → Day Detail → Zurück = Main
+- Main → Plan Overview → Zurück = Main
+- Plan Overview → Day Detail → Zurück = Plan Overview
+- Day Detail → Bearbeiten → Fertig = that Day Detail
+
+Each push adds one browser-history entry at the current URL carrying the
+whole stack (`src/lib/trainingsplanNavigation.ts`), so browser / Android
+Back and Forward follow the same hierarchy, and a remount or reload on an
+entry restores its screen. The entries never change the hash, and the app's
+tab router only reacts to hash changes, so routing outside the tab is
+untouched. Popping restores the previous screen's scroll position and moves
+focus back to the control that opened the screen above it. Navigation never
+reaches the running workout.
+
 ## Screens
 
 | Design | Component |

@@ -82,7 +82,7 @@ export const DayDetail: React.FC<DayDetailProps> = ({
           Zurück
         </button>
         {onEdit && (
-          <button type="button" className="tp-topbar-action" onClick={onEdit}>
+          <button type="button" className="tp-topbar-action" data-tp-opener="edit" onClick={onEdit}>
             Bearbeiten
           </button>
         )}

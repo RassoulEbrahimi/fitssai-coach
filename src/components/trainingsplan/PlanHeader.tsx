@@ -20,6 +20,7 @@ export const TrainingsplanHeader: React.FC<PlanPositionProps & { onOpenPlan: () 
     <button
       type="button"
       className="tp-chip"
+      data-tp-opener="plan-chip"
       aria-label={
         finished
           ? "Planübersicht öffnen, Plan abgeschlossen"
@@ -48,7 +49,7 @@ export const CurrentPlanRow: React.FC<PlanPositionProps & { trainingDaysPerWeek:
   trainingDaysPerWeek,
   onOpenPlan,
 }) => (
-  <button type="button" className="tp-plan-row" onClick={onOpenPlan}>
+  <button type="button" className="tp-plan-row" data-tp-opener="plan-row" onClick={onOpenPlan}>
     <span>
       <b className="tp-ellipsis">{planDisplayName(totalWeeks)}</b>
       <span className="tp-meta tp-ellipsis">

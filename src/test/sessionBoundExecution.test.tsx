@@ -427,6 +427,7 @@ describe('the Trainingsplan tab (TRAINING-PLAN-V2-01)', () => {
   const TUESDAY_BINDING = { planId: PLAN_ID, weekKey: 'Week 1', dayIndex: 1, workoutDay: '2026-09-08' };
 
   beforeEach(() => {
+    history.replaceState(null, '', '#/workout');
     vi.spyOn(window, 'scrollTo').mockImplementation(() => {});
     vi.stubGlobal('IntersectionObserver', class { observe() {} unobserve() {} disconnect() {} });
     rows.set(`users/u1/workout_plans/${PLAN_ID}`, {

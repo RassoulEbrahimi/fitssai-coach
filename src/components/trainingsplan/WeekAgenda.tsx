@@ -79,6 +79,7 @@ export const WeekAgenda: React.FC<WeekAgendaProps> = ({ agenda, onOpenDay, onRes
               data-kind="workout"
               data-status={row.status}
               data-today={row.isToday}
+              data-tp-opener={`day:${row.day.workoutDay}`}
               aria-label={`${formatShortDay(row.day.workoutDay)}, ${row.summary.title}, ${statusLabel(row)}`}
               onClick={() => (row.status === "active" ? onResume() : onOpenDay(row.day))}
             >
@@ -123,7 +124,7 @@ export const NextWeekTeaser: React.FC<{ workout: PlannedWorkout; onOpenDay: (day
   workout,
   onOpenDay,
 }) => (
-  <button type="button" className="tp-teaser" onClick={() => onOpenDay(workout)}>
+  <button type="button" className="tp-teaser" data-tp-opener="teaser" onClick={() => onOpenDay(workout)}>
     <span>
       <span className="tp-eyebrow">Nächste Woche</span>
       <b className="tp-ellipsis">{formatShortDay(workout.workoutDay)} · {workout.summary.title}</b>

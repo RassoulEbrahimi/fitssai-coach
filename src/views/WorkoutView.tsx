@@ -57,6 +57,7 @@ import { CurrentPlanRow, TrainingsplanHeader } from "@/components/trainingsplan/
 import { DayDetail } from "@/components/trainingsplan/DayDetail";
 import { DayEditSurface } from "@/components/trainingsplan/DayEditSurface";
 import { PlanOverview } from "@/components/trainingsplan/PlanOverview";
+import { useTrainingsplanNavigation } from "@/components/trainingsplan/useTrainingsplanNavigation";
 import "@/components/trainingsplan/trainingsplan.css";
 
 interface WorkoutViewProps {
@@ -83,18 +84,6 @@ interface WorkoutViewProps {
   /** Day detail and editing are focused tasks: the global navigation steps aside. */
   onBottomNavHiddenChange?: (hidden: boolean) => void;
 }
-
-/**
- * Where the Trainingsplan tab is. Level 0 is the tab itself; day detail and
- * the plan overview are pushed from it, and editing is pushed from a day.
- * Browsing never touches the running workout: the card below is always given
- * today, and a bound session ignores even that.
- */
-type Screen =
-  | { kind: "main" }
-  | { kind: "detail"; day: PlanDayRef }
-  | { kind: "edit"; day: PlanDayRef }
-  | { kind: "plan" };
 
 const WorkoutView: React.FC<WorkoutViewProps> = ({
   workoutPlan,
@@ -165,7 +154,13 @@ const WorkoutView: React.FC<WorkoutViewProps> = ({
   const { updateExercise, isUpdating } = useExerciseEditor();
   const { addExercise } = useAddExercise();
 
-  const [screen, setScreen] = useState<Screen>({ kind: "main" });
+  /*
+    Where the Trainingsplan tab is: Main at the root, with Day Detail, Plan
+    Overview and editing pushed on top and popped in reverse, through the
+    browser history. Browsing never touches the running workout: the card
+    below is always given today, and a bound session ignores even that.
+  */
+  const { screen, push, back } = useTrainingsplanNavigation(planId);
 
   /*
     Today, in Berlin. The card is always given today's plan day: it is what
@@ -261,19 +256,6 @@ const WorkoutView: React.FC<WorkoutViewProps> = ({
 
   // --- Navigation between the V2 screens ----------------------------------
 
-  const mainScrollRef = useRef(0);
-  const openerRef = useRef<Element | null>(null);
-  const push = useCallback((next: Screen) => {
-    setScreen((current) => {
-      if (current.kind === "main") {
-        mainScrollRef.current = window.scrollY;
-        openerRef.current = document.activeElement;
-      }
-      return next;
-    });
-    window.scrollTo({ top: 0, left: 0, behavior: "auto" });
-  }, []);
-
   const openDay = useCallback((day: PlanDayRef) => {
     logEvent('trainingsplan_day_opened', { weekKey: day.weekKey, dayIndex: day.dayIndex });
     push({ kind: "detail", day: { weekKey: day.weekKey, dayIndex: day.dayIndex, workoutDay: day.workoutDay } });
@@ -282,24 +264,7 @@ const WorkoutView: React.FC<WorkoutViewProps> = ({
     logEvent('trainingsplan_plan_opened', {});
     push({ kind: "plan" });
   }, [push]);
-  const backToMain = useCallback(() => {
-    setScreen({ kind: "main" });
-    requestAnimationFrame(() => {
-      window.scrollTo({ top: mainScrollRef.current, left: 0, behavior: "auto" });
-      const opener = openerRef.current as HTMLElement | null;
-      if (opener?.isConnected) opener.focus({ preventScroll: true });
-    });
-  }, []);
-
-  // Pushed screens start at their heading, for keyboard and screen readers.
-  useEffect(() => {
-    if (screen.kind === "main") return;
-    const heading = document.querySelector<HTMLElement>(`[data-screen] h1`);
-    if (heading) {
-      heading.tabIndex = -1;
-      heading.focus({ preventScroll: true });
-    }
-  }, [screen]);
+  const openEdit = useCallback((day: PlanDayRef) => push({ kind: "edit", day }), [push]);
 
   useEffect(() => {
     onBottomNavHiddenChange?.(screen.kind === "detail" || screen.kind === "edit");
@@ -739,8 +704,8 @@ const WorkoutView: React.FC<WorkoutViewProps> = ({
             action={resolveDayDetailAction(inputs, screen.day, isStarted)}
             isToday={screen.day.workoutDay === todayStr}
             isCompleted={isDayCompleted(screen.day.weekKey, screen.day.dayIndex)}
-            onBack={backToMain}
-            onEdit={detailInPlan ? () => setScreen({ kind: "edit", day: screen.day }) : undefined}
+            onBack={back}
+            onEdit={detailInPlan ? () => openEdit(screen.day) : undefined}
             onStart={() => startDay(screen.day)}
             onResume={resumeWorkout}
             primaryRef={primaryActionRef}
@@ -753,7 +718,7 @@ const WorkoutView: React.FC<WorkoutViewProps> = ({
             title={detailSummary.title}
             exercises={(detailContent?.exercises ?? []) as Exercise[]}
             isUpdating={isUpdating}
-            onDone={() => setScreen({ kind: "detail", day: screen.day })}
+            onDone={back}
             onUpdateExercise={(exerciseIndex, updatedExercise) =>
               handleUpdateExercise(screen.day.weekKey, screen.day.dayIndex, exerciseIndex, updatedExercise)
             }
@@ -769,7 +734,7 @@ const WorkoutView: React.FC<WorkoutViewProps> = ({
           <PlanOverview
             model={overview}
             createdDay={livePlan.created_at ? format(new Date(livePlan.created_at), 'yyyy-MM-dd') : null}
-            onBack={backToMain}
+            onBack={back}
             onOpenDay={openDay}
           />
         )}

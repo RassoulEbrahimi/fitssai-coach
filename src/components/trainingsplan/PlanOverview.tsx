@@ -74,7 +74,12 @@ export const PlanOverview: React.FC<PlanOverviewProps> = ({ model, createdDay, o
         <ul className="tp-list">
           {model.workoutDays.map((workout) => (
             <li key={workout.workoutDay}>
-              <button type="button" className="tp-weekday tp-row-button" onClick={() => onOpenDay(workout)}>
+              <button
+                type="button"
+                className="tp-weekday tp-row-button"
+                data-tp-opener={`day:${workout.workoutDay}`}
+                onClick={() => onOpenDay(workout)}
+              >
                 <span>
                   <span className="tp-weekday-day">{formatWeekdayShort(workout.workoutDay)}</span>
                   <b className="tp-ellipsis">{workout.summary.title}</b>

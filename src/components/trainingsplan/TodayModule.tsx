@@ -131,6 +131,7 @@ export const TodayModule: React.FC<TodayModuleProps> = ({
             type="button"
             className="tp-secondary tp-icon-narrow tp-roomy"
             aria-label="Ansehen"
+            data-tp-opener="today-view"
             onClick={() => onOpenDay(workout)}
           >
             <Eye className="tp-short" aria-hidden="true" />
@@ -216,6 +217,7 @@ export const TodayModule: React.FC<TodayModuleProps> = ({
               type="button"
               className="tp-secondary tp-fill"
               aria-label={`Ansehen: ${formatShortDay(next.workoutDay)} · ${next.summary.title}`}
+              data-tp-opener="next-view"
               onClick={() => onOpenDay(next)}
             >
               Ansehen
@@ -228,7 +230,7 @@ export const TodayModule: React.FC<TodayModuleProps> = ({
 };
 
 const NextRow: React.FC<{ next: PlannedWorkout; onOpenDay: (day: PlanDayRef) => void }> = ({ next, onOpenDay }) => (
-  <button type="button" className="tp-next-row" onClick={() => onOpenDay(next)}>
+  <button type="button" className="tp-next-row" data-tp-opener="next-row" onClick={() => onOpenDay(next)}>
     <span>
       <span className="tp-eyebrow">Als Nächstes</span>
       <b className="tp-ellipsis">{formatShortDay(next.workoutDay)} · {next.summary.title}</b>
