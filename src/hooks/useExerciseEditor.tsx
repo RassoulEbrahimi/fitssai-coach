@@ -7,7 +7,7 @@ import { useTranslation } from "react-i18next";
 import { logEvent, logError } from "@/lib/telemetryClient";
 import { useSupabaseAction } from "./useSupabaseAction";
 import { Exercise, WorkoutPlanContent } from "@/lib/types";
-import { PlanEditBlockedError, assertPlanEditPreservesHistory, changesExerciseIdentity } from "@/lib/exerciseHistoryGuard";
+import { PlanEditBlockedError, assertPlanEditPreservesHistory, changesExerciseIdentity, planEditLane } from "@/lib/exerciseHistoryGuard";
 
 export type { Exercise };
 
@@ -61,6 +61,8 @@ export function useExerciseEditor() {
       await setDoc(planRef, { content: updatedContent, updatedAt: Timestamp.now() }, { merge: true });
       return { success: true, content: updatedContent };
     },
+    // One edit of this plan at a time: each reads the result of the last.
+    serializeKey: (params) => planEditLane(params.planId),
     onMutate: async (params) => {
       logEvent("exercise_update_started", params);
       await queryClient.cancelQueries({ queryKey: ["workout-plan", params.planId] });

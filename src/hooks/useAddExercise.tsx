@@ -4,7 +4,7 @@ import { db } from "@/lib/firebase";
 import { useAuth } from "./useAuth";
 import { useSupabaseAction } from "./useSupabaseAction";
 import { Exercise, WorkoutPlan } from "@/lib/types";
-import { assertPlanEditPreservesHistory } from "@/lib/exerciseHistoryGuard";
+import { assertPlanEditPreservesHistory, planEditLane } from "@/lib/exerciseHistoryGuard";
 
 interface AddExerciseParams {
   planId: string; weekKey: string; dayIndex: number; exercise: Exercise;
@@ -53,6 +53,8 @@ export const useAddExercise = () => {
       return { success: true };
     },
     messages: { success: "Die Übung wurde erfolgreich hinzugefügt", error: "Übung konnte nicht hinzugefügt werden" },
+    // One edit of this plan at a time: each reads the result of the last.
+    serializeKey: (params) => planEditLane(params.planId),
     onMutate: async ({ planId, weekKey, dayIndex, exercise }) => {
       await queryClient.cancelQueries({ queryKey: ["workout-plan", planId] });
       const previousPlan = queryClient.getQueryData(["workout-plan", planId]);

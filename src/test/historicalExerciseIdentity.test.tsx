@@ -28,6 +28,7 @@ import { useDeleteExercise } from '@/hooks/useDeleteExercise';
 import { useRestoreExercise } from '@/hooks/useRestoreExercise';
 import { useAddExercise } from '@/hooks/useAddExercise';
 import { useExerciseEditor } from '@/hooks/useExerciseEditor';
+import { useReorderExercise } from '@/hooks/useReorderExercise';
 import {
   PlanEditBlockedError,
   affectedPositions,
@@ -150,6 +151,22 @@ const updateAt = async (exerciseIndex: number, patch: Record<string, unknown>, w
     );
   });
   await waitFor(() => expect(view.result.current.isUpdating).toBe(false));
+  view.unmount();
+  return error;
+};
+
+const moveFrom = async (fromIndex: number, toIndex: number, name: string, weekKey: string = WEEK) => {
+  const view = renderHook(() => useReorderExercise(), { wrapper });
+  let error: unknown = null;
+  let settled = false;
+  await act(async () => {
+    view.result.current.reorderExercise(
+      { planId: PLAN, weekKey, dayIndex: 0, fromIndex, toIndex, exerciseName: name },
+      { onError: (e: unknown) => { error = e; }, onSettled: () => { settled = true; } },
+    );
+  });
+  // A stale list is retried with the shared backoff before it is reported.
+  await waitFor(() => expect(settled).toBe(true), { timeout: 10_000 });
   view.unmount();
   return error;
 };
@@ -507,7 +524,51 @@ describe('refusal reporting, isolation and fail-closed behaviour', () => {
   });
 });
 
+describe('reordering (TRAINING-PLAN-V2-02)', () => {
+  it('moves one exercise and keeps every exercise object intact', async () => {
+    seedPlan(['Bench Press', 'Row', 'Curl', 'Squat']);
+    const before = (rows.get(PLAN_PATH) as { content: Record<string, { exercises: unknown[] }[]> }).content[WEEK][0].exercises;
+
+    expect(await moveFrom(3, 1, 'Squat')).toBeNull();
+    expect(storedNames()).toEqual(['Bench Press', 'Squat', 'Row', 'Curl']);
+    const after = (rows.get(PLAN_PATH) as { content: Record<string, { exercises: unknown[] }[]> }).content[WEEK][0].exercises;
+    expect(after).toEqual([before[0], before[3], before[1], before[2]]);
+  });
+
+  it('refuses a move across a logged position and leaves the plan untouched', async () => {
+    seedPlan(['Bench Press', 'Row', 'Curl']);
+    await logSetAt(1);
+    const writesBefore = planWrites();
+
+    expectBlocked(await moveFrom(2, 0, 'Curl'));
+    expect(storedNames()).toEqual(['Bench Press', 'Row', 'Curl']);
+    expect(planWrites()).toBe(writesBefore);
+  });
+
+  it('allows a move whose range stays clear of logged positions', async () => {
+    seedPlan(['Bench Press', 'Row', 'Curl', 'Squat']);
+    await logSetAt(0);
+
+    expect(await moveFrom(3, 2, 'Squat')).toBeNull();
+    expect(storedNames()).toEqual(['Bench Press', 'Row', 'Squat', 'Curl']);
+  });
+
+  it('refuses a move addressed to a list that changed underneath it', { timeout: 15_000 }, async () => {
+    seedPlan(['Bench Press', 'Row', 'Curl']);
+    const writesBefore = planWrites();
+
+    expect(await moveFrom(0, 2, 'Row')).toBeInstanceOf(Error);
+    expect(storedNames()).toEqual(['Bench Press', 'Row', 'Curl']);
+    expect(planWrites()).toBe(writesBefore);
+  });
+});
+
 describe('affected-position semantics', () => {
+  it('treats a move as exactly the range between its two ends', () => {
+    expect(affectedPositions({ kind: 'move', exerciseIndex: 3, toIndex: 1 })).toEqual({ from: 1, to: 3 });
+    expect(affectedPositions({ kind: 'move', exerciseIndex: 0, toIndex: 2 })).toEqual({ from: 0, to: 2 });
+  });
+
   it('treats removal and insertion as open-ended, replacement and append as one slot', () => {
     expect(affectedPositions({ kind: 'delete', exerciseIndex: 1 })).toEqual({ from: 1, to: null });
     expect(affectedPositions({ kind: 'insert', exerciseIndex: 1 })).toEqual({ from: 1, to: null });

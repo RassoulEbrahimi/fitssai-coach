@@ -45,6 +45,15 @@ export { displayedSourceWeek, weeksDisplaying } from "@/lib/planWeekMirroring";
  * round trip and both surfaces must be open at once, so it stays out of scope.
  */
 
+/**
+ * The one lane every edit of a plan's exercise arrays runs in. Each editor
+ * reads the plan, rebuilds one day and writes it back, and addresses
+ * exercises by position; run side by side, a later edit could read the plan
+ * before an earlier one lands and address the wrong exercise, or overwrite it.
+ * In one lane each edit reads the result of the one before.
+ */
+export const planEditLane = (planId: string): string => `plan-edit:${planId}`;
+
 /** Why an edit was refused. Each reason has its own user-facing wording. */
 export type PlanEditRefusal = "history-exists" | "history-unverifiable";
 
@@ -103,16 +112,17 @@ export class PlanEditBlockedError extends Error {
  * - `insert`  - `splice(index, 0, exercise)` in `useRestoreExercise`
  * - `append`  - `push(exercise)` in `useAddExercise` and `AddWorkoutModal`
  * - `replace` - a name change through `useExerciseEditor`
- *
- * There is no reorder or move path in the app; the only drag gesture is
- * swipe-to-delete, which routes to `delete`.
+ * - `move`    - one exercise moved from `exerciseIndex` to `toIndex` in
+ *               `useReorderExercise` (the Edit Mode's drag handle)
  */
-export type PlanEditKind = "delete" | "insert" | "append" | "replace";
+export type PlanEditKind = "delete" | "insert" | "append" | "replace" | "move";
 
 export interface PlanEdit {
   kind: PlanEditKind;
-  /** The index acted on. For `append`, the index the new exercise lands on. */
+  /** The index acted on. For `append`, the index the new exercise lands on; for `move`, where it comes from. */
   exerciseIndex: number;
+  /** `move` only: where the exercise lands. */
+  toIndex?: number;
 }
 
 /**
@@ -121,17 +131,23 @@ export interface PlanEdit {
  *
  * Removing or inserting at index i shifts everything after it, so position p
  * for p >= i comes to hold what p+1 (or p-1) held. Replacing and appending
- * touch exactly one position: nothing shifts.
+ * touch exactly one position: nothing shifts. Moving from i to j gives every
+ * position between them, both ends included, a different exercise; nothing
+ * outside that range changes.
  */
 export interface AffectedPositions {
   from: number;
   to: number | null;
 }
 
-export const affectedPositions = (edit: PlanEdit): AffectedPositions =>
-  edit.kind === "delete" || edit.kind === "insert"
-    ? { from: edit.exerciseIndex, to: null }
-    : { from: edit.exerciseIndex, to: edit.exerciseIndex };
+export const affectedPositions = (edit: PlanEdit): AffectedPositions => {
+  if (edit.kind === "delete" || edit.kind === "insert") return { from: edit.exerciseIndex, to: null };
+  if (edit.kind === "move") {
+    const to = edit.toIndex ?? edit.exerciseIndex;
+    return { from: Math.min(edit.exerciseIndex, to), to: Math.max(edit.exerciseIndex, to) };
+  }
+  return { from: edit.exerciseIndex, to: edit.exerciseIndex };
+};
 
 export const isAffected = (range: AffectedPositions, index: number): boolean =>
   index >= range.from && (range.to === null || index <= range.to);

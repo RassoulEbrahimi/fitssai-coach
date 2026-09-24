@@ -5,7 +5,7 @@ import { useAuth } from "./useAuth";
 import { Exercise, WorkoutPlanContent } from "@/lib/types";
 import { logEvent, logError } from "@/lib/telemetryClient";
 import { useSupabaseAction } from "./useSupabaseAction";
-import { assertPlanEditPreservesHistory } from "@/lib/exerciseHistoryGuard";
+import { assertPlanEditPreservesHistory, planEditLane } from "@/lib/exerciseHistoryGuard";
 
 export interface RestoreExerciseParams {
   planId: string; weekKey: string; dayIndex: number; exerciseIndex: number; exercise: Exercise;
@@ -55,6 +55,8 @@ export function useRestoreExercise() {
       return { success: true, content: updatedContent };
     },
     messages: { success: "Übung wiederhergestellt", error: "Fehler beim Wiederherstellen der Übung" },
+    // One edit of this plan at a time: each reads the result of the last.
+    serializeKey: (params) => planEditLane(params.planId),
     onMutate: async (params) => {
       logEvent("exercise_restore_started", params);
       await queryClient.cancelQueries({ queryKey: ["workout-plan", params.planId] });

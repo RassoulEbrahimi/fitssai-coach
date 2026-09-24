@@ -5,7 +5,7 @@ import { useAuth } from "./useAuth";
 import { logEvent, logError } from "@/lib/telemetryClient";
 import { useSupabaseAction } from "./useSupabaseAction";
 import { WorkoutPlanContent } from "@/lib/types";
-import { assertPlanEditPreservesHistory } from "@/lib/exerciseHistoryGuard";
+import { assertPlanEditPreservesHistory, planEditLane } from "@/lib/exerciseHistoryGuard";
 
 export type { WorkoutPlanContent };
 
@@ -57,6 +57,8 @@ export function useDeleteExercise() {
       return { success: true, content: updatedContent };
     },
     messages: { success: "Übung gelöscht", error: "Fehler beim Löschen der Übung" },
+    // One edit of this plan at a time: each reads the result of the last.
+    serializeKey: (params) => planEditLane(params.planId),
     onMutate: async (params) => {
       logEvent("exercise_delete_started", params);
       await queryClient.cancelQueries({ queryKey: ["workout-plan", params.planId] });
