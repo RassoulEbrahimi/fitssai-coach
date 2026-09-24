@@ -23,8 +23,8 @@ import { useThrottledToast } from "@/hooks/useThrottledToast";
 import { TodayWorkoutSkeleton } from "@/components/skeletons/TodayWorkoutSkeleton";
 import { useTraining } from "@/contexts/TrainingContext";
 import { useFocusMode } from "@/contexts/FocusModeContext";
-import { useWorkoutExecution } from "@/hooks/useWorkoutExecution";
-import { buildRecordedPerformance, resolveSessionWorkoutDay, type ExecutionExercise } from "@/lib/workoutExecution";
+import { useWorkoutExecution, type ExecutionProgress } from "@/hooks/useWorkoutExecution";
+import { buildRecordedPerformance, resolveSessionWorkoutDay, type ExecutionExercise, type ExecutionTarget } from "@/lib/workoutExecution";
 import { setPerformanceFieldId } from "@/lib/setPerformanceDrafts";
 import { FutureWorkoutDayError, recordSuccessfulWorkoutFinish, type SessionRecordOutcome } from "@/lib/sessionRecord";
 import { useRestTimer } from "@/hooks/useRestTimer";
@@ -39,6 +39,31 @@ const getStartedStorageKey = (dateStr: string) => `fitssai.workout_started_${dat
 
 // Helper to get localStorage key for timer start time
 const getTimerStorageKey = (dateStr: string) => `fitssai.workout_timer_start_${dateStr}`;
+
+/**
+ * The running workout as the Trainingsplan overview reads it. Read-only
+ * values plus the card's own start and resume, so the overview never binds a
+ * session itself.
+ */
+export interface TodayExecutionView {
+  isStarted: boolean;
+  isBound: boolean;
+  target: ExecutionTarget;
+  exercises: ExecutionExercise[];
+  progress: ExecutionProgress;
+  getCompletedSetsCount: (exerciseIndex: number) => number;
+  durationSeconds: number;
+  /** The selected week's completion or the bound day's sets are still loading. */
+  isLoading: boolean;
+}
+
+/** The card's start and resume, for surfaces outside it (Day Detail). */
+export interface TodayExecutionControls {
+  /** Starts the card's day. A running session is resumed instead, never replaced. */
+  start: () => void;
+  /** Opens the running workout. Does nothing when no session runs. */
+  resume: () => void;
+}
 
 interface TodayWorkoutCardProps {
   selectedDate: Date;
@@ -65,6 +90,19 @@ interface TodayWorkoutCardProps {
   isOnline?: boolean;
   isCached?: boolean;
   dataUpdatedAt?: number;
+  /**
+   * Trainingsplan V2. Outside Focus Mode the card renders this instead of its
+   * own hero; the running workout itself, its finish flow and the rest timer
+   * stay here unchanged. Without it the card renders as it always has.
+   */
+  renderOverview?: (view: TodayExecutionView) => React.ReactNode;
+  /** Receives the card's start and resume for surfaces outside it. */
+  controlsRef?: React.MutableRefObject<TodayExecutionControls | null>;
+  /**
+   * Where focus goes when the workout closes and the control that opened it
+   * is gone: the surface's own primary action (Fortsetzen, Training starten).
+   */
+  focusReturnRef?: React.RefObject<HTMLElement>;
 }
 
 /*
@@ -105,6 +143,9 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
   isOnline = true,
   isCached = false,
   dataUpdatedAt,
+  renderOverview,
+  controlsRef,
+  focusReturnRef,
 }) => {
   const { t } = useTranslation();
   const { user } = useAuth();
@@ -250,9 +291,58 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
     */
     const target = isFocusableElement(entry)
       ? entry
-      : fullscreenButtonRef.current ?? document.getElementById("main-content");
+      : fullscreenButtonRef.current ?? focusReturnRef?.current ?? document.getElementById("main-content");
     target?.focus({ preventScroll: true });
-  }, [isFocusMode]);
+  }, [isFocusMode, focusReturnRef]);
+
+  /*
+    Start binds the card's own day - never a browsed one - and a session that
+    is already running is resumed instead: nothing here creates a second one.
+    The legacy Start button only shows while nothing runs, so the guard does
+    not change it.
+  */
+  const startTraining = useCallback(() => {
+    if (isStarted) {
+      focusModeEntryRef.current = document.activeElement;
+      setFocusMode(true);
+      return;
+    }
+    if (isBerlinFuture(selectedDateStr)) {
+      showToast(t('dashboard.futureDay.locked'), 'info');
+      return;
+    }
+    // Bind the session to this exact plan day so a reload resumes the same
+    // workout instead of re-attaching to whatever day is shown.
+    if (workoutPlan?.id) {
+      startSession({ planId: workoutPlan.id, weekKey, dayIndex, workoutDay: selectedDateStr });
+    } else {
+      startSession();
+    }
+    if (isFocusMode) {
+      // Already fullscreen: the Start button is about to disappear, so keep
+      // focus inside Focus Mode rather than letting it fall to the body.
+      fullscreenButtonRef.current?.focus({ preventScroll: true });
+      return;
+    }
+    focusModeEntryRef.current = document.activeElement;
+    setFocusMode(true);
+  }, [isStarted, selectedDateStr, showToast, t, workoutPlan?.id, startSession, weekKey, dayIndex, isFocusMode, setFocusMode]);
+
+  // Back into the running workout. Never starts one.
+  const resumeTraining = useCallback(() => {
+    if (!isStarted) return;
+    focusModeEntryRef.current = document.activeElement;
+    setFocusMode(true);
+  }, [isStarted, setFocusMode]);
+
+  useEffect(() => {
+    if (!controlsRef) return;
+    controlsRef.current = { start: startTraining, resume: resumeTraining };
+  }, [controlsRef, startTraining, resumeTraining]);
+  useEffect(() => {
+    if (!controlsRef) return;
+    return () => { controlsRef.current = null; };
+  }, [controlsRef]);
 
   // Date context logic - using reactive today
   const isToday = selectedDateStr === berlinToday;
@@ -286,6 +376,30 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
       className: "text-lg"
     };
   };
+
+  /*
+    Trainingsplan V2: outside Focus Mode the overview replaces the hero. The
+    running workout, its summary and the rest sheet below are exactly the
+    legacy ones, so execution behaves the same whichever surface launched it.
+    An open summary keeps the started view mounted until it resolves.
+  */
+  if (renderOverview && !isFocusMode && !showSummary) {
+    return (
+      <WorkoutErrorBoundary>
+        {renderOverview({
+          isStarted,
+          isBound: isExecutionBound,
+          target: executionTarget,
+          exercises,
+          progress: progressStats,
+          getCompletedSetsCount,
+          durationSeconds: currentDuration,
+          isLoading: (isLoading && !isExecutionBound) || isLoadingSets,
+        })}
+        <RestBottomSheet rest={restTimer} exercises={exercises} />
+      </WorkoutErrorBoundary>
+    );
+  }
 
   // Render skeleton loading state. The selected week's completion query says
   // nothing about a bound workout, so browsing never blanks a running one.
@@ -450,27 +564,7 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
   };
 
   // Handle starting training - also enables fullscreen
-  const handleStartTraining = () => {
-    if (isBerlinFuture(selectedDateStr)) {
-      showToast(t('dashboard.futureDay.locked'), 'info');
-      return;
-    }
-    // Bind the session to this exact plan day so a reload resumes the same
-    // workout instead of re-attaching to whatever day is shown.
-    if (workoutPlan?.id) {
-      startSession({ planId: workoutPlan.id, weekKey, dayIndex, workoutDay: selectedDateStr });
-    } else {
-      startSession();
-    }
-    if (isFocusMode) {
-      // Already fullscreen: the Start button is about to disappear, so keep
-      // focus inside Focus Mode rather than letting it fall to the body.
-      fullscreenButtonRef.current?.focus({ preventScroll: true });
-      return;
-    }
-    focusModeEntryRef.current = document.activeElement;
-    setFocusMode(true);
-  };
+  const handleStartTraining = startTraining;
 
   // Toggle fullscreen mode
   const toggleFullScreen = () => {
@@ -693,6 +787,9 @@ export default React.memo(TodayWorkoutCard, (prev, next) => {
     prev.isOnline === next.isOnline &&
     // The plan itself, not only its id: a bound workout reads its exercises
     // from the plan, so an edit to the running day has to reach the card.
-    prev.workoutPlan === next.workoutPlan
+    prev.workoutPlan === next.workoutPlan &&
+    prev.renderOverview === next.renderOverview &&
+    prev.controlsRef === next.controlsRef &&
+    prev.focusReturnRef === next.focusReturnRef
   );
 });

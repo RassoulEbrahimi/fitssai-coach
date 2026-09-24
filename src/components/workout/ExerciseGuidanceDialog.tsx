@@ -1,3 +1,4 @@
+import type { ReactElement } from 'react';
 import * as Dialog from '@radix-ui/react-dialog';
 import { Dumbbell, Info, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -9,17 +10,21 @@ import ExerciseMuscleMap from './ExerciseMuscleMap';
 const unsupported = 'Für diese Übung sind noch keine Detailinformationen verfügbar.';
 
 /** Owns presentation only. Radix restores focus to this card's persistent Info trigger. */
-export default function ExerciseGuidanceDialog({ exerciseName, disabled = false }: {
+export default function ExerciseGuidanceDialog({ exerciseName, disabled = false, trigger }: {
   exerciseName: string;
   disabled?: boolean;
+  /** A control of the caller's own to open the dialog with, instead of the Info button. */
+  trigger?: ReactElement;
 }) {
   const detail = resolveExerciseDetail(exerciseName);
   return (
     <Dialog.Root>
       <Dialog.Trigger asChild>
-        <Button type="button" variant="ghost" size="icon" disabled={disabled} className="h-11 w-11 shrink-0" aria-label={`Informationen zu ${exerciseName}`}>
-          <Info className="h-5 w-5" aria-hidden="true" />
-        </Button>
+        {trigger ?? (
+          <Button type="button" variant="ghost" size="icon" disabled={disabled} className="h-11 w-11 shrink-0" aria-label={`Informationen zu ${exerciseName}`}>
+            <Info className="h-5 w-5" aria-hidden="true" />
+          </Button>
+        )}
       </Dialog.Trigger>
       <Dialog.Portal>
         <Dialog.Overlay className="fixed inset-0 z-[100000] bg-black/60" />

@@ -181,6 +181,13 @@ const Dashboard = () => {
   const [activeDayIndex, setActiveDayIndex] = useState<number>(0);
   const [selectedDate, setSelectedDate] = useState<Date>(getBerlinNow()); // Initialize with Berlin timezone
 
+  /*
+    Trainingsplan's day detail and editing are focused tasks with their own
+    footer action; the global navigation steps aside while they are open.
+  */
+  const [workoutNavHidden, setWorkoutNavHidden] = useState(false);
+  const hideBottomNav = isFocusMode || (activeView === 'workout' && workoutNavHidden);
+
   // Performance optimization hooks
   const { prefetchOnIntersection } = useIntersectionPrefetch();
   const { setViewRef } = useFocusManagement(activeView);
@@ -202,7 +209,7 @@ const Dashboard = () => {
     }
 
     return () => observer.disconnect();
-  }, [prefetchOnIntersection, isFocusMode]); // the nav remounts after Focus Mode
+  }, [prefetchOnIntersection, hideBottomNav]); // the nav remounts after Focus Mode
 
   const prefersReducedMotion = useReducedMotion();
 
@@ -611,6 +618,7 @@ const Dashboard = () => {
                               getWeekKeyForDate={getWeekKeyForDate}
                               toggleDayComplete={toggleDayComplete}
                               handleDateChange={handleDateChange}
+                              onBottomNavHiddenChange={setWorkoutNavHidden}
                             />
                           )}
                         </div>
@@ -667,7 +675,7 @@ const Dashboard = () => {
         layer covers it anyway, and the active view lives in useAppNavigation,
         so unmounting loses nothing; it slides back in on exit.
       */}
-      {!isFocusMode && (
+      {!hideBottomNav && (
         <BottomNavPortal>
           <FitssNavBar
             ref={bottomNavRef}

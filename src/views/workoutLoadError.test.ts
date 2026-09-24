@@ -25,8 +25,14 @@ describe("WorkoutView Firestore usage", () => {
     expect(importLine).not.toBeNull();
     const imported = importLine![1].split(",").map((n) => n.trim());
 
-    for (const symbol of ["collection", "doc", "getDoc", "getDocs", "query", "where", "Timestamp"]) {
+    // The plan query reads one document; the V2 tab no longer runs the
+    // per-week log queries the legacy progress rings needed.
+    for (const symbol of ["doc", "getDoc", "Timestamp"]) {
       expect(imported).toContain(symbol);
+    }
+    // Any Firestore function the file calls is imported, whatever it is.
+    for (const symbol of ["collection", "getDocs", "query", "where", "onSnapshot", "setDoc", "updateDoc"]) {
+      if (new RegExp(`\\b${symbol}\\(`).test(workoutView)) expect(imported).toContain(symbol);
     }
     expect(workoutView).toMatch(/import \{ db \} from ["']@\/lib\/firebase["'];/);
   });
