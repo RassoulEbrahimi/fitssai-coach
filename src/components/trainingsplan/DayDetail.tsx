@@ -30,6 +30,8 @@ interface DayDetailProps {
   onResume: () => void;
   /** The footer action, where focus returns when the running workout closes. */
   primaryRef?: React.Ref<HTMLButtonElement>;
+  /** Opens this day's stored session. Only given when exactly that session exists. */
+  onOpenSummary?: () => void;
 }
 
 /** What the fixed footer says for days that offer no action. */
@@ -61,6 +63,7 @@ export const DayDetail: React.FC<DayDetailProps> = ({
   onStart,
   onResume,
   primaryRef,
+  onOpenSummary,
 }) => {
   const eyebrow = [
     formatWeekdayLong(day.workoutDay),
@@ -71,6 +74,7 @@ export const DayDetail: React.FC<DayDetailProps> = ({
   const muscles = dayMuscleLine(summary);
   const note = footerNote(action, day);
   const hasFooter = action.kind !== "none";
+  const summaryAction = action.kind === "completed" && onOpenSummary ? onOpenSummary : null;
   // The running workout covers the screen; its own controls are the only ones.
   const { isFocusMode } = useFocusMode();
 
@@ -116,7 +120,7 @@ export const DayDetail: React.FC<DayDetailProps> = ({
         <p className="tp-meta">Für diesen Tag sind keine Übungen geplant.</p>
       )}
 
-      {hasFooter && <div className="tp-footer-spacer" aria-hidden="true" />}
+      {hasFooter && <div className="tp-footer-spacer" data-size={summaryAction ? "action-note" : undefined} aria-hidden="true" />}
       {hasFooter && !isFocusMode && typeof document !== "undefined" && createPortal(
         <div className="tp-footer" data-testid="day-detail-footer">
           <div className="tp-footer-inner">
@@ -135,6 +139,11 @@ export const DayDetail: React.FC<DayDetailProps> = ({
             {action.kind === "blocked" && (
               <button type="button" className="tp-secondary tp-fill" disabled>
                 Training läuft bereits
+              </button>
+            )}
+            {summaryAction && (
+              <button type="button" className="tp-secondary" data-tp-opener="day-summary" onClick={summaryAction}>
+                Zusammenfassung ansehen
               </button>
             )}
             {note && <p className="tp-footer-note">{note}</p>}

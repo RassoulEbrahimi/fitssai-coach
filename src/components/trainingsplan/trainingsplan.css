@@ -761,3 +761,172 @@
 .tp-field input:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: 1px; }
 .tp-field input[aria-invalid="true"] { border-color: hsl(var(--destructive)); }
 .tp-field-error { font-size: 13px; font-weight: 500; color: hsl(var(--destructive)); }
+
+/* --- Workout History (TRAINING-HISTORY-01) ------------------------------ */
+/*
+  Verlauf and Session Detail. Read-only surfaces: no fills, and green only
+  for a ticked set's check. Grids use minmax(0, 1fr) and every count or
+  state column is nowrap, so nothing scrolls sideways at 320.
+*/
+.tp-plan-links { display: flex; flex-direction: column; }
+.tp-plan-links > .tp-plan-row { padding-bottom: 12px; }
+.tp-history-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 52px;
+  padding: 4px 2px;
+  border-top: 1px solid var(--tp-hairline);
+  text-align: left;
+}
+.tp-history-row > span:first-child { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.tp-history-row b { font-size: 14px; font-weight: 700; }
+.tp-history-row .tp-meta { font-size: 12px; }
+.tp-history-row:focus-visible,
+.tp-history-session:focus-visible {
+  outline: 2px solid hsl(var(--ring));
+  outline-offset: 2px;
+}
+
+.tp-root.tp-history { gap: 18px; }
+/* Full-width buttons in a column: 48px tall, never flexed to nothing. */
+.tp-history .tp-secondary.tp-fill { flex: none; width: 100%; }
+.tp-history-month { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.tp-history-month > .tp-eyebrow { padding: 0 2px; }
+.tp-history-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  background: var(--tp-hairline);
+  border: 1px solid hsl(var(--border));
+  border-radius: 16px;
+  overflow: hidden;
+}
+.tp-history-list > li { background: var(--tp-surface); }
+.tp-history-session {
+  display: grid;
+  grid-template-columns: 40px minmax(0, 1fr) 18px;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 64px;
+  padding: 10px 12px 10px 14px;
+  background: var(--tp-surface);
+  text-align: left;
+}
+button.tp-history-session { cursor: pointer; }
+button.tp-history-session:hover { background: var(--tp-raised); }
+.tp-history-session > svg { width: 18px; height: 18px; color: var(--tp-text-3); }
+@media (max-width: 359px) {
+  .tp-history-session { grid-template-columns: 36px minmax(0, 1fr) 18px; padding: 10px 10px 10px 12px; }
+}
+.tp-history-date { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.tp-history-dow {
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--tp-text-2);
+  white-space: nowrap;
+}
+.tp-history-day { font-size: 18px; font-weight: 800; line-height: 1.1; font-variant-numeric: tabular-nums; }
+.tp-history-text { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.tp-history-text b { font-size: 15px; font-weight: 700; }
+.tp-history-text .tp-meta { font-variant-numeric: tabular-nums; }
+.tp-history-date .tp-skel + .tp-skel { margin-top: 5px; }
+.tp-history-text .tp-skel + .tp-skel { margin-top: 5px; }
+
+/* Static skeleton bars in the real geometry, so nothing shifts on load. */
+.tp-skel { display: block; border-radius: 4px; background: hsl(var(--muted)); }
+
+.tp-history-error {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid hsl(var(--border));
+  border-radius: 16px;
+  background: var(--tp-surface);
+}
+.tp-history-error > div { display: flex; gap: 10px; align-items: flex-start; }
+.tp-history-error > div > svg { width: 18px; height: 18px; flex: none; margin-top: 1px; color: var(--tp-text-2); }
+.tp-history-error > div > span { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.tp-history-error b { font-size: 14px; font-weight: 700; }
+.tp-history-error .tp-meta { line-height: 1.45; }
+.tp-history-error svg { width: 16px; height: 16px; }
+
+.tp-history-empty { display: flex; flex-direction: column; gap: 8px; padding: 4px 2px 0; }
+.tp-history-empty b { font-size: 17px; font-weight: 700; margin-top: 6px; }
+.tp-history-empty .tp-meta { font-size: 14px; line-height: 1.5; }
+.tp-history-empty > .tp-secondary { margin-top: 10px; }
+.tp-history-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  background: hsl(var(--muted));
+  color: var(--tp-text-2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-top: 6px;
+}
+.tp-history-icon svg { width: 20px; height: 20px; }
+.tp-state-title { font-size: 17px; font-weight: 700; line-height: 1.3; margin-top: 6px; }
+
+/* Session Detail */
+.tp-session-context { font-size: 12px; }
+.tp-session-list > li { padding: 12px 0; }
+.tp-session-exercise-head {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 12px;
+}
+.tp-session-exercise-name { display: flex; flex-direction: column; gap: 2px; min-width: 0; padding-top: 4px; }
+.tp-session-exercise-name b { font-size: 15px; font-weight: 700; line-height: 1.3; overflow-wrap: anywhere; }
+.tp-session-exercise-name .tp-meta { font-size: 12px; }
+.tp-session-count {
+  padding-top: 5px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--tp-text-2);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.tp-sets { list-style: none; margin: 6px 0 0; padding: 0 0 0 40px; display: flex; flex-direction: column; }
+.tp-set {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr) 40px;
+  align-items: center;
+  gap: 8px;
+  min-height: 26px;
+  font-size: 14px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.tp-set-num { font-size: 12px; font-weight: 700; color: var(--tp-text-3); }
+.tp-set-values { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tp-set-reps { display: inline-block; width: 72px; }
+@media (max-width: 359px) { .tp-set-reps { width: 64px; } }
+.tp-set-values [data-empty] { color: var(--tp-text-3); }
+.tp-set-note { font-size: 13px; font-weight: 500; color: var(--tp-text-2); }
+.tp-set-state { display: flex; justify-content: flex-end; font-size: 12px; font-weight: 600; color: var(--tp-text-2); white-space: nowrap; }
+.tp-set-state svg { width: 14px; height: 14px; color: var(--tp-green); stroke-width: 2.25; }
+.tp-session-summary { margin: 4px 0 0 40px; }
+.tp-session-footnote { font-size: 12px; line-height: 1.45; padding: 0 2px; }
+.tp-session-skeleton {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr);
+  gap: 12px;
+  align-items: center;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--tp-hairline);
+}
+
+/* Day Detail footer with the summary action above its note. */
+.tp-footer-spacer[data-size="action-note"] { height: 112px; }

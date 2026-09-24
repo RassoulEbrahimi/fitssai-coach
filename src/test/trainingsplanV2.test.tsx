@@ -214,7 +214,8 @@ describe('Trainingsplan main', () => {
     expect(within(card).getByText('Erledigt')).toBeInTheDocument();
     expect(within(card).getByRole('heading', { name: 'Push A · 64 Min' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Training starten/ })).toBeNull();
-    expect(screen.queryByText(/Zusammenfassung/)).toBeNull();
+    // TRAINING-HISTORY-01: the stored session is this plan's own, so it can be reopened.
+    expect(within(card).getByRole('button', { name: 'Zusammenfassung ansehen' })).toBeInTheDocument();
     expect(row(/^Di 8, Push A, heute, erledigt$/)).toBeInTheDocument();
 
     fireEvent.click(within(card).getByRole('button', { name: /Als Nächstes/ }));
@@ -285,7 +286,8 @@ describe('Day Detail', () => {
     await todayCard();
     fireEvent.click(row(/^Di 8,/));
     expect(await screen.findByText('Dienstag · 8 · Heute · Erledigt')).toBeInTheDocument();
-    expect(within(footer()).queryByRole('button')).toBeNull();
+    // Nothing restarts it; the only action reopens its stored session (TRAINING-HISTORY-01).
+    expect(within(footer()).getAllByRole('button').map((button) => button.textContent)).toEqual(['Zusammenfassung ansehen']);
     expect(within(footer()).getByText('Dieses Training ist erledigt.')).toBeInTheDocument();
     back();
 

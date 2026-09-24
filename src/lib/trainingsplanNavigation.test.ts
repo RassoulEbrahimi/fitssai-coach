@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { trainingsplanHistoryKey, readTrainingsplanStack, withTrainingsplanStack, type PushedScreen } from "./trainingsplanNavigation";
+import {
+  NO_PLAN_SCOPE,
+  trainingsplanHistoryKey,
+  readTrainingsplanStack,
+  withTrainingsplanStack,
+  type PushedScreen,
+} from "./trainingsplanNavigation";
 
 const DAY = { weekKey: "Week 3", dayIndex: 3, workoutDay: "2026-09-24" };
 const PLAN: PushedScreen = { kind: "plan" };
@@ -36,5 +42,40 @@ describe("Trainingsplan history state", () => {
       "p"
     );
     expect(stack).toEqual([DETAIL]);
+  });
+
+  describe("Verlauf and Session Detail (TRAINING-HISTORY-01)", () => {
+    const HISTORY: PushedScreen = { kind: "history" };
+    const session = (planId: string, workoutDay = DAY.workoutDay): PushedScreen => ({ kind: "session", session: { planId, workoutDay } });
+    const read = (stack: unknown[], planId = "p") =>
+      readTrainingsplanStack({ [trainingsplanHistoryKey]: { planId, stack } }, planId);
+
+    it("round-trips History and a session of any plan opened from it", () => {
+      const state = withTrainingsplanStack(null, "p", [HISTORY, session("older-plan")]);
+      expect(readTrainingsplanStack(state, "p")).toEqual([HISTORY, session("older-plan")]);
+    });
+
+    it("opens a session from Today or its own completed day, for this plan only", () => {
+      expect(read([session("p")])).toEqual([session("p")]);
+      expect(read([DETAIL, session("p")])).toEqual([DETAIL, session("p")]);
+      // Never another plan's session, and never another day's, outside History.
+      expect(read([session("other")])).toEqual([]);
+      expect(read([DETAIL, session("p", "2026-09-23")])).toEqual([]);
+    });
+
+    it("rejects impossible or malformed stacks", () => {
+      expect(read([PLAN, HISTORY])).toEqual([]);
+      expect(read([HISTORY, session("x"), DETAIL])).toEqual([]);
+      expect(read([HISTORY, { kind: "session", session: { planId: "", workoutDay: DAY.workoutDay } }])).toEqual([]);
+      expect(read([HISTORY, { kind: "session", session: { planId: "a/b", workoutDay: DAY.workoutDay } }])).toEqual([]);
+      expect(read([HISTORY, { kind: "session", session: { planId: "x", workoutDay: "gestern" } }])).toEqual([]);
+    });
+
+    it("keeps only History and its sessions without a plan", () => {
+      expect(read([HISTORY, session("old")], NO_PLAN_SCOPE)).toEqual([HISTORY, session("old")]);
+      expect(read([PLAN], NO_PLAN_SCOPE)).toEqual([]);
+      expect(read([DETAIL], NO_PLAN_SCOPE)).toEqual([]);
+      expect(readTrainingsplanStack(withTrainingsplanStack(null, NO_PLAN_SCOPE, [HISTORY]), "plan-1")).toEqual([]);
+    });
   });
 });

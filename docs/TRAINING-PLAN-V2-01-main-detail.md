@@ -59,7 +59,8 @@ reaches the running workout.
   the weekday. The plan is "4-Wochen-Plan"; a day uses its own label when it
   names the workout, otherwise its muscle focus from the exercise catalogue,
   otherwise "Training".
-- **No "Zusammenfassung ansehen"**: no history/summary reopening exists yet.
+- **"Zusammenfassung ansehen"**: added by TRAINING-HISTORY-01
+  (`docs/TRAINING-HISTORY-01-history-detail.md`).
 - **Future days**: browse only, no "move to today". **Past days**: browse only.
 - **Plan Overview**: no goal/level/deload and no plan actions — none exist.
 - **Edit mode**: replaced by the canonical Edit Mode in TRAINING-PLAN-V2-02

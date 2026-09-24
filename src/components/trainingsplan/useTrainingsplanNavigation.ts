@@ -14,7 +14,8 @@ type Pending = { type: "push" } | { type: "pop"; depth: number } | null;
 /**
  * The Trainingsplan's own screen stack, kept in the browser history.
  *
- * Main is the root; Day Detail, Plan Overview and editing are pushed on top
+ * Main is the root; Day Detail, Plan Overview, editing, Verlauf and Session
+ * Detail are pushed on top
  * and popped in reverse, so Back always returns to where a screen was opened
  * from. Every push adds one history entry at the *current URL* carrying the
  * whole stack, so browser and Android Back walk the same hierarchy. The app's
@@ -125,5 +126,7 @@ export function useTrainingsplanNavigation(planId: string | undefined) {
   }, [stack]);
 
   const screen: TrainingsplanScreen = stack[stack.length - 1] ?? { kind: "main" };
-  return { screen, depth: stack.length, push, back };
+  /** The screen under the visible one: where Back leads. */
+  const below: TrainingsplanScreen = stack[stack.length - 2] ?? { kind: "main" };
+  return { screen, below, depth: stack.length, push, back };
 }
