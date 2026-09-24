@@ -55,7 +55,7 @@ export { displayedSourceWeek, weeksDisplaying } from "@/lib/planWeekMirroring";
 export const planEditLane = (planId: string): string => `plan-edit:${planId}`;
 
 /** Why an edit was refused. Each reason has its own user-facing wording. */
-export type PlanEditRefusal = "history-exists" | "history-unverifiable";
+export type PlanEditRefusal = "history-exists" | "history-unverifiable" | "stale-target";
 
 const REFUSAL_COPY: Record<PlanEditRefusal, { title: string; message: string }> = {
   "history-exists": {
@@ -75,6 +75,41 @@ const REFUSAL_COPY: Record<PlanEditRefusal, { title: string; message: string }> 
       "Diese Änderung ist erst möglich, wenn geprüft werden kann, ob für diese Übung " +
       "bereits Sätze aufgezeichnet sind. Bitte versuche es erneut, sobald die Verbindung steht.",
   },
+  // The list the user acted on is not the list on record (an earlier edit was
+  // refused or failed, or another device changed it). Nothing was written.
+  "stale-target": {
+    title: "Änderung nicht möglich",
+    message:
+      "Die Übungsliste hat sich inzwischen geändert. Es wurde nichts gespeichert. " +
+      "Bitte prüfe die aktuelle Liste und versuche es erneut.",
+  },
+};
+
+/**
+ * Refuse a positional edit whose target is no longer the exercise the user
+ * acted on.
+ *
+ * Edits address exercises by index, and the index a user saw can stop naming
+ * that exercise before the edit runs: an earlier edit in the plan's lane may
+ * have been refused or failed after the screen already showed its result, or
+ * another device may have changed the day. Acting on the index anyway would
+ * delete, replace or move a different exercise. Call it on the plan content
+ * the edit is about to write, immediately before the write; a mismatch
+ * writes nothing and is never redirected to another exercise.
+ *
+ * Identity is the trimmed name, the same test `changesExerciseIdentity` uses.
+ * Two entries of the same movement on one day are therefore interchangeable.
+ */
+export const assertExpectedExercise = (
+  exercises: readonly Exercise[] | undefined,
+  exerciseIndex: number,
+  expectedName: string
+): void => {
+  const actual = Array.isArray(exercises) ? exercises[exerciseIndex] : undefined;
+  const nameOf = (value: unknown) => (typeof value === "string" ? value.trim() : null);
+  if (!actual || nameOf(actual.name) === null || nameOf(actual.name) !== nameOf(expectedName)) {
+    throw new PlanEditBlockedError("stale-target");
+  }
 };
 
 /** A position that already carries history, for diagnostics and telemetry. */

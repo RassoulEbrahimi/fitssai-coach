@@ -5,6 +5,7 @@ import { useAuth } from "./useAuth";
 import { useSupabaseAction } from "./useSupabaseAction";
 import { Exercise, WorkoutPlan } from "@/lib/types";
 import { assertPlanEditPreservesHistory, planEditLane } from "@/lib/exerciseHistoryGuard";
+import { reconcilePlanAfterFailedEdit } from "./planEditReconcile";
 
 interface AddExerciseParams {
   planId: string; weekKey: string; dayIndex: number; exercise: Exercise;
@@ -71,7 +72,8 @@ export const useAddExercise = () => {
       return { previousPlan };
     },
     onError: (_e: any, vars: AddExerciseParams, context: { previousPlan?: any } | undefined) => {
-      if (context?.previousPlan) queryClient.setQueryData(["workout-plan", vars.planId], context.previousPlan);
+      // Back to the plan as stored, not to a snapshot of possibly failed edits.
+      void reconcilePlanAfterFailedEdit(queryClient, user?.uid, vars.planId, context?.previousPlan);
     },
     onSuccess: (_d: any, vars: AddExerciseParams) => {
       queryClient.invalidateQueries({ queryKey: ["workout-plan", vars.planId] });

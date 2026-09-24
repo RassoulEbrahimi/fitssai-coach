@@ -53,11 +53,37 @@ and **Fertig** both return to the same Day Detail without discarding anything.
   catalogue entry, then confirms sets / reps / rest prefilled with the existing
   add form's defaults (3 / 10 / 90s). Only confirmed values are written.
 
-All five plan-day editors now share one serialization lane per plan
+### Chained edits
+
+All five plan-day editors share one serialization lane per plan
 (`planEditLane`), so a quick second edit reads the first one's result instead
 of racing it. Edit Mode addresses rows by their place on screen, which runs
-ahead of the saved list while moves are in flight; the lane applies the
-writes in the same order.
+ahead of the saved list while moves are in flight.
+
+The lane orders the writes, but every optimistic update is applied the moment
+its edit is issued. If an earlier edit then fails, the place a later edit was
+addressed to may hold a different exercise on the server. Therefore:
+
+- **Expected identity.** Reorder, delete and replace carry the name of the
+  exercise the user acted on (`exerciseName` / `expectedName`).
+  `assertExpectedExercise` checks it against the plan content being written,
+  immediately before the write. On a mismatch the edit is refused as
+  `PlanEditBlockedError("stale-target")`: nothing is written, the edit is never
+  redirected to another exercise, it is not retried, and the user sees
+  "Die Übungsliste hat sich inzwischen geändert. Es wurde nichts gespeichert."
+  Optimistic updates apply only when the expected exercise is at the index.
+- **Truthful rollback.** A failed edit no longer restores its own snapshot. The
+  snapshot was taken on top of earlier optimistic edits that may have failed
+  too. Instead `reconcilePlanAfterFailedEdit` reads the stored plan in the same
+  lane (after every earlier edit settled, before any later one writes) and puts
+  exactly that content in the cache. Edit Mode follows the cache once its moves
+  have settled, so screen, cache and server converge on the stored order.
+- Moves report their outcome per call (`mutateAsync`). `mutate`'s per-call
+  callbacks only fire for a hook's latest call.
+
+Add and undo (restore) insert rather than address an existing exercise, so they
+carry no expected identity. Identity is the trimmed name: two entries of the
+same movement on one day are interchangeable.
 
 ## Reorder
 
@@ -135,7 +161,5 @@ any width; long names truncate with the full name in `title`; all actions stay
 - Plans whose week has no content of its own (legacy mirrored weeks) keep the
   existing editors' behaviour: edits addressed to the mirroring week fail as
   "not found" rather than materialising a week.
-- A move refused because the list changed underneath is retried with the
-  shared backoff before it is reported.
 - `AddWorkoutModal` is no longer rendered by the Trainingsplan tab; it and its
   tests stay for the legacy `DayAccordion` until a later removal.

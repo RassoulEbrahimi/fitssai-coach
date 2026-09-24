@@ -7,12 +7,19 @@ import { useTranslation } from "react-i18next";
 import { logEvent, logError } from "@/lib/telemetryClient";
 import { useSupabaseAction } from "./useSupabaseAction";
 import { Exercise, WorkoutPlanContent } from "@/lib/types";
-import { PlanEditBlockedError, assertPlanEditPreservesHistory, changesExerciseIdentity, planEditLane } from "@/lib/exerciseHistoryGuard";
+import { PlanEditBlockedError, assertExpectedExercise, assertPlanEditPreservesHistory, changesExerciseIdentity, planEditLane } from "@/lib/exerciseHistoryGuard";
+import { reconcilePlanAfterFailedEdit } from "./planEditReconcile";
 
 export type { Exercise };
 
 export interface UpdateExerciseParams {
   planId: string; weekKey: string; dayIndex: number; exerciseIndex: number; exercise: Exercise;
+  /**
+   * The name of the exercise the user acted on at `exerciseIndex`. When given,
+   * the update is refused unless that exercise is still there - it is never
+   * applied to whatever else now holds the position.
+   */
+  expectedName?: string;
 }
 interface UpdateExerciseResponse {
   success: boolean; content?: WorkoutPlanContent; queued?: boolean;
@@ -53,6 +60,10 @@ export function useExerciseEditor() {
         });
       }
 
+      // Immediately before the write: still the exercise the user acted on.
+      if (params.expectedName !== undefined) {
+        assertExpectedExercise(exercises, params.exerciseIndex, params.expectedName);
+      }
       exercises[params.exerciseIndex] = merged;
       day.exercises = exercises;
       week[params.dayIndex] = day;
@@ -74,7 +85,10 @@ export function useExerciseEditor() {
         if (w[params.dayIndex]) {
           const d = { ...w[params.dayIndex] };
           const exs = [...(d.exercises || [])];
-          if (exs[params.exerciseIndex]) exs[params.exerciseIndex] = { ...exs[params.exerciseIndex], ...params.exercise };
+          const target = exs[params.exerciseIndex];
+          // Only over the exercise the user acted on; anything else waits for the server.
+          const isTarget = target && (params.expectedName === undefined || target.name === params.expectedName);
+          if (isTarget) exs[params.exerciseIndex] = { ...target, ...params.exercise };
           d.exercises = exs;
           w[params.dayIndex] = d;
           c[params.weekKey] = w;
@@ -84,7 +98,8 @@ export function useExerciseEditor() {
       return { previousPlan };
     },
     onError: (error: any, params: UpdateExerciseParams, context: { previousPlan?: any } | undefined) => {
-      if (context?.previousPlan) queryClient.setQueryData(["workout-plan", params.planId], context.previousPlan);
+      // Back to the plan as stored, not to a snapshot of possibly failed edits.
+      void reconcilePlanAfterFailedEdit(queryClient, user?.uid, params.planId, context?.previousPlan);
       logError(error, "exercise_update_failed");
       // A refused edit is reported once, by the shared handler in
       // useSupabaseAction, with wording that explains the refusal.

@@ -447,6 +447,34 @@ describe('Edit Mode', () => {
       .toEqual(['Kreuzheben', 'Schrägbankdrücken KH', 'Beinpresse 45°', 'Klimmzüge']));
   });
 
+  it('E - a failed move and a removal chained on it leave no stale list and remove nothing else', async () => {
+    await openEdit();
+    const originalNames = ORIGINAL[3].exercises.map((e: { name: string }) => e.name);
+    // The move's history check waits, then cannot reach the server: the move fails.
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    vi.mocked(firestore.getDocsFromServer).mockImplementationOnce(async () => {
+      await gate;
+      throw new Error('Failed to get documents from server.');
+    });
+
+    const handle = screen.getByRole('button', { name: /^Klimmzüge verschieben, Position 3 von 4/ });
+    handle.focus();
+    fireEvent.keyDown(handle, { key: 'ArrowUp' });
+    expect(names()).toEqual(['Kreuzheben', 'Klimmzüge', 'Schrägbankdrücken KH', 'Beinpresse 45°']);
+    // Removes Klimmzüge where the user now sees it - position 2, which on the server is still Schrägbankdrücken.
+    fireEvent.click(screen.getByRole('button', { name: 'Klimmzüge entfernen' }));
+
+    await act(async () => { release(); });
+    await waitFor(() => expect(names()).toEqual(originalNames));
+    expect(snapshotOf(planContent()['Week 1'])).toEqual(ORIGINAL);
+    expect(firestore.setDoc).not.toHaveBeenCalled();
+    // Settled: nothing flips back to an optimistic list afterwards.
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 50)); });
+    expect(names()).toEqual(originalNames);
+    expect(screen.getByRole('button', { name: /^Klimmzüge verschieben, Position 3 von 4/ })).toBeInTheDocument();
+  });
+
   it('replaces only the chosen exercise after an explicit pick, keeping its prescription', async () => {
     await openEdit();
     fireEvent.click(screen.getByRole('button', { name: 'Kreuzheben ersetzen' }));

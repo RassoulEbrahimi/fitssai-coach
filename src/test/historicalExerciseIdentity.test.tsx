@@ -165,8 +165,7 @@ const moveFrom = async (fromIndex: number, toIndex: number, name: string, weekKe
       { onError: (e: unknown) => { error = e; }, onSettled: () => { settled = true; } },
     );
   });
-  // A stale list is retried with the shared backoff before it is reported.
-  await waitFor(() => expect(settled).toBe(true), { timeout: 10_000 });
+  await waitFor(() => expect(settled).toBe(true));
   view.unmount();
   return error;
 };
@@ -553,11 +552,14 @@ describe('reordering (TRAINING-PLAN-V2-02)', () => {
     expect(storedNames()).toEqual(['Bench Press', 'Row', 'Squat', 'Curl']);
   });
 
-  it('refuses a move addressed to a list that changed underneath it', { timeout: 15_000 }, async () => {
+  it('refuses a move addressed to a list that changed underneath it, at once and without a write', async () => {
     seedPlan(['Bench Press', 'Row', 'Curl']);
     const writesBefore = planWrites();
 
-    expect(await moveFrom(0, 2, 'Row')).toBeInstanceOf(Error);
+    const started = Date.now();
+    expectBlocked(await moveFrom(0, 2, 'Row'), 'stale-target');
+    // A decision, not a transient failure: never retried.
+    expect(Date.now() - started).toBeLessThan(2000);
     expect(storedNames()).toEqual(['Bench Press', 'Row', 'Curl']);
     expect(planWrites()).toBe(writesBefore);
   });

@@ -144,7 +144,7 @@ const WorkoutView: React.FC<WorkoutViewProps> = ({
 
   const { updateExercise } = useExerciseEditor();
   const { addExercise } = useAddExercise();
-  const { reorderExercise } = useReorderExercise();
+  const { reorderExerciseAsync } = useReorderExercise();
 
   /*
     Where the Trainingsplan tab is: Main at the root, with Day Detail, Plan
@@ -326,7 +326,9 @@ const WorkoutView: React.FC<WorkoutViewProps> = ({
     weekKey: string,
     dayIndex: number,
     exerciseIndex: number,
-    updatedExercise: Exercise
+    updatedExercise: Exercise,
+    /** The exercise the user acted on; the update is refused if it moved away. */
+    expectedName?: string
   ): Promise<void> => {
     if (!livePlan?.id) return Promise.resolve();
 
@@ -338,6 +340,7 @@ const WorkoutView: React.FC<WorkoutViewProps> = ({
           dayIndex,
           exerciseIndex,
           exercise: updatedExercise,
+          expectedName,
         },
         {
           onSuccess: () => {
@@ -371,19 +374,21 @@ const WorkoutView: React.FC<WorkoutViewProps> = ({
   const handleReplaceExercise = (weekKey: string, dayIndex: number, exerciseIndex: number, name: string, current: Exercise) => {
     if (isEditLocked(weekKey, dayIndex)) return;
     logEvent('exercise_replaced', { weekKey, dayIndex, exerciseIndex, from: current.name, to: name });
-    void handleUpdateExercise(weekKey, dayIndex, exerciseIndex, buildReplacement(current, name));
+    void handleUpdateExercise(weekKey, dayIndex, exerciseIndex, buildReplacement(current, name), current.name);
   };
 
   /** One exercise moved within one plan day; everything else keeps its data. Resolves once settled. */
-  const handleMoveExercise = (weekKey: string, dayIndex: number, fromIndex: number, toIndex: number, exerciseName: string) =>
-    new Promise<void>((resolve) => {
-      if (!livePlan?.id || isEditLocked(weekKey, dayIndex)) return resolve();
-      logEvent('exercise_reordered', { weekKey, dayIndex, fromIndex, toIndex });
-      reorderExercise(
-        { planId: livePlan.id, weekKey, dayIndex, fromIndex, toIndex, exerciseName },
-        { onSuccess: invalidateWeekCompletions, onSettled: () => resolve() }
-      );
-    });
+  const handleMoveExercise = async (weekKey: string, dayIndex: number, fromIndex: number, toIndex: number, exerciseName: string) => {
+    if (!livePlan?.id || isEditLocked(weekKey, dayIndex)) return;
+    logEvent('exercise_reordered', { weekKey, dayIndex, fromIndex, toIndex });
+    // Per-call promise: every move reports its own outcome, however quickly they follow.
+    try {
+      await reorderExerciseAsync({ planId: livePlan.id, weekKey, dayIndex, fromIndex, toIndex, exerciseName });
+      invalidateWeekCompletions();
+    } catch {
+      // Reported by the shared handler; the cache is reconciled with the server.
+    }
+  };
 
   /** Appends a confirmed exercise to the end of one plan day. */
   const handleAddExercise = (weekKey: string, dayIndex: number, exercise: Exercise) => {
@@ -422,6 +427,8 @@ const WorkoutView: React.FC<WorkoutViewProps> = ({
         weekKey,
         dayIndex,
         exerciseIndex,
+        // Never remove whatever else holds the position by the time this runs.
+        expectedName: exercise.name,
       },
       {
         onSuccess: () => {

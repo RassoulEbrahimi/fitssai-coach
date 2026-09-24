@@ -6,6 +6,7 @@ import { Exercise, WorkoutPlanContent } from "@/lib/types";
 import { logEvent, logError } from "@/lib/telemetryClient";
 import { useSupabaseAction } from "./useSupabaseAction";
 import { assertPlanEditPreservesHistory, planEditLane } from "@/lib/exerciseHistoryGuard";
+import { reconcilePlanAfterFailedEdit } from "./planEditReconcile";
 
 export interface RestoreExerciseParams {
   planId: string; weekKey: string; dayIndex: number; exerciseIndex: number; exercise: Exercise;
@@ -78,7 +79,8 @@ export function useRestoreExercise() {
       return { previousPlan };
     },
     onError: (error: any, params: RestoreExerciseParams, context: { previousPlan?: any } | undefined) => {
-      if (context?.previousPlan) queryClient.setQueryData(["workout-plan", params.planId], context.previousPlan);
+      // Back to the plan as stored, not to a snapshot of possibly failed edits.
+      void reconcilePlanAfterFailedEdit(queryClient, user?.uid, params.planId, context?.previousPlan);
       logError(error, "exercise_restore_failed");
     },
     onSuccess: (data: RestoreExerciseResponse, params: RestoreExerciseParams) => {

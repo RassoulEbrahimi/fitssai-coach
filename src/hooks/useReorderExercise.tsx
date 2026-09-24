@@ -5,7 +5,8 @@ import { useAuth } from "./useAuth";
 import { logEvent, logError } from "@/lib/telemetryClient";
 import { useSupabaseAction } from "./useSupabaseAction";
 import { DayContent, WorkoutPlanContent } from "@/lib/types";
-import { assertPlanEditPreservesHistory, planEditLane } from "@/lib/exerciseHistoryGuard";
+import { PlanEditBlockedError, assertExpectedExercise, assertPlanEditPreservesHistory, planEditLane } from "@/lib/exerciseHistoryGuard";
+import { reconcilePlanAfterFailedEdit } from "./planEditReconcile";
 import { moveItem } from "@/lib/trainingsplanEdit";
 
 export interface ReorderExerciseParams {
@@ -43,8 +44,10 @@ export function useReorderExercise() {
       const week = content[params.weekKey];
       const day = Array.isArray(week) ? week[params.dayIndex] : undefined;
       if (!Array.isArray(day?.exercises)) throw new Error("Day or exercises not found");
-      if (day.exercises[params.fromIndex]?.name !== params.exerciseName) {
-        throw new Error("Die Übungsliste hat sich geändert. Bitte versuche es erneut.");
+      // Fail fast on a list that is not the one the user moved in.
+      assertExpectedExercise(day.exercises, params.fromIndex, params.exerciseName);
+      if (!Number.isInteger(params.toIndex) || params.toIndex < 0 || params.toIndex >= day.exercises.length) {
+        throw new PlanEditBlockedError("stale-target");
       }
 
       // Every position between the two ends comes to hold a different
@@ -58,6 +61,8 @@ export function useReorderExercise() {
         edit: { kind: "move", exerciseIndex: params.fromIndex, toIndex: params.toIndex },
       });
 
+      // Immediately before the write: still the exercise the user moved.
+      assertExpectedExercise(day.exercises, params.fromIndex, params.exerciseName);
       const exercises = moveItem(day.exercises, params.fromIndex, params.toIndex);
       const updatedContent = {
         ...content,
@@ -88,7 +93,8 @@ export function useReorderExercise() {
       return { previousPlan };
     },
     onError: (error: unknown, params: ReorderExerciseParams, context: ReorderContext | undefined) => {
-      if (context?.previousPlan) queryClient.setQueryData(["workout-plan", params.planId], context.previousPlan);
+      // Back to the plan as stored, not to a snapshot of possibly failed edits.
+      void reconcilePlanAfterFailedEdit(queryClient, user?.uid, params.planId, context?.previousPlan);
       logError(error, "exercise_reorder_failed");
     },
     onSuccess: (data: ReorderExerciseResponse, params: ReorderExerciseParams) => {
@@ -100,5 +106,14 @@ export function useReorderExercise() {
     },
   });
 
-  return { reorderExercise: reorderMutation.mutate, isReordering: reorderMutation.isPending };
+  return {
+    reorderExercise: reorderMutation.mutate,
+    /**
+     * One promise per move. `mutate`'s per-call callbacks fire only for the
+     * latest call on this hook, so rapid moves that each need their own
+     * outcome use this instead.
+     */
+    reorderExerciseAsync: reorderMutation.mutateAsync,
+    isReordering: reorderMutation.isPending,
+  };
 }
