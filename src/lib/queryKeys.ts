@@ -50,6 +50,15 @@ export const queryKeys = {
       identityKeys: readonly (string | null)[]
     ) => ['previous-performance', userId, planId, weekKey, dayIndex, workoutDay, identityKeys] as const,
   },
+
+  // 7. Workout History: the account's completed sessions, across plans.
+  history: {
+    all: (userId: string | undefined) => ['workout-history', userId] as const,
+    list: (userId: string | undefined) => ['workout-history', userId, 'list'] as const,
+    latest: (userId: string | undefined) => ['workout-history', userId, 'latest'] as const,
+    session: (userId: string | undefined, planId: string | undefined, workoutDay: string | undefined) =>
+      ['workout-history', userId, 'session', planId, workoutDay] as const,
+  },
 };
 
 // Type helper for consistency in hooks

@@ -59,6 +59,12 @@ import { DayDetail } from "@/components/trainingsplan/DayDetail";
 import { DayEditSurface } from "@/components/trainingsplan/DayEditSurface";
 import { PlanOverview } from "@/components/trainingsplan/PlanOverview";
 import { useTrainingsplanNavigation } from "@/components/trainingsplan/useTrainingsplanNavigation";
+import { HistoryEntryRow, WorkoutHistoryScreen } from "@/components/trainingsplan/WorkoutHistory";
+import { SessionDetail } from "@/components/trainingsplan/SessionDetail";
+import { useLatestWorkoutSession } from "@/hooks/queries/useWorkoutHistory";
+import { NO_PLAN_SCOPE } from "@/lib/trainingsplanNavigation";
+import { queryKeys } from "@/lib/queryKeys";
+import { hasCompletedSession, measuredMinutes, sessionOpenerKey, type HistorySessionKey } from "@/lib/workoutHistory";
 import "@/components/trainingsplan/trainingsplan.css";
 
 interface WorkoutViewProps {
@@ -151,8 +157,10 @@ const WorkoutView: React.FC<WorkoutViewProps> = ({
     Overview and editing pushed on top and popped in reverse, through the
     browser history. Browsing never touches the running workout: the card
     below is always given today, and a bound session ignores even that.
+    Verlauf belongs to the user rather than to a plan, so without a plan the
+    tab keeps a stack of its own for it.
   */
-  const { screen, push, back } = useTrainingsplanNavigation(planId);
+  const { screen, below, push, back } = useTrainingsplanNavigation(planId ?? NO_PLAN_SCOPE);
 
   /*
     Today, in Berlin. The card is always given today's plan day: it is what
@@ -235,9 +243,25 @@ const WorkoutView: React.FC<WorkoutViewProps> = ({
     const record = filterDaySessionLogs(workoutLogs ?? []).find(
       (log) => isCompletedDayLog(log) && log.workout_day === todayStr
     );
-    const seconds = record?.duration_sec;
-    return typeof seconds === "number" && seconds > 0 ? Math.max(1, Math.round(seconds / 60)) : null;
+    return measuredMinutes(record?.duration_sec);
   }, [workoutLogs, todayStr]);
+
+  /*
+    History is read from the server and cached. A finished (or un-finished)
+    workout changes this plan's completed day records, so the cached history
+    is dropped whenever they change.
+  */
+  const completionSignature = useMemo(() => filterDaySessionLogs(workoutLogs ?? [])
+    .filter((log) => isCompletedDayLog(log))
+    .map((log) => JSON.stringify([log.plan_id, log.workout_day, log.duration_sec ?? null]))
+    .sort()
+    .join(","), [workoutLogs]);
+  const completionSignatureRef = useRef(completionSignature);
+  useEffect(() => {
+    if (completionSignatureRef.current === completionSignature) return;
+    completionSignatureRef.current = completionSignature;
+    void queryClient.invalidateQueries({ queryKey: queryKeys.history.all(user?.uid) });
+  }, [completionSignature, queryClient, user?.uid]);
 
   const activeTitle = useMemo(() => {
     if (!runningSession || runningSession.weekKey === null || runningSession.dayIndex === null) {
@@ -257,6 +281,33 @@ const WorkoutView: React.FC<WorkoutViewProps> = ({
     push({ kind: "plan" });
   }, [push]);
   const openEdit = useCallback((day: PlanDayRef) => push({ kind: "edit", day }), [push]);
+  const openHistory = useCallback(() => {
+    logEvent('trainingsplan_history_opened', {});
+    push({ kind: "history" });
+  }, [push]);
+  const openSession = useCallback((session: HistorySessionKey, source: "history" | "today" | "day-detail") => {
+    logEvent('trainingsplan_session_opened', { source });
+    push({ kind: "session", session: { planId: session.planId, workoutDay: session.workoutDay } });
+  }, [push]);
+  const openHistorySession = useCallback((session: HistorySessionKey) => openSession(session, "history"), [openSession]);
+
+  /*
+    "Zusammenfassung ansehen" opens exactly this plan's session on that day,
+    and is offered only when that completed day-session record exists. It
+    never falls back to the latest session or to the same date in another plan.
+  */
+  const exactSession = useCallback((workoutDay: string): HistorySessionKey | null =>
+    livePlan?.id && hasCompletedSession(workoutLogs, livePlan.id, workoutDay)
+      ? { planId: livePlan.id, workoutDay }
+      : null, [livePlan?.id, workoutLogs]);
+  const todaySessionPlanId = todayState?.kind === "completed" ? exactSession(todayStr)?.planId ?? null : null;
+  const openTodaySummary = useMemo(
+    () => (todaySessionPlanId ? () => openSession({ planId: todaySessionPlanId, workoutDay: todayStr }, "today") : undefined),
+    [todaySessionPlanId, todayStr, openSession]
+  );
+
+  // The newest session for the Verlauf row, read while the row is on screen.
+  const latestSession = useLatestWorkoutSession(screen.kind === "main" && !isLoadingPlan);
 
   useEffect(() => {
     onBottomNavHiddenChange?.(screen.kind === "detail" || screen.kind === "edit");
@@ -542,9 +593,23 @@ const WorkoutView: React.FC<WorkoutViewProps> = ({
         onStart={startToday}
         onResume={resumeWorkout}
         onOpenDay={openDay}
+        onOpenSummary={openTodaySummary}
       />
     );
-  }, [isMain, todayState, calendar, todayStr, activeTitle, completedMinutes, startToday, resumeWorkout, openDay]);
+  }, [isMain, todayState, calendar, todayStr, activeTitle, completedMinutes, startToday, resumeWorkout, openDay, openTodaySummary]);
+
+  // Verlauf and Session Detail: the same screens with or without a plan.
+  const historyScreen = screen.kind === "history" ? (
+    <WorkoutHistoryScreen today={todayStr} onBack={back} onOpenSession={openHistorySession} />
+  ) : screen.kind === "session" ? (
+    <SessionDetail
+      key={sessionOpenerKey(screen.session)}
+      sessionKey={screen.session}
+      today={todayStr}
+      onBack={back}
+      fromHistory={below.kind === "history"}
+    />
+  ) : null;
 
   // Show loading skeleton while plan is being fetched
   if (isLoadingPlan) {
@@ -552,7 +617,8 @@ const WorkoutView: React.FC<WorkoutViewProps> = ({
   }
 
   if (!livePlan) {
-    return <motion.div initial={{
+    if (historyScreen) return <WorkoutErrorBoundary>{historyScreen}</WorkoutErrorBoundary>;
+    return <div className="tp-root" data-screen="main"><motion.div initial={{
       opacity: 0,
       y: 20
     }} animate={{
@@ -569,7 +635,10 @@ const WorkoutView: React.FC<WorkoutViewProps> = ({
           </p>
         </CardContent>
       </Card>
-    </motion.div>;
+    </motion.div>
+      {/* Past sessions stay reachable without a plan: they belong to the user. */}
+      <HistoryEntryRow latest={latestSession} today={todayStr} onOpen={openHistory} />
+    </div>;
   }
 
   const planFinished = todayState?.kind === "plan-finished";
@@ -583,6 +652,7 @@ const WorkoutView: React.FC<WorkoutViewProps> = ({
   const detailSummary = summarizeWorkoutDay(detailContent);
   const editExercises = (detailContent?.exercises ?? EMPTY_EXERCISES) as Exercise[];
   const detailInPlan = !!(detailDay && inputs && resolveDatedDay(inputs, detailDay.workoutDay));
+  const detailSession = screen.kind === "detail" ? exactSession(screen.day.workoutDay) : null;
 
   return (
     <WorkoutErrorBoundary>
@@ -690,14 +760,19 @@ const WorkoutView: React.FC<WorkoutViewProps> = ({
           <NextWeekTeaser workout={nextWeekWorkout} onOpenDay={openDay} />
         )}
 
-        {isMain && overview && (
-          <CurrentPlanRow
-            weekNumber={planWeekNumber}
-            totalWeeks={totalWeeks}
-            finished={planFinished}
-            trainingDaysPerWeek={overview.trainingDaysPerWeek}
-            onOpenPlan={openPlan}
-          />
+        {isMain && (
+          <div className="tp-plan-links">
+            {overview && (
+              <CurrentPlanRow
+                weekNumber={planWeekNumber}
+                totalWeeks={totalWeeks}
+                finished={planFinished}
+                trainingDaysPerWeek={overview.trainingDaysPerWeek}
+                onOpenPlan={openPlan}
+              />
+            )}
+            <HistoryEntryRow latest={latestSession} today={todayStr} onOpen={openHistory} />
+          </div>
         )}
 
         {screen.kind === "detail" && inputs && (
@@ -713,6 +788,7 @@ const WorkoutView: React.FC<WorkoutViewProps> = ({
             onStart={() => startDay(screen.day)}
             onResume={resumeWorkout}
             primaryRef={primaryActionRef}
+            onOpenSummary={detailSession ? () => openSession(detailSession, "day-detail") : undefined}
           />
         )}
 
@@ -745,6 +821,8 @@ const WorkoutView: React.FC<WorkoutViewProps> = ({
             onOpenDay={openDay}
           />
         )}
+
+        {historyScreen}
 
       </div>
     </WorkoutErrorBoundary>

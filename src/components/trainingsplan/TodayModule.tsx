@@ -36,6 +36,8 @@ interface TodayModuleProps {
   onStart: () => void;
   onResume: () => void;
   onOpenDay: (day: PlanDayRef) => void;
+  /** Opens today's stored session. Only given when exactly that session exists. */
+  onOpenSummary?: () => void;
 }
 
 /**
@@ -54,6 +56,7 @@ export const TodayModule: React.FC<TodayModuleProps> = ({
   onStart,
   onResume,
   onOpenDay,
+  onOpenSummary,
 }) => {
   const todayEyebrow = `Heute · ${formatShortDay(today)}`;
 
@@ -157,6 +160,13 @@ export const TodayModule: React.FC<TodayModuleProps> = ({
           {workout.summary.title}
           {completedMinutes !== null && ` · ${completedMinutes} Min`}
         </h2>
+        {onOpenSummary && (
+          <div className="tp-actions">
+            <button type="button" className="tp-secondary tp-fill" data-tp-opener="today-summary" onClick={onOpenSummary}>
+              Zusammenfassung ansehen
+            </button>
+          </div>
+        )}
         {next && (
           <>
             <div className="tp-divider" />

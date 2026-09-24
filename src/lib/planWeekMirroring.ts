@@ -80,6 +80,21 @@ export const weeksDisplaying = (
 };
 
 /**
+ * The plan day a position displays, through the same mirroring. Undefined when
+ * the week displays nothing or has no such day.
+ */
+export const readDisplayedDay = (
+  content: WorkoutPlanContent | undefined,
+  weekKey: string,
+  dayIndex: number
+): DayContent | undefined => {
+  const sourceWeek = displayedSourceWeek(content, weekKey);
+  if (sourceWeek === null) return undefined;
+  const day: unknown = readPlanWeek(content, sourceWeek)?.[dayIndex];
+  return day && typeof day === "object" ? (day as DayContent) : undefined;
+};
+
+/**
  * The exercises a plan day displays, in plan order - the list its
  * `exerciseIndex` positions refer to. Undefined when the week displays nothing
  * or the day carries no exercise list.
@@ -89,9 +104,6 @@ export const readDisplayedDayExercises = (
   weekKey: string,
   dayIndex: number
 ): unknown[] | undefined => {
-  const sourceWeek = displayedSourceWeek(content, weekKey);
-  if (sourceWeek === null) return undefined;
-  const day: unknown = readPlanWeek(content, sourceWeek)?.[dayIndex];
-  const exercises = (day as { exercises?: unknown } | null | undefined)?.exercises;
+  const exercises = (readDisplayedDay(content, weekKey, dayIndex) as { exercises?: unknown } | undefined)?.exercises;
   return Array.isArray(exercises) ? exercises : undefined;
 };
