@@ -64,14 +64,21 @@ The lane orders the writes, but every optimistic update is applied the moment
 its edit is issued. If an earlier edit then fails, the place a later edit was
 addressed to may hold a different exercise on the server. Therefore:
 
-- **Expected identity.** Reorder, delete and replace carry the name of the
-  exercise the user acted on (`exerciseName` / `expectedName`).
-  `assertExpectedExercise` checks it against the plan content being written,
-  immediately before the write. On a mismatch the edit is refused as
+- **Expected identity.** Reorder, delete and replace carry the exercise the
+  user acted on (`expectedExercise`), compared as a plan slot
+  (`exerciseSlotKey`, `src/lib/exerciseSlot.ts`): its stored `id` when
+  present, otherwise its persisted plan fields (name, sets, reps, rest, weight,
+  description, notes; trimmed, missing = empty). The name alone is not an
+  identity: "Bankdrücken 3×5" and "Bankdrücken 3×12" on one day are two slots.
+  `assertExpectedExercise` checks the slot against the plan content being
+  written, immediately before the write. On a mismatch the edit is refused as
   `PlanEditBlockedError("stale-target")`: nothing is written, the edit is never
   redirected to another exercise, it is not retried, and the user sees
   "Die Übungsliste hat sich inzwischen geändert. Es wurde nichts gespeichert."
-  Optimistic updates apply only when the expected exercise is at the index.
+  Optimistic updates apply only when the expected slot is at the index. Edit
+  Mode's row keys use the same slot identity, so two same-name rows never swap
+  keys (and so never show or act on each other's slot) while a move is in
+  flight.
 - **Truthful rollback.** A failed edit no longer restores its own snapshot. The
   snapshot was taken on top of earlier optimistic edits that may have failed
   too. Instead `reconcilePlanAfterFailedEdit` reads the stored plan in the same
@@ -82,8 +89,9 @@ addressed to may hold a different exercise on the server. Therefore:
   callbacks only fire for a hook's latest call.
 
 Add and undo (restore) insert rather than address an existing exercise, so they
-carry no expected identity. Identity is the trimmed name: two entries of the
-same movement on one day are interchangeable.
+carry no expected identity. Only entries identical in every persisted plan
+field (and without distinguishing ids) are interchangeable; the history guard
+still runs for every edit, so interchanging them never bypasses it.
 
 ## Reorder
 

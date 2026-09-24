@@ -4,8 +4,8 @@ import { db } from "@/lib/firebase";
 import { useAuth } from "./useAuth";
 import { logEvent, logError } from "@/lib/telemetryClient";
 import { useSupabaseAction } from "./useSupabaseAction";
-import { WorkoutPlanContent } from "@/lib/types";
-import { assertExpectedExercise, assertPlanEditPreservesHistory, planEditLane } from "@/lib/exerciseHistoryGuard";
+import { Exercise, WorkoutPlanContent } from "@/lib/types";
+import { assertExpectedExercise, assertPlanEditPreservesHistory, isExpectedExercise, planEditLane } from "@/lib/exerciseHistoryGuard";
 import { reconcilePlanAfterFailedEdit } from "./planEditReconcile";
 
 export type { WorkoutPlanContent };
@@ -13,11 +13,12 @@ export type { WorkoutPlanContent };
 interface DeleteExerciseParams {
   planId: string; weekKey: string; dayIndex: number; exerciseIndex: number;
   /**
-   * The name of the exercise the user removed. When given, the delete is
-   * refused unless that exercise is still at `exerciseIndex` - it never
-   * removes whatever else now holds the position.
+   * The exercise the user removed. When given, the delete is refused unless
+   * that plan slot (`exerciseSlotKey`) is still at `exerciseIndex` - it never
+   * removes whatever else now holds the position, including another entry of
+   * the same movement.
    */
-  expectedName?: string;
+  expectedExercise?: Exercise;
 }
 interface DeleteExerciseResponse {
   success: boolean; content?: WorkoutPlanContent; queued?: boolean;
@@ -53,8 +54,8 @@ export function useDeleteExercise() {
       });
 
       // Immediately before the write: still the exercise the user removed.
-      if (params.expectedName !== undefined) {
-        assertExpectedExercise(day.exercises, params.exerciseIndex, params.expectedName);
+      if (params.expectedExercise !== undefined) {
+        assertExpectedExercise(day.exercises, params.exerciseIndex, params.expectedExercise);
       }
       const updatedContent = {
         ...content,
@@ -82,7 +83,7 @@ export function useDeleteExercise() {
           const d = { ...w[params.dayIndex] };
           const target = (d.exercises || [])[params.exerciseIndex];
           // Only the exercise the user removed; anything else waits for the server.
-          if (params.expectedName !== undefined && target?.name !== params.expectedName) return old;
+          if (params.expectedExercise !== undefined && !isExpectedExercise(target, params.expectedExercise)) return old;
           d.exercises = (d.exercises || []).filter((_: any, i: number) => i !== params.exerciseIndex);
           w[params.dayIndex] = d;
           c[params.weekKey] = w;

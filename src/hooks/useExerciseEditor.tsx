@@ -7,7 +7,7 @@ import { useTranslation } from "react-i18next";
 import { logEvent, logError } from "@/lib/telemetryClient";
 import { useSupabaseAction } from "./useSupabaseAction";
 import { Exercise, WorkoutPlanContent } from "@/lib/types";
-import { PlanEditBlockedError, assertExpectedExercise, assertPlanEditPreservesHistory, changesExerciseIdentity, planEditLane } from "@/lib/exerciseHistoryGuard";
+import { PlanEditBlockedError, assertExpectedExercise, assertPlanEditPreservesHistory, changesExerciseIdentity, isExpectedExercise, planEditLane } from "@/lib/exerciseHistoryGuard";
 import { reconcilePlanAfterFailedEdit } from "./planEditReconcile";
 
 export type { Exercise };
@@ -15,11 +15,12 @@ export type { Exercise };
 export interface UpdateExerciseParams {
   planId: string; weekKey: string; dayIndex: number; exerciseIndex: number; exercise: Exercise;
   /**
-   * The name of the exercise the user acted on at `exerciseIndex`. When given,
-   * the update is refused unless that exercise is still there - it is never
-   * applied to whatever else now holds the position.
+   * The exercise the user acted on at `exerciseIndex`. When given, the update
+   * is refused unless that plan slot (`exerciseSlotKey`) is still there - it
+   * is never applied to whatever else now holds the position, including
+   * another entry of the same movement.
    */
-  expectedName?: string;
+  expectedExercise?: Exercise;
 }
 interface UpdateExerciseResponse {
   success: boolean; content?: WorkoutPlanContent; queued?: boolean;
@@ -61,8 +62,8 @@ export function useExerciseEditor() {
       }
 
       // Immediately before the write: still the exercise the user acted on.
-      if (params.expectedName !== undefined) {
-        assertExpectedExercise(exercises, params.exerciseIndex, params.expectedName);
+      if (params.expectedExercise !== undefined) {
+        assertExpectedExercise(exercises, params.exerciseIndex, params.expectedExercise);
       }
       exercises[params.exerciseIndex] = merged;
       day.exercises = exercises;
@@ -87,7 +88,7 @@ export function useExerciseEditor() {
           const exs = [...(d.exercises || [])];
           const target = exs[params.exerciseIndex];
           // Only over the exercise the user acted on; anything else waits for the server.
-          const isTarget = target && (params.expectedName === undefined || target.name === params.expectedName);
+          const isTarget = target && (params.expectedExercise === undefined || isExpectedExercise(target, params.expectedExercise));
           if (isTarget) exs[params.exerciseIndex] = { ...target, ...params.exercise };
           d.exercises = exs;
           w[params.dayIndex] = d;

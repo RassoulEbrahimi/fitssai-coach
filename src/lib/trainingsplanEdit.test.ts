@@ -29,10 +29,18 @@ describe("moving an exercise", () => {
     expect(() => moveItem(list, 0.5, 1)).toThrow(RangeError);
   });
 
-  it("keys rows by name and occurrence, so duplicates stay distinct and keys follow a move", () => {
+  it("keys rows by plan slot and occurrence, so duplicates stay distinct and keys follow a move", () => {
     const keys = exerciseRowKeys([{ name: "Rudern" }, { name: "Curl" }, { name: "Rudern" }]);
-    expect(keys).toEqual(["Rudern#0", "Curl#0", "Rudern#1"]);
     expect(new Set(keys).size).toBe(3);
+    expect(keys[0]).not.toBe(keys[2]);
+  });
+
+  it("gives same-name slots with different prescriptions keys that do not swap when one moves", () => {
+    const heavy = { name: "Bankdrücken", sets: 3, reps: "5" };
+    const light = { name: "Bankdrücken", sets: 3, reps: "12" };
+    const rudern = { name: "Rudern", sets: 3, reps: "10" };
+    const [heavyKey, rudernKey, lightKey] = exerciseRowKeys([heavy, rudern, light]);
+    expect(exerciseRowKeys([light, heavy, rudern])).toEqual([lightKey, heavyKey, rudernKey]);
   });
 
   it("reads the single move a drag produced", () => {

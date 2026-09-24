@@ -4,15 +4,18 @@ import { db } from "@/lib/firebase";
 import { useAuth } from "./useAuth";
 import { logEvent, logError } from "@/lib/telemetryClient";
 import { useSupabaseAction } from "./useSupabaseAction";
-import { DayContent, WorkoutPlanContent } from "@/lib/types";
-import { PlanEditBlockedError, assertExpectedExercise, assertPlanEditPreservesHistory, planEditLane } from "@/lib/exerciseHistoryGuard";
+import { DayContent, Exercise, WorkoutPlanContent } from "@/lib/types";
+import { PlanEditBlockedError, assertExpectedExercise, assertPlanEditPreservesHistory, isExpectedExercise, planEditLane } from "@/lib/exerciseHistoryGuard";
 import { reconcilePlanAfterFailedEdit } from "./planEditReconcile";
 import { moveItem } from "@/lib/trainingsplanEdit";
 
 export interface ReorderExerciseParams {
   planId: string; weekKey: string; dayIndex: number; fromIndex: number; toIndex: number;
-  /** The name the caller saw at `fromIndex`; a different one means the list changed underneath. */
-  exerciseName: string;
+  /**
+   * The exercise the caller saw at `fromIndex`, compared as a plan slot
+   * (`exerciseSlotKey`); a different slot there means the list changed underneath.
+   */
+  expectedExercise: Exercise;
 }
 interface ReorderExerciseResponse {
   success: boolean; content?: WorkoutPlanContent; queued?: boolean;
@@ -45,7 +48,7 @@ export function useReorderExercise() {
       const day = Array.isArray(week) ? week[params.dayIndex] : undefined;
       if (!Array.isArray(day?.exercises)) throw new Error("Day or exercises not found");
       // Fail fast on a list that is not the one the user moved in.
-      assertExpectedExercise(day.exercises, params.fromIndex, params.exerciseName);
+      assertExpectedExercise(day.exercises, params.fromIndex, params.expectedExercise);
       if (!Number.isInteger(params.toIndex) || params.toIndex < 0 || params.toIndex >= day.exercises.length) {
         throw new PlanEditBlockedError("stale-target");
       }
@@ -62,7 +65,7 @@ export function useReorderExercise() {
       });
 
       // Immediately before the write: still the exercise the user moved.
-      assertExpectedExercise(day.exercises, params.fromIndex, params.exerciseName);
+      assertExpectedExercise(day.exercises, params.fromIndex, params.expectedExercise);
       const exercises = moveItem(day.exercises, params.fromIndex, params.toIndex);
       const updatedContent = {
         ...content,
@@ -80,7 +83,7 @@ export function useReorderExercise() {
       queryClient.setQueryData<CachedPlan>(["workout-plan", params.planId], (old) => {
         const w = old?.content?.[params.weekKey];
         const d: DayContent | undefined = Array.isArray(w) ? w[params.dayIndex] : undefined;
-        if (!old?.content || !w || !d || !Array.isArray(d.exercises) || d.exercises[params.fromIndex]?.name !== params.exerciseName) return old;
+        if (!old?.content || !w || !d || !Array.isArray(d.exercises) || !isExpectedExercise(d.exercises[params.fromIndex], params.expectedExercise)) return old;
         let exercises;
         try {
           exercises = moveItem(d.exercises, params.fromIndex, params.toIndex);

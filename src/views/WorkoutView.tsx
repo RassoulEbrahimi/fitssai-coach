@@ -327,8 +327,8 @@ const WorkoutView: React.FC<WorkoutViewProps> = ({
     dayIndex: number,
     exerciseIndex: number,
     updatedExercise: Exercise,
-    /** The exercise the user acted on; the update is refused if it moved away. */
-    expectedName?: string
+    /** The exercise the user acted on; the update is refused if that slot moved away. */
+    expectedExercise?: Exercise
   ): Promise<void> => {
     if (!livePlan?.id) return Promise.resolve();
 
@@ -340,7 +340,7 @@ const WorkoutView: React.FC<WorkoutViewProps> = ({
           dayIndex,
           exerciseIndex,
           exercise: updatedExercise,
-          expectedName,
+          expectedExercise,
         },
         {
           onSuccess: () => {
@@ -374,16 +374,16 @@ const WorkoutView: React.FC<WorkoutViewProps> = ({
   const handleReplaceExercise = (weekKey: string, dayIndex: number, exerciseIndex: number, name: string, current: Exercise) => {
     if (isEditLocked(weekKey, dayIndex)) return;
     logEvent('exercise_replaced', { weekKey, dayIndex, exerciseIndex, from: current.name, to: name });
-    void handleUpdateExercise(weekKey, dayIndex, exerciseIndex, buildReplacement(current, name), current.name);
+    void handleUpdateExercise(weekKey, dayIndex, exerciseIndex, buildReplacement(current, name), current);
   };
 
   /** One exercise moved within one plan day; everything else keeps its data. Resolves once settled. */
-  const handleMoveExercise = async (weekKey: string, dayIndex: number, fromIndex: number, toIndex: number, exerciseName: string) => {
+  const handleMoveExercise = async (weekKey: string, dayIndex: number, fromIndex: number, toIndex: number, expectedExercise: Exercise) => {
     if (!livePlan?.id || isEditLocked(weekKey, dayIndex)) return;
     logEvent('exercise_reordered', { weekKey, dayIndex, fromIndex, toIndex });
     // Per-call promise: every move reports its own outcome, however quickly they follow.
     try {
-      await reorderExerciseAsync({ planId: livePlan.id, weekKey, dayIndex, fromIndex, toIndex, exerciseName });
+      await reorderExerciseAsync({ planId: livePlan.id, weekKey, dayIndex, fromIndex, toIndex, expectedExercise });
       invalidateWeekCompletions();
     } catch {
       // Reported by the shared handler; the cache is reconciled with the server.
@@ -428,7 +428,7 @@ const WorkoutView: React.FC<WorkoutViewProps> = ({
         dayIndex,
         exerciseIndex,
         // Never remove whatever else holds the position by the time this runs.
-        expectedName: exercise.name,
+        expectedExercise: exercise,
       },
       {
         onSuccess: () => {
@@ -724,8 +724,8 @@ const WorkoutView: React.FC<WorkoutViewProps> = ({
             lockedBySession={isEditLocked(screen.day.weekKey, screen.day.dayIndex)}
             onCancel={back}
             onDone={back}
-            onMove={(fromIndex, toIndex, exerciseName) =>
-              handleMoveExercise(screen.day.weekKey, screen.day.dayIndex, fromIndex, toIndex, exerciseName)
+            onMove={(fromIndex, toIndex, exercise) =>
+              handleMoveExercise(screen.day.weekKey, screen.day.dayIndex, fromIndex, toIndex, exercise)
             }
             onReplace={(exerciseIndex, name, current) =>
               handleReplaceExercise(screen.day.weekKey, screen.day.dayIndex, exerciseIndex, name, current)

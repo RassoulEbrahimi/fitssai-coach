@@ -2,9 +2,12 @@ import { collection, getDocsFromServer, limit, query, where } from "firebase/fir
 import { db } from "@/lib/firebase";
 import { weeksDisplaying } from "@/lib/planWeekMirroring";
 import type { Exercise, WorkoutPlanContent } from "@/lib/types";
+import { isExpectedExercise } from "@/lib/exerciseSlot";
 
 // Mirroring lives with the other readers that must agree about it.
 export { displayedSourceWeek, weeksDisplaying } from "@/lib/planWeekMirroring";
+// Plan-slot identity lives with the other pure readers; positional edits check it here.
+export { exerciseSlotKey, isExpectedExercise } from "@/lib/exerciseSlot";
 
 /**
  * Guards workout-plan edits that would change what an already-logged exercise
@@ -97,19 +100,18 @@ const REFUSAL_COPY: Record<PlanEditRefusal, { title: string; message: string }> 
  * the edit is about to write, immediately before the write; a mismatch
  * writes nothing and is never redirected to another exercise.
  *
- * Identity is the trimmed name, the same test `changesExerciseIdentity` uses.
- * Two entries of the same movement on one day are therefore interchangeable.
+ * Identity is the slot (`exerciseSlotKey`), not the name, so two entries of
+ * the same movement with different prescriptions are never confused. Only
+ * entries identical in every persisted field are interchangeable. The history
+ * guard runs as before either way; this check only adds a refusal.
  */
 export const assertExpectedExercise = (
   exercises: readonly Exercise[] | undefined,
   exerciseIndex: number,
-  expectedName: string
+  expected: Partial<Exercise>
 ): void => {
   const actual = Array.isArray(exercises) ? exercises[exerciseIndex] : undefined;
-  const nameOf = (value: unknown) => (typeof value === "string" ? value.trim() : null);
-  if (!actual || nameOf(actual.name) === null || nameOf(actual.name) !== nameOf(expectedName)) {
-    throw new PlanEditBlockedError("stale-target");
-  }
+  if (!isExpectedExercise(actual, expected)) throw new PlanEditBlockedError("stale-target");
 };
 
 /** A position that already carries history, for diagnostics and telemetry. */

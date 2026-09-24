@@ -1,4 +1,5 @@
 import { formatExerciseMuscleSubtitle } from "@/lib/exerciseMuscleSummary";
+import { exerciseSlotKey } from "@/lib/exerciseSlot";
 import { displayedSourceWeek } from "@/lib/planWeekMirroring";
 import { normalizeWeekKey } from "@/lib/workoutPlanUtils";
 import type { Exercise, WorkoutPlanContent } from "@/lib/types";
@@ -25,16 +26,19 @@ export const moveItem = <T,>(list: readonly T[], from: number, to: number): T[] 
 };
 
 /**
- * Stable row keys for a day's exercises: the name plus its occurrence, so a
- * row keeps its key while it moves and two rows never share one.
+ * Stable row keys for a day's exercises: the plan slot (`exerciseSlotKey`)
+ * plus its occurrence among identical slots. A row keeps its key while it
+ * moves, two rows never share one, and two entries of the same movement with
+ * different prescriptions never swap keys when one moves past the other - so
+ * a row always shows, and acts on, its own slot.
  */
-export const exerciseRowKeys = (exercises: readonly { name: string }[]): string[] => {
+export const exerciseRowKeys = (exercises: readonly Partial<Exercise>[]): string[] => {
   const seen = new Map<string, number>();
   return exercises.map((exercise) => {
-    const name = typeof exercise?.name === "string" ? exercise.name : "";
-    const count = seen.get(name) ?? 0;
-    seen.set(name, count + 1);
-    return `${name}#${count}`;
+    const slot = exerciseSlotKey(exercise);
+    const count = seen.get(slot) ?? 0;
+    seen.set(slot, count + 1);
+    return `${slot}#${count}`;
   });
 };
 

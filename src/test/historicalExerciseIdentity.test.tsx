@@ -161,7 +161,7 @@ const moveFrom = async (fromIndex: number, toIndex: number, name: string, weekKe
   let settled = false;
   await act(async () => {
     view.result.current.reorderExercise(
-      { planId: PLAN, weekKey, dayIndex: 0, fromIndex, toIndex, exerciseName: name },
+      { planId: PLAN, weekKey, dayIndex: 0, fromIndex, toIndex, expectedExercise: exercise(name) },
       { onError: (e: unknown) => { error = e; }, onSettled: () => { settled = true; } },
     );
   });

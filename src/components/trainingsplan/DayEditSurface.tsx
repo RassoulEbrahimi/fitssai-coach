@@ -17,7 +17,8 @@ interface DayEditSurfaceProps {
   onCancel: () => void;
   onDone: () => void;
   /** Resolves once the move has settled, saved or refused. */
-  onMove: (fromIndex: number, toIndex: number, exerciseName: string) => void | Promise<unknown>;
+  /** `exercise` is the slot the user moved, as they saw it. */
+  onMove: (fromIndex: number, toIndex: number, exercise: Exercise) => void | Promise<unknown>;
   /** `current` is the exercise the user saw at that place. */
   onReplace: (exerciseIndex: number, name: string, current: Exercise) => void;
   onRemove: (exerciseIndex: number, exercise: Exercise) => void;
@@ -206,7 +207,7 @@ export const DayEditSurface: React.FC<DayEditSurfaceProps> = ({
     const exercise = byKey.get(rowKey);
     if (!exercise || from === to) return;
     pendingMoves.current += 1;
-    void Promise.resolve(onMove(from, to, exercise.name)).finally(() => {
+    void Promise.resolve(onMove(from, to, exercise)).finally(() => {
       pendingMoves.current -= 1;
       if (pendingMoves.current === 0) setSettledMoves((count) => count + 1);
     });

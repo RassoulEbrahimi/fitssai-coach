@@ -112,10 +112,10 @@ describe('a later edit after an earlier one fails', () => {
     const t = track();
     const release = failNextEditAfter();
 
-    await act(async () => { view.result.current.reorder({ planId: PLAN, weekKey: WEEK, dayIndex: 0, fromIndex: 2, toIndex: 0, exerciseName: 'C' }, t.next()); });
+    await act(async () => { view.result.current.reorder({ planId: PLAN, weekKey: WEEK, dayIndex: 0, fromIndex: 2, toIndex: 0, expectedExercise: ex('C') }, t.next()); });
     expect(cachedNames()).toEqual(['C', 'A', 'B']);
     // The user removes C where they see it: index 0.
-    await act(async () => { view.result.current.remove({ planId: PLAN, weekKey: WEEK, dayIndex: 0, exerciseIndex: 0, expectedName: 'C' }, t.next()); });
+    await act(async () => { view.result.current.remove({ planId: PLAN, weekKey: WEEK, dayIndex: 0, exerciseIndex: 0, expectedExercise: ex('C') }, t.next()); });
     expect(cachedNames()).toEqual(['A', 'B']);
 
     await act(async () => { release(); });
@@ -134,9 +134,9 @@ describe('a later edit after an earlier one fails', () => {
     const t = track();
     const release = failNextEditAfter();
 
-    await act(async () => { view.result.current.reorder({ planId: PLAN, weekKey: WEEK, dayIndex: 0, fromIndex: 2, toIndex: 0, exerciseName: 'C' }, t.next()); });
+    await act(async () => { view.result.current.reorder({ planId: PLAN, weekKey: WEEK, dayIndex: 0, fromIndex: 2, toIndex: 0, expectedExercise: ex('C') }, t.next()); });
     await act(async () => {
-      view.result.current.update({ planId: PLAN, weekKey: WEEK, dayIndex: 0, exerciseIndex: 0, exercise: ex('X'), expectedName: 'C' }, t.next());
+      view.result.current.update({ planId: PLAN, weekKey: WEEK, dayIndex: 0, exerciseIndex: 0, exercise: ex('X'), expectedExercise: ex('C') }, t.next());
     });
     expect(cachedNames()).toEqual(['X', 'A', 'B']);
 
@@ -154,9 +154,9 @@ describe('a later edit after an earlier one fails', () => {
     const t = track();
     const release = failNextEditAfter();
 
-    await act(async () => { view.result.current.reorder({ planId: PLAN, weekKey: WEEK, dayIndex: 0, fromIndex: 2, toIndex: 0, exerciseName: 'C' }, t.next()); });
+    await act(async () => { view.result.current.reorder({ planId: PLAN, weekKey: WEEK, dayIndex: 0, fromIndex: 2, toIndex: 0, expectedExercise: ex('C') }, t.next()); });
     // On screen C, A, B: A moves to the end.
-    await act(async () => { view.result.current.reorder({ planId: PLAN, weekKey: WEEK, dayIndex: 0, fromIndex: 1, toIndex: 2, exerciseName: 'A' }, t.next()); });
+    await act(async () => { view.result.current.reorder({ planId: PLAN, weekKey: WEEK, dayIndex: 0, fromIndex: 1, toIndex: 2, expectedExercise: ex('A') }, t.next()); });
     expect(cachedNames()).toEqual(['C', 'B', 'A']);
 
     await act(async () => { release(); });
@@ -174,8 +174,8 @@ describe('a later edit after an earlier one succeeds', () => {
   it('D - an immediate remove still targets the moved exercise', async () => {
     const view = editors();
     const t = track();
-    await act(async () => { view.result.current.reorder({ planId: PLAN, weekKey: WEEK, dayIndex: 0, fromIndex: 2, toIndex: 0, exerciseName: 'C' }, t.next()); });
-    await act(async () => { view.result.current.remove({ planId: PLAN, weekKey: WEEK, dayIndex: 0, exerciseIndex: 0, expectedName: 'C' }, t.next()); });
+    await act(async () => { view.result.current.reorder({ planId: PLAN, weekKey: WEEK, dayIndex: 0, fromIndex: 2, toIndex: 0, expectedExercise: ex('C') }, t.next()); });
+    await act(async () => { view.result.current.remove({ planId: PLAN, weekKey: WEEK, dayIndex: 0, exerciseIndex: 0, expectedExercise: ex('C') }, t.next()); });
     await t.allSettled();
 
     expect(t.outcomes.map((o) => o.error)).toEqual([null, null]);
@@ -186,9 +186,9 @@ describe('a later edit after an earlier one succeeds', () => {
   it('D - an immediate replace still targets the moved exercise', async () => {
     const view = editors();
     const t = track();
-    await act(async () => { view.result.current.reorder({ planId: PLAN, weekKey: WEEK, dayIndex: 0, fromIndex: 2, toIndex: 0, exerciseName: 'C' }, t.next()); });
+    await act(async () => { view.result.current.reorder({ planId: PLAN, weekKey: WEEK, dayIndex: 0, fromIndex: 2, toIndex: 0, expectedExercise: ex('C') }, t.next()); });
     await act(async () => {
-      view.result.current.update({ planId: PLAN, weekKey: WEEK, dayIndex: 0, exerciseIndex: 0, exercise: ex('X'), expectedName: 'C' }, t.next());
+      view.result.current.update({ planId: PLAN, weekKey: WEEK, dayIndex: 0, exerciseIndex: 0, exercise: ex('X'), expectedExercise: ex('C') }, t.next());
     });
     await t.allSettled();
 
@@ -200,13 +200,156 @@ describe('a later edit after an earlier one succeeds', () => {
   it('rapid successful moves all land, in order', async () => {
     const view = editors();
     const t = track();
-    await act(async () => { view.result.current.reorder({ planId: PLAN, weekKey: WEEK, dayIndex: 0, fromIndex: 2, toIndex: 1, exerciseName: 'C' }, t.next()); });
-    await act(async () => { view.result.current.reorder({ planId: PLAN, weekKey: WEEK, dayIndex: 0, fromIndex: 1, toIndex: 0, exerciseName: 'C' }, t.next()); });
-    await act(async () => { view.result.current.reorder({ planId: PLAN, weekKey: WEEK, dayIndex: 0, fromIndex: 1, toIndex: 2, exerciseName: 'A' }, t.next()); });
+    await act(async () => { view.result.current.reorder({ planId: PLAN, weekKey: WEEK, dayIndex: 0, fromIndex: 2, toIndex: 1, expectedExercise: ex('C') }, t.next()); });
+    await act(async () => { view.result.current.reorder({ planId: PLAN, weekKey: WEEK, dayIndex: 0, fromIndex: 1, toIndex: 0, expectedExercise: ex('C') }, t.next()); });
+    await act(async () => { view.result.current.reorder({ planId: PLAN, weekKey: WEEK, dayIndex: 0, fromIndex: 1, toIndex: 2, expectedExercise: ex('A') }, t.next()); });
     await t.allSettled();
 
     expect(t.outcomes.map((o) => o.error)).toEqual([null, null, null]);
     expect(storedNames()).toEqual(['C', 'B', 'A']);
     await waitFor(() => expect(cachedNames()).toEqual(['C', 'B', 'A']));
+  });
+});
+
+/*
+  The same movement twice on one day is two plan slots. A positional edit
+  must reach the slot the user acted on, never the other entry with the same
+  name.
+*/
+describe('same-name exercises are distinct slots', () => {
+  const HEAVY = { name: 'Bankdrücken', sets: 3, reps: '5', rest: '150s' };
+  const ROW = ex('Rudern');
+  const LIGHT = { name: 'Bankdrücken', sets: 3, reps: '12', rest: '60s' };
+  const stored = () => (rows.get(PLAN_PATH) as { content: Content }).content[WEEK][0].exercises;
+  const cached = () => (client.getQueryData(KEY) as { content: Content }).content[WEEK][0].exercises;
+  const seed = (exercises: object[]) => {
+    const content = { [WEEK]: [{ day: 'Montag', exercises }] };
+    rows.set(PLAN_PATH, { content });
+    client.setQueryData(KEY, { id: PLAN, content });
+  };
+
+  beforeEach(() => seed([HEAVY, ROW, LIGHT]));
+
+  it('A - failed move of the second entry, then delete: the first entry is not deleted', async () => {
+    const view = editors();
+    const t = track();
+    const release = failNextEditAfter();
+
+    await act(async () => { view.result.current.reorder({ planId: PLAN, weekKey: WEEK, dayIndex: 0, fromIndex: 2, toIndex: 0, expectedExercise: LIGHT }, t.next()); });
+    expect(cached()).toEqual([LIGHT, HEAVY, ROW]);
+    await act(async () => { view.result.current.remove({ planId: PLAN, weekKey: WEEK, dayIndex: 0, exerciseIndex: 0, expectedExercise: LIGHT }, t.next()); });
+
+    await act(async () => { release(); });
+    await t.allSettled();
+
+    // Index 0 on the server is the other Bankdrücken: same name, different slot.
+    expectStale(t.outcomes[1].error);
+    expect(stored()).toEqual([HEAVY, ROW, LIGHT]);
+    expect(planWrites()).toBe(0);
+    await waitFor(() => expect(cached()).toEqual([HEAVY, ROW, LIGHT]));
+  });
+
+  it('B - failed move of the second entry, then replace: the first entry is not replaced', async () => {
+    const view = editors();
+    const t = track();
+    const release = failNextEditAfter();
+
+    await act(async () => { view.result.current.reorder({ planId: PLAN, weekKey: WEEK, dayIndex: 0, fromIndex: 2, toIndex: 0, expectedExercise: LIGHT }, t.next()); });
+    await act(async () => {
+      view.result.current.update({
+        planId: PLAN, weekKey: WEEK, dayIndex: 0, exerciseIndex: 0,
+        exercise: { ...LIGHT, name: 'Schrägbankdrücken' }, expectedExercise: LIGHT,
+      }, t.next());
+    });
+
+    await act(async () => { release(); });
+    await t.allSettled();
+
+    expectStale(t.outcomes[1].error);
+    expect(stored()).toEqual([HEAVY, ROW, LIGHT]);
+    expect(planWrites()).toBe(0);
+    await waitFor(() => expect(cached()).toEqual([HEAVY, ROW, LIGHT]));
+  });
+
+  it('C - successful move of the second entry, then delete: that entry is deleted', async () => {
+    const view = editors();
+    const t = track();
+    await act(async () => { view.result.current.reorder({ planId: PLAN, weekKey: WEEK, dayIndex: 0, fromIndex: 2, toIndex: 0, expectedExercise: LIGHT }, t.next()); });
+    await act(async () => { view.result.current.remove({ planId: PLAN, weekKey: WEEK, dayIndex: 0, exerciseIndex: 0, expectedExercise: LIGHT }, t.next()); });
+    await t.allSettled();
+
+    expect(t.outcomes.map((o) => o.error)).toEqual([null, null]);
+    expect(stored()).toEqual([HEAVY, ROW]);
+    await waitFor(() => expect(cached()).toEqual([HEAVY, ROW]));
+  });
+
+  it('C - successful move of the second entry, then replace: that entry is replaced', async () => {
+    const view = editors();
+    const t = track();
+    await act(async () => { view.result.current.reorder({ planId: PLAN, weekKey: WEEK, dayIndex: 0, fromIndex: 2, toIndex: 0, expectedExercise: LIGHT }, t.next()); });
+    await act(async () => {
+      view.result.current.update({
+        planId: PLAN, weekKey: WEEK, dayIndex: 0, exerciseIndex: 0,
+        exercise: { ...LIGHT, name: 'Schrägbankdrücken' }, expectedExercise: LIGHT,
+      }, t.next());
+    });
+    await t.allSettled();
+
+    expect(t.outcomes.map((o) => o.error)).toEqual([null, null]);
+    expect(stored()).toEqual([{ ...LIGHT, name: 'Schrägbankdrücken' }, HEAVY, ROW]);
+    await waitFor(() => expect(cached()).toEqual(stored()));
+  });
+
+  it('a stored id is the identity when present, even between otherwise identical entries', async () => {
+    const first = { ...HEAVY, id: 'slot-1' };
+    const second = { ...HEAVY, id: 'slot-2' };
+    seed([first, ROW, second]);
+    const view = editors();
+    const t = track();
+    const release = failNextEditAfter();
+
+    await act(async () => { view.result.current.reorder({ planId: PLAN, weekKey: WEEK, dayIndex: 0, fromIndex: 2, toIndex: 0, expectedExercise: second }, t.next()); });
+    await act(async () => { view.result.current.remove({ planId: PLAN, weekKey: WEEK, dayIndex: 0, exerciseIndex: 0, expectedExercise: second }, t.next()); });
+    await act(async () => { release(); });
+    await t.allSettled();
+
+    expectStale(t.outcomes[1].error);
+    expect(stored()).toEqual([first, ROW, second]);
+  });
+
+  describe('D - entries identical in every stored field', () => {
+    const SAME = { name: 'Bankdrücken', sets: 3, reps: '8', rest: '90s' };
+    beforeEach(() => seed([{ ...SAME }, ROW, { ...SAME }]));
+
+    it('are interchangeable: the chained delete removes one of them and nothing else', async () => {
+      const view = editors();
+      const t = track();
+      const release = failNextEditAfter();
+
+      await act(async () => { view.result.current.reorder({ planId: PLAN, weekKey: WEEK, dayIndex: 0, fromIndex: 2, toIndex: 0, expectedExercise: SAME }, t.next()); });
+      await act(async () => { view.result.current.remove({ planId: PLAN, weekKey: WEEK, dayIndex: 0, exerciseIndex: 0, expectedExercise: SAME }, t.next()); });
+      await act(async () => { release(); });
+      await t.allSettled();
+
+      expect(t.outcomes[1].error).toBeNull();
+      expect(stored()).toEqual([ROW, SAME]);
+      await waitFor(() => expect(cached()).toEqual([ROW, SAME]));
+    });
+
+    it('still pass through the history guard: logged history blocks the delete as before', async () => {
+      rows.set('users/u1/workout_logs/logged', {
+        planId: PLAN, weekKey: WEEK, dayIndex: 0, exerciseIndex: 1, completed: true,
+      });
+      const view = editors();
+      const t = track();
+      await act(async () => { view.result.current.remove({ planId: PLAN, weekKey: WEEK, dayIndex: 0, exerciseIndex: 0, expectedExercise: SAME }, t.next()); });
+      await t.allSettled();
+
+      expect(t.outcomes[0].error).toBeInstanceOf(PlanEditBlockedError);
+      expect((t.outcomes[0].error as PlanEditBlockedError).reason).toBe('history-exists');
+      expect(stored()).toEqual([SAME, ROW, SAME]);
+      expect(planWrites()).toBe(0);
+      await waitFor(() => expect(cached()).toEqual([SAME, ROW, SAME]));
+    });
   });
 });
