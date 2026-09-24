@@ -57,6 +57,13 @@ const OLD_WEEK_2 = [
   rest('Di'), rest('Mi'), { day: LONG_TITLE, exercises: [exercise('Rumänisches Kreuzheben')] }, rest('Fr'), rest('Sa'), rest('So'),
 ];
 
+/** The plan after the session: an exercise appended to Monday, and Monday's sets raised. */
+const WEEK_CONTENT_WITH_APPENDED_MONDAY = (() => {
+  const monday = { ...WEEK[0], exercises: [...WEEK[0].exercises.map((item) => ({ ...item, sets: 5 })), exercise('Beinpresse')] };
+  const week = [monday, ...WEEK.slice(1)];
+  return { 'Week 1': week, 'Week 2': week, 'Week 3': week, 'Week 4': week };
+})();
+
 const log = (id: string, data: Record<string, unknown>) => rows.set(`users/u1/workout_logs/${id}`, data);
 const set = (logId: string, id: string, data: Record<string, unknown>) =>
   rows.set(`users/u1/workout_logs/${logId}/workout_set_logs/${id}`, data);
@@ -77,10 +84,13 @@ const seedHistory = () => {
   set('ex-mon-1', 's2', { setNumber: 2, repsCompleted: 12, weightUsed: 80 });
   log('ex-mon-2', { planId: PLAN_ID, workoutDay: '2026-09-07', weekKey: 'Week 1', dayIndex: 0, exerciseIndex: 2, completed: false });
   set('ex-mon-2', 's1', { setNumber: 1, completed: true, performanceSource: 'user-recorded', weightUsed: 10 });
+  set('ex-mon-2', 's2', { setNumber: 2, completed: true, performanceSource: 'completion-only' });
 
   // Older plan: Week 3 mirrors Week 2; no duration measured.
   daySession('day-old-w3', OLD_PLAN_ID, '2026-08-24', 'Week 3', 0);
   daySession('day-old-long', OLD_PLAN_ID, '2026-08-13', 'Week 2', 3, { durationSec: 3840 });
+  // The exercise was ticked off without any set being logged.
+  log('ex-old-long-0', { planId: OLD_PLAN_ID, workoutDay: '2026-08-13', weekKey: 'Week 2', dayIndex: 3, exerciseIndex: 0, completed: true });
   // Legacy day log: a date and a completion, nothing else.
   daySession('day-old-legacy', OLD_PLAN_ID, '2026-07-30', null, null);
   // Never sessions: a ticked exercise, an unfinished day, an undated completion.
@@ -189,10 +199,11 @@ describe('Verlauf', () => {
     expect(months.map((month) => month.getAttribute('aria-label'))).toEqual(['September 2026', 'August 2026', 'Juli 2026']);
     const labels = months.flatMap((month) => within(month).getAllByRole('button').map((button) => button.getAttribute('aria-label')));
     expect(labels).toEqual([
-      'Montag, 7. Sep. 2026, Ganzkörper A, 3 Übungen · 52 Min',
+      // Stored facts only: no exercise count taken from the plan's current day.
+      'Montag, 7. Sep. 2026, Ganzkörper A, 52 Min',
       // Week 3 of the older plan mirrors its Week 2 - never the active plan's Monday.
-      'Montag, 24. Aug. 2026, Oberkörper Alt B, 2 Übungen',
-      `Donnerstag, 13. Aug. 2026, ${LONG_TITLE}, 1 Übung · 1 Std 04 Min`,
+      'Montag, 24. Aug. 2026, Oberkörper Alt B',
+      `Donnerstag, 13. Aug. 2026, ${LONG_TITLE}, 1 Std 04 Min`,
       'Donnerstag, 30. Juli 2026, Training, Nur Abschluss gespeichert',
     ]);
     // A long name truncates; the date block does not.
@@ -216,7 +227,7 @@ describe('Verlauf', () => {
     expect(stored()).toHaveLength(2);
     expect(window.location.hash).toBe('#/workout');
     expect(screen.getByText('Montag · 7. Sep. 2026')).toBeInTheDocument();
-    expect(screen.getByText('52 Min · 3 Übungen · 5/9 Sätze')).toBeInTheDocument();
+    expect(screen.getByText('52 Min · 6 Sätze abgehakt')).toBeInTheDocument();
     expect(screen.getByText('4-Wochen-Plan · Woche 1')).toBeInTheDocument();
     expect(setLines()).toEqual(expect.arrayContaining([
       'Satz 1 · 10 Wdh. · 52,5 kg',
@@ -224,6 +235,9 @@ describe('Verlauf', () => {
       'Satz 3 · 8 Wdh. · 50 kg · offen',
       'Satz 1 · 10 kg',
     ]));
+    // A completion-only set beside recorded ones reads as exactly that.
+    expect(screen.getByText('Abgehakt · ohne Werte')).toBeInTheDocument();
+    expect(setLines()).toContain('Satz 2 · Abgehakt · ohne Werte');
     // Completion without values stays completion; the legacy numbers are not shown as performance.
     expect(screen.getByText('2 Sätze abgehakt · keine Werte erfasst')).toBeInTheDocument();
     expect(screen.queryByText(/12 Wdh|80 kg/)).toBeNull();
@@ -249,7 +263,9 @@ describe('Verlauf', () => {
     fireEvent.click(await verlaufRow());
     fireEvent.click(await sessionRow(/^Montag, 24\. Aug\. 2026/));
     expect(await heading('Oberkörper Alt B')).toBeInTheDocument();
-    expect(screen.getByText('2 Übungen · 0/5 Sätze')).toBeInTheDocument();
+    // Nothing was logged at any position: the plan's exercises are not presented as performed.
+    expect(screen.getByText('Übungen und Sätze sind zu diesem Training nicht gespeichert.')).toBeInTheDocument();
+    expect(screen.queryByText('Seitheben')).toBeNull();
 
     await browserBack();
     expect(await heading('Verlauf')).toBeInTheDocument();
@@ -260,6 +276,24 @@ describe('Verlauf', () => {
     await browserBack();
     await todayCard();
     expect(stored()).toHaveLength(0);
+  });
+
+  it('does not let an exercise appended to the plan day later change the old session', async () => {
+    seedHistory();
+    const edited = { ...WEEK_CONTENT_WITH_APPENDED_MONDAY };
+    rows.set(`users/u1/workout_plans/${PLAN_ID}`, { content: edited, createdAt: new firestore.Timestamp(Date.parse(PLAN.created_at)) });
+    mount();
+    await todayCard();
+    fireEvent.click(await verlaufRow());
+    const monday = await sessionRow(/^Montag, 7\. Sep\. 2026/);
+    expect(monday).toHaveAttribute('aria-label', 'Montag, 7. Sep. 2026, Ganzkörper A, 52 Min');
+    fireEvent.click(monday);
+    await heading('Ganzkörper A');
+    const names = within(screen.getByRole('list', { name: 'Übungen' })).getAllByRole('listitem')
+      .filter((item) => item.classList.contains('tp-session-exercise'))
+      .map((item) => item.querySelector('b')?.textContent);
+    expect(names).toEqual(['Kniebeugen', 'Bankdrücken', 'Klimmzüge']);
+    expect(screen.queryByText('Beinpresse')).toBeNull();
   });
 
   it('restores Verlauf and a session on a remount from the history entry', async () => {
@@ -333,7 +367,7 @@ describe('Zusammenfassung ansehen', () => {
 
     expect(await heading('Push A')).toBeInTheDocument();
     expect(screen.getByText('Dienstag · 8. Sep. 2026 · Heute')).toBeInTheDocument();
-    expect(screen.getByText('20 Min · 1 Übung · 1/3 Sätze')).toBeInTheDocument();
+    expect(screen.getByText('20 Min · 1 Satz abgehakt')).toBeInTheDocument();
     expect(setLines()).toContain('Satz 1 · 12 Wdh. · 30 kg');
     expect(stored()).toEqual([{ kind: 'session', session: { planId: PLAN_ID, workoutDay: '2026-09-08' } }]);
 
@@ -353,7 +387,7 @@ describe('Zusammenfassung ansehen', () => {
 
     fireEvent.click(within(screen.getByTestId('day-detail-footer')).getByRole('button', { name: 'Zusammenfassung ansehen' }));
     expect(await heading('Push A')).toBeInTheDocument();
-    expect(screen.getByText('20 Min · 1 Übung · 1/3 Sätze')).toBeInTheDocument();
+    expect(screen.getByText('20 Min · 1 Satz abgehakt')).toBeInTheDocument();
     expect(stored()).toHaveLength(2);
 
     back();
@@ -404,7 +438,8 @@ describe('without an active plan', () => {
     fireEvent.click(await sessionRow(/^Donnerstag, 13\. Aug\. 2026/));
     expect(await heading(LONG_TITLE)).toBeInTheDocument();
     expect(screen.getByText('Rumänisches Kreuzheben')).toBeInTheDocument();
-    expect(screen.getByText('1 Std 04 Min · 1 Übung · 0/3 Sätze')).toBeInTheDocument();
+    expect(screen.getByText('Als erledigt markiert · keine Sätze erfasst')).toBeInTheDocument();
+    expect(screen.getByText('1 Std 04 Min')).toBeInTheDocument();
 
     back();
     await heading('Verlauf');

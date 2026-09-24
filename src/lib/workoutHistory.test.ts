@@ -160,28 +160,33 @@ describe("history paging", () => {
     ], { [planA]: planAContent, [planB]: planBContent });
     const { entries } = await readHistoryPage(source);
     // Week 3 of plan A has no content of its own and mirrors Week 2.
-    expect(entries.map((entry) => [entry.title, entry.exerciseCount])).toEqual([
-      ["Oberkörper B", 3], ["Beine", 1], ["Oberkörper A", 2],
-    ]);
+    expect(entries.map((entry) => entry.title)).toEqual(["Oberkörper B", "Beine", "Oberkörper A"]);
+    // The plan's current exercise count is not the session's: rows carry none.
+    expect(entries.every((entry) => !("exerciseCount" in entry))).toBe(true);
     expect(source.planContent.mock.calls.map(([planId]) => planId).sort()).toEqual([planA, planB]);
   });
 });
 
 describe("history names", () => {
   it("never borrow another plan and degrade to Training when the own plan is gone", () => {
-    const missing = summarizeHistorySession(sessionOf(), null);
-    expect(missing).toMatchObject({ title: "Training", exerciseCount: null });
+    expect(summarizeHistorySession(sessionOf(), null).title).toBe("Training");
     // The same position in another plan says nothing about this session.
     expect(summarizeHistorySession(sessionOf({ planId: planB }), planAContent).title).toBe("Oberkörper B");
     expect(summarizeHistorySession(sessionOf({ weekKey: null, dayIndex: null }), planAContent).title).toBe("Training");
   });
 
-  it("row meta names only what is known", () => {
-    expect(formatHistoryRowMeta({ ...sessionOf({ durationSec: 3120 }), title: "X", exerciseCount: 6 })).toBe("6 Übungen · 52 Min");
-    expect(formatHistoryRowMeta({ ...sessionOf(), title: "X", exerciseCount: 5 })).toBe("5 Übungen");
-    expect(formatHistoryRowMeta({ ...sessionOf({ durationSec: 1200 }), title: "X", exerciseCount: null })).toBe("20 Min");
-    expect(formatHistoryRowMeta({ ...sessionOf(), title: "Training", exerciseCount: null })).toBeNull();
-    expect(formatHistoryRowMeta({ ...sessionOf({ weekKey: null, dayIndex: null }), title: "Training", exerciseCount: null }))
+  it("take the title from an explicit day label only, never from the day's current exercises", () => {
+    // A weekday label names nothing; muscles derived from today's exercise list would change when one is appended.
+    const generic = { "Week 1": week("Donnerstag", ["Bankdrücken", "Rudern"]) };
+    expect(summarizeHistorySession(sessionOf({ weekKey: "Week 1" }), generic).title).toBe("Training");
+    const appended = { "Week 1": week("Donnerstag", ["Bankdrücken", "Rudern", "Kniebeugen"]) };
+    expect(summarizeHistorySession(sessionOf({ weekKey: "Week 1" }), appended).title).toBe("Training");
+  });
+
+  it("row meta is the stored duration, and nothing from the plan", () => {
+    expect(formatHistoryRowMeta({ ...sessionOf({ durationSec: 3120 }), title: "X" })).toBe("52 Min");
+    expect(formatHistoryRowMeta({ ...sessionOf(), title: "Training" })).toBeNull();
+    expect(formatHistoryRowMeta({ ...sessionOf({ weekKey: null, dayIndex: null }), title: "Training" }))
       .toBe("Nur Abschluss gespeichert");
   });
 
@@ -283,75 +288,116 @@ describe("session detail", () => {
     expect(await loadSessionRecord(source, { planId: planA, workoutDay: "2026-09-22" })).toBeNull();
   });
 
-  it("lists the own plan's exercises with their recorded sets", async () => {
+  /** A parent as the set writer creates it: a place for sets, not a tick. */
+  const setParent = (id: string, exerciseIndex: number, data: Record<string, unknown> = {}) =>
+    exerciseLog(id, { exerciseIndex, completed: false, ...data });
+  const load = async (source: ReturnType<typeof detailSource>, today = "2026-09-30") =>
+    buildSessionDetail((await loadSessionRecord(source, { planId: planA, workoutDay: "2026-09-24" }))!, today);
+  const rowsOf = (model: Awaited<ReturnType<typeof load>>) =>
+    model.exercises.map((exercise) => [exercise.number, exercise.name, exercise.note, exercise.summary]);
+
+  it("lists the positions with stored activity, named from the own plan", async () => {
     const source = detailSource([
       daySession("d", { durationSec: 3120 }),
-      exerciseLog("e0", { exerciseIndex: 0 }),
-      exerciseLog("e1", { exerciseIndex: 1 }),
-      exerciseLog("e2", { exerciseIndex: 2 }),
+      setParent("e0", 0),
+      setParent("e1", 1),
       // Same position, another day: not this session's.
-      exerciseLog("e1-other", { exerciseIndex: 1, workoutDay: "2026-09-17" }),
+      setParent("e1-other", 1, { workoutDay: "2026-09-17" }),
+      // A parent without activity and without sets proves nothing.
+      setParent("e2", 2),
       // A position past the plan day: kept as "Übung 4", never renamed.
-      exerciseLog("e3", { exerciseIndex: 3 }),
+      setParent("e3", 3),
     ], { [planA]: planAContent, [planB]: planBContent }, {
       e0: [recorded(1, 10, 52.5), recorded(2, 9, null), recorded(3, 8, 50, false)],
       e1: [ticked(1), ticked(2), ticked(3)],
       "e1-other": [recorded(1, 99, 99)],
-      e2: [],
       e3: [ticked(1)],
     });
     const record = await loadSessionRecord(source, { planId: planA, workoutDay: "2026-09-24" });
     expect(source.planContent).toHaveBeenCalledWith(planA);
     expect(source.planContent).not.toHaveBeenCalledWith(planB);
-    // The cached record keeps the trained day only, not the whole plan.
-    expect(JSON.stringify(record)).not.toContain("Oberkörper A");
+    // The cached record keeps names of evidenced positions only, not the plan.
+    expect(JSON.stringify(record)).not.toMatch(/Oberkörper A|Dips/);
     const model = buildSessionDetail(record!, "2026-09-24");
     expect(model.title).toBe("Oberkörper B");
     expect(model.eyebrow).toBe("Donnerstag · 24. Sep. 2026 · Heute");
-    // No "x/y Sätze": position 4 no longer says how many sets it planned.
-    expect(model.meta).toBe("52 Min · 3 Übungen");
+    // Stored facts only: duration and ticked sets. No "x/y" from the plan.
+    expect(model.meta).toBe("52 Min · 6 Sätze abgehakt");
     expect(model.context).toBe("4-Wochen-Plan · Woche 3");
     expect(model.notice).toBeNull();
-    expect(model.exercises.map((exercise) => [exercise.number, exercise.name, exercise.note, exercise.count, exercise.summary]))
-      .toEqual([
-        [1, "Schulterdrücken", null, "2/3", null],
-        [2, "Latziehen", null, "3/3", "3 Sätze abgehakt · keine Werte erfasst"],
-        [3, "Dips", null, "0/3", "Keine Sätze abgehakt"],
-        [4, "Übung 4", "Name nicht mehr zuordenbar", null, "1 Satz abgehakt · keine Werte erfasst"],
-      ]);
+    expect(rowsOf(model)).toEqual([
+      [1, "Schulterdrücken", null, null],
+      [2, "Latziehen", null, "3 Sätze abgehakt · keine Werte erfasst"],
+      [4, "Übung 4", "Name nicht mehr zuordenbar", "1 Satz abgehakt · keine Werte erfasst"],
+    ]);
+    // Dips (position 3) is in the plan but has no activity: not presented as performed.
+    expect(model.exercises.map((exercise) => exercise.name)).not.toContain("Dips");
     expect(model.exercises[0].sets).toEqual([
       { setNumber: 1, completed: true, reps: 10, weightKg: 52.5 },
       { setNumber: 2, completed: true, reps: 9, weightKg: null },
       { setNumber: 3, completed: false, reps: 8, weightKg: 50 },
     ]);
     expect(model.exercises[0].hasWeight).toBe(true);
+    expect(model.exercises.some((exercise) => "count" in exercise)).toBe(false);
   });
 
-  it("counts ticked of planned sets when every exercise is still named", async () => {
+  it("does not show an exercise appended to the plan day after the session", async () => {
+    const stored = [daySession("d", { weekKey: "Week 1" }), setParent("e0", 0, { weekKey: "Week 1" }),
+      setParent("e1", 1, { weekKey: "Week 1" }), setParent("e2", 2, { weekKey: "Week 1" })];
+    const sets = { e0: [ticked(1)], e1: [ticked(1)], e2: [ticked(1)] };
+    const before = { "Week 1": week("Push A", ["A", "B", "C"]) };
+    const after = { "Week 1": week("Push A", ["A", "B", "C", "D"]) };
+    const then = await load(detailSource(stored, { [planA]: before }, sets));
+    const now = await load(detailSource(stored, { [planA]: after }, sets));
+    expect(now.exercises.map((exercise) => exercise.name)).toEqual(["A", "B", "C"]);
+    expect(now).toEqual(then);
+  });
+
+  it("does not turn a changed set prescription into a historical denominator", async () => {
+    const stored = [daySession("d", { weekKey: "Week 1" }), setParent("e0", 0, { weekKey: "Week 1" })];
+    const sets = { e0: [ticked(1), ticked(2), ticked(3)] };
+    const withSets = (count: number) => ({
+      "Week 1": week("Push A", []).map((day, index) => (index === 3 ? { day: "Push A", exercises: [ex("A", count)] } : day)),
+    });
+    const then = await load(detailSource(stored, { [planA]: withSets(3) }, sets));
+    const now = await load(detailSource(stored, { [planA]: withSets(5) }, sets));
+    expect(now.meta).toBe("3 Sätze abgehakt");
+    expect(rowsOf(now)).toEqual([[1, "A", null, "3 Sätze abgehakt · keine Werte erfasst"]]);
+    expect(JSON.stringify(now)).not.toMatch(/\d\/\d/);
+    expect(now).toEqual(then);
+  });
+
+  it("keeps a ticked exercise without sets, as a numbered position when the plan is gone", async () => {
     const source = detailSource([
-      daySession("d", { weekKey: "Week 1" }),
-      exerciseLog("e0", { exerciseIndex: 0, weekKey: "Week 1" }),
-    ], { [planA]: planAContent }, { e0: [recorded(1, 10, null), ticked(2)] });
-    const model = buildSessionDetail((await loadSessionRecord(source, { planId: planA, workoutDay: "2026-09-24" }))!, "2026-09-30");
-    expect(model.meta).toBe("2 Übungen · 2/6 Sätze");
-    expect(model.eyebrow).toBe("Donnerstag · 24. Sep. 2026");
-    expect(model.exercises[0].hasWeight).toBe(false);
-  });
-
-  it("keeps sets as numbered positions when the own plan is gone - never the active plan's names", async () => {
-    const source = detailSource([daySession("d"), exerciseLog("e1", { exerciseIndex: 1 })], {}, { e1: [recorded(1, 10, 20)] });
-    const model = buildSessionDetail((await loadSessionRecord(source, { planId: planA, workoutDay: "2026-09-24" }))!, "2026-09-30");
+      daySession("d"),
+      setParent("e1", 1, { completed: true }),
+      setParent("e2", 2),
+      setParent("e3", 3, { durationMinutes: 12 }),
+    ], {}, { e2: [recorded(1, 10, 20)] });
+    const model = await load(source);
     expect(model.title).toBe("Training");
-    expect(model.meta).toBeNull();
+    expect(model.meta).toBe("1 Satz abgehakt");
     expect(model.context).toBeNull();
     expect(model.notice).toMatch(/^Der Plan zu diesem Training ist nicht mehr verfügbar/);
-    expect(model.exercises.map((exercise) => [exercise.name, exercise.note, exercise.count])).toEqual([["Übung 2", null, null]]);
+    expect(rowsOf(model)).toEqual([
+      [2, "Übung 2", null, "Als erledigt markiert · keine Sätze erfasst"],
+      [3, "Übung 3", null, null],
+      [4, "Übung 4", null, "Aktivität gespeichert · keine Sätze erfasst"],
+    ]);
+  });
+
+  it("presents nothing as performed when no position has activity", async () => {
+    const source = detailSource([daySession("d"), setParent("e0", 0)], { [planA]: planAContent });
+    const model = await load(source);
+    expect(model.exercises).toEqual([]);
+    expect(model.meta).toBeNull();
+    expect(model.notice).toBe("Übungen und Sätze sind zu diesem Training nicht gespeichert.");
   });
 
   it("says in one sentence what a legacy completion stored", async () => {
     const source = detailSource([daySession("d", { weekKey: undefined, dayIndex: undefined })], { [planA]: planAContent });
     const record = await loadSessionRecord(source, { planId: planA, workoutDay: "2026-09-24" });
-    expect(record?.setsByExercise).toBeNull();
+    expect(record?.positions).toBeNull();
     expect(source.positionLogs).not.toHaveBeenCalled();
     const model = buildSessionDetail(record!, "2026-09-30");
     expect(model).toMatchObject({ title: "Training", meta: null, exercises: [] });

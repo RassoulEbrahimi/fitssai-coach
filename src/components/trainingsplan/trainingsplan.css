@@ -883,21 +883,13 @@ button.tp-history-session:hover { background: var(--tp-raised); }
 .tp-session-list > li { padding: 12px 0; }
 .tp-session-exercise-head {
   display: grid;
-  grid-template-columns: 28px minmax(0, 1fr) auto;
+  grid-template-columns: 28px minmax(0, 1fr);
   align-items: start;
   gap: 12px;
 }
 .tp-session-exercise-name { display: flex; flex-direction: column; gap: 2px; min-width: 0; padding-top: 4px; }
 .tp-session-exercise-name b { font-size: 15px; font-weight: 700; line-height: 1.3; overflow-wrap: anywhere; }
 .tp-session-exercise-name .tp-meta { font-size: 12px; }
-.tp-session-count {
-  padding-top: 5px;
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--tp-text-2);
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
-}
 .tp-sets { list-style: none; margin: 6px 0 0; padding: 0 0 0 40px; display: flex; flex-direction: column; }
 .tp-set {
   display: grid;

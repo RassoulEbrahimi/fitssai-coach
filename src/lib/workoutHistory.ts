@@ -3,23 +3,22 @@ import { de } from "date-fns/locale";
 import { readLogDayIndex, readLogWeekKey, readLogWorkoutDay } from "@shared/workoutCompletion";
 import { PLAN_TOTAL_WEEKS } from "@/lib/planLifecycle";
 import { readDisplayedDay } from "@/lib/planWeekMirroring";
+import { hasPositionActivityMarker, isPositionTicked } from "@/lib/positionActivity";
 import type { StoredDocument } from "@/lib/previousPerformance";
 import { isRecordedReps, isRecordedWeightKg, readSetLogState, USER_RECORDED } from "@/lib/setPerformance";
 import {
   dayToDate,
   formatDayMonth,
-  formatExerciseCount,
   formatWeekdayLong,
   formatWeekdayShort,
   planDisplayName,
   readDayExercises,
+  readWorkoutLabel,
   shiftDay,
-  summarizeWorkoutDay,
   WORKOUT_TITLE_FALLBACK,
 } from "@/lib/trainingsplanModel";
 import type { DayContent, WorkoutPlanContent } from "@/lib/types";
 import { classifyLog, isCompletedDayLog, type AnyWorkoutLogShape } from "@/lib/workoutCompletion";
-import { parseSetCount } from "@/lib/workoutExecution";
 import { readDurationSec } from "@/lib/workoutLog";
 
 /**
@@ -40,6 +39,11 @@ import { readDurationSec } from "@/lib/workoutLog";
  * the session's own plan, through the same week mirroring the plan-edit guard
  * protects - never from the active plan. Reps and weight are shown only where
  * the set says they were `user-recorded`.
+ *
+ * The plan is a **name lookup only**. It can be edited after a session - an
+ * exercise may be appended to a day that already has history - so its current
+ * exercise list, set prescriptions and exercise count say nothing about what
+ * was trained. What a session contains comes from its stored activity alone.
  *
  * Pure: every read arrives through a source.
  */
@@ -202,19 +206,21 @@ export const resolveHistoricalDay = (
   return readDisplayedDay(planContent, session.weekKey, session.dayIndex) ?? null;
 };
 
-/** A History row: the session plus what its own plan says about it. */
+/**
+ * A session's title: its plan day's own explicit label ("Push A"), else
+ * `Training`. Never derived from the day's current exercises, which may have
+ * changed since - an exercise appended later must not rename an old session.
+ */
+export const historicalTitle = (day: DayContent | null | undefined): string =>
+  readWorkoutLabel(day?.day) ?? WORKOUT_TITLE_FALLBACK;
+
+/** A History row: the session plus its title from its own plan. */
 export interface HistoryEntry extends HistorySession {
   title: string;
-  /** Exercises of the session's plan day; null when that day cannot be read. */
-  exerciseCount: number | null;
 }
 
-export const summarizeHistorySession = (session: HistorySession, planContent: unknown): HistoryEntry => {
-  const day = resolveHistoricalDay(planContent, session);
-  if (!day) return { ...session, title: WORKOUT_TITLE_FALLBACK, exerciseCount: null };
-  const summary = summarizeWorkoutDay(day);
-  return { ...session, title: summary.title, exerciseCount: summary.exerciseCount > 0 ? summary.exerciseCount : null };
-};
+export const summarizeHistorySession = (session: HistorySession, planContent: unknown): HistoryEntry =>
+  ({ ...session, title: historicalTitle(resolveHistoricalDay(planContent, session)) });
 
 export interface HistorySource extends HistoryLogSource {
   /** A plan's stored content; null when the plan does not exist. Rejects when it cannot be read. */
@@ -257,15 +263,13 @@ export const formatSessionDuration = (durationSec: unknown): string | null => {
   return rest ? `${hours} ${String(rest).padStart(2, "0")} Min` : hours;
 };
 
-/** `6 Übungen · 52 Min`, only what is known. */
-export const formatHistoryRowMeta = (entry: HistoryEntry): string | null => {
-  const parts = [
-    entry.exerciseCount !== null ? formatExerciseCount(entry.exerciseCount) : null,
-    formatSessionDuration(entry.durationSec),
-  ].filter((part): part is string => part !== null);
-  if (parts.length > 0) return parts.join(" · ");
-  return entry.weekKey === null ? "Nur Abschluss gespeichert" : null;
-};
+/**
+ * `52 Min`: the measured duration, stored on the session itself. No exercise
+ * count - the plan's current count is not the session's, and the session's own
+ * would take a read per row.
+ */
+export const formatHistoryRowMeta = (entry: HistoryEntry): string | null =>
+  formatSessionDuration(entry.durationSec) ?? (entry.weekKey === null ? "Nur Abschluss gespeichert" : null);
 
 /** `Heute`, `Gestern`, else the short weekday. */
 export const historyDayLabel = (workoutDay: string, today: string): string =>
@@ -364,19 +368,32 @@ export interface SessionDetailSource {
   setDocuments: (logId: string) => Promise<StoredDocument[]>;
 }
 
+/** One exercise position with stored activity in a session. */
+export interface HistoricalPosition {
+  exerciseIndex: number;
+  /** The exercise itself was ticked off on its parent log. */
+  ticked: boolean;
+  /** Stored sets: ticked, or carrying trusted recorded values. */
+  sets: HistoricalSet[];
+}
+
 /**
- * Everything stored for one session. Plain data, so it can be cached - and
- * only the plan day it trained, not the whole plan, since the query cache is
- * persisted.
+ * Everything stored for one session. Plain data, so it can be cached. Of the
+ * plan it keeps only what names the evidenced positions - never its exercise
+ * list or prescriptions.
  */
 export interface SessionRecord {
   session: HistorySession;
   /** Whether the session's own plan still exists. */
   planExists: boolean;
-  /** The plan day the session trained, read from its own plan; null when unreadable. */
-  day: DayContent | null;
-  /** Sets by exercise index; null when the session has no plan position to read them at. */
-  setsByExercise: Record<number, HistoricalSet[]> | null;
+  /** Whether the session's plan day could be read in that plan. */
+  dayResolved: boolean;
+  /** The title from the plan day's explicit label. */
+  title: string;
+  /** Names of the evidenced positions, by exercise index, from the session's own plan. */
+  names: Record<number, string>;
+  /** Positions with stored activity, in order; null when the session has no plan position to read them at. */
+  positions: HistoricalPosition[] | null;
 }
 
 /**
@@ -394,8 +411,9 @@ export const loadSessionRecord = async (
   if (!session) return null;
 
   const planContent = (await source.planContent(planId)) ?? null;
-  const plan = { planExists: planContent !== null, day: resolveHistoricalDay(planContent, session) };
-  if (session.weekKey === null || session.dayIndex === null) return { session, ...plan, setsByExercise: null };
+  const day = resolveHistoricalDay(planContent, session);
+  const plan = { planExists: planContent !== null, dayResolved: day !== null, title: historicalTitle(day) };
+  if (session.weekKey === null || session.dayIndex === null) return { session, ...plan, names: {}, positions: null };
 
   const logs = await source.positionLogs(planId, session.weekKey, session.dayIndex);
   const parentsByExercise = new Map<number, StoredDocument[]>();
@@ -407,12 +425,28 @@ export const loadSessionRecord = async (
     const exerciseIndex = log.data.exerciseIndex as number;
     parentsByExercise.set(exerciseIndex, [...(parentsByExercise.get(exerciseIndex) ?? []), log]);
   }
-  const setsByExercise: Record<number, HistoricalSet[]> = {};
-  await Promise.all([...parentsByExercise].map(async ([exerciseIndex, parents]) => {
+  const read = await Promise.all([...parentsByExercise].map(async ([exerciseIndex, parents]) => {
     const withSets = await Promise.all(parents.map(async (parent) => ({ id: parent.id, docs: await source.setDocuments(parent.id) })));
-    setsByExercise[exerciseIndex] = readHistoricalSets(withSets);
+    return {
+      exerciseIndex,
+      ticked: parents.some((parent) => isPositionTicked(parent.data)),
+      marked: parents.some((parent) => hasPositionActivityMarker(parent.data)),
+      sets: readHistoricalSets(withSets),
+    };
   }));
-  return { session, ...plan, setsByExercise };
+  // Evidence only: a position counts when its own logs record activity. The
+  // plan never adds a position, however many exercises its day lists today.
+  const positions = read
+    .filter((position) => position.marked || position.sets.length > 0)
+    .map(({ exerciseIndex, ticked, sets }): HistoricalPosition => ({ exerciseIndex, ticked, sets }))
+    .sort((a, b) => a.exerciseIndex - b.exerciseIndex);
+  const planned = readDayExercises(day);
+  const names: Record<number, string> = {};
+  for (const { exerciseIndex } of positions) {
+    const name = (planned[exerciseIndex] as { name?: unknown } | null | undefined)?.name;
+    if (typeof name === "string" && name.trim() !== "") names[exerciseIndex] = name.trim();
+  }
+  return { session, ...plan, names, positions };
 };
 
 export interface SessionDetailExercise {
@@ -421,13 +455,11 @@ export interface SessionDetailExercise {
   name: string;
   /** Said once under the name when the position no longer has a name. */
   note: string | null;
-  /** `2/3`: ticked of planned. Null when the plan no longer says how many. */
-  count: string | null;
   /** Individual set lines: only when at least one set has recorded values. */
   sets: HistoricalSet[];
   /** Whether any listed set has a weight; otherwise the weight column stays empty. */
   hasWeight: boolean;
-  /** One line instead of set lines: completion-only, or nothing ticked. */
+  /** One line instead of set lines, when no set has values. */
   summary: string | null;
 }
 
@@ -443,65 +475,60 @@ export interface SessionDetailModel {
 const setWord = (count: number) => (count === 1 ? "Satz" : "Sätze");
 
 const buildExercise = (
-  exerciseIndex: number,
-  planned: { name: unknown; sets: number | string } | null,
-  sets: readonly HistoricalSet[],
+  position: HistoricalPosition,
+  name: string | null,
   dayResolved: boolean
 ): SessionDetailExercise => {
-  const plannedName = typeof planned?.name === "string" && planned.name.trim() !== "" ? planned.name.trim() : null;
+  const { exerciseIndex, ticked, sets } = position;
   const completed = sets.filter((set) => set.completed).length;
-  const plannedSets = planned ? parseSetCount(planned.sets) : null;
   const withValues = sets.some((set) => set.reps !== null || set.weightKg !== null);
   return {
     number: exerciseIndex + 1,
-    name: plannedName ?? `Übung ${exerciseIndex + 1}`,
-    note: plannedName === null && dayResolved ? EXERCISE_NAME_UNRESOLVED : null,
-    count: plannedSets !== null ? `${completed}/${plannedSets}` : null,
+    name: name ?? `Übung ${exerciseIndex + 1}`,
+    note: name === null && dayResolved ? EXERCISE_NAME_UNRESOLVED : null,
     sets: withValues ? [...sets] : [],
     hasWeight: sets.some((set) => set.weightKg !== null),
     summary: withValues
       ? null
       : completed > 0
         ? `${completed} ${setWord(completed)} abgehakt · keine Werte erfasst`
-        : "Keine Sätze abgehakt",
+        : ticked
+          ? "Als erledigt markiert · keine Sätze erfasst"
+          : "Aktivität gespeichert · keine Sätze erfasst",
   };
 };
 
 /**
- * Session Detail, as data. Only what the record establishes is stated; every
- * unknown is left out, and explained in one sentence where the screen would
- * otherwise look broken.
+ * Session Detail, as data. Only what the record establishes is stated: the
+ * exercises are the positions with stored activity, counts come from stored
+ * sets, and the plan contributes names only. Every unknown is left out, and
+ * explained in one sentence where the screen would otherwise look broken.
  */
 export const buildSessionDetail = (record: SessionRecord, today: string): SessionDetailModel => {
-  const { session, planExists, day, setsByExercise } = record;
-  const planned = readDayExercises(day);
-  const logged = setsByExercise ?? {};
+  const { session, planExists, dayResolved, title, names, positions } = record;
+  const exercises = (positions ?? []).map((position) =>
+    buildExercise(position, names[position.exerciseIndex] ?? null, dayResolved));
 
-  const indices = new Set<number>(planned.map((_, index) => index));
-  Object.entries(logged).forEach(([index, sets]) => { if (sets.length > 0) indices.add(Number(index)); });
-  const exercises = [...indices].sort((a, b) => a - b).map((index) =>
-    buildExercise(index, planned[index] ?? null, logged[index] ?? [], !!day));
-
-  const plannedTotal = planned.reduce((total, exercise) => total + (exercise ? parseSetCount(exercise.sets) : 0), 0);
-  const allPlanned = exercises.every((exercise) => exercise.count !== null);
-  const completedTotal = Object.values(logged).reduce((total, sets) => total + sets.filter((set) => set.completed).length, 0);
+  const ticked = (positions ?? []).reduce((total, position) => total + position.sets.filter((set) => set.completed).length, 0);
   const meta = [
     formatSessionDuration(session.durationSec),
-    day && planned.length > 0 ? formatExerciseCount(planned.length) : null,
-    day && plannedTotal > 0 && allPlanned ? `${completedTotal}/${plannedTotal} Sätze` : null,
+    ticked > 0 ? `${ticked} ${setWord(ticked)} abgehakt` : null,
   ].filter((part): part is string => part !== null);
 
   const weekNumber = session.weekKey?.match(/\d+/)?.[0];
+  const nothingStored = "Übungen und Sätze sind zu diesem Training nicht gespeichert.";
   let notice: string | null = null;
   if (session.weekKey === null) {
     notice = "Zu diesem Training sind nur Datum und Abschluss gespeichert. Übungen und Sätze lassen sich ihm nicht zuordnen.";
-  } else if (!day) {
+  } else if (!dayResolved) {
     notice = [
       !planExists
         ? "Der Plan zu diesem Training ist nicht mehr verfügbar, deshalb lassen sich keine Übungsnamen anzeigen."
         : "Der Plantag zu diesem Training ist nicht mehr lesbar, deshalb lassen sich keine Übungsnamen anzeigen.",
-      exercises.length === 0 ? "Sätze sind dazu nicht gespeichert." : null,
+      exercises.length === 0 ? nothingStored : null,
     ].filter(Boolean).join(" ");
+  } else if (exercises.length === 0) {
+    notice = nothingStored;
   }
 
   return {
@@ -510,9 +537,9 @@ export const buildSessionDetail = (record: SessionRecord, today: string): Sessio
       formatDayMonth(session.workoutDay, true),
       session.workoutDay === today ? "Heute" : null,
     ].filter(Boolean).join(" · "),
-    title: day ? summarizeWorkoutDay(day).title : WORKOUT_TITLE_FALLBACK,
+    title,
     meta: meta.length > 0 ? meta.join(" · ") : null,
-    context: day && weekNumber ? `${planDisplayName(PLAN_TOTAL_WEEKS)} · Woche ${weekNumber}` : null,
+    context: planExists && weekNumber ? `${planDisplayName(PLAN_TOTAL_WEEKS)} · Woche ${weekNumber}` : null,
     notice,
     exercises,
   };

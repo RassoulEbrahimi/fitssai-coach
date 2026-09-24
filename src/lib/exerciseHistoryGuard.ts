@@ -3,6 +3,7 @@ import { db } from "@/lib/firebase";
 import { weeksDisplaying } from "@/lib/planWeekMirroring";
 import type { Exercise, WorkoutPlanContent } from "@/lib/types";
 import { isExpectedExercise } from "@/lib/exerciseSlot";
+import { hasPositionActivityMarker } from "@/lib/positionActivity";
 
 // Mirroring lives with the other readers that must agree about it.
 export { displayedSourceWeek, weeksDisplaying } from "@/lib/planWeekMirroring";
@@ -206,9 +207,6 @@ export const changesExerciseIdentity = (
   return nameOf(before) !== nameOf(after);
 };
 
-const isPositiveNumber = (value: unknown): boolean =>
-  typeof value === "number" && Number.isFinite(value) && value > 0;
-
 /**
  * Whether a `workout_logs` document is evidence that this position was trained.
  *
@@ -224,11 +222,7 @@ const hasRecordedActivity = async (
   logId: string,
   data: Record<string, unknown>
 ): Promise<boolean> => {
-  if (data.completed === true) return true;
-  if (data.completedAt !== undefined && data.completedAt !== null) return true;
-  if (isPositiveNumber(data.durationMinutes)) return true;
-  if (isPositiveNumber(data.caloriesBurned)) return true;
-  if (isPositiveNumber(data.durationSec)) return true;
+  if (hasPositionActivityMarker(data)) return true;
 
   // Set logs live in a subcollection, so their existence cannot be answered by
   // the parent query. One bounded read per candidate parent, and only for

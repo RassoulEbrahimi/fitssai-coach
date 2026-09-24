@@ -57,11 +57,6 @@ const ExerciseSection: React.FC<{ exercise: SessionDetailExercise }> = ({ exerci
         <b>{exercise.name}</b>
         {exercise.note && <span className="tp-meta">{exercise.note}</span>}
       </span>
-      {exercise.count && (
-        <span className="tp-session-count" aria-label={`${exercise.count.replace("/", " von ")} Sätzen abgehakt`}>
-          {exercise.count}
-        </span>
-      )}
     </div>
     {exercise.sets.length > 0 && (
       <ol className="tp-sets" aria-label={`Sätze ${exercise.name}`}>

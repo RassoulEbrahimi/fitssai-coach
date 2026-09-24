@@ -39,28 +39,48 @@ identity, set completion or performance logging changed.
 - Cached with React Query; the tab invalidates it when the plan's completed
   day records change (a finish).
 
+## Evidence, not plan shape
+
+A plan can change after a session: Edit Mode may append an exercise to a day
+that already has history, and prescriptions can change. So the plan never
+decides what a past session contains.
+
+- **Historical evidence** decides the exercises: a position is part of the
+  session only when its own logs record activity — a parent activity marker
+  (`completed === true`, `completedAt`, or the older duration/calorie fields;
+  `src/lib/positionActivity.ts`, now shared with the plan-edit guard's
+  `hasRecordedActivity`) or at least one stored set (ticked, or with trusted
+  `user-recorded` values). A plan exercise without activity is not listed.
+- **The historical plan is a name lookup only** for those positions.
+- No planned-set denominators (`2/3`, `17/18 Sätze`) and no exercise count
+  from the plan. Counts come from stored sets (`6 Sätze abgehakt`).
+- The title is the plan day's explicit label (`Push A`); a weekday-only label
+  gives `Training`, never a muscle title derived from the day's current
+  exercise list.
+
 ## Names
 
 Only from the session's **own** plan: `planId → weekKey/dayIndex` through
 `planWeekMirroring` (the same mirroring the plan-edit guard and previous
 performance use; `readDisplayedDay` was added beside
 `readDisplayedDayExercises`). Never the active plan. Unreadable plan or day →
-`Training`; a logged position with no name → `Übung n` (with "Name nicht mehr
-zuordenbar" when the plan day exists). No name snapshot is written.
+`Training`; an evidenced position with no name → `Übung n` (with "Name nicht
+mehr zuordenbar" when the plan day exists). No name snapshot is written; the
+cached session record keeps only the names of evidenced positions.
 
 ## What is shown
 
-- Row: date block (`Heute` / `Gestern` / weekday + day), plan-day title,
-  `n Übungen · 52 Min` — each part only when known. Duration only when stored
-  and plausible (`readDurationSec`), never estimated. A completion without
-  plan position reads `Nur Abschluss gespeichert`.
-- Detail: date, title, `52 Min · 6 Übungen · 17/18 Sätze` (sets only when
-  every listed exercise still has a planned count), plan context, then each
-  exercise with one line per stored set. Reps/weight only when the set is
+- Row: date block (`Heute` / `Gestern` / weekday + day), title, and the
+  measured duration when stored and plausible (`readDurationSec`), never
+  estimated. No exercise count: the session's own count would take a read per
+  row. A completion without plan position reads `Nur Abschluss gespeichert`.
+- Detail: date, title, `52 Min · 17 Sätze abgehakt` (each part only when
+  stored), plan context, then each evidenced exercise with one line per stored set. Reps/weight only when the set is
   `user-recorded` (`readSetLogState`), formatted with the immediate summary's
   `formatPerformanceValues` / `formatRecordedSet`. Completion-only sets read
   `Abgehakt · ohne Werte`; a completion-only exercise collapses to
-  `n Sätze abgehakt · keine Werte erfasst`; recorded but unticked sets keep
+  `n Sätze abgehakt · keine Werte erfasst`; an exercise ticked without sets
+  reads `Als erledigt markiert · keine Sätze erfasst`; recorded but unticked sets keep
   `offen`; legacy prescription-copied numbers are never shown.
 - Partial / legacy data is explained in one sentence; nothing is invented.
 
@@ -98,7 +118,11 @@ Sessions still resolve names from their own plans.
   reaching the end, the row shows no meta rather than "Noch keine Trainings".
 - The not-found state offers `Zum Verlauf` only when opened from Verlauf; from
   Today or a day, `Zurück` leads back there.
-- An exercise whose plan position no longer states a set count shows no
-  `x/y`, and the header then omits `Sätze`.
+- No `x/y` set counts and no `n Übungen` (design): the denominator and the
+  count would come from the plan's current state, not from the session.
+- Titles are the explicit day label or `Training`; generated plans with
+  weekday labels therefore show `Training` in History.
+- A session with no stored exercise activity says so in one sentence instead
+  of listing the plan's exercises.
 - The bottom navigation stays visible on Verlauf and Session Detail, as on
   Plan Overview (no footer action).
