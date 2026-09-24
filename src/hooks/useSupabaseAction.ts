@@ -103,7 +103,7 @@ export const retryWithBackoff = async <T,>(
 const lanes = new Map<string, Promise<void>>();
 
 /** Runs `task` once every earlier task with the same key has settled. */
-const runInLane = <T,>(key: string | null | undefined, task: () => Promise<T>): Promise<T> => {
+export const runInLane = <T,>(key: string | null | undefined, task: () => Promise<T>): Promise<T> => {
     if (!key) return task();
     const previous = lanes.get(key) ?? Promise.resolve();
     const run = previous.then(task);

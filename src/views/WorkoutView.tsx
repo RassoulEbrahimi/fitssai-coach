@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useMemo, useCallback } from "react";
+import React, { useRef, useEffect, useMemo, useCallback } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
@@ -21,8 +21,8 @@ import { db } from "@/lib/firebase";
 import { useExerciseEditor, type Exercise } from "@/hooks/useExerciseEditor";
 import { useWorkoutHelpers } from "@/hooks/useWorkoutHelpers";
 import { normalizeWeekKey } from "@/lib/workoutPlanUtils";
-import { AddWorkoutModal } from "@/components/workout/AddWorkoutModal";
 import { useAddExercise } from "@/hooks/useAddExercise";
+import { useReorderExercise } from "@/hooks/useReorderExercise";
 import { useTrainingData, useTrainingSession } from "@/contexts/TrainingContext";
 import { useDeleteExercise } from "@/hooks/useDeleteExercise";
 import { useRestoreExercise } from "@/hooks/useRestoreExercise";
@@ -49,6 +49,7 @@ import {
   type RunningSession,
   type TrainingsplanInputs,
 } from "@/lib/trainingsplanModel";
+import { buildReplacement, isDayLockedBySession } from "@/lib/trainingsplanEdit";
 
 // Trainingsplan V2 screens
 import { TodayModule } from "@/components/trainingsplan/TodayModule";
@@ -84,6 +85,9 @@ interface WorkoutViewProps {
   /** Day detail and editing are focused tasks: the global navigation steps aside. */
   onBottomNavHiddenChange?: (hidden: boolean) => void;
 }
+
+/** One stable empty list, so an empty day does not look like a changed one. */
+const EMPTY_EXERCISES: Exercise[] = [];
 
 const WorkoutView: React.FC<WorkoutViewProps> = ({
   workoutPlan,
@@ -138,21 +142,9 @@ const WorkoutView: React.FC<WorkoutViewProps> = ({
   // Use consolidated workout helpers hook
   const { getWeekContentWithFallback, getWeekMirrorInfo } = useWorkoutHelpers(livePlan);
 
-  // Add exercise dialog state
-  const [addExerciseDialog, setAddExerciseDialog] = useState<{
-    open: boolean;
-    weekKey: string | null;
-    dayIndex: number | null;
-    mode: 'ai' | 'manual';
-  }>({
-    open: false,
-    weekKey: null,
-    dayIndex: null,
-    mode: 'manual'
-  });
-
-  const { updateExercise, isUpdating } = useExerciseEditor();
+  const { updateExercise } = useExerciseEditor();
   const { addExercise } = useAddExercise();
+  const { reorderExerciseAsync } = useReorderExercise();
 
   /*
     Where the Trainingsplan tab is: Main at the root, with Day Detail, Plan
@@ -299,7 +291,12 @@ const WorkoutView: React.FC<WorkoutViewProps> = ({
     controlsRef.current?.start();
   }, [cardWeekKey, cardDayIndex, todayStr]);
 
-  // --- Editing (existing semantics, unchanged) ----------------------------
+  /*
+    --- Editing (Edit Mode, TRAINING-PLAN-V2-02) ------------------------------
+    Every edit addresses one plan day by its own weekKey/dayIndex and rewrites
+    only that day's exercise array, exactly like the existing editors. Nothing
+    is propagated to other weeks or to later days with the same workout.
+  */
 
   const isCardDay = useCallback(
     (weekKey: string, dayIndex: number) =>
@@ -307,12 +304,31 @@ const WorkoutView: React.FC<WorkoutViewProps> = ({
     [cardWeekKey, cardDayIndex]
   );
 
-  // Inline exercise update handler (returns promise for async handling)
+  /**
+    A running workout reads its exercises live from its own plan day and keys
+    set completion, drafts and the rest timer by exercise position. That day's
+    structure is therefore locked while it runs - checked here as well as in
+    the UI, so no path can change the live session under the user.
+  */
+  const isEditLocked = (weekKey: string, dayIndex: number) =>
+    isDayLockedBySession(isStarted ? session : null, livePlan?.id, livePlan?.content, { weekKey, dayIndex });
+
+  /** Progress rings count exercises, so every week's completion is refreshed. */
+  const invalidateWeekCompletions = () => {
+    if (!livePlan?.id) return;
+    ['Week 1', 'Week 2', 'Week 3', 'Week 4'].forEach((weekKey) => {
+      queryClient.invalidateQueries({ queryKey: ['week-completion', livePlan.id, weekKey] });
+    });
+  };
+
+  // Exercise update (the replace path); returns a promise for async handling
   const handleUpdateExercise = async (
     weekKey: string,
     dayIndex: number,
     exerciseIndex: number,
-    updatedExercise: Exercise
+    updatedExercise: Exercise,
+    /** The exercise the user acted on; the update is refused if that slot moved away. */
+    expectedExercise?: Exercise
   ): Promise<void> => {
     if (!livePlan?.id) return Promise.resolve();
 
@@ -324,15 +340,12 @@ const WorkoutView: React.FC<WorkoutViewProps> = ({
           dayIndex,
           exerciseIndex,
           exercise: updatedExercise,
+          expectedExercise,
         },
         {
           onSuccess: () => {
-            // Invalidate all week completions to refresh progress rings
-            ['Week 1', 'Week 2', 'Week 3', 'Week 4'].forEach(wk => {
-              queryClient.invalidateQueries({
-                queryKey: ['week-completion', livePlan.id, wk]
-              });
-            });
+            // Refresh progress rings.
+            invalidateWeekCompletions();
 
             // The pre-start cache holds today's day only; an edit to another
             // day must not replace it.
@@ -353,58 +366,46 @@ const WorkoutView: React.FC<WorkoutViewProps> = ({
     });
   };
 
-  // Add exercise handlers
-  const handleOpenAddExercise = (weekKey: string, dayIndex: number, mode: 'ai' | 'manual' = 'manual') => {
-    setAddExerciseDialog({
-      open: true,
-      weekKey,
-      dayIndex,
-      mode
-    });
-    logEvent('add_exercise_dialog_opened', { weekKey, dayIndex, mode });
+  /**
+    Swaps the exercise at a position for a catalogue entry the user picked.
+    `current` is the exercise the user saw there, which carries the
+    prescription over.
+  */
+  const handleReplaceExercise = (weekKey: string, dayIndex: number, exerciseIndex: number, name: string, current: Exercise) => {
+    if (isEditLocked(weekKey, dayIndex)) return;
+    logEvent('exercise_replaced', { weekKey, dayIndex, exerciseIndex, from: current.name, to: name });
+    void handleUpdateExercise(weekKey, dayIndex, exerciseIndex, buildReplacement(current, name), current);
   };
 
-  const handleAddExercise = (exercise: Exercise) => {
-    if (!addExerciseDialog.weekKey || addExerciseDialog.dayIndex === null || !livePlan?.id) {
-      return;
+  /** One exercise moved within one plan day; everything else keeps its data. Resolves once settled. */
+  const handleMoveExercise = async (weekKey: string, dayIndex: number, fromIndex: number, toIndex: number, expectedExercise: Exercise) => {
+    if (!livePlan?.id || isEditLocked(weekKey, dayIndex)) return;
+    logEvent('exercise_reordered', { weekKey, dayIndex, fromIndex, toIndex });
+    // Per-call promise: every move reports its own outcome, however quickly they follow.
+    try {
+      await reorderExerciseAsync({ planId: livePlan.id, weekKey, dayIndex, fromIndex, toIndex, expectedExercise });
+      invalidateWeekCompletions();
+    } catch {
+      // Reported by the shared handler; the cache is reconciled with the server.
     }
-
-    addExercise(
-      {
-        planId: livePlan.id,
-        weekKey: addExerciseDialog.weekKey,
-        dayIndex: addExerciseDialog.dayIndex,
-        exercise,
-      },
-      {
-        onSuccess: () => {
-          // Invalidate all week completions to refresh progress rings
-          ['Week 1', 'Week 2', 'Week 3', 'Week 4'].forEach(weekKey => {
-            queryClient.invalidateQueries({
-              queryKey: ['week-completion', livePlan.id, weekKey]
-            });
-          });
-        }
-      }
-    );
-
-    setAddExerciseDialog({ open: false, weekKey: null, dayIndex: null, mode: 'manual' });
   };
 
-  // Handle AI autofill
-  const handleAutoFill = (weekKey: string, dayIndex: number) => {
-    handleOpenAddExercise(weekKey, dayIndex, 'ai');
-    logEvent('ai_autofill_opened', { weekKey, dayIndex });
+  /** Appends a confirmed exercise to the end of one plan day. */
+  const handleAddExercise = (weekKey: string, dayIndex: number, exercise: Exercise) => {
+    if (!livePlan?.id || isEditLocked(weekKey, dayIndex)) return;
+    logEvent('exercise_added', { weekKey, dayIndex, exerciseName: exercise.name });
+    addExercise(
+      { planId: livePlan.id, weekKey, dayIndex, exercise },
+      { onSuccess: invalidateWeekCompletions }
+    );
   };
 
   // Delete exercise with undo toast
-  const handleDeleteExercise = (weekKey: string, dayIndex: number, exerciseIndex: number) => {
-    if (!livePlan?.id) return;
+  const handleDeleteExercise = (weekKey: string, dayIndex: number, exerciseIndex: number, knownExercise?: Exercise) => {
+    if (!livePlan?.id || isEditLocked(weekKey, dayIndex)) return;
 
-    // Get the exercise from weekData before deleting
-    const weekContent = getWeekContentWithFallback(weekKey);
-    const dayData = weekContent[dayIndex];
-    const exercise = dayData?.exercises?.[exerciseIndex];
+    // The exercise the caller saw at that place, else the one on record, kept for undo
+    const exercise = knownExercise ?? getWeekContentWithFallback(weekKey)[dayIndex]?.exercises?.[exerciseIndex];
 
     if (!exercise) {
       console.error('Exercise not found for deletion');
@@ -426,6 +427,8 @@ const WorkoutView: React.FC<WorkoutViewProps> = ({
         weekKey,
         dayIndex,
         exerciseIndex,
+        // Never remove whatever else holds the position by the time this runs.
+        expectedExercise: exercise,
       },
       {
         onSuccess: () => {
@@ -578,6 +581,7 @@ const WorkoutView: React.FC<WorkoutViewProps> = ({
     ? getWeekContentWithFallback(detailDay.weekKey)[detailDay.dayIndex] ?? null
     : null;
   const detailSummary = summarizeWorkoutDay(detailContent);
+  const editExercises = (detailContent?.exercises ?? EMPTY_EXERCISES) as Exercise[];
   const detailInPlan = !!(detailDay && inputs && resolveDatedDay(inputs, detailDay.workoutDay));
 
   return (
@@ -716,17 +720,20 @@ const WorkoutView: React.FC<WorkoutViewProps> = ({
           <DayEditSurface
             day={screen.day}
             title={detailSummary.title}
-            exercises={(detailContent?.exercises ?? []) as Exercise[]}
-            isUpdating={isUpdating}
+            exercises={editExercises}
+            lockedBySession={isEditLocked(screen.day.weekKey, screen.day.dayIndex)}
+            onCancel={back}
             onDone={back}
-            onUpdateExercise={(exerciseIndex, updatedExercise) =>
-              handleUpdateExercise(screen.day.weekKey, screen.day.dayIndex, exerciseIndex, updatedExercise)
+            onMove={(fromIndex, toIndex, exercise) =>
+              handleMoveExercise(screen.day.weekKey, screen.day.dayIndex, fromIndex, toIndex, exercise)
             }
-            onDeleteExercise={(exerciseIndex) =>
-              handleDeleteExercise(screen.day.weekKey, screen.day.dayIndex, exerciseIndex)
+            onReplace={(exerciseIndex, name, current) =>
+              handleReplaceExercise(screen.day.weekKey, screen.day.dayIndex, exerciseIndex, name, current)
             }
-            onAddExercise={() => handleOpenAddExercise(screen.day.weekKey, screen.day.dayIndex)}
-            onAutoFill={() => handleAutoFill(screen.day.weekKey, screen.day.dayIndex)}
+            onRemove={(exerciseIndex, exercise) =>
+              handleDeleteExercise(screen.day.weekKey, screen.day.dayIndex, exerciseIndex, exercise)
+            }
+            onAdd={(exercise) => handleAddExercise(screen.day.weekKey, screen.day.dayIndex, exercise)}
           />
         )}
 
@@ -739,28 +746,6 @@ const WorkoutView: React.FC<WorkoutViewProps> = ({
           />
         )}
 
-        {/* Add Workout Modal */}
-        <AddWorkoutModal
-          isOpen={addExerciseDialog.open}
-          onClose={() =>
-            setAddExerciseDialog({ open: false, weekKey: null, dayIndex: null, mode: 'manual' })
-          }
-          mode={addExerciseDialog.mode}
-          dayContext={
-            addExerciseDialog.weekKey && addExerciseDialog.dayIndex !== null
-              ? { weekKey: addExerciseDialog.weekKey, dayIndex: addExerciseDialog.dayIndex }
-              : undefined
-          }
-          onWorkoutAdded={() => {
-            // Invalidate queries to refresh the view
-            queryClient.invalidateQueries({ queryKey: ['workout-plan', planId] });
-            ['Week 1', 'Week 2', 'Week 3', 'Week 4'].forEach(weekKey => {
-              queryClient.invalidateQueries({
-                queryKey: ['week-completion', livePlan.id, weekKey]
-              });
-            });
-          }}
-        />
       </div>
     </WorkoutErrorBoundary>
   );

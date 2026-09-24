@@ -4,13 +4,21 @@ import { db } from "@/lib/firebase";
 import { useAuth } from "./useAuth";
 import { logEvent, logError } from "@/lib/telemetryClient";
 import { useSupabaseAction } from "./useSupabaseAction";
-import { WorkoutPlanContent } from "@/lib/types";
-import { assertPlanEditPreservesHistory } from "@/lib/exerciseHistoryGuard";
+import { Exercise, WorkoutPlanContent } from "@/lib/types";
+import { assertExpectedExercise, assertPlanEditPreservesHistory, isExpectedExercise, planEditLane } from "@/lib/exerciseHistoryGuard";
+import { reconcilePlanAfterFailedEdit } from "./planEditReconcile";
 
 export type { WorkoutPlanContent };
 
 interface DeleteExerciseParams {
   planId: string; weekKey: string; dayIndex: number; exerciseIndex: number;
+  /**
+   * The exercise the user removed. When given, the delete is refused unless
+   * that plan slot (`exerciseSlotKey`) is still at `exerciseIndex` - it never
+   * removes whatever else now holds the position, including another entry of
+   * the same movement.
+   */
+  expectedExercise?: Exercise;
 }
 interface DeleteExerciseResponse {
   success: boolean; content?: WorkoutPlanContent; queued?: boolean;
@@ -45,6 +53,10 @@ export function useDeleteExercise() {
         edit: { kind: "delete", exerciseIndex: params.exerciseIndex },
       });
 
+      // Immediately before the write: still the exercise the user removed.
+      if (params.expectedExercise !== undefined) {
+        assertExpectedExercise(day.exercises, params.exerciseIndex, params.expectedExercise);
+      }
       const updatedContent = {
         ...content,
         [params.weekKey]: week.map((d: any, i: number) =>
@@ -57,6 +69,8 @@ export function useDeleteExercise() {
       return { success: true, content: updatedContent };
     },
     messages: { success: "Übung gelöscht", error: "Fehler beim Löschen der Übung" },
+    // One edit of this plan at a time: each reads the result of the last.
+    serializeKey: (params) => planEditLane(params.planId),
     onMutate: async (params) => {
       logEvent("exercise_delete_started", params);
       await queryClient.cancelQueries({ queryKey: ["workout-plan", params.planId] });
@@ -67,6 +81,9 @@ export function useDeleteExercise() {
         const w = [...(c[params.weekKey] || [])];
         if (w[params.dayIndex]) {
           const d = { ...w[params.dayIndex] };
+          const target = (d.exercises || [])[params.exerciseIndex];
+          // Only the exercise the user removed; anything else waits for the server.
+          if (params.expectedExercise !== undefined && !isExpectedExercise(target, params.expectedExercise)) return old;
           d.exercises = (d.exercises || []).filter((_: any, i: number) => i !== params.exerciseIndex);
           w[params.dayIndex] = d;
           c[params.weekKey] = w;
@@ -76,7 +93,8 @@ export function useDeleteExercise() {
       return { previousPlan };
     },
     onError: (error: any, params: DeleteExerciseParams, context: { previousPlan?: any } | undefined) => {
-      if (context?.previousPlan) queryClient.setQueryData(["workout-plan", params.planId], context.previousPlan);
+      // Back to the plan as stored, not to a snapshot of possibly failed edits.
+      void reconcilePlanAfterFailedEdit(queryClient, user?.uid, params.planId, context?.previousPlan);
       logError(error, "exercise_delete_failed");
     },
     onSuccess: (data: DeleteExerciseResponse, params: DeleteExerciseParams) => {

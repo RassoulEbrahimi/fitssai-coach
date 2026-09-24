@@ -2,9 +2,12 @@ import { collection, getDocsFromServer, limit, query, where } from "firebase/fir
 import { db } from "@/lib/firebase";
 import { weeksDisplaying } from "@/lib/planWeekMirroring";
 import type { Exercise, WorkoutPlanContent } from "@/lib/types";
+import { isExpectedExercise } from "@/lib/exerciseSlot";
 
 // Mirroring lives with the other readers that must agree about it.
 export { displayedSourceWeek, weeksDisplaying } from "@/lib/planWeekMirroring";
+// Plan-slot identity lives with the other pure readers; positional edits check it here.
+export { exerciseSlotKey, isExpectedExercise } from "@/lib/exerciseSlot";
 
 /**
  * Guards workout-plan edits that would change what an already-logged exercise
@@ -45,8 +48,17 @@ export { displayedSourceWeek, weeksDisplaying } from "@/lib/planWeekMirroring";
  * round trip and both surfaces must be open at once, so it stays out of scope.
  */
 
+/**
+ * The one lane every edit of a plan's exercise arrays runs in. Each editor
+ * reads the plan, rebuilds one day and writes it back, and addresses
+ * exercises by position; run side by side, a later edit could read the plan
+ * before an earlier one lands and address the wrong exercise, or overwrite it.
+ * In one lane each edit reads the result of the one before.
+ */
+export const planEditLane = (planId: string): string => `plan-edit:${planId}`;
+
 /** Why an edit was refused. Each reason has its own user-facing wording. */
-export type PlanEditRefusal = "history-exists" | "history-unverifiable";
+export type PlanEditRefusal = "history-exists" | "history-unverifiable" | "stale-target";
 
 const REFUSAL_COPY: Record<PlanEditRefusal, { title: string; message: string }> = {
   "history-exists": {
@@ -66,6 +78,40 @@ const REFUSAL_COPY: Record<PlanEditRefusal, { title: string; message: string }> 
       "Diese Änderung ist erst möglich, wenn geprüft werden kann, ob für diese Übung " +
       "bereits Sätze aufgezeichnet sind. Bitte versuche es erneut, sobald die Verbindung steht.",
   },
+  // The list the user acted on is not the list on record (an earlier edit was
+  // refused or failed, or another device changed it). Nothing was written.
+  "stale-target": {
+    title: "Änderung nicht möglich",
+    message:
+      "Die Übungsliste hat sich inzwischen geändert. Es wurde nichts gespeichert. " +
+      "Bitte prüfe die aktuelle Liste und versuche es erneut.",
+  },
+};
+
+/**
+ * Refuse a positional edit whose target is no longer the exercise the user
+ * acted on.
+ *
+ * Edits address exercises by index, and the index a user saw can stop naming
+ * that exercise before the edit runs: an earlier edit in the plan's lane may
+ * have been refused or failed after the screen already showed its result, or
+ * another device may have changed the day. Acting on the index anyway would
+ * delete, replace or move a different exercise. Call it on the plan content
+ * the edit is about to write, immediately before the write; a mismatch
+ * writes nothing and is never redirected to another exercise.
+ *
+ * Identity is the slot (`exerciseSlotKey`), not the name, so two entries of
+ * the same movement with different prescriptions are never confused. Only
+ * entries identical in every persisted field are interchangeable. The history
+ * guard runs as before either way; this check only adds a refusal.
+ */
+export const assertExpectedExercise = (
+  exercises: readonly Exercise[] | undefined,
+  exerciseIndex: number,
+  expected: Partial<Exercise>
+): void => {
+  const actual = Array.isArray(exercises) ? exercises[exerciseIndex] : undefined;
+  if (!isExpectedExercise(actual, expected)) throw new PlanEditBlockedError("stale-target");
 };
 
 /** A position that already carries history, for diagnostics and telemetry. */
@@ -103,16 +149,17 @@ export class PlanEditBlockedError extends Error {
  * - `insert`  - `splice(index, 0, exercise)` in `useRestoreExercise`
  * - `append`  - `push(exercise)` in `useAddExercise` and `AddWorkoutModal`
  * - `replace` - a name change through `useExerciseEditor`
- *
- * There is no reorder or move path in the app; the only drag gesture is
- * swipe-to-delete, which routes to `delete`.
+ * - `move`    - one exercise moved from `exerciseIndex` to `toIndex` in
+ *               `useReorderExercise` (the Edit Mode's drag handle)
  */
-export type PlanEditKind = "delete" | "insert" | "append" | "replace";
+export type PlanEditKind = "delete" | "insert" | "append" | "replace" | "move";
 
 export interface PlanEdit {
   kind: PlanEditKind;
-  /** The index acted on. For `append`, the index the new exercise lands on. */
+  /** The index acted on. For `append`, the index the new exercise lands on; for `move`, where it comes from. */
   exerciseIndex: number;
+  /** `move` only: where the exercise lands. */
+  toIndex?: number;
 }
 
 /**
@@ -121,17 +168,23 @@ export interface PlanEdit {
  *
  * Removing or inserting at index i shifts everything after it, so position p
  * for p >= i comes to hold what p+1 (or p-1) held. Replacing and appending
- * touch exactly one position: nothing shifts.
+ * touch exactly one position: nothing shifts. Moving from i to j gives every
+ * position between them, both ends included, a different exercise; nothing
+ * outside that range changes.
  */
 export interface AffectedPositions {
   from: number;
   to: number | null;
 }
 
-export const affectedPositions = (edit: PlanEdit): AffectedPositions =>
-  edit.kind === "delete" || edit.kind === "insert"
-    ? { from: edit.exerciseIndex, to: null }
-    : { from: edit.exerciseIndex, to: edit.exerciseIndex };
+export const affectedPositions = (edit: PlanEdit): AffectedPositions => {
+  if (edit.kind === "delete" || edit.kind === "insert") return { from: edit.exerciseIndex, to: null };
+  if (edit.kind === "move") {
+    const to = edit.toIndex ?? edit.exerciseIndex;
+    return { from: Math.min(edit.exerciseIndex, to), to: Math.max(edit.exerciseIndex, to) };
+  }
+  return { from: edit.exerciseIndex, to: edit.exerciseIndex };
+};
 
 export const isAffected = (range: AffectedPositions, index: number): boolean =>
   index >= range.from && (range.to === null || index <= range.to);

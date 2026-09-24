@@ -5,7 +5,8 @@ import { useAuth } from "./useAuth";
 import { Exercise, WorkoutPlanContent } from "@/lib/types";
 import { logEvent, logError } from "@/lib/telemetryClient";
 import { useSupabaseAction } from "./useSupabaseAction";
-import { assertPlanEditPreservesHistory } from "@/lib/exerciseHistoryGuard";
+import { assertPlanEditPreservesHistory, planEditLane } from "@/lib/exerciseHistoryGuard";
+import { reconcilePlanAfterFailedEdit } from "./planEditReconcile";
 
 export interface RestoreExerciseParams {
   planId: string; weekKey: string; dayIndex: number; exerciseIndex: number; exercise: Exercise;
@@ -55,6 +56,8 @@ export function useRestoreExercise() {
       return { success: true, content: updatedContent };
     },
     messages: { success: "Übung wiederhergestellt", error: "Fehler beim Wiederherstellen der Übung" },
+    // One edit of this plan at a time: each reads the result of the last.
+    serializeKey: (params) => planEditLane(params.planId),
     onMutate: async (params) => {
       logEvent("exercise_restore_started", params);
       await queryClient.cancelQueries({ queryKey: ["workout-plan", params.planId] });
@@ -76,7 +79,8 @@ export function useRestoreExercise() {
       return { previousPlan };
     },
     onError: (error: any, params: RestoreExerciseParams, context: { previousPlan?: any } | undefined) => {
-      if (context?.previousPlan) queryClient.setQueryData(["workout-plan", params.planId], context.previousPlan);
+      // Back to the plan as stored, not to a snapshot of possibly failed edits.
+      void reconcilePlanAfterFailedEdit(queryClient, user?.uid, params.planId, context?.previousPlan);
       logError(error, "exercise_restore_failed");
     },
     onSuccess: (data: RestoreExerciseResponse, params: RestoreExerciseParams) => {

@@ -46,7 +46,7 @@ reaches the running workout.
 | --- | --- |
 | 01–04 Main (Geplant / Läuft / Erledigt / Ruhetag) | `TrainingsplanHeader`, `TodayModule`, `WeekAgenda`, `NextWeekTeaser`, `CurrentPlanRow` |
 | 05 Tagesdetail | `DayDetail` |
-| 06 Bearbeiten | `DayEditSurface` (compatibility surface, not the final edit mode) |
+| 06 Bearbeiten | `DayEditSurface` (canonical Edit Mode since TRAINING-PLAN-V2-02) |
 | 07 Planübersicht | `PlanOverview` |
 
 ## Deliberate deviations from the design
@@ -62,9 +62,8 @@ reaches the running workout.
 - **No "Zusammenfassung ansehen"**: no history/summary reopening exists yet.
 - **Future days**: browse only, no "move to today". **Past days**: browse only.
 - **Plan Overview**: no goal/level/deload and no plan actions — none exist.
-- **Edit mode**: existing inline editor, delete with undo, add and autofill
-  dialog, unchanged persistence (per plan day). Reorder, swap sheet, scope
-  rules and proposals are TRAINING-PLAN-V2-02.
+- **Edit mode**: replaced by the canonical Edit Mode in TRAINING-PLAN-V2-02
+  (`docs/TRAINING-PLAN-V2-02-edit-mode.md`).
 - Rest days can no longer receive an exercise from the tab (rest rows are
   not interactive by design).
 

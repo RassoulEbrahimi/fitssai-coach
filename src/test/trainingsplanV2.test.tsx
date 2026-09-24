@@ -5,8 +5,8 @@ import { onlineManager, QueryClient, QueryClientProvider } from '@tanstack/react
 import '@/lib/i18n';
 
 /*
-  TRAINING-PLAN-V2-01: the Trainingsplan tab, day detail, plan overview and
-  the editing compatibility surface, on the shipped Workout view, session
+  TRAINING-PLAN-V2-01/02: the Trainingsplan tab, day detail, plan overview and
+  the canonical Edit Mode, on the shipped Workout view, session
   context, Focus Mode and plan editors against the in-memory Firestore
   boundary. Only account identity, telemetry, toasts and "today" are fixtures.
 */
@@ -68,7 +68,7 @@ let queryClient: QueryClient;
 const navHidden = vi.fn();
 
 /** Dashboard's part: the selected date, the plan-to-date mapping and day completion from logs. */
-const WorkoutScreen = ({ logs = [] }: { logs?: WorkoutLog[] }) => {
+const WorkoutScreen = ({ logs = [], plan = PLAN }: { logs?: WorkoutLog[]; plan?: WorkoutPlan }) => {
   const [selectedDate, setSelectedDate] = useState(new Date(`${today.value}T12:00:00`));
   const getWeekKeyForDate = useCallback((date: Date) => getWorkoutWeekDay(PLAN.created_at, date).weekKey, []);
   const getDateFor = useCallback((weekKey: string, dayIndex: number) => getWorkoutDate(PLAN.created_at, weekKey, dayIndex), []);
@@ -80,7 +80,7 @@ const WorkoutScreen = ({ logs = [] }: { logs?: WorkoutLog[] }) => {
   const noop = useCallback(() => {}, []);
   return (
     <WorkoutView
-      workoutPlan={PLAN}
+      workoutPlan={plan}
       workoutLogs={logs}
       completingWorkout={false}
       selectedDate={selectedDate}
@@ -98,9 +98,9 @@ const WorkoutScreen = ({ logs = [] }: { logs?: WorkoutLog[] }) => {
   );
 };
 
-const mount = (logs?: WorkoutLog[]) => render(
+const mount = (logs?: WorkoutLog[], plan?: WorkoutPlan) => render(
   <QueryClientProvider client={queryClient}>
-    <FocusModeProvider><TrainingProvider><WorkoutScreen logs={logs} /></TrainingProvider></FocusModeProvider>
+    <FocusModeProvider><TrainingProvider><WorkoutScreen logs={logs} plan={plan} /></TrainingProvider></FocusModeProvider>
   </QueryClientProvider>
 );
 
@@ -323,65 +323,323 @@ describe('Plan Overview', () => {
   });
 });
 
-describe('editing compatibility', () => {
-  const openEdit = async (dayRow: RegExp) => {
-    mount();
+/*
+  TRAINING-PLAN-V2-02: the canonical Edit Mode. Thursday of Week 1 is a pull
+  day of four exercises; every week shares the same day objects, so an edit
+  that mutated them in place would show up in Week 2 as well.
+*/
+const PULL_DAY = [
+  { name: 'Kreuzheben', sets: 3, reps: '5', rest: '150s', weight: '100kg', notes: 'Gurt' },
+  exercise('Schrägbankdrücken KH', 3, '10', '90s'),
+  exercise('Klimmzüge', 3, '8', '120s'),
+  exercise('Beinpresse 45°', 4, '12', '90s'),
+];
+const EDIT_WEEK = WEEK.map((day, index) => (index === 3 ? { day: 'Pull A', exercises: PULL_DAY } : day));
+const EDIT_PLAN = {
+  ...PLAN,
+  content: { 'Week 1': EDIT_WEEK, 'Week 2': EDIT_WEEK, 'Week 3': EDIT_WEEK, 'Week 4': EDIT_WEEK },
+} as unknown as WorkoutPlan;
+const CATALOGUE = [
+  ['Bankdrücken', 'Chest'], ['Beinpresse', 'Legs'], ['Klimmzüge', 'Back'], ['Kreuzheben', 'Back'],
+  ['Latziehen', 'Back'], ['Rudern', 'Back'], ['Seitheben', 'Shoulders'],
+] as const;
+
+describe('Edit Mode', () => {
+  const snapshotOf = (value: unknown) => JSON.parse(JSON.stringify(value));
+  const ORIGINAL = snapshotOf(EDIT_WEEK);
+  const names = () => within(screen.getByRole('list', { name: 'Übungen' }))
+    .getAllByRole('listitem').map((item) => item.querySelector('.tp-edit-name')?.textContent);
+  const editHeading = () => screen.findByRole('heading', { level: 1, name: 'Pull A bearbeiten' });
+  const onThursdayDetail = () => screen.findByText(/^Donnerstag · 10/);
+  const stored = () => (history.state as Record<string, { stack?: unknown[] }> | null)?.trainingsplanV2?.stack ?? [];
+  const sheet = (name: string) => screen.findByRole('dialog', { name });
+
+  const openEdit = async (plan: WorkoutPlan = EDIT_PLAN, dayRow: RegExp = /^Do 10,/) => {
+    rows.set(PLAN_PATH, { content: plan.content, createdAt: new firestore.Timestamp(Date.parse(PLAN.created_at)) });
+    mount(undefined, plan);
     await todayCard();
     fireEvent.click(row(dayRow));
     fireEvent.click(await screen.findByRole('button', { name: 'Bearbeiten' }));
-    return screen.findByRole('heading', { name: /bearbeiten$/ });
+    return screen.findByRole('heading', { level: 1, name: /bearbeiten$/ });
   };
 
-  it('keeps the existing inline editor and its update path', async () => {
-    await openEdit(/^Di 8,/);
-    expect(screen.getByRole('heading', { name: 'Push A bearbeiten' })).toBeInTheDocument();
-    expect(screen.getByText(/gelten nur für diesen Tag \(Di 8\)/)).toBeInTheDocument();
-    // The existing inline editor: exercise picker and set/rep selects.
-    expect(screen.getAllByRole('combobox').length).toBeGreaterThan(0);
+  beforeEach(() => {
+    CATALOGUE.forEach(([name, muscle], index) => rows.set(`exercises/e${index}`, { name, target_muscle: muscle }));
+  });
+
+  it('opens from Day Detail as the canonical edit mode: header, compact rows and the two actions', async () => {
+    await openEdit();
+    expect(screen.getByRole('heading', { level: 1, name: 'Pull A bearbeiten' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Abbrechen' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Fertig' })).toBeInTheDocument();
+    expect(screen.getByText(/^Nur Do 10 · Änderungen werden sofort gespeichert/)).toBeInTheDocument();
+    expect(names()).toEqual(['Kreuzheben', 'Schrägbankdrücken KH', 'Klimmzüge', 'Beinpresse 45°']);
+    for (const name of ['Kreuzheben', 'Klimmzüge']) {
+      expect(screen.getByRole('button', { name: new RegExp(`^${name} verschieben`) })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: `${name} ersetzen` })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: `${name} entfernen` })).toBeInTheDocument();
+    }
+    expect(screen.getByText('3×5 · 150s')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Übung hinzufügen/ })).toBeEnabled();
+    expect(screen.getByRole('button', { name: /Auto-ausfüllen/ })).toBeEnabled();
+    // Structure editing only: no set editors, inputs or execution controls.
+    expect(screen.queryByRole('combobox')).toBeNull();
+    expect(screen.queryByRole('textbox')).toBeNull();
+    expect(screen.queryByRole('spinbutton')).toBeNull();
+    expect(screen.queryByRole('button', { name: /Training starten|Fortsetzen/ })).toBeNull();
     expect(navHidden).toHaveBeenLastCalledWith(true);
-
-    const weight = screen.getByPlaceholderText('kg');
-    fireEvent.change(weight, { target: { value: '60' } });
-    fireEvent.blur(weight);
-
-    await waitFor(() => expect(planContent()['Week 1'][1].exercises[0]).toMatchObject({ name: 'Bankdrücken', weight: '60' }));
-    // Only that plan day changed.
-    expect(planContent()['Week 2'][1].exercises[0]).not.toHaveProperty('weight');
   });
 
-  it('keeps the existing delete path', async () => {
-    await openEdit(/^Do 10,/);
-    fireEvent.click(screen.getByRole('button', { name: /Löschen/ }));
-    await waitFor(() => expect(planContent()['Week 1'][3].exercises).toEqual([]));
-    expect(planContent()['Week 1'][1].exercises).toHaveLength(1);
+  it('Fertig, Abbrechen and browser Back each return to the same Day Detail on a valid stack', async () => {
+    await openEdit();
+    expect(stored()).toHaveLength(2);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Fertig' }));
+    await onThursdayDetail();
+    expect(stored()).toHaveLength(1);
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Bearbeiten' })));
+
+    fireEvent.click(screen.getByRole('button', { name: 'Bearbeiten' }));
+    await editHeading();
+    fireEvent.click(screen.getByRole('button', { name: 'Abbrechen' }));
+    await onThursdayDetail();
+    expect(stored()).toHaveLength(1);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Bearbeiten' }));
+    await editHeading();
+    await act(() => { history.back(); });
+    await onThursdayDetail();
+    expect(stored()).toHaveLength(1);
+    expect(screen.queryByRole('heading', { name: /bearbeiten$/ })).toBeNull();
+
+    back();
+    await todayCard();
+    expect(stored()).toHaveLength(0);
+    expect(window.location.hash).toBe('#/workout');
   });
 
-  it('opens the existing add and autofill dialog, and returns to the day', async () => {
-    await openEdit(/^Di 8,/);
+  it('reorders with the handle: the saved day has the new order and every exercise intact', async () => {
+    await openEdit();
+    const handle = screen.getByRole('button', { name: /^Klimmzüge verschieben, Position 3 von 4/ });
+    handle.focus();
+    fireEvent.keyDown(handle, { key: 'ArrowUp' });
+
+    await waitFor(() => expect(planContent()['Week 1'][3].exercises.map((e) => e.name))
+      .toEqual(['Kreuzheben', 'Klimmzüge', 'Schrägbankdrücken KH', 'Beinpresse 45°']));
+    expect(names()).toEqual(['Kreuzheben', 'Klimmzüge', 'Schrägbankdrücken KH', 'Beinpresse 45°']);
+    // Focus stays with the moved exercise, so arrows can keep moving it.
+    await waitFor(() => expect(document.activeElement).toBe(
+      screen.getByRole('button', { name: /^Klimmzüge verschieben, Position 2 von 4/ })
+    ));
+
+    // Nothing lost, duplicated or altered - only the order changed.
+    const saved = planContent()['Week 1'][3].exercises;
+    const byName = (list: { name: string }[]) => [...list].sort((a, b) => a.name.localeCompare(b.name));
+    expect(byName(saved)).toEqual(byName(ORIGINAL[3].exercises));
+    expect(saved[0]).toEqual(ORIGINAL[3].exercises[0]);
+    // Only that plan day: the other days and Week 2's same day are untouched.
+    expect(snapshotOf(planContent()['Week 2'])).toEqual(ORIGINAL);
+    expect(snapshotOf(planContent()['Week 1'].filter((_, index) => index !== 3))).toEqual(ORIGINAL.filter((_: unknown, index: number) => index !== 3));
+
+    fireEvent.keyDown(document.activeElement!, { key: 'ArrowDown' });
+    fireEvent.keyDown(document.activeElement!, { key: 'ArrowDown' });
+    await waitFor(() => expect(planContent()['Week 1'][3].exercises.map((e) => e.name))
+      .toEqual(['Kreuzheben', 'Schrägbankdrücken KH', 'Beinpresse 45°', 'Klimmzüge']));
+  });
+
+  it('E - a failed move and a removal chained on it leave no stale list and remove nothing else', async () => {
+    await openEdit();
+    const originalNames = ORIGINAL[3].exercises.map((e: { name: string }) => e.name);
+    // The move's history check waits, then cannot reach the server: the move fails.
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    vi.mocked(firestore.getDocsFromServer).mockImplementationOnce(async () => {
+      await gate;
+      throw new Error('Failed to get documents from server.');
+    });
+
+    const handle = screen.getByRole('button', { name: /^Klimmzüge verschieben, Position 3 von 4/ });
+    handle.focus();
+    fireEvent.keyDown(handle, { key: 'ArrowUp' });
+    expect(names()).toEqual(['Kreuzheben', 'Klimmzüge', 'Schrägbankdrücken KH', 'Beinpresse 45°']);
+    // Removes Klimmzüge where the user now sees it - position 2, which on the server is still Schrägbankdrücken.
+    fireEvent.click(screen.getByRole('button', { name: 'Klimmzüge entfernen' }));
+
+    await act(async () => { release(); });
+    await waitFor(() => expect(names()).toEqual(originalNames));
+    expect(snapshotOf(planContent()['Week 1'])).toEqual(ORIGINAL);
+    expect(firestore.setDoc).not.toHaveBeenCalled();
+    // Settled: nothing flips back to an optimistic list afterwards.
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 50)); });
+    expect(names()).toEqual(originalNames);
+    expect(screen.getByRole('button', { name: /^Klimmzüge verschieben, Position 3 von 4/ })).toBeInTheDocument();
+  });
+
+  it('replaces only the chosen exercise after an explicit pick, keeping its prescription', async () => {
+    await openEdit();
+    fireEvent.click(screen.getByRole('button', { name: 'Kreuzheben ersetzen' }));
+    const dialog = await sheet('Übung ersetzen');
+    expect(within(dialog).getByText('Kreuzheben', { selector: 'b' })).toBeInTheDocument();
+
+    // Same main muscle group from the reviewed data; the day's own exercises left out.
+    const similar = await within(dialog).findByRole('region', { name: 'Ähnliche Übungen' });
+    const suggested = within(similar).getAllByRole('button').map((button) => button.querySelector('.tp-pick-name')?.textContent);
+    expect(suggested).toEqual(['Latziehen', 'Rudern']);
+    // Searching narrows the catalogue; nothing is written until a pick.
+    fireEvent.change(within(dialog).getByRole('searchbox', { name: 'Übung suchen' }), { target: { value: 'lat' } });
+    expect(within(dialog).queryByRole('region', { name: 'Ähnliche Übungen' })).toBeNull();
+    const results = within(dialog).getByRole('region', { name: 'Suchergebnisse' });
+    expect(within(results).getAllByRole('button')).toHaveLength(1);
+    expect(firestore.setDoc).not.toHaveBeenCalled();
+
+    fireEvent.click(within(results).getByRole('button', { name: /Latziehen/ }));
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Übung ersetzen' })).toBeNull());
+    await waitFor(() => expect(planContent()['Week 1'][3].exercises[0]).toEqual({
+      name: 'Latziehen', sets: 3, reps: '5', rest: '150s', weight: '', notes: '',
+    }));
+    expect(snapshotOf(planContent()['Week 1'][3].exercises.slice(1))).toEqual(ORIGINAL[3].exercises.slice(1));
+    expect(snapshotOf(planContent()['Week 2'])).toEqual(ORIGINAL);
+    expect(names()[0]).toBe('Latziehen');
+    await editHeading();
+  });
+
+  it('removes an exercise from this day only and closes the gap at once', async () => {
+    await openEdit();
+    fireEvent.click(screen.getByRole('button', { name: 'Schrägbankdrücken KH entfernen' }));
+    // Optimistic: the row goes as soon as the edit is issued, not when it lands.
+    await waitFor(() => expect(names()).toEqual(['Kreuzheben', 'Klimmzüge', 'Beinpresse 45°']));
+    await waitFor(() => expect(planContent()['Week 1'][3].exercises.map((e) => e.name))
+      .toEqual(['Kreuzheben', 'Klimmzüge', 'Beinpresse 45°']));
+    expect(snapshotOf(planContent()['Week 2'])).toEqual(ORIGINAL);
+    expect(snapshotOf(planContent()['Week 1'][1])).toEqual(ORIGINAL[1]);
+    // Focus moves to the row that took its place, never off the list.
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Klimmzüge entfernen' })));
+  });
+
+  it('adds a picked exercise to the end of this day after confirming its prescription, staying in Edit Mode', async () => {
+    await openEdit();
+    const depth = stored().length;
     fireEvent.click(screen.getByRole('button', { name: /Übung hinzufügen/ }));
-    expect(await screen.findByRole('dialog', { name: 'Training hinzufügen' })).toBeInTheDocument();
-    expect(logEvent).toHaveBeenCalledWith('add_exercise_dialog_opened', { weekKey: 'Week 1', dayIndex: 1, mode: 'manual' });
-    fireEvent.keyDown(screen.getByRole('dialog', { name: 'Training hinzufügen' }), { key: 'Escape' });
-    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Training hinzufügen' })).toBeNull());
+    const dialog = await sheet('Übung hinzufügen');
+    expect(logEvent).toHaveBeenCalledWith('add_exercise_dialog_opened', { weekKey: 'Week 1', dayIndex: 3, mode: 'manual' });
+    fireEvent.click(await within(dialog).findByRole('button', { name: /^Rudern/ }));
 
-    fireEvent.click(screen.getByRole('button', { name: /Auto-ausfüllen/ }));
-    expect(await screen.findByRole('dialog', { name: 'Training hinzufügen' })).toBeInTheDocument();
-    expect(logEvent).toHaveBeenCalledWith('ai_autofill_opened', { weekKey: 'Week 1', dayIndex: 1 });
-    fireEvent.keyDown(screen.getByRole('dialog', { name: 'Training hinzufügen' }), { key: 'Escape' });
-    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Training hinzufügen' })).toBeNull());
+    const sets = within(dialog).getByRole('textbox', { name: 'Sätze' });
+    expect(sets).toHaveValue('3');
+    expect(within(dialog).getByRole('textbox', { name: 'Wdh.' })).toHaveValue('10');
+    expect(within(dialog).getByRole('textbox', { name: 'Pause' })).toHaveValue('90s');
+    fireEvent.change(sets, { target: { value: '0' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Hinzufügen' }));
+    expect(within(dialog).getByRole('alert')).toHaveTextContent('Sätze');
+    expect(firestore.setDoc).not.toHaveBeenCalled();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Fertig' }));
-    expect(await screen.findByText('Dienstag · 8 · Heute')).toBeInTheDocument();
+    fireEvent.change(sets, { target: { value: '4' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Hinzufügen' }));
+    await waitFor(() => expect(planContent()['Week 1'][3].exercises).toHaveLength(5));
+    expect(planContent()['Week 1'][3].exercises[4]).toEqual({ name: 'Rudern', sets: 4, reps: '10', rest: '90s' });
+    expect(snapshotOf(planContent()['Week 1'][3].exercises.slice(0, 4))).toEqual(ORIGINAL[3].exercises);
+    expect(snapshotOf(planContent()['Week 2'])).toEqual(ORIGINAL);
+
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    await editHeading();
+    expect(names()).toHaveLength(5);
+    expect(stored()).toHaveLength(depth);
   });
 
-  it("editing another day leaves today's workout and any running session alone", async () => {
-    await openEdit(/^Do 10,/);
-    const rest = screen.getByPlaceholderText('90s');
-    fireEvent.change(rest, { target: { value: '180s' } });
-    fireEvent.blur(rest);
-    await waitFor(() => expect(planContent()['Week 1'][3].exercises[0]).toMatchObject({ rest: '180s' }));
+  it('keeps Auto-ausfüllen reachable and writes nothing without an explicit choice', async () => {
+    await openEdit();
+    fireEvent.click(screen.getByRole('button', { name: /Auto-ausfüllen/ }));
+    const dialog = await sheet('Auto-ausfüllen');
+    expect(logEvent).toHaveBeenCalledWith('ai_autofill_opened', { weekKey: 'Week 1', dayIndex: 3 });
+    expect(within(dialog).getByText('Automatische Vorschläge sind noch nicht verfügbar.')).toBeInTheDocument();
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Schließen' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    expect(firestore.setDoc).not.toHaveBeenCalled();
+    expect(snapshotOf(planContent()['Week 1'])).toEqual(ORIGINAL);
+
+    // Its hand-over goes to the manual add flow, still inside Edit Mode.
+    fireEvent.click(screen.getByRole('button', { name: /Auto-ausfüllen/ }));
+    fireEvent.click(within(await sheet('Auto-ausfüllen')).getByRole('button', { name: /Übung hinzufügen/ }));
+    expect(await sheet('Übung hinzufügen')).toBeInTheDocument();
+    // Edit Mode stays underneath the sheet (inert while it is open).
+    expect(screen.getByRole('heading', { level: 1, name: 'Pull A bearbeiten', hidden: true })).toBeInTheDocument();
+    expect(stored()).toHaveLength(2);
+  });
+
+  it('keeps a long exercise name usable: truncated in place, with every action still labelled', async () => {
+    await openEdit(PLAN);
+    const name = screen.getByText(LONG_NAME, { selector: '.tp-edit-name' });
+    expect(name).toHaveClass('tp-ellipsis');
+    expect(name).toHaveAttribute('title', LONG_NAME);
+    expect(screen.getByRole('button', { name: `${LONG_NAME} ersetzen` })).toBeEnabled();
+    expect(screen.getByRole('button', { name: `${LONG_NAME} entfernen` })).toBeEnabled();
+    // A single exercise has nowhere to move.
+    expect(screen.getByRole('button', { name: new RegExp(`^${LONG_NAME} verschieben`) })).toBeDisabled();
+  });
+
+  it("locks the running day's structure and leaves the session exactly as it was", async () => {
+    rows.set(PLAN_PATH, { content: EDIT_PLAN.content, createdAt: new firestore.Timestamp(Date.parse(PLAN.created_at)) });
+    mount(undefined, EDIT_PLAN);
+    fireEvent.click(within(await todayCard()).getByRole('button', { name: /Training starten/ }));
+    await waitFor(() => expect(storedSession()).toMatchObject(TUESDAY_BINDING));
+    const session = storedSession();
+    await waitFor(() => expect(focusMode()).not.toBeNull());
+    fireEvent.click(within(focusMode()!).getByRole('button', { name: 'Vollbild beenden' }));
+    await waitFor(() => expect(focusMode()).toBeNull());
+
+    // The running day's agenda row resumes it; its detail is reached through the plan.
+    fireEvent.click(screen.getByRole('button', { name: /^Planübersicht öffnen/ }));
+    fireEvent.click(await screen.findByRole('button', { name: /^Di .*1 Übung/ }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Bearbeiten' }));
+    await screen.findByRole('heading', { level: 1, name: 'Push A bearbeiten' });
+    expect(screen.getByText(/Dieses Training läuft gerade/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^Bankdrücken verschieben/ })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Bankdrücken ersetzen' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Bankdrücken entfernen' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /Übung hinzufügen/ })).toBeDisabled();
+    fireEvent.click(screen.getByRole('button', { name: 'Bankdrücken entfernen' }));
+    fireEvent.click(screen.getByRole('button', { name: /Auto-ausfüllen/ }));
+    const autofill = await sheet('Auto-ausfüllen');
+    expect(within(autofill).queryByRole('button', { name: /Übung hinzufügen/ })).toBeNull();
+    fireEvent.keyDown(autofill, { key: 'Escape' });
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    expect(firestore.setDoc).not.toHaveBeenCalledWith(expect.objectContaining({ path: PLAN_PATH }), expect.anything(), expect.anything());
+
+    // Another day stays editable while the workout runs, and the workout never notices.
     fireEvent.click(screen.getByRole('button', { name: 'Fertig' }));
-    fireEvent.click(await screen.findByRole('button', { name: 'Zurück' }));
+    await screen.findByText(/^Dienstag · 8/);
+    back();
+    fireEvent.click(await screen.findByRole('button', { name: /^Do .*4 Übungen/ }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Bearbeiten' }));
+    await editHeading();
+    const handle = screen.getByRole('button', { name: /^Beinpresse 45° verschieben/ });
+    handle.focus();
+    fireEvent.keyDown(handle, { key: 'ArrowUp' });
+    await waitFor(() => expect(planContent()['Week 1'][3].exercises[2].name).toBe('Beinpresse 45°'));
+    fireEvent.click(screen.getByRole('button', { name: 'Kreuzheben entfernen' }));
+    await waitFor(() => expect(planContent()['Week 1'][3].exercises).toHaveLength(3));
+
+    fireEvent.click(screen.getByRole('button', { name: 'Fertig' }));
+    await onThursdayDetail();
+    back();
+    await screen.findByRole('heading', { level: 1, name: '4-Wochen-Plan' });
+    back();
+    const card = await todayCard();
+    expect(storedSession()).toEqual(session);
+    expect(within(card).getByText('Übung 1 von 1 · Bankdrücken')).toBeInTheDocument();
+    fireEvent.click(within(card).getByRole('button', { name: 'Fortsetzen' }));
+    await waitFor(() => expect(focusMode()).not.toBeNull());
+    expect(within(focusMode()!).getByRole('button', { name: /^Bankdrücken/ })).toBeInTheDocument();
+    expect(storedSession()).toEqual(session);
+  });
+
+  it("editing another day never replaces today's pre-start workout", async () => {
+    await openEdit();
+    fireEvent.click(screen.getByRole('button', { name: 'Kreuzheben entfernen' }));
+    await waitFor(() => expect(planContent()['Week 1'][3].exercises).toHaveLength(3));
+    fireEvent.click(screen.getByRole('button', { name: 'Fertig' }));
+    await onThursdayDetail();
+    back();
     const card = await todayCard();
     await act(async () => {});
     expect(within(card).getByRole('heading', { name: 'Push A' })).toBeInTheDocument();
@@ -389,6 +647,7 @@ describe('editing compatibility', () => {
     await waitFor(() => expect(storedSession()).toMatchObject(TUESDAY_BINDING));
     await waitFor(() => expect(focusMode()).not.toBeNull());
     expect(within(focusMode()!).getByRole('button', { name: /^Bankdrücken/ })).toBeInTheDocument();
+    expect(within(focusMode()!).queryByRole('button', { name: /^Klimmzüge/ })).toBeNull();
   });
 });
 
