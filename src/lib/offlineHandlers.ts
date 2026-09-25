@@ -29,6 +29,13 @@ export const handlers = {
     Both set handlers go through the shared set writer, which finds existing
     documents by position, creates missing ones at position-derived addresses
     and re-reads every address inside a transaction - see setLogWriter.ts.
+
+    Both also return the owner's Workout History family. A queued set can
+    reach the server after its session was finished and already read into
+    Verlauf or Session Detail, which would otherwise keep that partial read
+    for their whole stale time. Which cached session holds the set is not
+    worth guessing: the whole family is one account's, and only returned -
+    so only invalidated - once the write has succeeded.
   */
   TOGGLE_SET: async (payload: ToggleSetPayload, ownerUid: string, checkpoint?: () => void) => {
     const assertCanWrite = () => { assertAccountOwner(ownerUid); checkpoint?.(); };
@@ -44,6 +51,7 @@ export const handlers = {
     return [
       queryKeys.sets.byDay(payload.planId, payload.weekKey, payload.dayIndex),
       queryKeys.completion.byWeek(payload.planId, payload.weekKey),
+      queryKeys.history.all(uid),
     ];
   },
 
@@ -67,7 +75,10 @@ export const handlers = {
       ...(payload.reps !== undefined ? { reps: payload.reps } : {}),
       ...(payload.weightKg !== undefined ? { weightKg: payload.weightKg } : {}),
     }, assertCanWrite);
-    return [queryKeys.sets.byDay(position.planId, position.weekKey, position.dayIndex)];
+    return [
+      queryKeys.sets.byDay(position.planId, position.weekKey, position.dayIndex),
+      queryKeys.history.all(uid),
+    ];
   },
 
   /**
