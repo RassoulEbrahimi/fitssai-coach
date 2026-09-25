@@ -17,6 +17,7 @@ import { Play, WifiOff, Clock, Dumbbell, Maximize2, Minimize2 } from "lucide-rea
 import WorkoutErrorBoundary from "@/components/WorkoutErrorBoundary";
 import FocusModePortal from "@/components/FocusModePortal";
 import { isFocusableElement, useFocusModeContainment } from "@/hooks/useFocusModeContainment";
+import { useFocusModeHistory } from "@/hooks/useFocusModeHistory";
 import { logEvent } from "@/lib/telemetryClient";
 import { CompletionState } from "@/lib/completionUtils";
 import { useThrottledToast } from "@/hooks/useThrottledToast";
@@ -271,6 +272,8 @@ const TodayWorkoutCard: React.FC<TodayWorkoutCardProps> = ({
     initialFocusRef: fullscreenButtonRef,
     onEscape: exitFocusMode,
   });
+  // Browser and Android Back close Focus Mode before they leave the screen under it.
+  useFocusModeHistory(isFocusMode, setFocusMode);
 
   const wasFocusModeRef = useRef(isFocusMode);
   useEffect(() => {

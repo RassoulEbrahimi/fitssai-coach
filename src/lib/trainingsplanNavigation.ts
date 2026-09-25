@@ -75,6 +75,18 @@ const readScreen = (value: unknown): PushedScreen | null => {
   return null;
 };
 
+/** Whether two screens show the same thing, whichever object each was read from. */
+export const sameScreen = (a: PushedScreen, b: PushedScreen): boolean => {
+  if (a.kind !== b.kind) return false;
+  if ((a.kind === "detail" || a.kind === "edit") && (b.kind === "detail" || b.kind === "edit")) {
+    return a.day.weekKey === b.day.weekKey && a.day.dayIndex === b.day.dayIndex && a.day.workoutDay === b.day.workoutDay;
+  }
+  if (a.kind === "session" && b.kind === "session") {
+    return a.session.planId === b.session.planId && a.session.workoutDay === b.session.workoutDay;
+  }
+  return true;
+};
+
 /** The stack stored in a history entry for this plan, or `[]` (Main). */
 export const readTrainingsplanStack = (state: unknown, planId: string | null | undefined): PushedScreen[] => {
   const stored = (state as Record<string, unknown> | null)?.[trainingsplanHistoryKey] as Partial<StoredNavigation> | undefined;

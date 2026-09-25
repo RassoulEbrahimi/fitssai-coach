@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
-import { readTrainingsplanStack, withTrainingsplanStack, type PushedScreen } from "@/lib/trainingsplanNavigation";
+import { readTrainingsplanStack, sameScreen, withTrainingsplanStack, type PushedScreen } from "@/lib/trainingsplanNavigation";
 
 export type TrainingsplanScreen = PushedScreen | { kind: "main" };
 
@@ -50,7 +50,12 @@ export function useTrainingsplanNavigation(planId: string | undefined) {
 
   const apply = useCallback((next: PushedScreen[]) => {
     const current = stackRef.current;
-    if (next.length === current.length && next.every((screen, index) => screen === current[index])) return;
+    /*
+      An entry holding the stack already shown changes nothing. Focus Mode's own
+      entry sits on top of the screen it was opened from with the same stack, so
+      leaving it must not re-open, scroll or refocus that screen.
+    */
+    if (next.length === current.length && next.every((screen, index) => sameScreen(screen, current[index]))) return;
     pendingRef.current = next.length < current.length ? { type: "pop", depth: next.length } : { type: "push" };
     stackRef.current = next;
     setStackState(next);
