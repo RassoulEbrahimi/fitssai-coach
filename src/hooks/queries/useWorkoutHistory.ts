@@ -66,8 +66,9 @@ export const firestoreSessionSource = (uid: string): SessionDetailSource => {
   };
 };
 
-// Completed sessions change only when a workout is finished; the tab
-// invalidates these queries when that happens (see WorkoutView).
+// Completed sessions change when a workout is finished - the tab invalidates
+// these queries then (see WorkoutView) - and when a queued set write replays
+// after the finish, which invalidates them too (see offlineHandlers).
 const HISTORY_STALE_TIME = 5 * 60 * 1000;
 
 /** Verlauf: pages of completed sessions, newest first. `Ältere Trainings laden` fetches the next. */

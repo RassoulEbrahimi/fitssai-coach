@@ -33,6 +33,7 @@ vi.mock("@/lib/firebase", () => ({
 }));
 
 import { handlers } from "./offlineHandlers";
+import { queryKeys } from "@/lib/queryKeys";
 
 const setPayload = (overrides: Record<string, unknown> = {}) => ({
   planId: "plan-1",
@@ -166,6 +167,26 @@ describe("offline replay — recorded set performance", () => {
     expect(updateDoc).not.toHaveBeenCalled();
     expect(warn).toHaveBeenCalled();
     warn.mockRestore();
+  });
+});
+
+describe("offline replay — history refresh after a set write", () => {
+  // A replayed set can land after its session was finished and read into
+  // Verlauf: the owner's whole history family is refreshed, nobody else's.
+  it("returns the owner's history family after a set completion replays", async () => {
+    const keys = await handlers.TOGGLE_SET(setPayload(), "u1");
+
+    expect(keys).toContainEqual(queryKeys.history.all("u1"));
+    expect(keys.filter(key => key[0] === "workout-history")).toEqual([queryKeys.history.all("u1")]);
+  });
+
+  it("returns the owner's history family after recorded performance replays", async () => {
+    const keys = await handlers.UPDATE_SET_PERFORMANCE({
+      planId: "plan-1", weekKey: "Week 2", dayIndex: 3, exerciseIndex: 0, setNumber: 1,
+      workoutDay: "2026-03-10", reps: 10,
+    }, "u1");
+
+    expect(keys.filter(key => key[0] === "workout-history")).toEqual([queryKeys.history.all("u1")]);
   });
 });
 
