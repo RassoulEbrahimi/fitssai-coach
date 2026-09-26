@@ -7,10 +7,11 @@ import {
   initializeTestEnvironment,
   type RulesTestEnvironment,
 } from "@firebase/rules-unit-testing";
-import { doc, getDoc, setDoc, updateDoc, deleteDoc, collection, getDocs } from "firebase/firestore";
+import { doc, getDoc, setDoc, updateDoc, deleteDoc, collection, getDocs, query, where } from "firebase/firestore";
 import {
   NUTRITION_LEGACY_PLANS_COLLECTION,
   NUTRITION_V2_COLLECTIONS,
+  NUTRITION_V2_STATE_DOC_ID,
 } from "../shared/nutrition/collections";
 
 /*
@@ -417,6 +418,55 @@ describe("Nutrition V2 is owner-readable", () => {
 
     await assertFails(getDoc(doc(anon(), "users", ALICE, name, "doc1")));
     await assertFails(getDocs(collection(anon(), "users", ALICE, name)));
+  });
+});
+
+describe("the Nutrition V2 client reads (NUT-05)", () => {
+  // The exact read shapes src/lib/nutrition/v2/firestoreReads.ts issues.
+  const V2 = NUTRITION_V2_COLLECTIONS;
+  const slotsOfPlan = (db: ReturnType<typeof alice>) =>
+    query(collection(db, "users", ALICE, V2.slots), where("planId", "==", "plan-1"));
+  const entriesOnDate = (db: ReturnType<typeof alice>) =>
+    query(collection(db, "users", ALICE, V2.entries), where("date", "==", "2026-09-25"));
+  const entriesInRange = (db: ReturnType<typeof alice>) =>
+    query(
+      collection(db, "users", ALICE, V2.entries),
+      where("date", ">=", "2026-09-23"),
+      where("date", "<=", "2026-09-29")
+    );
+
+  beforeEach(async () => {
+    await seed(["users", ALICE, V2.state, NUTRITION_V2_STATE_DOC_ID], { activePlanId: "plan-1" });
+    await seed(["users", ALICE, V2.plans, "plan-1"], { planId: "plan-1" });
+    await seed(["users", ALICE, V2.targets, "target-1"], { targetVersionId: "target-1" });
+    await seed(["users", ALICE, V2.slots, "plan-1__2026-09-25__lunch"], { planId: "plan-1", date: "2026-09-25" });
+    await seed(["users", ALICE, V2.entries, "slot:2026-09-25:lunch"], { date: "2026-09-25" });
+  });
+
+  it("alice can run every one against her own account", async () => {
+    await assertSucceeds(getDoc(doc(alice(), "users", ALICE, V2.state, NUTRITION_V2_STATE_DOC_ID)));
+    await assertSucceeds(getDoc(doc(alice(), "users", ALICE, V2.plans, "plan-1")));
+    await assertSucceeds(getDoc(doc(alice(), "users", ALICE, V2.targets, "target-1")));
+    // A pointer to a missing document is readable as "absent"; the client treats it as an error.
+    await assertSucceeds(getDoc(doc(alice(), "users", ALICE, V2.plans, "plan-404")));
+
+    const slots = await assertSucceeds(getDocs(slotsOfPlan(alice())));
+    expect(slots.docs.map((d) => d.id)).toEqual(["plan-1__2026-09-25__lunch"]);
+    const onDate = await assertSucceeds(getDocs(entriesOnDate(alice())));
+    expect(onDate.docs.map((d) => d.id)).toEqual(["slot:2026-09-25:lunch"]);
+    const inRange = await assertSucceeds(getDocs(entriesInRange(alice())));
+    expect(inRange.docs.map((d) => d.id)).toEqual(["slot:2026-09-25:lunch"]);
+  });
+
+  it("bob and an unauthenticated client can run none of them against alice", async () => {
+    for (const db of [bob(), anon()]) {
+      await assertFails(getDoc(doc(db, "users", ALICE, V2.state, NUTRITION_V2_STATE_DOC_ID)));
+      await assertFails(getDoc(doc(db, "users", ALICE, V2.plans, "plan-1")));
+      await assertFails(getDoc(doc(db, "users", ALICE, V2.targets, "target-1")));
+      await assertFails(getDocs(slotsOfPlan(db)));
+      await assertFails(getDocs(entriesOnDate(db)));
+      await assertFails(getDocs(entriesInRange(db)));
+    }
   });
 });
 

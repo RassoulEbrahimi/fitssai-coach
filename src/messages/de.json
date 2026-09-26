@@ -474,5 +474,43 @@
     "copiedFromWeek": "Kopiert von W{{weekNumber}}",
     "mirrorProgressSaved": "Fortschritt gespeichert (kopierte Woche – deine Daten werden trotzdem hier gezählt)",
     "preview": "Vorschau"
+  },
+  "nutritionV2": {
+    "today": {
+      "title": "Ernährung",
+      "todayLabel": "Heute",
+      "weekTitle": "Diese Woche",
+      "planWeekTitle": "Aktiver Plan",
+      "loading": "Ernährung wird geladen",
+      "plannedKcal": "{{kcal}} kcal geplant",
+      "status": {
+        "unrecorded": "Nicht erfasst",
+        "partial": "Teilweise erfasst",
+        "recorded": "Erfasst"
+      },
+      "outsidePlan": "Heute ist kein Tag deines aktiven Ernährungsplans.",
+      "error": {
+        "title": "Ernährung konnte nicht geladen werden",
+        "description": "Deine Ernährungsdaten konnten nicht gelesen werden."
+      },
+      "notInitialized": {
+        "title": "Ernährung ist noch nicht eingerichtet",
+        "description": "Für dein Konto sind noch keine Ernährungsdaten vorhanden."
+      },
+      "noActivePlan": {
+        "title": "Kein aktiver Ernährungsplan",
+        "description": "Derzeit ist kein Ernährungsplan aktiv."
+      },
+      "ineligible": {
+        "minor": {
+          "title": "Ernährung ist ab 18 Jahren verfügbar",
+          "description": "Die Ernährungsplanung richtet sich an Erwachsene. Training und alle anderen Bereiche bleiben für dich verfügbar."
+        },
+        "missingAge": {
+          "title": "Ernährung ist ohne Altersangabe nicht verfügbar",
+          "description": "Die Ernährungsplanung richtet sich an Erwachsene und braucht dafür dein Alter. Training und alle anderen Bereiche bleiben für dich verfügbar."
+        }
+      }
+    }
   }
 }
