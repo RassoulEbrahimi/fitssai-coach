@@ -154,12 +154,12 @@ export type NutritionPlanDay = z.infer<typeof nutritionPlanDaySchema>;
  * Exactly `NUTRITION_PLAN_DAY_COUNT` days, one per calendar date from
  * `startDate` to `endDate`, in order. Every day carries its own ISO date; no
  * day is identified by a weekday. `slotOrder` is the plan's configured slots;
- * a day plans each of them at most once and plans nothing outside them. Once
- * the plan is active its content is immutable — a day's change is a
+ * every day plans exactly one meal for each of them and nothing outside them.
+ * Once the plan is active its content is immutable — a day's change is a
  * date- and slot-scoped `MealOverride`, never an edit here.
  *
- * Structure only. Whether a plan is nutritionally acceptable (every slot
- * filled, totals near the target) is plan-validation policy, not this contract.
+ * Structure only. Whether a plan is nutritionally acceptable (totals near the
+ * target, sensible meals) is plan-validation policy, not this contract.
  */
 export const nutritionPlanSchema = z
   .object({
@@ -211,6 +211,9 @@ export const nutritionPlanSchema = z
         if (mealIds.has(meal.mealId)) issue([...path, "mealId"], `mealId ${meal.mealId} is not unique in the plan`);
         mealIds.add(meal.mealId);
       });
+      for (const slotId of configured) {
+        if (!slots.has(slotId)) issue(["days", dayIndex, "meals"], `slot ${slotId} has no meal on ${day.date}`);
+      }
     });
   });
 

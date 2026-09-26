@@ -44,7 +44,7 @@ const plan = {
   planId: "plan-1",
   startDate: START,
   endDate: "2026-10-31",
-  slotOrder: ["breakfast", "lunch", "snack_1", "dinner", "snack_2"],
+  slotOrder: ["breakfast", "lunch", "snack_1"],
   days: Array.from({ length: 7 }, (_, index) => planDay(addNutritionDays(START, index), index)),
 };
 
@@ -224,6 +224,51 @@ describe("NutritionPlan", () => {
     expect(nutritionPlanSchema.safeParse(withDays(days)).success).toBe(false);
   });
 
+  it("passes when every day plans each configured slot exactly once (subset of the canonical slots)", () => {
+    expect(plan.slotOrder).toEqual(["breakfast", "lunch", "snack_1"]);
+    expect(nutritionPlanSchema.safeParse(plan).success).toBe(true);
+  });
+
+  it("passes when every day plans all five canonical slots exactly once", () => {
+    const slots = ["breakfast", "lunch", "snack_1", "dinner", "snack_2"];
+    const full = {
+      ...plan,
+      slotOrder: slots,
+      days: plan.days.map((day, dayIndex) => ({
+        date: day.date,
+        meals: slots.map((slotId, slotIndex) => ({ mealId: `f-${dayIndex}-${slotIndex}`, slotId, name: "Gericht", values })),
+      })),
+    };
+    expect(nutritionPlanSchema.safeParse(full).success).toBe(true);
+
+    const missing = { ...full, days: [...full.days] };
+    missing.days[3] = { ...missing.days[3], meals: missing.days[3].meals.filter((meal) => meal.slotId !== "snack_2") };
+    expect(nutritionPlanSchema.safeParse(missing).success).toBe(false);
+  });
+
+  it("rejects a day missing one configured slot", () => {
+    const days = [...plan.days];
+    days[5] = { ...days[5], meals: days[5].meals.filter((meal) => meal.slotId !== "snack_1") };
+    const result = nutritionPlanSchema.safeParse(withDays(days));
+    expect(result.success).toBe(false);
+    expect(result.error?.issues.map((issue) => issue.message)).toContain("slot snack_1 has no meal on 2026-10-30");
+  });
+
+  it("rejects a day with no meals at all", () => {
+    const days = [...plan.days];
+    days[0] = { ...days[0], meals: [] };
+    expect(nutritionPlanSchema.safeParse(withDays(days)).success).toBe(false);
+  });
+
+  it("rejects a missing slot even when another slot fills its place", () => {
+    const days = [...plan.days];
+    days[2] = {
+      ...days[2],
+      meals: days[2].meals.map((meal) => (meal.slotId === "snack_1" ? { ...meal, slotId: "lunch" } : meal)),
+    };
+    expect(nutritionPlanSchema.safeParse(withDays(days)).success).toBe(false);
+  });
+
   it("allows the same slot on different days", () => {
     expect(nutritionPlanSchema.safeParse(plan).success).toBe(true);
   });
@@ -244,17 +289,23 @@ describe("NutritionPlan", () => {
     expect(nutritionPlanSchema.safeParse(withDays(days)).success).toBe(false);
 
     const days2 = [...plan.days];
-    days2[1] = { ...days2[1], meals: [{ ...days2[1].meals[0], mealId: "Haferflocken mit Beeren" }] };
+    days2[1] = {
+      ...days2[1],
+      meals: [{ ...days2[1].meals[0], mealId: "Haferflocken mit Beeren" }, ...days2[1].meals.slice(1)],
+    };
     expect(nutritionPlanSchema.safeParse(withDays(days2)).success).toBe(false);
   });
 
   it("rejects an empty meal name but sets no layout length limit", () => {
     const empty = [...plan.days];
-    empty[0] = { ...empty[0], meals: [{ ...empty[0].meals[0], name: "  " }] };
+    empty[0] = { ...empty[0], meals: [{ ...empty[0].meals[0], name: "  " }, ...empty[0].meals.slice(1)] };
     expect(nutritionPlanSchema.safeParse(withDays(empty)).success).toBe(false);
 
     const long = [...plan.days];
-    long[0] = { ...long[0], meals: [{ ...long[0].meals[0], name: "Sehr ausführliches Gericht ".repeat(30) }] };
+    long[0] = {
+      ...long[0],
+      meals: [{ ...long[0].meals[0], name: "Sehr ausführliches Gericht ".repeat(30) }, ...long[0].meals.slice(1)],
+    };
     expect(nutritionPlanSchema.safeParse(withDays(long)).success).toBe(true);
   });
 });
