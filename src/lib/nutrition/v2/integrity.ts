@@ -190,6 +190,27 @@ export const assertNutritionV2DateSpan = (span: NutritionV2DateSpan): NutritionV
 };
 
 /**
+ * The entry document read by its own id, e.g. inside a write transaction.
+ * Absent is `null` — an entry that was never recorded. Present must be a valid
+ * `RecordedEntry` stored under its own `entryId`.
+ */
+export const parseNutritionV2Entry = (
+  entryId: string,
+  snapshot: { id: string; exists: boolean; data: unknown }
+): RecordedEntry | null => {
+  const path = documentPath(NUTRITION_V2_COLLECTIONS.entries, entryId);
+  if (snapshot.id !== entryId) {
+    throw new NutritionV2IntegrityError("idMismatch", path, `read returned document ${snapshot.id}`);
+  }
+  if (!snapshot.exists) return null;
+  const entry = parseStrict(recordedEntrySchema, snapshot.data, path);
+  if (entry.entryId !== entryId) {
+    throw new NutritionV2IntegrityError("idMismatch", path, "id is not the entry's entryId");
+  }
+  return entry;
+};
+
+/**
  * Every entry returned for `span`, exactly as recorded. Each must be a valid
  * `RecordedEntry`, stored under its own `entryId`, dated inside the span.
  * Nothing is recomputed, merged or synthesised.

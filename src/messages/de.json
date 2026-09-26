@@ -511,6 +511,79 @@
           "description": "Die Ernährungsplanung richtet sich an Erwachsene und braucht dafür dein Alter. Training und alle anderen Bereiche bleiben für dich verfügbar."
         }
       }
+    },
+    "recording": {
+      "title": "Heute erfassen",
+      "estimateNote": "Erfasste Werte sind Schätzungen.",
+      "slot": {
+        "breakfast": "Frühstück",
+        "lunch": "Mittagessen",
+        "snack_1": "Snack 1",
+        "dinner": "Abendessen",
+        "snack_2": "Snack 2"
+      },
+      "planned": "{{kcal}} kcal geplant",
+      "state": {
+        "none": "Nicht erfasst",
+        "skip": "Ausgelassen",
+        "plannedMeal": "Erfasst · ca. {{kcal}} kcal",
+        "plannedMealPortion": "Erfasst · {{portion}} Portion · ca. {{kcal}} kcal",
+        "custom": "Erfasst: {{name}} · ca. {{kcal}} kcal",
+        "extra": "Erfasst · ca. {{kcal}} kcal"
+      },
+      "record": "Erfassen",
+      "edit": "Bearbeiten",
+      "recordSlot": "{{slot}} erfassen",
+      "editSlot": "{{slot}} bearbeiten",
+      "editExtra": "{{name}} bearbeiten",
+      "extrasTitle": "Eigene Mahlzeiten",
+      "addExtra": "Eigene Mahlzeit",
+      "unavailable": {
+        "offline": "Du bist offline. Erfassen ist nur mit Internetverbindung möglich.",
+        "pending": "Erfassen ist gleich verfügbar.",
+        "error": "Erfassen ist gerade nicht möglich.",
+        "signedOut": "Erfassen ist gerade nicht möglich.",
+        "ineligible": "Erfassen ist gerade nicht möglich."
+      },
+      "sheet": {
+        "slotTitle": "{{slot}} erfassen",
+        "extraTitle": "Eigene Mahlzeit",
+        "extraEditTitle": "Eigene Mahlzeit bearbeiten",
+        "plannedLabel": "Geplant: {{name}} · {{kcal}} kcal",
+        "currentLabel": "Aktuell",
+        "removedNote": "Der frühere Eintrag wurde entfernt und zählt nicht als erfasst.",
+        "modeLabel": "Was hast du gegessen?",
+        "mode": {
+          "plannedMeal": "Gegessen",
+          "custom": "Anderes gegessen",
+          "skip": "Ausgelassen"
+        },
+        "portionLabel": "Portion",
+        "portionPresets": "Portion wählen",
+        "portionInvalid": "Gib eine Portion größer als 0 ein.",
+        "estimate": "Erfasst wird ca. {{kcal}} kcal",
+        "skipNote": "Die Mahlzeit wird als ausgelassen erfasst, ohne Nährwerte.",
+        "name": "Bezeichnung",
+        "nameRequired": "Gib eine Bezeichnung ein.",
+        "kcal": "Kalorien (kcal)",
+        "kcalRequired": "Gib die Kalorien ein.",
+        "numberInvalid": "Gib eine Zahl ab 0 ein.",
+        "proteinG": "Eiweiß in g (optional)",
+        "carbsG": "Kohlenhydrate in g (optional)",
+        "fatG": "Fett in g (optional)",
+        "macrosNote": "Leere Felder bleiben unbekannt.",
+        "save": "Speichern",
+        "saving": "Wird gespeichert …",
+        "remove": "Entfernen",
+        "cancel": "Abbrechen",
+        "error": {
+          "conflict": "Dieser Eintrag wurde inzwischen geändert. Die aktuelle Fassung wird geladen – bitte prüfe sie und bestätige erneut.",
+          "offline": "Du bist offline. Es wurde nichts gespeichert.",
+          "futureDate": "Zukünftige Tage können nicht erfasst werden.",
+          "unavailable": "Erfassen ist gerade nicht möglich. Es wurde nichts gespeichert.",
+          "failed": "Speichern fehlgeschlagen. Bitte versuche es erneut."
+        }
+      }
     }
   }
 }

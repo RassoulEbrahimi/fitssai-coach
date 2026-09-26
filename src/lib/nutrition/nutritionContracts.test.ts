@@ -6,12 +6,17 @@ import {
   NUTRITION_SCHEMA_VERSION,
   addNutritionDays,
   extraEntryId,
+  NUTRITION_ENTRY_INTENT_RING_SIZE,
+  RECORDED_ENTRY_IDENTITY_FIELDS,
+  RECORDED_ENTRY_STATUSES,
   generationRequestKindSchema,
+  isActiveRecordedEntry,
   generationRequestStatusSchema,
   nutritionPlanSchema,
   nutritionUserStateSchema,
   nutritionValuesSchema,
   recordedEntrySchema,
+  recordedEntrySnapshotSchema,
   slotEntryId,
   slotHeadSchema,
   targetVersionSchema,
@@ -66,6 +71,10 @@ const state = {
 };
 
 const UUID = "3f2b8c1e-9a4d-4e6f-8b21-7c5d0e9a1b34";
+const INTENT = "7d444840-9dc0-4e2b-a5b1-3b8f1c2e6a10";
+
+/** NUT-06 metadata of an entry created by one intent. */
+const meta = { revision: 1, status: "active", appliedIntentIds: [INTENT] };
 
 const plannedMealEntry = {
   schemaVersion: 2,
@@ -79,6 +88,7 @@ const plannedMealEntry = {
   estimateBasis: "planMealTimesPortion",
   portion: 1.5,
   nutritionEstimate: { kcal: 918.6, proteinG: 57.375, carbsG: 106.65, fatG: 25.9995 },
+  ...meta,
 };
 
 const skipEntry = {
@@ -90,6 +100,7 @@ const skipEntry = {
   recording: "skip",
   estimateBasis: "none",
   nutritionEstimate: null,
+  ...meta,
 };
 
 const customExtraEntry = {
@@ -102,6 +113,7 @@ const customExtraEntry = {
   name: "Apfel",
   estimateBasis: "userStated",
   nutritionEstimate: { kcal: 80, proteinG: null, carbsG: null, fatG: null },
+  ...meta,
 };
 
 const customSlotEntry = {
@@ -402,13 +414,19 @@ describe("RecordedEntry estimate semantics", () => {
     ).toBe(false);
   });
 
-  it("custom basis none carries no estimate; userStated needs one", () => {
-    const none = { ...customExtraEntry, estimateBasis: "none", nutritionEstimate: null };
-    expect(recordedEntrySchema.safeParse(none).success).toBe(true);
-    expect(
-      recordedEntrySchema.safeParse({ ...none, nutritionEstimate: customExtraEntry.nutritionEstimate }).success
-    ).toBe(false);
-    expect(recordedEntrySchema.safeParse({ ...customExtraEntry, nutritionEstimate: null }).success).toBe(false);
+  it("a custom recording always carries the kcal the person stated (NUT-06)", () => {
+    // A custom meal without stated kcal is not a completed recording, in a
+    // slot or as an extra — basis none is for a skip only.
+    for (const entry of [customExtraEntry, customSlotEntry]) {
+      expect(recordedEntrySchema.safeParse({ ...entry, estimateBasis: "none", nutritionEstimate: null }).success).toBe(
+        false
+      );
+      expect(
+        recordedEntrySchema.safeParse({ ...entry, estimateBasis: "none", nutritionEstimate: entry.nutritionEstimate })
+          .success
+      ).toBe(false);
+      expect(recordedEntrySchema.safeParse({ ...entry, nutritionEstimate: null }).success).toBe(false);
+    }
   });
 
   it("custom cannot claim a planMealTimesPortion basis or a portion", () => {
@@ -434,6 +452,56 @@ describe("RecordedEntry estimate semantics", () => {
   it("has no actualCalories field", () => {
     expect(recordedEntrySchema.safeParse({ ...customExtraEntry, actualCalories: 80 }).success).toBe(false);
     expect(recordedEntrySchema.safeParse({ ...plannedMealEntry, actualCalories: 918 }).success).toBe(false);
+  });
+});
+
+describe("RecordedEntry mutation metadata (NUT-06)", () => {
+  it("names the ring size, the statuses and the identity fields", () => {
+    expect(NUTRITION_ENTRY_INTENT_RING_SIZE).toBe(20);
+    expect(RECORDED_ENTRY_STATUSES).toEqual(["active", "removed"]);
+    expect(RECORDED_ENTRY_IDENTITY_FIELDS).toEqual(["schemaVersion", "entryId", "kind", "date", "slotId"]);
+  });
+
+  it("requires revision, status and appliedIntentIds on every recording", () => {
+    for (const entry of [plannedMealEntry, skipEntry, customExtraEntry, customSlotEntry]) {
+      for (const field of ["revision", "status", "appliedIntentIds"]) {
+        const { [field]: _omitted, ...rest } = entry as Record<string, unknown>;
+        expect(recordedEntrySchema.safeParse(rest).success, field).toBe(false);
+      }
+    }
+  });
+
+  it("takes a positive whole revision", () => {
+    for (const revision of [0, -1, 1.5, "1", null]) {
+      expect(recordedEntrySchema.safeParse({ ...plannedMealEntry, revision }).success, String(revision)).toBe(false);
+    }
+    expect(recordedEntrySchema.safeParse({ ...plannedMealEntry, revision: 42 }).success).toBe(true);
+  });
+
+  it("is active or a removed tombstone that keeps its snapshot", () => {
+    const tombstone = { ...plannedMealEntry, status: "removed", revision: 2 };
+    expect(recordedEntrySchema.parse(tombstone)).toEqual(tombstone);
+    expect(recordedEntrySchema.safeParse({ ...plannedMealEntry, status: "deleted" }).success).toBe(false);
+    expect(isActiveRecordedEntry(recordedEntrySchema.parse(tombstone))).toBe(false);
+    // An active skip is a recording; a tombstone is not.
+    expect(isActiveRecordedEntry(recordedEntrySchema.parse(skipEntry))).toBe(true);
+  });
+
+  it("keeps 1 to 20 distinct lower-case UUID intent ids", () => {
+    const ids = (n: number) => Array.from({ length: n }, (_, i) => `00000000-0000-4000-8000-${String(i).padStart(12, "0")}`);
+    expect(recordedEntrySchema.safeParse({ ...plannedMealEntry, appliedIntentIds: ids(20) }).success).toBe(true);
+    expect(recordedEntrySchema.safeParse({ ...plannedMealEntry, appliedIntentIds: ids(21) }).success).toBe(false);
+    expect(recordedEntrySchema.safeParse({ ...plannedMealEntry, appliedIntentIds: [] }).success).toBe(false);
+    expect(recordedEntrySchema.safeParse({ ...plannedMealEntry, appliedIntentIds: [INTENT, INTENT] }).success).toBe(false);
+    expect(recordedEntrySchema.safeParse({ ...plannedMealEntry, appliedIntentIds: [INTENT.toUpperCase()] }).success).toBe(false);
+    expect(recordedEntrySchema.safeParse({ ...plannedMealEntry, appliedIntentIds: ["device-1"] }).success).toBe(false);
+  });
+
+  it("describes the desired state without metadata as a snapshot", () => {
+    const { revision: _r, status: _s, appliedIntentIds: _a, ...snapshot } = plannedMealEntry;
+    expect(recordedEntrySnapshotSchema.safeParse(snapshot).success).toBe(true);
+    expect(recordedEntrySnapshotSchema.safeParse(plannedMealEntry).success).toBe(false);
+    expect(recordedEntrySchema.safeParse(snapshot).success).toBe(false);
   });
 });
 

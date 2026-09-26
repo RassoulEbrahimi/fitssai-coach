@@ -20,6 +20,7 @@ import {
   PLAN_ID,
   PLAN_START,
   aiOverride,
+  customSlotEntry,
   deepFrozen,
   extraEntry,
   makePlan,
@@ -27,6 +28,7 @@ import {
   makeState,
   mealIdFor,
   plannedMealEntry,
+  removedEntry,
   skipEntry,
   values,
 } from "@/test/nutritionV2Fixtures";
@@ -193,6 +195,59 @@ describe("recording coverage", () => {
     expect(coverage([plannedMealEntry(DAY, "breakfast"), plannedMealEntry(DAY, "lunch"), extraEntry(DAY)])).toBe(
       "partial"
     );
+  });
+});
+
+describe("recording coverage with tombstones (NUT-06)", () => {
+  const coverage = (entries: RecordedEntry[]) => nutritionRecordingCoverage(plan.slotOrder, DAY, entries);
+
+  it("counts an active plannedMeal, custom or skip entry as its slot's recording", () => {
+    expect(coverage([plannedMealEntry(DAY, "breakfast")]).recordedSlots).toBe(1);
+    expect(coverage([customSlotEntry(DAY, "lunch")]).recordedSlots).toBe(1);
+    expect(coverage([skipEntry(DAY, "dinner")]).recordedSlots).toBe(1);
+    expect(
+      coverage([plannedMealEntry(DAY, "breakfast"), customSlotEntry(DAY, "lunch"), skipEntry(DAY, "dinner")]).status
+    ).toBe("recorded");
+  });
+
+  it("does not count a removed plannedMeal, skip or custom entry", () => {
+    for (const entry of [
+      plannedMealEntry(DAY, "breakfast"),
+      skipEntry(DAY, "breakfast"),
+      customSlotEntry(DAY, "breakfast"),
+    ]) {
+      const tombstone = removedEntry(entry);
+      expect(recordedEntrySchema.parse(tombstone)).toEqual(tombstone);
+      expect(coverage([tombstone])).toEqual({ status: "unrecorded", recordedSlots: 0, configuredSlots: 3 });
+    }
+  });
+
+  it("an active extra and a removed extra both leave every configured slot unrecorded", () => {
+    expect(coverage([extraEntry(DAY)]).status).toBe("unrecorded");
+    expect(coverage([removedEntry(extraEntry(DAY))]).status).toBe("unrecorded");
+  });
+
+  it("no entry at all is still unrecorded, and a tombstone next to active entries counts only the active ones", () => {
+    expect(coverage([]).status).toBe("unrecorded");
+    expect(
+      coverage([removedEntry(plannedMealEntry(DAY, "breakfast")), skipEntry(DAY, "lunch"), customSlotEntry(DAY, "dinner")])
+    ).toEqual({ status: "partial", recordedSlots: 2, configuredSlots: 3 });
+  });
+
+  it("planned totals come only from resolved plan meals, whatever is recorded or removed", () => {
+    const entries = [
+      plannedMealEntry(DAY, "breakfast", values(5000, 1, 1, 1)),
+      removedEntry(customSlotEntry(DAY, "lunch", 7000)),
+      extraEntry(DAY),
+      skipEntry(DAY, "dinner"),
+    ];
+    const bare = buildNutritionWeek({ plan, slotHeads: [], entries: [], today: DAY });
+    const recorded = buildNutritionWeek({ plan, slotHeads: [], entries, today: DAY });
+
+    expect(recorded.today?.planned).toEqual(bare.today?.planned);
+    expect(recorded.days.map((day) => day.plannedKcal)).toEqual(bare.days.map((day) => day.plannedKcal));
+    expect(recorded.days.find((day) => day.date === DAY)?.recording).toBe("partial");
+    expect(JSON.stringify(recorded)).not.toMatch(/5000|7000/);
   });
 });
 

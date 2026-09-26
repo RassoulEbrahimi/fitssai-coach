@@ -8,7 +8,9 @@ import "@/lib/i18n";
   NUT-05. The Nutrition V2 Today/week shell is read-only: each row shows the
   day, its recording status and its PLANNED kcal — no macros, no recorded
   values, no controls — and every data state is neutral. The container reads
-  nothing unless the account is an eligible adult.
+  nothing unless the account is an eligible adult. NUT-06 recording lives in a
+  separate section the container passes in (NutritionV2TodayRecording.test.tsx);
+  the shell itself stays read-only.
 */
 
 const store = vi.hoisted(() => ({ docs: new Map<string, unknown>() }));

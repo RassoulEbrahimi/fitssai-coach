@@ -56,6 +56,196 @@ service cloud.firestore {
       return isNutritionV2Collection(name) || name == 'nutrition_plans';
     }
 
+    // ---- Nutrition V2 recorded entries --------------------------------
+    //
+    // The persisted shape mirrors `recordedEntrySchema` in
+    // shared/nutrition/contracts.ts; the client writes it only through the
+    // shared planner (shared/nutrition/entryWrite.ts) inside a transaction.
+    //
+    // Rules own: authorization, the adult gate, document shape, identity,
+    // the exact revision step, the intent-ring step, tombstones and no delete.
+    // The planner owns what rules cannot see: whether an intent is a
+    // duplicate (it is then not written at all), whether the revision the
+    // person saw is still current (the transaction reads it), and that a
+    // planned-meal estimate is the planned values times the portion.
+    //
+    // Deliberately not here: any date window. A future Berlin date is refused
+    // by the client's Berlin calendar, and rules have no Berlin calendar to
+    // compare with — a UTC approximation would be wrong around midnight. The
+    // lower backfill bound is an open product decision and is not invented.
+
+    // Nutrition V2 is for adults: the owner's own profile must hold a usable
+    // numeric age of at least 18. Missing, malformed or under-18 is refused.
+    // Reads are not gated here; the client hides V2 from ineligible accounts.
+    function isNutritionAdult(userId) {
+      let path = /databases/$(database)/documents/users/$(userId);
+      let age = exists(path) ? get(path).data.get('age', null) : null;
+      return age is number && isFiniteNumber(age) && age >= 18;
+    }
+
+    function isNutritionSlotId(value) {
+      return value in ['breakfast', 'lunch', 'snack_1', 'dinner', 'snack_2'];
+    }
+
+    function isNutritionDocId(value) {
+      return value is string && value.matches('^[A-Za-z0-9-]{1,128}$');
+    }
+
+    // YYYY-MM-DD naming a real calendar day: a day that does not exist
+    // (2026-02-30) either fails to build or comes back as another day.
+    function isNutritionDate(value) {
+      return value is string
+             && value.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$')
+             && isCalendarDay(value.split('-'));
+    }
+
+    function isCalendarDay(parts) {
+      let day = timestamp.date(int(parts[0]), int(parts[1]), int(parts[2]));
+      return day.year() == int(parts[0]) && day.month() == int(parts[1]) && day.day() == int(parts[2]);
+    }
+
+    function uuidPattern() {
+      return '[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}';
+    }
+
+    // An applied intent id: a lower-case UUID.
+    function isIntentId(value) {
+      return value is string && value.matches('^' + uuidPattern() + '$');
+    }
+
+    // NaN and ±Infinity are the only numbers for which v - v is not 0.
+    function isFiniteNumber(value) {
+      return value - value == 0;
+    }
+
+    // A finite, non-negative number. Structure only: no nutrition bound.
+    function isQuantity(value) {
+      return value is number && isFiniteNumber(value) && value >= 0;
+    }
+
+    function isNutrientKeys(value) {
+      return value is map
+             && value.keys().hasOnly(['kcal', 'proteinG', 'carbsG', 'fatG'])
+             && value.keys().hasAll(['kcal', 'proteinG', 'carbsG', 'fatG']);
+    }
+
+    // All four values known: a planned meal's values times the portion.
+    function isNutritionValues(value) {
+      return isNutrientKeys(value)
+             && isQuantity(value.kcal) && isQuantity(value.proteinG)
+             && isQuantity(value.carbsG) && isQuantity(value.fatG);
+    }
+
+    // A stated estimate: kcal required, a macro is a number or null (unknown).
+    function isNutritionEstimate(value) {
+      return isNutrientKeys(value)
+             && isQuantity(value.kcal)
+             && (value.proteinG == null || isQuantity(value.proteinG))
+             && (value.carbsG == null || isQuantity(value.carbsG))
+             && (value.fatG == null || isQuantity(value.fatG));
+    }
+
+    // Text a person reads: says something. No length policy here.
+    function isDisplayText(value) {
+      return value is string && value.trim().size() > 0;
+    }
+
+    function entryCommonKeys() {
+      return ['schemaVersion', 'entryId', 'kind', 'date', 'slotId', 'recording',
+              'estimateBasis', 'nutritionEstimate', 'revision', 'status', 'appliedIntentIds'];
+    }
+
+    function hasExactKeys(entry, keys) {
+      return entry.keys().hasOnly(keys) && entry.keys().hasAll(keys);
+    }
+
+    // schemaVersion, entryId, kind, date and slotId, consistent with the
+    // document id: `slot:{date}:{slotId}` or `extra:{uuid}` (custom only).
+    function isEntryIdentity(docId, entry) {
+      return entry.schemaVersion == 2
+             && entry.entryId == docId
+             && isNutritionDate(entry.date)
+             && ((entry.kind == 'slot'
+                  && isNutritionSlotId(entry.slotId)
+                  && docId == 'slot:' + entry.date + ':' + entry.slotId)
+                 || (entry.kind == 'extra'
+                  && entry.slotId == null
+                  && entry.recording == 'custom'
+                  && docId.matches('^extra:' + uuidPattern() + '$')));
+    }
+
+    // Exactly one recording variant, with exactly its fields.
+    function isEntryRecording(entry) {
+      return (entry.recording == 'plannedMeal'
+              && hasExactKeys(entry, entryCommonKeys().concat(['planId', 'name', 'portion']))
+              && isNutritionDocId(entry.planId)
+              && isDisplayText(entry.name)
+              && entry.estimateBasis == 'planMealTimesPortion'
+              && isQuantity(entry.portion) && entry.portion > 0
+              && isNutritionValues(entry.nutritionEstimate))
+          || (entry.recording == 'skip'
+              && hasExactKeys(entry, entryCommonKeys())
+              && entry.estimateBasis == 'none'
+              && entry.nutritionEstimate == null)
+          || (entry.recording == 'custom'
+              && hasExactKeys(entry, entryCommonKeys().concat(['name']))
+              && isDisplayText(entry.name)
+              && entry.estimateBasis == 'userStated'
+              && isNutritionEstimate(entry.nutritionEstimate));
+    }
+
+    function isEntryMetadata(entry) {
+      return entry.revision is int && entry.revision >= 1
+             && entry.status in ['active', 'removed']
+             && entry.appliedIntentIds is list
+             && entry.appliedIntentIds.size() >= 1
+             && entry.appliedIntentIds.size() <= 20;
+    }
+
+    function isValidEntry(docId, entry) {
+      return isEntryIdentity(docId, entry) && isEntryRecording(entry) && isEntryMetadata(entry);
+    }
+
+    // A new entry: revision 1, active (never born a tombstone), applied by
+    // exactly one intent.
+    function isNutritionEntryCreate(docId, next) {
+      return isValidEntry(docId, next)
+             && next.revision == 1
+             && next.status == 'active'
+             && next.appliedIntentIds.size() == 1
+             && isIntentId(next.appliedIntentIds[0]);
+    }
+
+    // One applied write adds exactly one new intent id at the end, dropping
+    // the oldest only once the ring holds 20.
+    function isIntentRingStep(prev, next) {
+      let fresh = next[next.size() - 1];
+      return isIntentId(fresh)
+             && !(fresh in prev)
+             && (prev.size() < 20
+                   ? next == prev.concat([fresh])
+                   : next == prev[1:20].concat([fresh]));
+    }
+
+    // Identity fixed, revision exactly +1, ring stepped, the result valid.
+    // A removal only turns an active entry into a tombstone and keeps its
+    // snapshot; a tombstone may be recorded again as an active entry.
+    function isNutritionEntryUpdate(docId, prev, next) {
+      return isValidEntry(docId, next)
+             && next.schemaVersion == prev.schemaVersion
+             && next.entryId == prev.entryId
+             && next.kind == prev.kind
+             && next.date == prev.date
+             && next.slotId == prev.slotId
+             && prev.revision is int
+             && next.revision == prev.revision + 1
+             && prev.appliedIntentIds is list
+             && isIntentRingStep(prev.appliedIntentIds, next.appliedIntentIds)
+             && (next.status == 'active'
+                 || (prev.status == 'active'
+                     && next.diff(prev).affectedKeys().hasOnly(['status', 'revision', 'appliedIntentIds'])));
+    }
+
     match /users/{userId} {
       allow read: if isOwner(userId);
 
@@ -98,12 +288,14 @@ service cloud.firestore {
         }
       }
 
-      // Nutrition V2. Server-owned in this slice: the owner reads, and no
-      // client writes, because nothing here allows one. Cloud Functions write
-      // through the Admin SDK, which bypasses rules. Entries get a narrowly
-      // validated client write in a later slice; until then they are
-      // read-only like the rest. Any other `nutrition_v2_*` name, and anything
-      // nested under these, matches no allow and is denied.
+      // Nutrition V2. Server-owned: the owner reads, and no client writes,
+      // because nothing here allows one. Cloud Functions write through the
+      // Admin SDK, which bypasses rules. The one exception is
+      // `nutrition_v2_entries`, which an adult owner creates and updates
+      // through a narrowly validated compare-and-set write (see
+      // `isNutritionEntryCreate` / `isNutritionEntryUpdate`). Any other
+      // `nutrition_v2_*` name, and anything nested under these, matches no
+      // allow and is denied.
       match /nutrition_v2_state/{docId} {
         allow read: if isOwner(userId);
       }
@@ -120,8 +312,16 @@ service cloud.firestore {
         allow read: if isOwner(userId);
       }
 
+      // Recorded entries: owner-readable, owner-writable by an adult, never
+      // deletable. A taken-back entry is a `removed` tombstone, not a delete.
       match /nutrition_v2_entries/{docId} {
         allow read: if isOwner(userId);
+        allow create: if isOwner(userId)
+                      && isNutritionAdult(userId)
+                      && isNutritionEntryCreate(docId, request.resource.data);
+        allow update: if isOwner(userId)
+                      && isNutritionAdult(userId)
+                      && isNutritionEntryUpdate(docId, resource.data, request.resource.data);
       }
 
       match /nutrition_v2_generations/{docId} {
