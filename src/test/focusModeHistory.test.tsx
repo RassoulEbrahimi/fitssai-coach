@@ -27,7 +27,7 @@ vi.mock('@/hooks/useBerlinToday', () => ({ useBerlinToday: () => today.value }))
 vi.mock('@/hooks/queries/useProfile', () => ({ useProfile: () => ({ data: { id: 'u1' }, isLoading: false }) }));
 vi.mock('@/hooks/queries/useWorkoutPlan', () => ({ useWorkoutPlan: () => ({ data: PLAN, isLoading: false }) }));
 vi.mock('@/hooks/queries/useWorkoutLogs', () => ({ useWorkoutLogs: () => ({ data: [], toggleDay: vi.fn(), isToggling: false }) }));
-vi.mock('@/hooks/queries/useNutritionPlan', () => ({ useNutritionPlan: () => ({ data: null }) }));
+vi.mock('@/hooks/queries/useLegacyNutritionPlan', () => ({ useLegacyNutritionPlan: () => ({ data: null }) }));
 vi.mock('@/hooks/useWeeklyActivity', () => ({ useWeeklyActivity: () => ({}) }));
 vi.mock('@/components/OfflineBanner', () => ({ OfflineBanner: () => null }));
 vi.mock('@/views/HomeView', () => ({ default: () => <h1>Home fixture</h1> }));

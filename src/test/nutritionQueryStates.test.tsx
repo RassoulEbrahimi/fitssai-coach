@@ -5,7 +5,7 @@ import '@/lib/i18n';
 
 /*
   UI02-07 ownership regression. The nutrition tab's skeleton used to be gated
-  on useWorkoutPlan().isLoading while useNutritionPlan() was destructured for
+  on useWorkoutPlan().isLoading while the nutrition plan hook was destructured for
   its data alone, so nutrition loading tracked the wrong query and a failed
   nutrition fetch was indistinguishable from "no plan yet".
 
@@ -30,7 +30,7 @@ vi.mock('@/hooks/useAuth', () => ({ useAuth: () => ({ user: { uid: 'test', id: '
 vi.mock('@/hooks/queries/useProfile', () => ({ useProfile: () => ({ data: { id: 'test' }, isLoading: false, refetch: vi.fn() }) }));
 vi.mock('@/hooks/queries/useWorkoutPlan', () => ({ useWorkoutPlan: () => workoutQuery }));
 vi.mock('@/hooks/queries/useWorkoutLogs', () => ({ useWorkoutLogs: () => ({ data: [], isToggling: false, toggleDay: vi.fn() }) }));
-vi.mock('@/hooks/queries/useNutritionPlan', () => ({ useNutritionPlan: () => nutritionQuery }));
+vi.mock('@/hooks/queries/useLegacyNutritionPlan', () => ({ useLegacyNutritionPlan: () => nutritionQuery }));
 vi.mock('@/hooks/useWeeklyActivity', () => ({ useWeeklyActivity: () => ({}) }));
 vi.mock('@/contexts/TrainingSessionContext', () => ({
   useTrainingSession: () => ({ validateSessionAgainstPlan: vi.fn(), rejectionNotice: null, clearRejectionNotice: vi.fn() }),
@@ -44,12 +44,12 @@ import Dashboard from '@/components/Dashboard';
 import { PreferencesProvider } from '@/contexts/PreferencesContext';
 import { FocusModeProvider } from '@/contexts/FocusModeContext';
 import { ThemeProvider } from '@/hooks/useTheme';
+import { toLegacyNutritionPlan } from '@/lib/nutrition/legacy';
 
-const plan = {
-  id: 'fixture-nutrition',
-  user_id: 'test',
+// What useLegacyNutritionPlan returns for a stored legacy document.
+const plan = toLegacyNutritionPlan('fixture-nutrition', {
   content: { breakfast: [{ meal: 'Porridge', description: 'Haferflocken mit Beeren', calories: 420 }] },
-};
+});
 
 // The nutrition view is lazy, so every assertion below waits with findBy*.
 const mountNutrition = () => render(
@@ -136,6 +136,17 @@ describe('nutrition tab query states', () => {
     mountNutrition();
 
     expect(await screen.findByRole('status', { name: /Ernährungsplan wird geladen/ })).toBeInTheDocument();
+  });
+
+  it('does not crash the tab on a malformed legacy document', async () => {
+    nutritionQuery.data = toLegacyNutritionPlan('fixture-malformed', {
+      content: { breakfast: 'not a list', lunch: [null, { calories: { kcal: 1 } }] },
+    });
+    mountNutrition();
+
+    expect(await screen.findByTestId('legacy-nutrition-plan')).toBeInTheDocument();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(screen.queryByText(/kcal/)).not.toBeInTheDocument();
   });
 
   it('keeps a cached plan visible while a refetch fails in the background', async () => {

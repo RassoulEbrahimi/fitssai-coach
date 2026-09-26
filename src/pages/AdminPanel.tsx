@@ -12,6 +12,8 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { collection, doc, getDoc, getDocs, Timestamp } from "firebase/firestore";
 import { db } from "@/lib/firebase";
+import { NUTRITION_LEGACY_PLANS_COLLECTION } from "@shared/nutrition/collections";
+import { readLegacyNutritionBuckets } from "@/lib/nutrition/legacy";
 import { 
   Table, 
   TableBody, 
@@ -148,7 +150,7 @@ const AdminPanel = () => {
       for (const u of allUsers) {
         const [wpSnap, npSnap] = await Promise.all([
           getDocs(collection(db, 'users', u.id, 'workout_plans')),
-          getDocs(collection(db, 'users', u.id, 'nutrition_plans')),
+          getDocs(collection(db, 'users', u.id, NUTRITION_LEGACY_PLANS_COLLECTION)),
         ]);
         wpSnap.forEach(d => {
           const data = d.data();
@@ -181,15 +183,20 @@ const AdminPanel = () => {
     });
   };
 
-  const deletePlan = async (planId: string, planType: 'workout' | 'nutrition') => {
+  /*
+    Workout plans only. Legacy Nutrition plans (`nutrition_plans`) are
+    client read-only under the Firestore rules, so a client delete would be a
+    known permission-denied write; the table offers no delete for them and this
+    path cannot address that collection.
+  */
+  const deleteWorkoutPlan = async (planId: string) => {
     try {
-      const subcol = planType === 'workout' ? 'workout_plans' : 'nutrition_plans';
       // Find which user owns this plan
-      const ownerPlan = plans.find(p => p.id === planId);
+      const ownerPlan = plans.find(p => p.id === planId && p.type === 'workout');
       if (!ownerPlan) throw new Error('Plan not found');
       const { deleteDoc, doc: fsDoc } = await import('firebase/firestore');
-      await deleteDoc(fsDoc(db, 'users', ownerPlan.user_id, subcol, planId));
-      setPlans(plans.filter(plan => plan.id !== planId));
+      await deleteDoc(fsDoc(db, 'users', ownerPlan.user_id, 'workout_plans', planId));
+      setPlans(plans.filter(plan => !(plan.id === planId && plan.type === 'workout')));
       toast.success('Plan deleted successfully');
     } catch (error) {
       console.error('Error deleting plan:', error);
@@ -538,11 +545,11 @@ const AdminPanel = () => {
                                             </div>
                                           ) : (
                                             <div className="space-y-6">
-                                              {Object.entries(plan.content).map(([mealType, meals]: [string, any]) => (
+                                              {readLegacyNutritionBuckets(plan.content).map(({ key: mealType, meals }) => (
                                                 <div key={mealType} className="space-y-3">
                                                   <h3 className="text-lg font-semibold capitalize text-primary">{mealType}</h3>
                                                   <div className="grid gap-3">
-                                                    {meals.map((meal: any, mealIndex: number) => (
+                                                    {meals.map((meal, mealIndex) => (
                                                       <Card key={mealIndex} className="border-primary/10">
                                                         <CardContent className="p-4">
                                                           <div className="flex justify-between items-start">
@@ -550,9 +557,11 @@ const AdminPanel = () => {
                                                               <h4 className="font-medium">{meal.meal}</h4>
                                                               <p className="text-sm text-muted-foreground mt-1">{meal.description}</p>
                                                             </div>
-                                                            <Badge variant="secondary" className="ml-3">
-                                                              {meal.calories} cal
-                                                            </Badge>
+                                                            {meal.caloriesText !== null && (
+                                                              <Badge variant="secondary" className="ml-3">
+                                                                {meal.caloriesText} cal
+                                                              </Badge>
+                                                            )}
                                                           </div>
                                                         </CardContent>
                                                       </Card>
@@ -576,6 +585,8 @@ const AdminPanel = () => {
                                     <RefreshCw className={`h-4 w-4 ${regeneratingPlan === `${plan.user_id}-${plan.type}` ? 'animate-spin' : ''}`} />
                                   </Button>
 
+                                  {/* Legacy Nutrition is client read-only: no delete control for it. */}
+                                  {plan.type === 'workout' && (
                                   <AlertDialog>
                                     <AlertDialogTrigger asChild>
                                       <Button 
@@ -600,7 +611,7 @@ const AdminPanel = () => {
                                           Abbrechen
                                         </AlertDialogCancel>
                                         <AlertDialogAction
-                                          onClick={() => deletePlan(plan.id, plan.type)}
+                                          onClick={() => deleteWorkoutPlan(plan.id)}
                                           className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
                                         >
                                           Löschen
@@ -608,6 +619,7 @@ const AdminPanel = () => {
                                       </AlertDialogFooter>
                                     </AlertDialogContent>
                                   </AlertDialog>
+                                  )}
                                 </div>
                               </TableCell>
                             </TableRow>

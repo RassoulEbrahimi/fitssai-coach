@@ -1,38 +1,12 @@
 import React from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { AlertCircle, Apple, RefreshCw } from "lucide-react";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion } from "framer-motion";
 import { useTranslation } from "react-i18next";
 import { NutritionSkeleton } from "@/components/skeletons/SectionSkeleton";
-import { NutritionPlan, NutritionMeal } from "@/lib/types";
-
-/**
- * Display-only mapping for the meal buckets stored in Firestore.
- * The stored keys are the contract and stay untouched (read-only in Phase 1);
- * only the label shown to the user and the display order are defined here.
- */
-const MEAL_LABELS: Record<string, string> = {
-  breakfast: "Frühstück",
-  lunch: "Mittagessen",
-  dinner: "Abendessen",
-  snacks: "Snacks",
-  snack: "Snacks",
-};
-
-const MEAL_ORDER = ["breakfast", "lunch", "dinner", "snacks", "snack"];
-
-const mealLabel = (key: string): string =>
-  MEAL_LABELS[key.trim().toLowerCase()] ?? key;
-
-/** Chronological order for known buckets; anything unknown keeps its order at the end. */
-const mealRank = (key: string): number => {
-  const index = MEAL_ORDER.indexOf(key.trim().toLowerCase());
-  return index === -1 ? MEAL_ORDER.length : index;
-};
-
-
+import { LegacyNutritionPlanView } from "@/components/nutrition/LegacyNutritionPlanView";
+import type { LegacyNutritionPlan } from "@/lib/nutrition/legacy";
 
 /*
   Nutrition is read-only. The empty state used to offer a "Pläne jetzt
@@ -42,7 +16,8 @@ const mealRank = (key: string): number => {
   promises nothing.
 */
 interface NutritionViewProps {
-  nutritionPlan: NutritionPlan | null;
+  /** The latest legacy `nutrition_plans` document, or null when none exists. */
+  legacyNutritionPlan: LegacyNutritionPlan | null;
   /**
    * Initial load of the *nutrition* query. Nutrition loading used to be driven
    * by useWorkoutPlan().isLoading, so a slow workout plan blanked this tab and
@@ -56,7 +31,7 @@ interface NutritionViewProps {
 }
 
 const NutritionView: React.FC<NutritionViewProps> = React.memo(({
-  nutritionPlan,
+  legacyNutritionPlan,
   isLoading = false,
   isError = false,
   onRetry,
@@ -67,7 +42,7 @@ const NutritionView: React.FC<NutritionViewProps> = React.memo(({
     Precedence is conservative: usable data always wins, so a background
     refetch never replaces a visible plan with a skeleton or an error.
   */
-  if (!nutritionPlan && isLoading) {
+  if (!legacyNutritionPlan && isLoading) {
     return (
       <div role="status" aria-busy="true" aria-label={t('dashboard.nutritionPlan.loading')}>
         <NutritionSkeleton />
@@ -93,46 +68,8 @@ const NutritionView: React.FC<NutritionViewProps> = React.memo(({
             </CardTitle>
           </CardHeader>
           <CardContent>
-            {nutritionPlan ? (
-              <div className="space-y-6">
-                {Object.entries(nutritionPlan.content)
-                  .sort(([a], [b]) => mealRank(a) - mealRank(b))
-                  .map(([mealType, meals]) => (
-                  <div key={mealType} className="space-y-3">
-                    <h3 className="text-lg font-semibold text-primary">{mealLabel(mealType)}</h3>
-                    <div className="grid gap-3">
-                      {(Array.isArray(meals) ? meals : []).map((meal: NutritionMeal, mealIndex: number) => (
-                        <motion.div
-                          key={mealIndex}
-                          initial={{ opacity: 0, y: 10 }}
-                          animate={{ opacity: 1, y: 0 }}
-                          transition={{ duration: 0.3, delay: mealIndex * 0.1 }}
-                          whileHover={{ scale: 1.02, y: -2 }}
-                        >
-                          <Card className="border-primary/10 hover-scale">
-                            <CardContent className="p-4">
-                              <div className="flex justify-between items-start">
-                                <div className="flex-1">
-                                  <h4 className="font-medium">{meal.meal}</h4>
-                                  <p className="text-sm text-muted-foreground mt-1">{meal.description}</p>
-                                </div>
-                                <motion.div
-                                  whileHover={{ scale: 1.1 }}
-                                  transition={{ duration: 0.2 }}
-                                >
-                                  <Badge variant="secondary" className="ml-3">
-                                    {meal.calories} kcal
-                                  </Badge>
-                                </motion.div>
-                              </div>
-                            </CardContent>
-                          </Card>
-                        </motion.div>
-                      ))}
-                    </div>
-                  </div>
-                  ))}
-              </div>
+            {legacyNutritionPlan ? (
+              <LegacyNutritionPlanView legacyNutritionPlan={legacyNutritionPlan} />
             ) : isError ? (
               <motion.div
                 className="text-center py-12 space-y-6"
