@@ -40,7 +40,8 @@ import { useAuth as _useAuth } from "@/hooks/useAuth";
 import { useTheme } from "@/hooks/useTheme";
 import { toast } from "sonner";
 import { uploadAvatar, updateProfileAvatar, getAvatarUrl } from "@/lib/avatarUtils";
-import { WorkoutPlan, NutritionPlan } from "@/lib/types";
+import { WorkoutPlan } from "@/lib/types";
+import type { LegacyNutritionPlan } from "@/lib/nutrition/legacy";
 
 import { Profile } from "@/hooks/queries/useProfile";
 
@@ -50,7 +51,8 @@ interface ProfileViewProps {
   workoutProgress: { completed: number; total: number };
   generatingPlans?: boolean;
   workoutPlan?: WorkoutPlan;
-  nutritionPlan?: NutritionPlan;
+  /** The latest legacy `nutrition_plans` document, if any. Read-only. */
+  legacyNutritionPlan?: LegacyNutritionPlan | null;
   onGeneratePlans?: () => void;
 }
 
@@ -226,7 +228,7 @@ const ProfileView: React.FC<ProfileViewProps> = React.memo(({
   workoutProgress,
   generatingPlans = false,
   workoutPlan,
-  nutritionPlan,
+  legacyNutritionPlan,
   onGeneratePlans
 }) => {
   const { enableAdvancedGlass, setEnableAdvancedGlass, backgroundMode, setBackgroundMode } = usePreferences();

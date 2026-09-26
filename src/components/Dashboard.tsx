@@ -43,7 +43,7 @@ import HomeSkeleton from "@/components/skeletons/HomeSkeleton";
 import { useWorkoutPlan } from "@/hooks/queries/useWorkoutPlan";
 import { useWorkoutLogs } from "@/hooks/queries/useWorkoutLogs";
 import { useProfile } from "@/hooks/queries/useProfile";
-import { useNutritionPlan } from "@/hooks/queries/useNutritionPlan";
+import { useLegacyNutritionPlan } from "@/hooks/queries/useLegacyNutritionPlan";
 import { useQueryClient } from "@tanstack/react-query";
 import { useWeeklyActivity } from "@/hooks/useWeeklyActivity";
 import { isCalendarDayComplete, readCompletedDayDates } from "@/lib/workoutCompletion";
@@ -162,16 +162,16 @@ const Dashboard = () => {
     "there is no plan yet".
   */
   const {
-    data: nutritionPlan,
-    isLoading: isLoadingNutritionPlan,
-    isError: isNutritionPlanError,
-    refetch: refetchNutritionPlan,
-  } = useNutritionPlan();
+    data: legacyNutritionPlan,
+    isLoading: isLoadingLegacyNutritionPlan,
+    isError: isLegacyNutritionPlanError,
+    refetch: refetchLegacyNutritionPlan,
+  } = useLegacyNutritionPlan();
 
   /** Retries the nutrition query only — no navigation, no plan generation. */
-  const retryNutritionPlan = useCallback(() => {
-    void refetchNutritionPlan?.();
-  }, [refetchNutritionPlan]);
+  const retryLegacyNutritionPlan = useCallback(() => {
+    void refetchLegacyNutritionPlan?.();
+  }, [refetchLegacyNutritionPlan]);
 
   // Prefetch weekly activity data immediately so it's ready when HomeView mounts
   useWeeklyActivity('weekly');
@@ -570,7 +570,7 @@ const Dashboard = () => {
                             <HomeView
                               generatingPlans={generatingPlans}
                               workoutPlan={liveWorkoutPlan}
-                              nutritionPlan={nutritionPlan}
+                              legacyNutritionPlan={legacyNutritionPlan}
                               onGeneratePlans={generatePlan}
                               profile={profile}
                               workoutProgress={getWeeklyProgress()}
@@ -631,10 +631,10 @@ const Dashboard = () => {
                       <Suspense fallback={<NutritionSkeleton />}>
                         <div ref={(el) => setViewRef('nutrition', el)}>
                           <NutritionView
-                            nutritionPlan={nutritionPlan ?? null}
-                            isLoading={isLoadingNutritionPlan}
-                            isError={isNutritionPlanError}
-                            onRetry={retryNutritionPlan}
+                            legacyNutritionPlan={legacyNutritionPlan ?? null}
+                            isLoading={isLoadingLegacyNutritionPlan}
+                            isError={isLegacyNutritionPlanError}
+                            onRetry={retryLegacyNutritionPlan}
                           />
                         </div>
                       </Suspense>
@@ -654,7 +654,7 @@ const Dashboard = () => {
                               workoutProgress={getWeeklyProgress()}
                               generatingPlans={generatingPlans}
                               workoutPlan={liveWorkoutPlan}
-                              nutritionPlan={nutritionPlan}
+                              legacyNutritionPlan={legacyNutritionPlan}
                               onGeneratePlans={generatePlan}
                             />
                           )}

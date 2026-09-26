@@ -9,7 +9,7 @@ vi.mock('@/hooks/useAuth', () => ({ useAuth: () => ({ user: { uid: 'test' } }) }
 vi.mock('@/hooks/queries/useProfile', () => ({ useProfile: () => ({ data: { id: 'test' }, isLoading: false }) }));
 vi.mock('@/hooks/queries/useWorkoutPlan', () => ({ useWorkoutPlan: () => ({ data: null, isLoading: false }) }));
 vi.mock('@/hooks/queries/useWorkoutLogs', () => ({ useWorkoutLogs: () => ({ data: [], isToggling: false }) }));
-vi.mock('@/hooks/queries/useNutritionPlan', () => ({ useNutritionPlan: () => ({ data: null }) }));
+vi.mock('@/hooks/queries/useLegacyNutritionPlan', () => ({ useLegacyNutritionPlan: () => ({ data: null }) }));
 vi.mock('@/hooks/useWeeklyActivity', () => ({ useWeeklyActivity: () => ({}) }));
 vi.mock('@/contexts/TrainingSessionContext', () => ({ useTrainingSession: () => ({}) }));
 vi.mock('@/components/OfflineBanner', () => ({ OfflineBanner: () => null }));

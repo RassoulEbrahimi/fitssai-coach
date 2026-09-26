@@ -34,16 +34,6 @@ export interface WorkoutPlan {
     updated_at?: string;
 }
 
-export interface NutritionMeal {
-    meal: string;
-    description: string;
-    calories: string | number;
-}
-
-export interface NutritionPlan {
-    content: Record<string, NutritionMeal[]>;
-}
-
 export interface TodayWorkout {
     isCompleted?: boolean;
     __restDay?: boolean;

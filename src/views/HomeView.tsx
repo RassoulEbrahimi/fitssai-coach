@@ -15,7 +15,8 @@ import WorkoutErrorBoundary from "@/components/WorkoutErrorBoundary";
 import { NotificationPopover } from "@/components/NotificationPopover";
 
 import { Profile } from "@/hooks/queries/useProfile";
-import { WorkoutPlan, NutritionPlan, TodayWorkout, WorkoutLog } from "@/lib/types";
+import { WorkoutPlan, TodayWorkout, WorkoutLog } from "@/lib/types";
+import { countLegacyNutritionMeals, type LegacyNutritionPlan } from "@/lib/nutrition/legacy";
 import { useWeeklyActivity } from "@/hooks/useWeeklyActivity";
 import { generateInsights } from "@/lib/insights/engine";
 import { InsightHero } from "@/components/dashboard/InsightHero";
@@ -35,7 +36,8 @@ import { readCompletedDayDates, readCompletedDays } from "@/lib/workoutCompletio
 interface HomeViewProps {
   generatingPlans: boolean;
   workoutPlan?: WorkoutPlan;
-  nutritionPlan?: NutritionPlan;
+  /** The latest legacy `nutrition_plans` document, if any. Read-only. */
+  legacyNutritionPlan?: LegacyNutritionPlan | null;
   onGeneratePlans: () => void;
   profile?: Profile | null;
   workoutProgress?: { completed: number; total: number };
@@ -97,7 +99,7 @@ const getRandomQuote = () => {
 const HomeView: React.FC<HomeViewProps> = ({
   generatingPlans,
   workoutPlan,
-  nutritionPlan,
+  legacyNutritionPlan,
   planFinished = false,
   onGeneratePlans,
   profile,
@@ -266,14 +268,11 @@ const HomeView: React.FC<HomeViewProps> = ({
    * completion to report. A 0/100 bar derived purely from "does a plan exist"
    * reads as progress the user never made, so this shows plan status instead.
    */
-  const nutritionStatus = nutritionPlan ? "Plan aktiv" : "Kein Plan";
-  const nutritionMealCount = useMemo(() => {
-    if (!nutritionPlan?.content) return 0;
-    return Object.values(nutritionPlan.content).reduce(
-      (sum, meals) => sum + (Array.isArray(meals) ? meals.length : 0),
-      0
-    );
-  }, [nutritionPlan]);
+  const nutritionStatus = legacyNutritionPlan ? "Plan aktiv" : "Kein Plan";
+  const nutritionMealCount = useMemo(
+    () => (legacyNutritionPlan ? countLegacyNutritionMeals(legacyNutritionPlan) : 0),
+    [legacyNutritionPlan]
+  );
 
 
   /*
@@ -331,12 +330,12 @@ const HomeView: React.FC<HomeViewProps> = ({
   });
 
   // Show skeleton when initially loading or generating plans
-  if (isLoadingPlans || (generatingPlans && !workoutPlan && !nutritionPlan)) {
+  if (isLoadingPlans || (generatingPlans && !workoutPlan && !legacyNutritionPlan)) {
     return <HomeSkeleton />;
   }
 
   // Show empty state when no plans exist and not generating
-  if (!generatingPlans && !workoutPlan && !nutritionPlan) {
+  if (!generatingPlans && !workoutPlan && !legacyNutritionPlan) {
     return (
       <WorkoutErrorBoundary>
         <div className="space-y-6">
