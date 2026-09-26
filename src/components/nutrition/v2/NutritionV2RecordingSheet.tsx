@@ -8,6 +8,7 @@ import { cn } from "@/lib/utils";
 import type { NutritionDate, RecordedEntry, RecordedEntrySnapshot } from "@shared/nutrition";
 import type { NutritionSlotRecording } from "@/lib/nutrition/v2/dayRecordings";
 import { isNutritionEntryConflictError } from "@/lib/nutrition/v2/entryTransaction";
+import { QueueStorageError } from "@/lib/offlineQueue";
 import {
   NUTRITION_PORTION_PRESETS,
   buildCustomSlotRecording,
@@ -28,8 +29,10 @@ import { formatNutritionKcal, formatNutritionPortion, recordedEntryLabel } from 
  * The Nutrition V2 recording sheet: one slot of today, or one extra meal.
  *
  * Opening it, switching modes and typing write nothing. Only "Speichern" or
- * "Entfernen" submits — one explicit action, one write. The planned meal is
- * shown as planned; what gets recorded is shown as an estimate ("ca.").
+ * "Entfernen" submits — one explicit action, one intent, written online or
+ * queued on this device (NUT-07). The planned meal is shown as planned; what
+ * gets recorded is shown as an estimate ("ca."). A queued change closes the
+ * sheet like a saved one; the entry then says it is waiting to synchronise.
  */
 
 export type NutritionV2RecordingTarget =
@@ -185,12 +188,13 @@ const RecordingForm = ({
       else if (isNutritionV2RecordingUnavailableError(error)) {
         setFailure(
           t(
-            error.reason === "offline" || error.reason === "futureDate"
-              ? `nutritionV2.recording.sheet.error.${error.reason}`
+            error.reason === "futureDate"
+              ? "nutritionV2.recording.sheet.error.futureDate"
               : "nutritionV2.recording.sheet.error.unavailable"
           )
         );
-      } else setFailure(t("nutritionV2.recording.sheet.error.failed"));
+      } else if (error instanceof QueueStorageError) setFailure(t("nutritionV2.recording.sheet.error.storage"));
+      else setFailure(t("nutritionV2.recording.sheet.error.failed"));
     }
   };
 

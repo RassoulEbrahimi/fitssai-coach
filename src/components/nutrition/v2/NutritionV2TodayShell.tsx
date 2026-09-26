@@ -18,13 +18,18 @@ import type { NutritionV2TodayView } from "@/lib/nutrition/v2/todayView";
  * or shopping action, and no state promises a plan.
  *
  * Recording lives only in the separate `todayRecording` section the container
- * passes in for today (NUT-06); the shell itself stays read-only.
+ * passes in for today (NUT-06); the shell itself stays read-only. Rejected
+ * offline changes (NUT-07) are the separate `conflicts` section, shown above
+ * every state but loading — with or without a plan, on a plan day or not —
+ * and it carries no recording controls.
  */
 
 interface NutritionV2TodayShellProps {
   view: NutritionV2TodayView;
   /** Today's recording section, shown above the week when today is a plan day. */
   todayRecording?: React.ReactNode;
+  /** The account's rejected offline changes, shown whatever the view. */
+  conflicts?: React.ReactNode;
 }
 
 /** The weekday and date of a calendar day. Formatted in UTC so the day never shifts. */
@@ -117,7 +122,7 @@ const Week = ({ week, title, language }: { week: NutritionWeek; title: string; l
   </section>
 );
 
-export const NutritionV2TodayShell: React.FC<NutritionV2TodayShellProps> = ({ view, todayRecording }) => {
+export const NutritionV2TodayShell: React.FC<NutritionV2TodayShellProps> = ({ view, todayRecording, conflicts }) => {
   const { t, i18n } = useTranslation();
   const language = i18n.language || "de";
 
@@ -188,7 +193,10 @@ export const NutritionV2TodayShell: React.FC<NutritionV2TodayShellProps> = ({ vi
           {t("nutritionV2.today.title")}
         </CardTitle>
       </CardHeader>
-      <CardContent>{body}</CardContent>
+      <CardContent className="space-y-6">
+        {conflicts}
+        {body}
+      </CardContent>
     </Card>
   );
 };

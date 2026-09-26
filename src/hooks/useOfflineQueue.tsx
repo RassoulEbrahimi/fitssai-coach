@@ -46,6 +46,12 @@ export const useOfflineQueue = () => {
       toastWithIcon({ title: 'Synchronisierung ausstehend',
         description: 'Änderungen bleiben lokal gespeichert. Wir versuchen es erneut.',
         variant: 'destructive', duration: 4000 });
+    } else if (result.quarantined) {
+      // Only a terminal rejection gets here; the owning feature shows which
+      // change it was and what can be done about it.
+      toastWithIcon({ title: 'Änderung nicht übernommen',
+        description: 'Ein Eintrag wurde inzwischen geändert. Die Offline-Änderung wurde nicht gespeichert.',
+        variant: 'destructive', duration: 4000 });
     } else if (result.completed) {
       toastWithIcon({ title: 'Synchronisiert', description: 'Offline-Änderungen wurden gespeichert.',
         variant: 'success', duration: 3000 });

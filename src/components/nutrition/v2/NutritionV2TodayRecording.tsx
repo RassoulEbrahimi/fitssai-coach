@@ -4,6 +4,7 @@ import { Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { extraEntryId, parseEntryId, type NutritionSlotId, type RecordedEntry } from "@shared/nutrition";
 import type { NutritionDayRecordings } from "@/lib/nutrition/v2/dayRecordings";
+import type { NutritionEntryPendingState } from "@/lib/nutrition/v2/nutritionWriteIntents";
 import type { NutritionV2Recording } from "@/hooks/queries/useNutritionV2Recording";
 import { NutritionV2RecordingSheet, type NutritionV2RecordingTarget } from "./NutritionV2RecordingSheet";
 import { formatNutritionKcal, recordedEntryLabel } from "./recordingFormat";
@@ -14,9 +15,14 @@ import { formatNutritionKcal, recordedEntryLabel } from "./recordingFormat";
  * Every slot shows its PLANNED meal and, separately, what was RECORDED for it
  * (an estimate, "ca."). A `removed` entry reads as not recorded. Nothing here
  * writes: a button only opens the recording sheet, and the sheet writes only
- * when the person confirms. While recording is unavailable (offline, or the
- * account is not yet known to be an eligible adult) the buttons are disabled
- * and the reason is shown.
+ * when the person confirms. While recording is unavailable (the account is
+ * not yet known to be an eligible adult) the buttons are disabled and the
+ * reason is shown.
+ *
+ * Offline, recording still works: changes are stored on this device and
+ * synchronised later (NUT-07). An entry with such a change says so — it is
+ * never presented as saved on the server. Rejected offline changes are not
+ * shown here but by the container, whatever the view (`NutritionV2Conflicts`).
  */
 
 type OpenTarget = { kind: "slot"; slotId: NutritionSlotId } | { kind: "extra"; uuid: string; editing: boolean };
@@ -39,10 +45,24 @@ const extraUuid = (entry: RecordedEntry): string | null => {
   return parsed?.kind === "extra" ? parsed.uuid : null;
 };
 
+const NO_PENDING: ReadonlyMap<string, NutritionEntryPendingState> = new Map();
+
+const PendingNote = ({ state }: { state: NutritionEntryPendingState | undefined }) => {
+  const { t } = useTranslation();
+  if (!state) return null;
+  return (
+    <p className="text-xs text-muted-foreground" data-testid="nutrition-v2-pending" data-pending-status={state.status}>
+      {t(state.status === "failed" ? "nutritionV2.recording.pendingRetry" : "nutritionV2.recording.pending")}
+    </p>
+  );
+};
+
 export const NutritionV2TodayRecording: React.FC<{
   recordings: NutritionDayRecordings;
   recording: NutritionV2Recording;
-}> = ({ recordings, recording }) => {
+  /** Entries with changes still waiting to be synchronised. */
+  pending?: ReadonlyMap<string, NutritionEntryPendingState>;
+}> = ({ recordings, recording, pending = NO_PENDING }) => {
   const { t, i18n } = useTranslation();
   const language = i18n.language || "de";
   const [open, setOpen] = useState<OpenTarget | null>(null);
@@ -62,6 +82,11 @@ export const NutritionV2TodayRecording: React.FC<{
       {unavailable && (
         <p className="text-sm text-muted-foreground" role="status">
           {t(`nutritionV2.recording.unavailable.${unavailable}`)}
+        </p>
+      )}
+      {!unavailable && !recording.online && (
+        <p className="text-sm text-muted-foreground" role="status" data-testid="nutrition-v2-offline-note">
+          {t("nutritionV2.recording.offlineNote")}
         </p>
       )}
 
@@ -85,6 +110,7 @@ export const NutritionV2TodayRecording: React.FC<{
                 <p className="text-sm text-foreground" data-testid="nutrition-v2-slot-recorded">
                   {slot.active ? recordedEntryLabel(slot.active, t, language) : t("nutritionV2.recording.state.none")}
                 </p>
+                <PendingNote state={pending.get(slot.entryId)} />
               </div>
               <Button
                 type="button"
@@ -120,6 +146,7 @@ export const NutritionV2TodayRecording: React.FC<{
                   <div className="min-w-0 flex-1">
                     <p className="font-medium text-foreground">{name}</p>
                     <p className="text-sm text-foreground">{recordedEntryLabel(entry, t, language)}</p>
+                    <PendingNote state={pending.get(entry.entryId)} />
                   </div>
                   <Button
                     type="button"

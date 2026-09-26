@@ -188,7 +188,7 @@ export const firestore = {
     set: (target: Ref, data: Row) => void;
     update: (target: Ref, data: Row) => void;
     delete: (target: Ref) => void;
-  }) => Promise<void>) => {
+  }) => Promise<unknown>) => {
     const task = serial.then(async () => {
       if (control.beforeCommit) await control.beforeCommit();
       if (control.rejectNext) {
@@ -196,7 +196,8 @@ export const firestore = {
         throw new Error("Persistence rejected");
       }
       const pending: { path: string; data: Row | null; merge: boolean }[] = [];
-      await callback({
+      // The callback's value is the transaction's result, as in the SDK.
+      const result = await callback({
         get: async target => snapshot(target.path),
         set: (target, data) => { pending.push({ path: target.path, data, merge: false }); },
         update: (target, data) => { pending.push({ path: target.path, data, merge: true }); },
@@ -211,9 +212,10 @@ export const firestore = {
         rows.set(path, { ...(merge ? rows.get(path) : {}), ...data });
         writes.push({ path, data });
       });
+      return result;
     });
-    serial = task.catch(() => {});
-    await task;
+    serial = task.then(() => {}, () => {});
+    return await task;
   }),
   Timestamp: class {
     constructor(private millis: number = Date.now()) {}

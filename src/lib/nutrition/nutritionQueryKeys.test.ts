@@ -18,8 +18,10 @@ const v2Keys = (uid: string): QueryKey[] => [
   nutrition.entries.all(uid),
   nutrition.entries.byDate(uid, "2026-10-25"),
   nutrition.entries.range(uid, "2026-10-19", "2026-10-25"),
+  nutrition.generation.all(uid),
   nutrition.generation.active(uid),
   nutrition.generation.byId(uid, "req-1"),
+  nutrition.suggestionsAll(uid),
   nutrition.suggestions(uid, "plan-1", "2026-10-25", "lunch"),
 ];
 

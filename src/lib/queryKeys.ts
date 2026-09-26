@@ -91,12 +91,15 @@ export const queryKeys = {
         ['nutrition-v2', userId, 'entries', 'range', from, to] as const,
     },
     generation: {
+      all: (userId: string | undefined) => ['nutrition-v2', userId, 'generation'] as const,
       active: (userId: string | undefined) => ['nutrition-v2', userId, 'generation', 'active'] as const,
       byId: (userId: string | undefined, requestId: string | undefined) =>
         ['nutrition-v2', userId, 'generation', 'byId', requestId] as const,
     },
     suggestions: (userId: string | undefined, planId: string | undefined, date: string, slotId: string) =>
       ['nutrition-v2', userId, 'suggestions', planId, date, slotId] as const,
+    /** Every suggestion key of the account: the prefix of `suggestions(...)`. */
+    suggestionsAll: (userId: string | undefined) => ['nutrition-v2', userId, 'suggestions'] as const,
   },
 
   // 9. Legacy Nutrition. Its own root, deliberately not under `nutrition`, so no
