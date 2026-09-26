@@ -59,6 +59,48 @@ export const queryKeys = {
     session: (userId: string | undefined, planId: string | undefined, workoutDay: string | undefined) =>
       ['workout-history', userId, 'session', planId, workoutDay] as const,
   },
+
+  // 8. Nutrition V2. One account-scoped root, so `nutrition.all(uid)` reaches
+  // every V2 query of that account and nothing else. A resolved day has no key
+  // on purpose: it is derived from plan, slots and entries, not fetched.
+  nutrition: {
+    all: (userId: string | undefined) => ['nutrition-v2', userId] as const,
+    state: (userId: string | undefined) => ['nutrition-v2', userId, 'state'] as const,
+    targets: {
+      all: (userId: string | undefined) => ['nutrition-v2', userId, 'targets'] as const,
+      current: (userId: string | undefined) => ['nutrition-v2', userId, 'targets', 'current'] as const,
+    },
+    plans: {
+      all: (userId: string | undefined) => ['nutrition-v2', userId, 'plans'] as const,
+      active: (userId: string | undefined) => ['nutrition-v2', userId, 'plans', 'active'] as const,
+      byId: (userId: string | undefined, planId: string | undefined) =>
+        ['nutrition-v2', userId, 'plans', 'byId', planId] as const,
+    },
+    slots: {
+      byPlan: (userId: string | undefined, planId: string | undefined) =>
+        ['nutrition-v2', userId, 'slots', planId] as const,
+    },
+    entries: {
+      all: (userId: string | undefined) => ['nutrition-v2', userId, 'entries'] as const,
+      byDate: (userId: string | undefined, date: string) =>
+        ['nutrition-v2', userId, 'entries', 'byDate', date] as const,
+      range: (userId: string | undefined, from: string, to: string) =>
+        ['nutrition-v2', userId, 'entries', 'range', from, to] as const,
+    },
+    generation: {
+      active: (userId: string | undefined) => ['nutrition-v2', userId, 'generation', 'active'] as const,
+      byId: (userId: string | undefined, requestId: string | undefined) =>
+        ['nutrition-v2', userId, 'generation', 'byId', requestId] as const,
+    },
+    suggestions: (userId: string | undefined, planId: string | undefined, date: string, slotId: string) =>
+      ['nutrition-v2', userId, 'suggestions', planId, date, slotId] as const,
+  },
+
+  // 9. Legacy Nutrition. Its own root, deliberately not under `nutrition`, so no
+  // V2 invalidation can reach it. The key is the one legacy has always used.
+  nutritionLegacy: {
+    latest: (userId: string | undefined) => ['nutrition-plan', userId] as const,
+  },
 };
 
 // Type helper for consistency in hooks

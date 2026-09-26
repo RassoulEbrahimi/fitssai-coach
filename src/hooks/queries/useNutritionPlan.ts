@@ -3,12 +3,13 @@ import { collection, getDocs, query, orderBy, limit, Timestamp } from "firebase/
 import { db } from "@/lib/firebase";
 import { useAuth } from "@/hooks/useAuth";
 import { NutritionPlan } from "@/lib/types";
+import { queryKeys } from "@/lib/queryKeys";
 
 export const useNutritionPlan = () => {
   const { user } = useAuth();
 
   return useQuery({
-    queryKey: ["nutrition-plan", user?.id],
+    queryKey: queryKeys.nutritionLegacy.latest(user?.id),
     queryFn: async () => {
       if (!user) return null;
       const ref = collection(db, "users", user.uid, "nutrition_plans");

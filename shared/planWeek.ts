@@ -36,6 +36,16 @@ const berlinDayFormatter = new Intl.DateTimeFormat("en-CA", {
 });
 
 /**
+ * The Berlin calendar day of an instant, as `YYYY-MM-DD`.
+ *
+ * The one shared definition of "which Berlin day is this instant on". It takes
+ * the instant as an argument rather than reading a clock, so "today" stays the
+ * caller's decision and a test can stand on either side of midnight or a DST
+ * switch.
+ */
+export const berlinIsoDate = (date: Date): string => berlinDayFormatter.format(date);
+
+/**
  * Whole days since the epoch for the Berlin calendar day of `date`.
  *
  * Formatting to a Berlin wall-clock date and re-reading it as UTC midnight is
@@ -44,7 +54,7 @@ const berlinDayFormatter = new Intl.DateTimeFormat("en-CA", {
  * shift a week by one.
  */
 export const berlinDayNumber = (date: Date): number =>
-  Math.floor(Date.parse(`${berlinDayFormatter.format(date)}T00:00:00Z`) / 86_400_000);
+  Math.floor(Date.parse(`${berlinIsoDate(date)}T00:00:00Z`) / 86_400_000);
 
 /** Monday-based weekday index (0 = Monday) for an epoch day number. */
 export const mondayIndex = (dayNumber: number): number =>
