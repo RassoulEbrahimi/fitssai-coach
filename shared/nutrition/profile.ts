@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { isFitnessGoal, normaliseFitnessGoal, type FitnessGoal } from "../fitnessGoal";
 import { nutritionTargetModeSchema, type NutritionTargetMode } from "./contracts";
 import { NUTRITION_SLOT_IDS } from "./identity";
 
@@ -114,6 +115,18 @@ export const nutritionDietaryPreferenceSchema = z.enum(NUTRITION_DIETARY_PREFERE
 
 export type NutritionDietaryPreference = z.infer<typeof nutritionDietaryPreferenceSchema>;
 
+/**
+ * The fitness goal, read through the one shared normaliser, so a historical
+ * spelling (`muscle_gain`, `lose-fat`, …) answers with its canonical goal
+ * exactly as it does for Coaching. The stored spelling is left as it is.
+ */
+const readFitnessGoal = (raw: unknown): ProfileAnswer<FitnessGoal> => {
+  if (raw === undefined || raw === null) return { status: "missing" };
+  const goal = normaliseFitnessGoal(raw);
+  // Checked again so that only a canonical goal can ever be an answer.
+  return isFitnessGoal(goal) ? { status: "answered", value: goal } : { status: "invalid" };
+};
+
 /** A body measurement or an age: a finite number above zero, unbounded here. */
 const positiveNumberSchema = z.number().finite().positive();
 
@@ -128,6 +141,8 @@ export interface NutritionProfile {
   /** As stored; onboarding collects kilograms. */
   weight: ProfileAnswer<number>;
   biologicalSex: ProfileAnswer<BiologicalSex>;
+  /** Canonical, whichever historical spelling is stored. */
+  fitnessGoal: ProfileAnswer<FitnessGoal>;
   activityLevel: ProfileAnswer<NutritionActivityLevel>;
   dietaryPreference: ProfileAnswer<NutritionDietaryPreference>;
   /** The person's choice, in the target modes of `TargetVersion`. */
@@ -148,6 +163,7 @@ export const parseNutritionProfile = (raw: Record<string, unknown> | null | unde
     height: readAnswer(doc.height, positiveNumberSchema),
     weight: readAnswer(doc.weight, positiveNumberSchema),
     biologicalSex: readAnswer(doc.biologicalSex, biologicalSexSchema),
+    fitnessGoal: readFitnessGoal(doc.fitnessGoal),
     activityLevel: readAnswer(doc.activityLevel, nutritionActivityLevelSchema),
     dietaryPreference: readAnswer(doc.dietaryPreference, nutritionDietaryPreferenceSchema),
     nutritionTargetMode: readAnswer(doc.nutritionTargetMode, nutritionTargetModeSchema),

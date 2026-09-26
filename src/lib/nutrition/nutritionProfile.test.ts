@@ -1,4 +1,5 @@
 import { describe, it, expect } from "vitest";
+import { FITNESS_GOALS } from "@shared/fitnessGoal";
 import {
   BIOLOGICAL_SEXES,
   MEALS_PER_DAY_MAX,
@@ -72,6 +73,7 @@ describe("parseNutritionProfile", () => {
     expect(profile.age).toEqual({ status: "answered", value: 31 });
     expect(profile.height).toEqual({ status: "answered", value: 168 });
     expect(profile.weight).toEqual({ status: "answered", value: 72 });
+    expect(profile.fitnessGoal).toEqual({ status: "answered", value: "gainMuscle" });
     expect(profile.dietaryPreference).toEqual({ status: "answered", value: "highProtein" });
     // Absent stays absent: nothing is defaulted.
     expect(profile.biologicalSex).toEqual({ status: "missing" });
@@ -87,7 +89,7 @@ describe("parseNutritionProfile", () => {
   });
 
   it("does not mutate the document it reads", () => {
-    const raw = { ...legacyProfile, activityLevel: "Very active", biologicalSex: "M" };
+    const raw = { ...legacyProfile, activityLevel: "Very active", biologicalSex: "M", fitnessGoal: " muscle_gain " };
     const before = structuredClone(raw);
     parseNutritionProfile(raw);
     expect(raw).toEqual(before);
@@ -102,6 +104,50 @@ describe("parseNutritionProfile", () => {
       const answer = parseNutritionProfile({ biologicalSex: value }).biologicalSex;
       expect(answer).toEqual({ status: "invalid" });
       expect(answeredValue(answer)).toBeNull();
+    });
+  });
+
+  describe("fitnessGoal", () => {
+    it.each(FITNESS_GOALS)("reads the canonical goal %s", (value) => {
+      expect(parseNutritionProfile({ fitnessGoal: value }).fitnessGoal).toEqual({ status: "answered", value });
+    });
+
+    it.each([
+      ["muscle_gain", "gainMuscle"],
+      ["weight_loss", "loseFat"],
+      ["endurance", "improveCardio"],
+      ["maintenance", "maintain"],
+      ["gain-muscle", "gainMuscle"],
+      ["lose-fat", "loseFat"],
+      ["improve-cardio", "improveCardio"],
+    ] as const)("reads the historical spelling %s as %s", (stored, canonical) => {
+      expect(parseNutritionProfile({ fitnessGoal: stored }).fitnessGoal).toEqual({
+        status: "answered",
+        value: canonical,
+      });
+    });
+
+    it.each([[undefined], [null]])("reads %j as missing", (value) => {
+      expect(parseNutritionProfile({ fitnessGoal: value }).fitnessGoal).toEqual({ status: "missing" });
+    });
+
+    it("reads a profile without the key as missing", () => {
+      expect(parseNutritionProfile({ age: 30 }).fitnessGoal).toEqual({ status: "missing" });
+    });
+
+    it.each([["bulk"], ["GAINMUSCLE"], [""], ["constructor"], ["toString"], [3], [{}], [["gainMuscle"]]])(
+      "reads the unknown value %j as invalid",
+      (value) => {
+        const answer = parseNutritionProfile({ fitnessGoal: value }).fitnessGoal;
+        expect(answer).toEqual({ status: "invalid" });
+        expect(answeredValue(answer)).toBeNull();
+      }
+    );
+
+    it("leaves the stored historical spelling as it is", () => {
+      const raw = { fitnessGoal: "weight_loss" };
+      expect(parseNutritionProfile(raw).fitnessGoal).toEqual({ status: "answered", value: "loseFat" });
+      expect(raw).toEqual({ fitnessGoal: "weight_loss" });
     });
   });
 

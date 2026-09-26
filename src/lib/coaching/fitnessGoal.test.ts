@@ -6,6 +6,7 @@ import {
   isFitnessGoal,
   normaliseFitnessGoal,
 } from "./fitnessGoal";
+import * as sharedFitnessGoal from "@shared/fitnessGoal";
 
 describe("normaliseFitnessGoal", () => {
   it.each(FITNESS_GOALS)("maps the canonical value %s to itself", (goal) => {
@@ -85,5 +86,32 @@ describe("FITNESS_GOAL_OPTIONS", () => {
       expect(isFitnessGoal(option.value)).toBe(true);
       expect(option.label.length).toBeGreaterThan(0);
     });
+  });
+});
+
+describe("shared extraction", () => {
+  it("re-exports the one shared vocabulary and normaliser, not a copy", () => {
+    expect(FITNESS_GOALS).toBe(sharedFitnessGoal.FITNESS_GOALS);
+    expect(normaliseFitnessGoal).toBe(sharedFitnessGoal.normaliseFitnessGoal);
+    expect(isFitnessGoal).toBe(sharedFitnessGoal.isFitnessGoal);
+  });
+
+  it("keeps the canonical vocabulary and its order", () => {
+    expect(FITNESS_GOALS).toEqual(["gainMuscle", "loseFat", "improveCardio", "maintain"]);
+  });
+
+  it("keeps the select options exactly", () => {
+    expect(FITNESS_GOAL_OPTIONS).toEqual([
+      { value: "gainMuscle", label: "Muskeln aufbauen" },
+      { value: "loseFat", label: "Fett verlieren" },
+      { value: "improveCardio", label: "Kardio verbessern" },
+      { value: "maintain", label: "Halten" },
+    ]);
+  });
+
+  it("labels the kebab-case catalogue keys like their canonical goal", () => {
+    expect(fitnessGoalLabel("gain-muscle")).toBe("Muskeln aufbauen");
+    expect(fitnessGoalLabel("lose-fat")).toBe("Fett verlieren");
+    expect(fitnessGoalLabel("improve-cardio")).toBe("Kardio verbessern");
   });
 });
