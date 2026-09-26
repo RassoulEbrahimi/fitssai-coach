@@ -4,6 +4,7 @@ import { PersistQueryClientProvider } from '@tanstack/react-query-persist-client
 import { createSyncStoragePersister } from '@tanstack/query-sync-storage-persister';
 import { useAuth } from '@/hooks/useAuth';
 import { accountStorageKey } from '@/lib/accountIdentity';
+import { shouldPersistQuery } from '@/lib/queryPersistence';
 
 export function QueryProvider({ children }: { children: React.ReactNode }) {
     const { user, loading } = useAuth();
@@ -31,5 +32,7 @@ function AccountQueryProvider({ children, ownerUid }: { children: React.ReactNod
     return <PersistQueryClientProvider client={queryClient} persistOptions={{
         persister,
         buster: 'account-owned-v1',
+        // Nutrition generation and suggestion reads are never persisted.
+        dehydrateOptions: { shouldDehydrateQuery: shouldPersistQuery },
     }}>{children}</PersistQueryClientProvider>;
 }
