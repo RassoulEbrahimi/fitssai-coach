@@ -101,8 +101,10 @@ export class NutritionEntryIntentError extends Error {
  *
  *   staleRevision  the entry is no longer at `expectedRevision`
  *   notActive      a `correct` found no active entry to correct
+ *   alreadyActive  a `record` or `skip` found an active entry; changing one is
+ *                  a `correct`, and the intent is never rewritten into one
  */
-export type NutritionEntryConflictReason = "staleRevision" | "notActive";
+export type NutritionEntryConflictReason = "staleRevision" | "notActive" | "alreadyActive";
 
 export type NutritionEntryWritePlan =
   /** Write exactly `entry` — the full next document. */
@@ -173,7 +175,11 @@ export const planNutritionEntryWrite = (
   });
 
   if (next.expectedRevision !== currentRevision) return conflict("staleRevision");
-  if (next.op === "correct" && existing?.status !== "active") return conflict("notActive");
+  // Operation state: record and skip start a recording (none yet, or over a
+  // tombstone); correct changes an active one. Remove was settled above.
+  const active = existing?.status === "active";
+  if (next.op === "correct" && !active) return conflict("notActive");
+  if ((next.op === "record" || next.op === "skip") && active) return conflict("alreadyActive");
 
   const revision = currentRevision + 1;
   const appliedIntentIds = appendAppliedIntentId(existing?.appliedIntentIds ?? [], next.intentId);

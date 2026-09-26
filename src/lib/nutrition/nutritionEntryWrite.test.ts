@@ -22,6 +22,7 @@ import {
   skipEntry,
   values,
 } from "@/test/nutritionV2Fixtures";
+import { nutritionEntryOpFor } from "@/lib/nutrition/v2/recording";
 
 /*
   NUT-06. The shared planner decides every recorded-entry write: create at
@@ -216,6 +217,117 @@ describe("re-record over a tombstone", () => {
       outcome: "apply",
       entry: { recording: "skip", status: "active", revision: 3 },
     });
+  });
+});
+
+describe("operation state", () => {
+  const skipLunch = snapshotOf(skipEntry(DATE, "lunch"));
+  const customLunch = snapshotOf(customSlotEntry(DATE, "lunch"));
+
+  /** A conflict for `current` that names its own revision: no revision bump, nothing to write. */
+  const expectAlreadyActive = (current: RecordedEntry, next: NutritionEntryIntent) => {
+    const before = structuredClone(current);
+    expect(planNutritionEntryWrite(current, next)).toEqual({
+      outcome: "conflict",
+      reason: "alreadyActive",
+      entryId: current.entryId,
+      expectedRevision: current.revision,
+      currentRevision: current.revision,
+      current,
+    });
+    expect(current).toEqual(before);
+  };
+
+  it("1. record against an active plannedMeal at the matching revision is a conflict", () => {
+    expectAlreadyActive(lunch, intent("record", 1, halfLunch));
+  });
+
+  it("2. skip against an active plannedMeal at the matching revision is a conflict", () => {
+    expectAlreadyActive(lunch, intent("skip", 1, skipLunch));
+  });
+
+  it("3. record against an active custom entry is a conflict", () => {
+    const current = { ...customSlotEntry(DATE, "lunch"), revision: 3, appliedIntentIds: [intentUuid(1), intentUuid(5), intentUuid(6)] };
+    expectAlreadyActive(current, intent("record", 3, snapshotOf(lunch)));
+    expectAlreadyActive(current, intent("record", 3, customLunch));
+  });
+
+  it("4. skip against an active skip is a conflict", () => {
+    expectAlreadyActive(skipEntry(DATE, "lunch"), intent("skip", 1, skipLunch));
+  });
+
+  it("5. bumps no revision and plans no write in any of those cases", () => {
+    for (const plan of [
+      planNutritionEntryWrite(lunch, intent("record", 1, halfLunch)),
+      planNutritionEntryWrite(lunch, intent("skip", 1, skipLunch)),
+      planNutritionEntryWrite(skipEntry(DATE, "lunch"), intent("skip", 1, skipLunch)),
+    ]) {
+      expect(plan.outcome).toBe("conflict");
+      expect("entry" in plan).toBe(false);
+      expect(plan.outcome === "conflict" && plan.current?.revision).toBe(1);
+    }
+  });
+
+  it("6. a duplicate record or skip intent is still alreadyApplied, before the operation-state check", () => {
+    // intentUuid(1) created the active entry; retrying that same intent is a success.
+    expect(planNutritionEntryWrite(lunch, intent("record", 0, snapshotOf(lunch), intentUuid(1)))).toEqual({
+      outcome: "alreadyApplied",
+      entry: lunch,
+    });
+    const skip = skipEntry(DATE, "lunch");
+    expect(planNutritionEntryWrite(skip, intent("skip", 0, skipLunch, intentUuid(1)))).toEqual({
+      outcome: "alreadyApplied",
+      entry: skip,
+    });
+    // Even at the matching revision, where the state check would otherwise refuse it.
+    expect(planNutritionEntryWrite(skip, intent("skip", 1, skipLunch, intentUuid(1)))).toMatchObject({ outcome: "alreadyApplied" });
+  });
+
+  it("7. record over a tombstone still succeeds", () => {
+    const tombstone = removedEntry(lunch, intentUuid(2));
+    expect(planNutritionEntryWrite(tombstone, intent("record", 2, customLunch, intentUuid(3)))).toMatchObject({
+      outcome: "apply",
+      entry: { recording: "custom", status: "active", revision: 3 },
+    });
+  });
+
+  it("8. skip over a tombstone still succeeds", () => {
+    const tombstone = removedEntry(lunch, intentUuid(2));
+    expect(planNutritionEntryWrite(tombstone, intent("skip", 2, skipLunch, intentUuid(3)))).toMatchObject({
+      outcome: "apply",
+      entry: { recording: "skip", status: "active", revision: 3 },
+    });
+  });
+
+  it("9. create on an absent entry still succeeds for record and skip", () => {
+    expect(planNutritionEntryWrite(null, intent("record", 0, snapshotOf(lunch), intentUuid(1)))).toEqual({ outcome: "apply", entry: lunch });
+    expect(planNutritionEntryWrite(null, intent("skip", 0, skipLunch, intentUuid(1)))).toMatchObject({
+      outcome: "apply",
+      entry: { recording: "skip", revision: 1, status: "active" },
+    });
+  });
+
+  it("10. correct on an active entry still succeeds", () => {
+    expect(planNutritionEntryWrite(lunch, intent("correct", 1, skipLunch))).toMatchObject({
+      outcome: "apply",
+      entry: { recording: "skip", revision: 2, status: "active" },
+    });
+  });
+
+  it("11. the recording UI picks correct for an active entry, and record or skip otherwise", () => {
+    expect(nutritionEntryOpFor(lunch, halfLunch)).toBe("correct");
+    expect(nutritionEntryOpFor(lunch, skipLunch)).toBe("correct");
+    expect(nutritionEntryOpFor(skipEntry(DATE, "lunch"), customLunch)).toBe("correct");
+    expect(nutritionEntryOpFor(removedEntry(lunch), customLunch)).toBe("record");
+    expect(nutritionEntryOpFor(removedEntry(lunch), skipLunch)).toBe("skip");
+    expect(nutritionEntryOpFor(null, halfLunch)).toBe("record");
+  });
+
+  it("never rewrites the intent into a correct", () => {
+    const next = intent("record", 1, halfLunch);
+    const plan = planNutritionEntryWrite(lunch, next);
+    expect(plan.outcome).toBe("conflict");
+    expect(next.op).toBe("record");
   });
 });
 

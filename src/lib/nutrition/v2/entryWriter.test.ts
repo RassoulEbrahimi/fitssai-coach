@@ -61,7 +61,12 @@ import { writeNutritionV2Entry } from "./entryWriter";
 import { NutritionEntryConflictError, isNutritionEntryConflictError } from "./entryTransaction";
 import { NutritionV2IntegrityError } from "./integrity";
 import { buildNutritionEntryIntent } from "./recording";
-import { NUTRITION_V2_COLLECTIONS, type RecordedEntry, type RecordedEntrySnapshot } from "@shared/nutrition";
+import {
+  NUTRITION_V2_COLLECTIONS,
+  type NutritionEntryIntent,
+  type RecordedEntry,
+  type RecordedEntrySnapshot,
+} from "@shared/nutrition";
 import { customSlotEntry, extraEntry, intentUuid, plannedMealEntry, values } from "@/test/nutritionV2Fixtures";
 
 const DATE = "2026-09-26";
@@ -129,6 +134,32 @@ describe("writeNutritionV2Entry", () => {
     expect(store.sets).toEqual([]);
     // Not retried against the newer revision.
     expect(store.attempts).toHaveLength(3);
+  });
+
+  it("rejects a manual record or skip intent against an active entry with a typed conflict, and sets nothing", async () => {
+    const created = (await save(null, lunch, intentUuid(1))).entry as RecordedEntry;
+    store.sets = [];
+    store.attempts = [];
+
+    const skip = { ...lunch, recording: "skip", estimateBasis: "none", nutritionEstimate: null } as Record<string, unknown>;
+    delete skip.planId;
+    delete skip.name;
+    delete skip.portion;
+    const manual = [
+      { intentId: intentUuid(2), entryId: lunch.entryId, expectedRevision: 1, op: "record", desired: halfLunch },
+      { intentId: intentUuid(3), entryId: lunch.entryId, expectedRevision: 1, op: "skip", desired: skip },
+    ] as NutritionEntryIntent[];
+
+    for (const intent of manual) {
+      const error = await writeNutritionV2Entry("alice", intent).catch((e) => e);
+      expect(error).toBeInstanceOf(NutritionEntryConflictError);
+      expect(error).toMatchObject({ reason: "alreadyActive", expectedRevision: 1, currentRevision: 1, current: created });
+    }
+
+    // Each transaction ran once and called transaction.set in neither.
+    expect(store.attempts.map((attempt) => attempt.intentIds)).toEqual([[], []]);
+    expect(store.sets).toEqual([]);
+    expect(stored("alice", lunch.entryId)).toEqual(created);
   });
 
   it("succeeds for a duplicate intent without a second revision bump", async () => {
