@@ -24,8 +24,8 @@ import { isNutritionV2IntegrityError } from "@/lib/nutrition/v2/integrity";
 import type { NutritionV2Access, NutritionV2Read } from "@/lib/nutrition/v2/readStatus";
 
 /**
- * Nutrition V2 reads for the signed-in account. Read-only: there is no V2
- * mutation on the client.
+ * Nutrition V2 reads for the signed-in account. Read-only: the one V2
+ * mutation, recording an entry, is `useNutritionV2Recording`.
  *
  * - Every key is an account-scoped key from `queryKeys.nutrition.*`.
  * - No read runs unless the account is signed in *and* eligible (NUT-03: an

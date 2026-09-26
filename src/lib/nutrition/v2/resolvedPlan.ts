@@ -1,4 +1,5 @@
 import {
+  isActiveRecordedEntry,
   slotEntryId,
   type MealOverride,
   type NutritionDate,
@@ -150,9 +151,10 @@ export const resolveNutritionDay = (
  *   partial     some, not all
  *   recorded    every one
  *
- * Coverage only — never a judgement of what was eaten. A `skip` is an explicit
- * recording of its slot. Extra entries, and entries of other dates or of slots
- * the plan does not configure, cover nothing. A slot without an entry is not
+ * Coverage only — never a judgement of what was eaten. An active `skip` is an
+ * explicit recording of its slot. A `removed` tombstone is history and covers
+ * nothing. Extra entries, and entries of other dates or of slots the plan does
+ * not configure, cover nothing. A slot without an active entry is not
  * recorded; it is never read as zero intake or as "eaten as planned".
  */
 export type NutritionRecordingStatus = "unrecorded" | "partial" | "recorded";
@@ -169,7 +171,9 @@ export const nutritionRecordingCoverage = (
   entries: readonly RecordedEntry[]
 ): NutritionRecordingCoverage => {
   const recordedIds = new Set(
-    entries.filter((entry) => entry.kind === "slot" && entry.date === date).map((entry) => entry.entryId)
+    entries
+      .filter((entry) => entry.kind === "slot" && entry.date === date && isActiveRecordedEntry(entry))
+      .map((entry) => entry.entryId)
   );
   const recordedSlots = slotOrder.filter((slotId) => recordedIds.has(slotEntryId(date, slotId))).length;
   const configuredSlots = slotOrder.length;

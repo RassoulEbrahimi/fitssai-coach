@@ -16,9 +16,10 @@ import {
 } from "@shared/nutrition";
 
 /*
-  Valid Nutrition V2 documents for tests (NUT-05). Built from the NUT-01
-  identity helpers, so every id is the canonical one; tests that need a broken
-  document start from these and break exactly one thing.
+  Valid Nutrition V2 documents for tests (NUT-05, NUT-06). Built from the
+  NUT-01 identity helpers, so every id is the canonical one; tests that need a
+  broken document start from these and break exactly one thing. Recorded
+  entries carry the NUT-06 mutation metadata of a freshly created entry.
 */
 
 export const PLAN_ID = "plan-1";
@@ -102,6 +103,24 @@ export const makeSlotHead = (
 
 export const slotHeadDocId = (head: SlotHead) => slotHeadId(head.planId, head.date, head.slotId);
 
+/** A lower-case v4 UUID for intent `n`, as `crypto.randomUUID()` would produce. */
+export const intentUuid = (n: number): string => `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
+
+/** Metadata of an entry created by one intent: revision 1, active. */
+export const createdMeta = (intentId = intentUuid(1)) => ({
+  revision: 1,
+  status: "active" as const,
+  appliedIntentIds: [intentId],
+});
+
+/** `entry` as the tombstone one more write makes of it: snapshot kept, status removed. */
+export const removedEntry = (entry: RecordedEntry, intentId = intentUuid(99)): RecordedEntry => ({
+  ...entry,
+  status: "removed",
+  revision: entry.revision + 1,
+  appliedIntentIds: [...entry.appliedIntentIds, intentId],
+});
+
 export const plannedMealEntry = (
   date: NutritionDate,
   slotId: NutritionSlotId,
@@ -119,6 +138,7 @@ export const plannedMealEntry = (
   estimateBasis: "planMealTimesPortion",
   portion: 1,
   nutritionEstimate: estimate,
+  ...createdMeta(),
 });
 
 export const skipEntry = (date: NutritionDate, slotId: NutritionSlotId): RecordedEntry => ({
@@ -130,6 +150,25 @@ export const skipEntry = (date: NutritionDate, slotId: NutritionSlotId): Recorde
   recording: "skip",
   estimateBasis: "none",
   nutritionEstimate: null,
+  ...createdMeta(),
+});
+
+export const customSlotEntry = (
+  date: NutritionDate,
+  slotId: NutritionSlotId,
+  kcal = 950,
+  name = "Pizza beim Italiener"
+): RecordedEntry => ({
+  schemaVersion: NUTRITION_SCHEMA_VERSION,
+  entryId: slotEntryId(date, slotId),
+  kind: "slot",
+  date,
+  slotId,
+  recording: "custom",
+  name,
+  estimateBasis: "userStated",
+  nutritionEstimate: { kcal, proteinG: null, carbsG: 110, fatG: null },
+  ...createdMeta(),
 });
 
 export const extraEntry = (
@@ -145,6 +184,7 @@ export const extraEntry = (
   name: "Apfel",
   estimateBasis: "userStated",
   nutritionEstimate: { kcal: 80, proteinG: null, carbsG: 20, fatG: null },
+  ...createdMeta(),
 });
 
 /** A deep copy that throws on any later mutation. */

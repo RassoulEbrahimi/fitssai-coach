@@ -9,17 +9,22 @@ import type { NutritionWeek, NutritionWeekDay } from "@/lib/nutrition/v2/resolve
 import type { NutritionV2TodayView } from "@/lib/nutrition/v2/todayView";
 
 /**
- * Nutrition V2 Today/week shell. Presentational and read-only.
+ * Nutrition V2 Today/week shell. Presentational.
  *
  * A week row shows the day, its recording status and its PLANNED kcal — nothing
  * else: no macros, no recorded values, no controls. The chevron is decoration
  * for a future day detail; it is hidden from assistive technology and nothing
- * here is focusable or clickable. There is no log, replace, generate, recipe
+ * in the week is focusable or clickable. There is no replace, generate, recipe
  * or shopping action, and no state promises a plan.
+ *
+ * Recording lives only in the separate `todayRecording` section the container
+ * passes in for today (NUT-06); the shell itself stays read-only.
  */
 
 interface NutritionV2TodayShellProps {
   view: NutritionV2TodayView;
+  /** Today's recording section, shown above the week when today is a plan day. */
+  todayRecording?: React.ReactNode;
 }
 
 /** The weekday and date of a calendar day. Formatted in UTC so the day never shifts. */
@@ -112,7 +117,7 @@ const Week = ({ week, title, language }: { week: NutritionWeek; title: string; l
   </section>
 );
 
-export const NutritionV2TodayShell: React.FC<NutritionV2TodayShellProps> = ({ view }) => {
+export const NutritionV2TodayShell: React.FC<NutritionV2TodayShellProps> = ({ view, todayRecording }) => {
   const { t, i18n } = useTranslation();
   const language = i18n.language || "de";
 
@@ -166,7 +171,12 @@ export const NutritionV2TodayShell: React.FC<NutritionV2TodayShellProps> = ({ vi
           </div>
         );
       case "today":
-        return <Week week={view.week} title={t("nutritionV2.today.weekTitle")} language={language} />;
+        return (
+          <div className="space-y-6">
+            {todayRecording}
+            <Week week={view.week} title={t("nutritionV2.today.weekTitle")} language={language} />
+          </div>
+        );
     }
   })();
 

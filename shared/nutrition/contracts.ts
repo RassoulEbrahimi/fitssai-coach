@@ -4,6 +4,8 @@ import {
   NUTRITION_DOC_ID_PATTERN,
   NUTRITION_SLOT_IDS,
   isExtraEntryId,
+  isNutritionSlotId,
+  isUuid,
   slotEntryId,
 } from "./identity";
 
@@ -311,7 +313,35 @@ export const nutritionEstimateSchema = z
 
 export type NutritionEstimate = z.infer<typeof nutritionEstimateSchema>;
 
-const recordedEntryBase = {
+/**
+ * A recorded entry's state. `removed` is a tombstone: the entry was taken
+ * back, its last snapshot is kept as history, and it counts as no recording.
+ * An entry is never hard-deleted. A tombstone is not a skip — a skip is an
+ * active recording that says the slot was explicitly not eaten.
+ */
+export const RECORDED_ENTRY_STATUSES = ["active", "removed"] as const;
+
+export const recordedEntryStatusSchema = z.enum(RECORDED_ENTRY_STATUSES);
+
+export type RecordedEntryStatus = z.infer<typeof recordedEntryStatusSchema>;
+
+/**
+ * How many applied intent ids an entry remembers. Enough for idempotent retry
+ * and replay of recent writes; the oldest id is dropped first.
+ */
+export const NUTRITION_ENTRY_INTENT_RING_SIZE = 20;
+
+/**
+ * The id of one explicit user mutation: a UUID, created once per action and
+ * kept through every retry of it. Canonical lower case — what
+ * `crypto.randomUUID()` produces — so one intent has exactly one spelling.
+ */
+export const nutritionIntentIdSchema = z
+  .string()
+  .refine((value) => isUuid(value) && value === value.toLowerCase(), { message: "intent id must be a lower-case UUID" });
+
+/** Identity: fixed when the entry is created, never changed afterwards. */
+const recordedEntryIdentity = {
   schemaVersion: nutritionSchemaVersionSchema,
   entryId: z.string(),
   kind: recordedEntryKindSchema,
@@ -319,8 +349,85 @@ const recordedEntryBase = {
   slotId: nutritionSlotIdSchema.nullable(),
 };
 
+const plannedMealRecording = {
+  recording: z.literal("plannedMeal"),
+  planId: nutritionDocIdSchema,
+  name: displayTextSchema,
+  estimateBasis: z.literal("planMealTimesPortion"),
+  /** Multiplier on the planned meal. Positive: nothing eaten is a skip, not a portion. No preset domain. */
+  portion: quantitySchema.positive("portion must be greater than zero"),
+  nutritionEstimate: nutritionValuesSchema,
+};
+
+const skipRecording = {
+  recording: z.literal("skip"),
+  estimateBasis: z.literal("none"),
+  nutritionEstimate: z.null(),
+};
+
 /**
- * One thing the person explicitly recorded — never inferred from the plan.
+ * Something the person described. A custom recording is a meal they ate, so it
+ * always carries the kcal they stated; its macros may be unknown (`null`).
+ */
+const customRecording = {
+  recording: z.literal("custom"),
+  name: displayTextSchema,
+  estimateBasis: z.literal("userStated"),
+  nutritionEstimate: nutritionEstimateSchema,
+};
+
+/**
+ * Concurrency and idempotency metadata of a persisted entry.
+ *
+ *   revision          1 when created; every applied write is exactly +1.
+ *   status            `active`, or the `removed` tombstone.
+ *   appliedIntentIds  the intents already applied, oldest first, at most
+ *                     `NUTRITION_ENTRY_INTENT_RING_SIZE`. A write whose intent
+ *                     is listed here has already happened.
+ */
+const recordedEntryMutation = {
+  revision: z.number().int("revision must be a whole number").positive("revision starts at 1"),
+  status: recordedEntryStatusSchema,
+  appliedIntentIds: z
+    .array(nutritionIntentIdSchema)
+    .min(1, "an entry exists only because an intent was applied")
+    .max(NUTRITION_ENTRY_INTENT_RING_SIZE, `at most ${NUTRITION_ENTRY_INTENT_RING_SIZE} intent ids are kept`),
+};
+
+// Optional because the client compiles with `strict: false`, where zod infers
+// every field as optional; the refinement runs after the shape has parsed.
+type RecordedEntryIdentityFields = {
+  entryId?: string;
+  kind?: RecordedEntryKind;
+  date?: string;
+  slotId?: string | null;
+  recording?: string;
+};
+
+const refineRecordedEntryIdentity = (entry: RecordedEntryIdentityFields, ctx: z.RefinementCtx) => {
+  const issue = (path: string, message: string) =>
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: [path], message });
+
+  if (entry.kind === "slot") {
+    if (entry.slotId === null) {
+      issue("slotId", "a slot entry needs a slotId");
+    } else if (
+      isNutritionDate(entry.date) &&
+      isNutritionSlotId(entry.slotId) &&
+      entry.entryId !== slotEntryId(entry.date, entry.slotId)
+    ) {
+      issue("entryId", "a slot entry's id must be slot:{date}:{slotId}");
+    }
+  } else {
+    if (entry.slotId !== null) issue("slotId", "an extra entry has no slotId");
+    if (!isExtraEntryId(entry.entryId)) issue("entryId", "an extra entry's id must be extra:{uuid}");
+    if (entry.recording !== "custom") issue("recording", `${entry.recording} is only recorded for a slot`);
+  }
+};
+
+/**
+ * What the person explicitly recorded, without persistence metadata: the full
+ * desired state a recording action asks for.
  *
  * `recording` says what was recorded:
  *
@@ -328,76 +435,60 @@ const recordedEntryBase = {
  *                `planMealTimesPortion` estimate (all four values, since a
  *                planned meal's values are complete) with the portion eaten.
  *   skip         the slot was explicitly skipped. No meal, no estimate.
- *   custom       something the person described: `userStated` numbers or none.
+ *   custom       something the person described, with the kcal they stated
+ *                (`userStated`); a macro they did not state is `null`.
  *
- * Every field is a snapshot of the moment of recording. Changing the plan or
- * the slot's override later never recomputes it.
+ * Every field is a snapshot of the moment of recording. Changing the plan, the
+ * slot's override or the target later never recomputes it.
  *
  * Identity: a slot entry has a `slotId` and the id `slot:{date}:{slotId}`; an
  * extra entry has no `slotId` and an id `extra:{uuid}`. Only `custom` can be
  * an extra entry.
  */
+export const recordedEntrySnapshotSchema = z
+  .discriminatedUnion("recording", [
+    z.object({ ...recordedEntryIdentity, ...plannedMealRecording }).strict(),
+    z.object({ ...recordedEntryIdentity, ...skipRecording }).strict(),
+    z.object({ ...recordedEntryIdentity, ...customRecording }).strict(),
+  ])
+  .superRefine(refineRecordedEntryIdentity);
+
+export type RecordedEntrySnapshot = z.infer<typeof recordedEntrySnapshotSchema>;
+
+/**
+ * One thing the person explicitly recorded — never inferred from the plan —
+ * as persisted: the snapshot plus its mutation metadata. A `removed` entry
+ * keeps the snapshot it had when it was removed.
+ */
 export const recordedEntrySchema = z
   .discriminatedUnion("recording", [
-    z
-      .object({
-        ...recordedEntryBase,
-        recording: z.literal("plannedMeal"),
-        planId: nutritionDocIdSchema,
-        name: displayTextSchema,
-        estimateBasis: z.literal("planMealTimesPortion"),
-        /** Multiplier on the planned meal. Positive: nothing eaten is a skip, not a portion. */
-        portion: quantitySchema.positive("portion must be greater than zero"),
-        nutritionEstimate: nutritionValuesSchema,
-      })
-      .strict(),
-    z
-      .object({
-        ...recordedEntryBase,
-        recording: z.literal("skip"),
-        estimateBasis: z.literal("none"),
-        nutritionEstimate: z.null(),
-      })
-      .strict(),
-    z
-      .object({
-        ...recordedEntryBase,
-        recording: z.literal("custom"),
-        name: displayTextSchema,
-        estimateBasis: z.enum(["userStated", "none"]),
-        nutritionEstimate: nutritionEstimateSchema.nullable(),
-      })
-      .strict(),
+    z.object({ ...recordedEntryIdentity, ...plannedMealRecording, ...recordedEntryMutation }).strict(),
+    z.object({ ...recordedEntryIdentity, ...skipRecording, ...recordedEntryMutation }).strict(),
+    z.object({ ...recordedEntryIdentity, ...customRecording, ...recordedEntryMutation }).strict(),
   ])
   .superRefine((entry, ctx) => {
-    const issue = (path: string, message: string) =>
-      ctx.addIssue({ code: z.ZodIssueCode.custom, path: [path], message });
-
-    if (entry.kind === "slot") {
-      if (entry.slotId === null) {
-        issue("slotId", "a slot entry needs a slotId");
-      } else if (isNutritionDate(entry.date) && entry.entryId !== slotEntryId(entry.date, entry.slotId)) {
-        issue("entryId", "a slot entry's id must be slot:{date}:{slotId}");
-      }
-    } else {
-      if (entry.slotId !== null) issue("slotId", "an extra entry has no slotId");
-      if (!isExtraEntryId(entry.entryId)) issue("entryId", "an extra entry's id must be extra:{uuid}");
-      if (entry.recording !== "custom") issue("recording", `${entry.recording} is only recorded for a slot`);
-    }
-
-    if (entry.recording === "custom") {
-      if (entry.estimateBasis === "none" && entry.nutritionEstimate !== null) {
-        issue("nutritionEstimate", "basis none has no estimate");
-      }
-      if (entry.estimateBasis === "userStated" && entry.nutritionEstimate === null) {
-        issue("nutritionEstimate", "basis userStated needs an estimate");
-      }
+    refineRecordedEntryIdentity(entry, ctx);
+    if (new Set(entry.appliedIntentIds).size !== entry.appliedIntentIds.length) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["appliedIntentIds"],
+        message: "an intent id is applied at most once",
+      });
     }
   });
 
 export type RecordedEntry = z.infer<typeof recordedEntrySchema>;
 
 export type RecordedEntryRecording = RecordedEntry["recording"];
+
+/** The persistence metadata of an entry, apart from its snapshot. */
+export const RECORDED_ENTRY_MUTATION_FIELDS = ["revision", "status", "appliedIntentIds"] as const;
+
+/** The identity fields that never change after an entry is created. */
+export const RECORDED_ENTRY_IDENTITY_FIELDS = ["schemaVersion", "entryId", "kind", "date", "slotId"] as const;
+
+/** An entry that counts as a recording. A tombstone is history, never a recording. */
+export const isActiveRecordedEntry = (entry: Pick<RecordedEntry, "status">): boolean => entry.status === "active";
 
 /* ------------------------------------------------------------------ *
  * Plan generation requests

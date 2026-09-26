@@ -20,8 +20,8 @@ import {
 } from "./integrity";
 
 /**
- * Nutrition V2 Firestore reads. Read-only: nothing here writes, and there is
- * no write path for Nutrition V2 on the client.
+ * Nutrition V2 Firestore reads. Read-only: nothing here writes. The client's
+ * one V2 write path is the recorded-entry transaction in `./entryWriter`.
  *
  * Every path is `users/{uid}/…` for the authenticated uid the caller passes,
  * every collection name comes from `NUTRITION_V2_COLLECTIONS`, and every
