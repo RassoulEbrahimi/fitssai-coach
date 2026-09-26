@@ -31,6 +31,20 @@ vi.mock('@/hooks/queries/useProfile', () => ({ useProfile: () => ({ data: { id: 
 vi.mock('@/hooks/queries/useWorkoutPlan', () => ({ useWorkoutPlan: () => workoutQuery }));
 vi.mock('@/hooks/queries/useWorkoutLogs', () => ({ useWorkoutLogs: () => ({ data: [], isToggling: false, toggleDay: vi.fn() }) }));
 vi.mock('@/hooks/queries/useLegacyNutritionPlan', () => ({ useLegacyNutritionPlan: () => nutritionQuery }));
+// NUT-05: Nutrition V2 reads exist but are unreachable while NUTRITION_V2_ENABLED is false.
+const v2Hook = vi.hoisted(() => vi.fn());
+vi.mock('@/hooks/queries/useNutritionV2', () => {
+  const hook = (name: string) => () => { v2Hook(name); return { status: 'disabled' }; };
+  return {
+    useNutritionV2Access: hook('useNutritionV2Access'),
+    useNutritionV2State: hook('useNutritionV2State'),
+    useActiveNutritionV2Plan: hook('useActiveNutritionV2Plan'),
+    useCurrentNutritionV2Target: hook('useCurrentNutritionV2Target'),
+    useNutritionV2Slots: hook('useNutritionV2Slots'),
+    useNutritionV2EntriesByDate: hook('useNutritionV2EntriesByDate'),
+    useNutritionV2EntriesRange: hook('useNutritionV2EntriesRange'),
+  };
+});
 vi.mock('@/hooks/useWeeklyActivity', () => ({ useWeeklyActivity: () => ({}) }));
 vi.mock('@/contexts/TrainingSessionContext', () => ({
   useTrainingSession: () => ({ validateSessionAgainstPlan: vi.fn(), rejectionNotice: null, clearRejectionNotice: vi.fn() }),
@@ -45,6 +59,7 @@ import { PreferencesProvider } from '@/contexts/PreferencesContext';
 import { FocusModeProvider } from '@/contexts/FocusModeContext';
 import { ThemeProvider } from '@/hooks/useTheme';
 import { toLegacyNutritionPlan } from '@/lib/nutrition/legacy';
+import { NUTRITION_V2_ENABLED } from '@shared/nutrition/featureFlag';
 
 // What useLegacyNutritionPlan returns for a stored legacy document.
 const plan = toLegacyNutritionPlan('fixture-nutrition', {
@@ -117,6 +132,16 @@ describe('nutrition tab query states', () => {
 
     expect(await screen.findByText(/Haferflocken mit Beeren/)).toBeInTheDocument();
     expect(screen.getByText('420 kcal')).toBeInTheDocument();
+  });
+
+  it('stays on the legacy path while Nutrition V2 is switched off', async () => {
+    expect(NUTRITION_V2_ENABLED).toBe(false);
+    nutritionQuery.data = plan;
+    mountNutrition();
+
+    expect(await screen.findByTestId('legacy-nutrition-plan')).toBeInTheDocument();
+    expect(screen.queryByTestId('nutrition-v2-today')).not.toBeInTheDocument();
+    expect(v2Hook).not.toHaveBeenCalled();
   });
 
   it('does not let the workout query control nutrition loading', async () => {

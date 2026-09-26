@@ -10,6 +10,7 @@ const v2Keys = (uid: string): QueryKey[] => [
   nutrition.state(uid),
   nutrition.targets.all(uid),
   nutrition.targets.current(uid),
+  nutrition.targets.byId(uid, "target-1"),
   nutrition.plans.all(uid),
   nutrition.plans.active(uid),
   nutrition.plans.byId(uid, "plan-1"),

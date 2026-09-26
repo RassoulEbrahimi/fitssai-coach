@@ -19,6 +19,9 @@ export const NUTRITION_V2_COLLECTIONS = Object.freeze({
 export type NutritionV2CollectionName =
   (typeof NUTRITION_V2_COLLECTIONS)[keyof typeof NUTRITION_V2_COLLECTIONS];
 
+/** The one document of `nutrition_v2_state`: `users/{uid}/nutrition_v2_state/current`. */
+export const NUTRITION_V2_STATE_DOC_ID = "current" as const;
+
 /** Server-only: slot suggestions are never read or written by the client. */
 export const NUTRITION_V2_SUGGESTIONS_COLLECTION = "_nutrition_v2_suggestions" as const;
 
