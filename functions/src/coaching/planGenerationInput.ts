@@ -61,5 +61,6 @@ export const FORBIDDEN_PROVIDER_FIELDS = [
   "weight",
   "dateOfBirth",
   "dietaryPreference",
+  "biologicalSex",
   "workoutLogs",
 ] as const;

@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { doc, getDoc, setDoc, Timestamp } from "firebase/firestore";
+import type { ZodType } from "zod";
 import { db } from "@/lib/firebase";
 import { useAuth } from "@/hooks/useAuth";
 import {
@@ -7,6 +8,16 @@ import {
   type CoachingPreferences,
 } from "@/lib/coachingPreferences";
 import { queryKeys } from "@/lib/queryKeys";
+import {
+  answeredValue,
+  biologicalSexSchema,
+  manualTargetKcalSchema,
+  mealsPerDaySchema,
+  nutritionTargetModeSchema,
+  parseNutritionProfile,
+  type BiologicalSex,
+  type NutritionTargetMode,
+} from "@shared/nutrition";
 
 export interface Profile extends CoachingPreferences {
   id: string;
@@ -21,11 +32,32 @@ export interface Profile extends CoachingPreferences {
   age?: number | null;
   dietary_preference?: string | null;
   role?: string;
+  /*
+    Nutrition V2 answers. `null` until the person gives one; a stored value
+    this build does not recognise also reads as `null` and is left in the
+    document untouched. Nutrition reads its own view through
+    `parseNutritionProfile`, which additionally tells the two apart.
+  */
+  biological_sex?: BiologicalSex | null;
+  nutrition_target_mode?: NutritionTargetMode | null;
+  manual_target_kcal?: number | null;
+  meals_per_day?: number | null;
   created_at?: string | null;
   updated_at?: string | null;
 }
 
-const docToProfile = (id: string, d: Record<string, any>): Profile => ({
+/** The Nutrition V2 answers as the profile exposes them: recognised, or `null`. */
+const nutritionAnswers = (d: Record<string, unknown>) => {
+  const nutrition = parseNutritionProfile(d);
+  return {
+    biological_sex:        answeredValue(nutrition.biologicalSex),
+    nutrition_target_mode: answeredValue(nutrition.nutritionTargetMode),
+    manual_target_kcal:    answeredValue(nutrition.manualTargetKcal),
+    meals_per_day:         answeredValue(nutrition.mealsPerDay),
+  };
+};
+
+export const docToProfile = (id: string, d: Record<string, any>): Profile => ({
   id,
   // Absent on every profile created before these questions existed. The parser
   // returns undefined rather than a default, so "never answered" stays
@@ -41,9 +73,47 @@ const docToProfile = (id: string, d: Record<string, any>): Profile => ({
   age:                d.age                ?? null,
   avatar_path:        null,
   role:               d.role               ?? "user",
+  ...nutritionAnswers(d),
   created_at: d.createdAt instanceof Timestamp ? d.createdAt.toDate().toISOString() : null,
   updated_at: d.updatedAt instanceof Timestamp ? d.updatedAt.toDate().toISOString() : null,
 });
+
+/**
+ * A supplied Nutrition answer must be one the contract accepts; `null` clears
+ * it. Refused before anything is written, so a bad value can never land in the
+ * document and then silently read back as "no answer".
+ */
+const checkedNutritionAnswer = <T>(field: string, value: T | null, schema: ZodType<T>): T | null => {
+  if (value !== null && !schema.safeParse(value).success) {
+    throw new RangeError(`Invalid profile value for ${field}`);
+  }
+  return value;
+};
+
+/**
+ * The Firestore fields a profile save writes: exactly the fields supplied.
+ * A field left `undefined` is not written, so a partial save never clears or
+ * defaults anything it was not given.
+ */
+export const profileWriteFields = (values: Partial<Profile>): Record<string, unknown> => {
+  const fsData: Record<string, unknown> = {};
+  if (values.full_name          !== undefined) fsData.fullName          = values.full_name;
+  if (values.fitness_goal       !== undefined) fsData.fitnessGoal       = values.fitness_goal;
+  if (values.dietary_preference !== undefined) fsData.dietaryPreference = values.dietary_preference;
+  if (values.experience_level   !== undefined) fsData.experienceLevel   = values.experience_level;
+  if (values.activity_level     !== undefined) fsData.activityLevel     = values.activity_level;
+  if (values.weight             !== undefined) fsData.weight            = values.weight;
+  if (values.height             !== undefined) fsData.height            = values.height;
+  if (values.age                !== undefined) fsData.age               = values.age;
+  if (values.equipment          !== undefined) fsData.equipment         = values.equipment;
+  if (values.daysPerWeek        !== undefined) fsData.daysPerWeek       = values.daysPerWeek;
+  if (values.sessionMinutes     !== undefined) fsData.sessionMinutes    = values.sessionMinutes;
+  if (values.biological_sex        !== undefined) fsData.biologicalSex       = checkedNutritionAnswer("biologicalSex", values.biological_sex, biologicalSexSchema);
+  if (values.nutrition_target_mode !== undefined) fsData.nutritionTargetMode = checkedNutritionAnswer("nutritionTargetMode", values.nutrition_target_mode, nutritionTargetModeSchema);
+  if (values.manual_target_kcal    !== undefined) fsData.manualTargetKcal    = checkedNutritionAnswer("manualTargetKcal", values.manual_target_kcal, manualTargetKcalSchema);
+  if (values.meals_per_day         !== undefined) fsData.mealsPerDay         = checkedNutritionAnswer("mealsPerDay", values.meals_per_day, mealsPerDaySchema);
+  return fsData;
+};
 
 export const useProfile = () => {
   const { user } = useAuth();
@@ -68,18 +138,7 @@ export const useUpdateProfile = () => {
   return useMutation({
     mutationFn: async (values: Partial<Profile>) => {
       if (!user) throw new Error("Not authenticated");
-      const fsData: Record<string, any> = { updatedAt: Timestamp.now() };
-      if (values.full_name          !== undefined) fsData.fullName          = values.full_name;
-      if (values.fitness_goal       !== undefined) fsData.fitnessGoal       = values.fitness_goal;
-      if (values.dietary_preference !== undefined) fsData.dietaryPreference = values.dietary_preference;
-      if (values.experience_level   !== undefined) fsData.experienceLevel   = values.experience_level;
-      if (values.activity_level     !== undefined) fsData.activityLevel     = values.activity_level;
-      if (values.weight             !== undefined) fsData.weight            = values.weight;
-      if (values.height             !== undefined) fsData.height            = values.height;
-      if (values.age                !== undefined) fsData.age               = values.age;
-      if (values.equipment          !== undefined) fsData.equipment         = values.equipment;
-      if (values.daysPerWeek        !== undefined) fsData.daysPerWeek       = values.daysPerWeek;
-      if (values.sessionMinutes     !== undefined) fsData.sessionMinutes    = values.sessionMinutes;
+      const fsData = { updatedAt: Timestamp.now(), ...profileWriteFields(values) };
       await setDoc(doc(db, "users", user.uid), fsData, { merge: true });
     },
     /*
