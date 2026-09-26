@@ -69,6 +69,9 @@ export const queryKeys = {
     targets: {
       all: (userId: string | undefined) => ['nutrition-v2', userId, 'targets'] as const,
       current: (userId: string | undefined) => ['nutrition-v2', userId, 'targets', 'current'] as const,
+      // A target version is immutable, so its document is cached by its id.
+      byId: (userId: string | undefined, targetVersionId: string | undefined) =>
+        ['nutrition-v2', userId, 'targets', 'byId', targetVersionId] as const,
     },
     plans: {
       all: (userId: string | undefined) => ['nutrition-v2', userId, 'plans'] as const,

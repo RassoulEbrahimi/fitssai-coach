@@ -2,7 +2,7 @@ import React from "react";
 import { readFileSync } from "fs";
 import { resolve } from "path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { renderHook, waitFor } from "@testing-library/react";
+import { act, renderHook, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
 /*
@@ -355,7 +355,7 @@ describe("useCurrentNutritionV2Target", () => {
     expect(readPaths()).toEqual([statePath("alice")]);
   });
 
-  it("reads and parses exactly the pointed-to target under the current-target key", async () => {
+  it("reads and parses exactly the pointed-to target under its target-version key", async () => {
     put(statePath("alice"), makeState());
     put(`users/alice/${C.targets}/target-1`, makeTarget());
     put(`users/alice/${C.targets}/target-2`, makeTarget("target-2"));
@@ -364,7 +364,8 @@ describe("useCurrentNutritionV2Target", () => {
 
     expect(result.current).toEqual({ status: "success", data: makeTarget() });
     expect(readPaths()).toEqual([statePath("alice"), `users/alice/${C.targets}/target-1`]);
-    expect(client.getQueryData(queryKeys.nutrition.targets.current("alice"))).toEqual(makeTarget());
+    expect(client.getQueryData(queryKeys.nutrition.targets.byId("alice", "target-1"))).toEqual(makeTarget());
+    expect(client.getQueryData(queryKeys.nutrition.targets.current("alice"))).toBeUndefined();
   });
 
   it("errors when the pointed-to target does not exist", async () => {
@@ -391,6 +392,116 @@ describe("useCurrentNutritionV2Target", () => {
     await settled(() => result.current);
 
     expect(integrityError(result.current).code).toBe("malformed");
+  });
+
+  it("propagates a state integrity error without reading a target", async () => {
+    put(statePath("alice"), { ...makeState(), currentTargetVersionId: 42 });
+    put(`users/alice/${C.targets}/target-1`, makeTarget());
+    const { result } = mount(() => useCurrentNutritionV2Target());
+    await settled(() => result.current);
+
+    const error = integrityError(result.current);
+    expect(error.code).toBe("malformed");
+    expect(error.documentPath).toBe(`${C.state}/current`);
+    expect(readPaths()).toEqual([statePath("alice")]);
+  });
+});
+
+describe("the current target follows the state pointer", () => {
+  const targetPath = (id: string) => `users/alice/${C.targets}/${id}`;
+  const targetReads = () => readPaths().filter((path) => path.includes(`/${C.targets}/`));
+
+  /** The target hook, plus every render's (state pointer, target read) pair. */
+  const mountTracked = (client: QueryClient) => {
+    const renders: { pointer: string | null | undefined; target: NutritionV2Read<unknown> }[] = [];
+    const mounted = mount(() => {
+      const state = useNutritionV2State();
+      const target = useCurrentNutritionV2Target();
+      renders.push({ pointer: state.status === "success" ? state.data?.currentTargetVersionId : undefined, target });
+      return target;
+    }, client);
+    return { ...mounted, renders };
+  };
+
+  /** Represents a state update: the document changes, then the state query refetches. */
+  const moveStatePointer = async (client: QueryClient, currentTargetVersionId: string | null) => {
+    put(statePath("alice"), makeState({ currentTargetVersionId }));
+    await act(() => client.invalidateQueries({ queryKey: queryKeys.nutrition.state("alice") }));
+  };
+
+  it("target-1 → target-2 reads target-2 and never serves cached target-1 as current", async () => {
+    put(statePath("alice"), makeState({ currentTargetVersionId: "target-1" }));
+    put(targetPath("target-1"), makeTarget("target-1"));
+    put(targetPath("target-2"), makeTarget("target-2"));
+    const client = makeClient();
+    const { result, renders } = mountTracked(client);
+    await waitFor(() => expect(result.current).toEqual({ status: "success", data: makeTarget("target-1") }));
+
+    await moveStatePointer(client, "target-2");
+    await waitFor(() => expect(result.current).toEqual({ status: "success", data: makeTarget("target-2") }));
+
+    expect(targetReads()).toEqual([targetPath("target-1"), targetPath("target-2")]);
+    // Once the state names target-2, no render answers with target-1.
+    const afterMove = renders.filter((render) => render.pointer === "target-2");
+    expect(afterMove.length).toBeGreaterThan(0);
+    for (const { target } of afterMove) {
+      expect(target.status === "success" && target.data).not.toEqual(makeTarget("target-1"));
+    }
+
+    // Distinct, account-scoped keys, one per target version.
+    const one = queryKeys.nutrition.targets.byId("alice", "target-1");
+    const two = queryKeys.nutrition.targets.byId("alice", "target-2");
+    expect(one).not.toEqual(two);
+    expect([one[1], two[1]]).toEqual(["alice", "alice"]);
+    expect(queryKeys.nutrition.targets.byId("bob", "target-1")).not.toEqual(one);
+    expect(client.getQueryData(one)).toEqual(makeTarget("target-1"));
+    expect(client.getQueryData(two)).toEqual(makeTarget("target-2"));
+    expect(client.getQueryData(queryKeys.nutrition.targets.current("alice"))).toBeUndefined();
+  });
+
+  it("target-2 → null returns null without another target read", async () => {
+    put(statePath("alice"), makeState({ currentTargetVersionId: "target-2" }));
+    put(targetPath("target-2"), makeTarget("target-2"));
+    const client = makeClient();
+    const { result, renders } = mountTracked(client);
+    await waitFor(() => expect(result.current).toEqual({ status: "success", data: makeTarget("target-2") }));
+
+    await moveStatePointer(client, null);
+    await waitFor(() => expect(result.current).toEqual({ status: "success", data: null }));
+
+    expect(targetReads()).toEqual([targetPath("target-2")]);
+    for (const { target } of renders.filter((render) => render.pointer === null)) {
+      expect(target).toEqual({ status: "success", data: null });
+    }
+  });
+
+  it("null → target-3 reads target-3", async () => {
+    put(statePath("alice"), makeState({ currentTargetVersionId: null }));
+    put(targetPath("target-3"), makeTarget("target-3"));
+    const client = makeClient();
+    const { result } = mountTracked(client);
+    await waitFor(() => expect(result.current).toEqual({ status: "success", data: null }));
+    expect(targetReads()).toEqual([]);
+
+    await moveStatePointer(client, "target-3");
+    await waitFor(() => expect(result.current).toEqual({ status: "success", data: makeTarget("target-3") }));
+
+    expect(targetReads()).toEqual([targetPath("target-3")]);
+  });
+
+  it("a state that stops validating propagates its error instead of the cached target", async () => {
+    put(statePath("alice"), makeState({ currentTargetVersionId: "target-1" }));
+    put(targetPath("target-1"), makeTarget("target-1"));
+    const client = makeClient();
+    const { result } = mountTracked(client);
+    await waitFor(() => expect(result.current).toEqual({ status: "success", data: makeTarget("target-1") }));
+
+    put(statePath("alice"), { ...makeState(), schemaVersion: 3 });
+    await act(() => client.invalidateQueries({ queryKey: queryKeys.nutrition.state("alice") }));
+    await waitFor(() => expect(result.current.status).toBe("error"));
+
+    expect(integrityError(result.current).code).toBe("malformed");
+    expect(targetReads()).toEqual([targetPath("target-1")]);
   });
 });
 

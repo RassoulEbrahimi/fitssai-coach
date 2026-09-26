@@ -1,4 +1,4 @@
-import { useQuery, useQueryClient, type UseQueryResult } from "@tanstack/react-query";
+import { useQuery, type UseQueryResult } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/useAuth";
 import { useProfile } from "@/hooks/queries/useProfile";
 import { queryKeys } from "@/lib/queryKeys";
@@ -93,12 +93,6 @@ const toRead = <T, E>(query: UseQueryResult<T, E>, enabled: boolean): NutritionV
   return { status: "pending" };
 };
 
-const stateQueryOptions = (uid: string | undefined) => ({
-  queryKey: queryKeys.nutrition.state(uid),
-  queryFn: () => readNutritionV2State(requireUid(uid)),
-  retry: retryUnlessIntegrity,
-});
-
 /* ------------------------------------------------------------------ *
  * State and pointers
  * ------------------------------------------------------------------ */
@@ -109,7 +103,12 @@ const stateQueryOptions = (uid: string | undefined) => ({
  */
 export const useNutritionV2State = (): NutritionV2Read<NutritionUserState | null> => {
   const uid = useEligibleUid();
-  const query = useQuery({ ...stateQueryOptions(uid), enabled: !!uid });
+  const query = useQuery({
+    queryKey: queryKeys.nutrition.state(uid),
+    queryFn: () => readNutritionV2State(requireUid(uid)),
+    enabled: !!uid,
+    retry: retryUnlessIntegrity,
+  });
   return toRead(query, !!uid);
 };
 
@@ -139,24 +138,25 @@ export const useActiveNutritionV2Plan = (): NutritionV2Read<NutritionPlan | null
 /**
  * The target version `state.currentTargetVersionId` names, read exactly by
  * that id. `null` data when V2 is not initialised or no target is set. The
- * pointer is taken from the state read inside the same fetch, so the answer is
- * always the target of one state snapshot. Nothing is calculated.
+ * key carries the target version id, so a new pointer is a new read and never
+ * reuses another version's entry. Nothing is calculated.
  */
 export const useCurrentNutritionV2Target = (): NutritionV2Read<TargetVersion | null> => {
   const uid = useEligibleUid();
-  const queryClient = useQueryClient();
+  const state = useNutritionV2State();
+  const targetVersionId = state.status === "success" ? (state.data?.currentTargetVersionId ?? null) : null;
+  const enabled = !!uid && targetVersionId !== null;
 
   const query = useQuery({
-    queryKey: queryKeys.nutrition.targets.current(uid),
-    queryFn: async () => {
-      const state = await queryClient.fetchQuery(stateQueryOptions(uid));
-      if (state === null || state.currentTargetVersionId === null) return null;
-      return readNutritionV2Target(requireUid(uid), state.currentTargetVersionId);
-    },
-    enabled: !!uid,
+    queryKey: queryKeys.nutrition.targets.byId(uid, targetVersionId ?? undefined),
+    queryFn: () => readNutritionV2Target(requireUid(uid), required(targetVersionId, "a target version id")),
+    enabled,
     retry: retryUnlessIntegrity,
   });
-  return toRead(query, !!uid);
+
+  if (state.status !== "success") return state;
+  if (targetVersionId === null) return { status: "success", data: null };
+  return toRead(query, enabled);
 };
 
 /* ------------------------------------------------------------------ *
