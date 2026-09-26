@@ -165,7 +165,10 @@ describe("the owner's queue", () => {
   });
 
   it("serializes by entry: an older intent for the entry holds a new one, an unrelated one does not", () => {
-    expect(nutritionEntrySerializeKey(LUNCH)).toBe(`nutrition-entry:${LUNCH}`);
+    expect(nutritionEntrySerializeKey("alice", LUNCH)).toBe(`nutrition-entry:alice:${LUNCH}`);
+    // Same deterministic entry id, different accounts: different lanes.
+    expect(nutritionEntrySerializeKey("bob", LUNCH)).not.toBe(nutritionEntrySerializeKey("alice", LUNCH));
+    expect(nutritionEntrySerializeKey("alice", slotEntryId(DATE, "dinner"))).not.toBe(nutritionEntrySerializeKey("alice", LUNCH));
     const active = [queued("q1", record(1))];
     expect(hasQueuedNutritionIntent(active, LUNCH)).toBe(true);
     expect(hasQueuedNutritionIntent(active, slotEntryId(DATE, "dinner"))).toBe(false);

@@ -150,8 +150,14 @@ export const readOwnerNutritionQueue = (queue: readonly unknown[], ownerUid: str
 export const hasQueuedNutritionIntent = (active: readonly NutritionQueuedIntent[], entryId: string): boolean =>
   active.some((queued) => queued.intent.entryId === entryId);
 
-/** Writes to one entry are ordered; writes to different entries are not. */
-export const nutritionEntrySerializeKey = (entryId: string): string => `nutrition-entry:${entryId}`;
+/**
+ * The local lane one account's writes to one entry run in: ordered per account
+ * and entry, never shared between accounts (slot entry ids are deterministic,
+ * so two accounts can have the same one) or between entries. Only local task
+ * serialization; the queue and the intent carry no such key.
+ */
+export const nutritionEntrySerializeKey = (ownerUid: string, entryId: string): string =>
+  `nutrition-entry:${encodeURIComponent(ownerUid)}:${entryId}`;
 
 /* ------------------------------------------------------------------ *
  * Projection

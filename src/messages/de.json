@@ -548,6 +548,7 @@
       "pending": "Lokal gespeichert – wird synchronisiert",
       "pendingRetry": "Lokal gespeichert – Synchronisierung wird erneut versucht",
       "conflict": {
+        "sectionTitle": "Nicht übernommene Offline-Änderungen",
         "title": "Offline-Änderung nicht übernommen",
         "body": "{{entry}} wurde geändert, bevor deine Offline-Änderung übernommen werden konnte. Sie wurde nicht gespeichert.",
         "requested": "Deine Änderung: {{change}}",

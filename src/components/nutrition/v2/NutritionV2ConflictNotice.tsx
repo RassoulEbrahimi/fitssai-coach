@@ -24,7 +24,7 @@ import { recordedEntryLabel } from "./recordingFormat";
  * Rendering it writes nothing.
  */
 
-const entryName = (conflict: NutritionEntryConflict, current: RecordedEntry | null): string | null => {
+const entryName = (conflict: NutritionEntryConflict, current: RecordedEntry | null | undefined): string | null => {
   const { intent } = conflict;
   if (intent.op !== "remove" && intent.desired.recording === "custom") return intent.desired.name;
   return current?.recording === "custom" ? current.name : null;
@@ -32,8 +32,11 @@ const entryName = (conflict: NutritionEntryConflict, current: RecordedEntry | nu
 
 export const NutritionV2ConflictNotice: React.FC<{
   conflict: NutritionEntryConflict;
-  /** The entry as shown now (committed plus local changes), or `null` if there is none. */
-  current: RecordedEntry | null;
+  /**
+   * The entry as shown now (committed plus local changes), `null` if there is
+   * none, or `undefined` while its date is still being read.
+   */
+  current: RecordedEntry | null | undefined;
   today: NutritionDate;
   recording: NutritionV2Recording;
 }> = ({ conflict, current, today, recording }) => {
@@ -105,11 +108,13 @@ export const NutritionV2ConflictNotice: React.FC<{
       </p>
       <p className="text-sm text-muted-foreground">{t("nutritionV2.recording.conflict.body", { entry: label })}</p>
       <p className="text-sm text-foreground">{t("nutritionV2.recording.conflict.requested", { change: requested })}</p>
-      <p className="text-sm text-foreground">
-        {t("nutritionV2.recording.conflict.current", {
-          state: current ? recordedEntryLabel(current, t, language) : t("nutritionV2.recording.state.none"),
-        })}
-      </p>
+      {current !== undefined && (
+        <p className="text-sm text-foreground">
+          {t("nutritionV2.recording.conflict.current", {
+            state: current ? recordedEntryLabel(current, t, language) : t("nutritionV2.recording.state.none"),
+          })}
+        </p>
+      )}
       {!recording.online && (
         <p className="text-sm text-muted-foreground">{t("nutritionV2.recording.conflict.offline")}</p>
       )}

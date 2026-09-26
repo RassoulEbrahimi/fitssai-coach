@@ -54,6 +54,7 @@ const v2Modules = [
   "src/components/nutrition/v2/NutritionV2TodayRecording.tsx",
   "src/components/nutrition/v2/NutritionV2RecordingSheet.tsx",
   "src/components/nutrition/v2/NutritionV2ConflictNotice.tsx",
+  "src/components/nutrition/v2/NutritionV2Conflicts.tsx",
   "src/components/nutrition/v2/recordingFormat.ts",
 ];
 

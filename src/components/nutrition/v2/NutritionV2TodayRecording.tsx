@@ -4,10 +4,9 @@ import { Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { extraEntryId, parseEntryId, type NutritionSlotId, type RecordedEntry } from "@shared/nutrition";
 import type { NutritionDayRecordings } from "@/lib/nutrition/v2/dayRecordings";
-import type { NutritionEntryConflict, NutritionEntryPendingState } from "@/lib/nutrition/v2/nutritionWriteIntents";
+import type { NutritionEntryPendingState } from "@/lib/nutrition/v2/nutritionWriteIntents";
 import type { NutritionV2Recording } from "@/hooks/queries/useNutritionV2Recording";
 import { NutritionV2RecordingSheet, type NutritionV2RecordingTarget } from "./NutritionV2RecordingSheet";
-import { NutritionV2ConflictNotice } from "./NutritionV2ConflictNotice";
 import { formatNutritionKcal, recordedEntryLabel } from "./recordingFormat";
 
 /**
@@ -22,8 +21,8 @@ import { formatNutritionKcal, recordedEntryLabel } from "./recordingFormat";
  *
  * Offline, recording still works: changes are stored on this device and
  * synchronised later (NUT-07). An entry with such a change says so — it is
- * never presented as saved on the server. A rejected offline change is shown
- * as a conflict notice above the slots.
+ * never presented as saved on the server. Rejected offline changes are not
+ * shown here but by the container, whatever the view (`NutritionV2Conflicts`).
  */
 
 type OpenTarget = { kind: "slot"; slotId: NutritionSlotId } | { kind: "extra"; uuid: string; editing: boolean };
@@ -63,11 +62,7 @@ export const NutritionV2TodayRecording: React.FC<{
   recording: NutritionV2Recording;
   /** Entries with changes still waiting to be synchronised. */
   pending?: ReadonlyMap<string, NutritionEntryPendingState>;
-  /** This account's rejected offline changes. */
-  conflicts?: readonly NutritionEntryConflict[];
-  /** The entries as shown (committed plus local changes), to describe a conflict's current state. */
-  entries?: readonly RecordedEntry[];
-}> = ({ recordings, recording, pending = NO_PENDING, conflicts = [], entries = [] }) => {
+}> = ({ recordings, recording, pending = NO_PENDING }) => {
   const { t, i18n } = useTranslation();
   const language = i18n.language || "de";
   const [open, setOpen] = useState<OpenTarget | null>(null);
@@ -94,16 +89,6 @@ export const NutritionV2TodayRecording: React.FC<{
           {t("nutritionV2.recording.offlineNote")}
         </p>
       )}
-
-      {conflicts.map((conflict) => (
-        <NutritionV2ConflictNotice
-          key={conflict.entryId}
-          conflict={conflict}
-          current={entries.find((entry) => entry.entryId === conflict.entryId) ?? null}
-          today={recordings.date}
-          recording={recording}
-        />
-      ))}
 
       <ul className="space-y-1">
         {recordings.slots.map((slot) => {

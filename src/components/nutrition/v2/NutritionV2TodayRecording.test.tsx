@@ -515,7 +515,8 @@ describe("a rejected offline change", () => {
       "Mittagessen wurde geändert, bevor deine Offline-Änderung übernommen werden konnte. Sie wurde nicht gespeichert."
     );
     expect(notice).toHaveTextContent("Deine Änderung: Erfasst: Pizza · ca. 900 kcal");
-    expect(notice).toHaveTextContent("Aktuell: Ausgelassen");
+    // Read from the conflict's own date.
+    await waitFor(() => expect(notice).toHaveTextContent("Aktuell: Ausgelassen"));
     expect(notice).not.toHaveTextContent(/gespeichert\.$|Synchronisiert/);
     // The rejected change does not project: the slot shows the server's copy.
     expect(within(await slotRow("lunch")).getByTestId("nutrition-v2-slot-recorded")).toHaveTextContent("Ausgelassen");
@@ -573,5 +574,156 @@ describe("a rejected offline change", () => {
     expect(within(notice).getByRole("button", { name: "Erneut anwenden" })).toBeDisabled();
     expect(notice).toHaveTextContent("Erneut anwenden ist nur mit Internetverbindung möglich.");
     expect(within(notice).getByRole("button", { name: "Verwerfen" })).toBeEnabled();
+  });
+});
+
+/* ------------------------------------------------------------------ *
+ * NUT-07: rejected offline changes are visible whatever the view
+ * ------------------------------------------------------------------ */
+
+describe("conflict visibility outside today's recording", () => {
+  const EARLIER = "2026-09-24";
+  const customOn = (date: string, intentId: string, expectedRevision: number): NutritionEntryIntent => {
+    const entryId = `slot:${date}:lunch`;
+    return {
+      intentId,
+      entryId,
+      expectedRevision,
+      op: "correct",
+      desired: {
+        schemaVersion: plannedMealEntry(TODAY, "lunch").schemaVersion,
+        entryId,
+        kind: "slot",
+        date,
+        slotId: "lunch",
+        recording: "custom",
+        name: "Pizza",
+        estimateBasis: "userStated",
+        nutritionEstimate: { kcal: 900, proteinG: null, carbsG: null, fatG: null },
+      },
+    } as NutritionEntryIntent;
+  };
+  const quarantineOn = (date: string, intent: NutritionEntryIntent) => {
+    const { entry } = enqueue("NUTRITION_ENTRY_WRITE", { intent, date }, "alice");
+    updateEntry(entry.id, { status: "quarantined", rejection: { code: "staleRevision", message: "changed" } });
+    return entry.id;
+  };
+  const serverSkipOn = (date: string) => ({
+    ...skipEntry(date, "lunch"),
+    revision: 2,
+    appliedIntentIds: ["00000000-0000-4000-8000-000000000001", "00000000-0000-4000-8000-000000000002"],
+  });
+  /** getDocs reads of exactly one date (a one-day read is `date == X`). */
+  const readsOf = (date: string) =>
+    firestore.getDocs.mock.calls.filter(([q]) => {
+      const bounds = (q as { constraints: { field: string; op: string; value: string }[] }).constraints;
+      return bounds.length === 1 && bounds[0].field === "date" && bounds[0].op === "==" && bounds[0].value === date;
+    }).length;
+  const weekRowTexts = () => screen.getAllByTestId("nutrition-v2-week-row").map((row) => row.textContent);
+
+  it("is visible when there is no active plan, without any recording control", async () => {
+    put(`users/alice/${C.state}/current`, makeState({ activePlanId: null }));
+    quarantineOn(TODAY, customOn(TODAY, "00000000-0000-4000-8000-000000000061", 1));
+    renderContainer();
+
+    expect(await screen.findByText("Kein aktiver Ernährungsplan")).toBeInTheDocument();
+    const notice = await screen.findByTestId("nutrition-v2-conflict");
+    expect(notice).toHaveTextContent("Mittagessen wurde geändert");
+    expect(screen.queryByTestId("nutrition-v2-today-recording")).toBeNull();
+    expect(screen.getAllByRole("button").map((button) => button.textContent)).toEqual(["Erneut anwenden", "Verwerfen"]);
+  });
+
+  it("is visible when today is outside the plan, and leaves the week rows exactly as they were", async () => {
+    session.today = "2026-10-05";
+    const plain = renderContainer();
+    await screen.findByText("Heute ist kein Tag deines aktiven Ernährungsplans.");
+    const before = weekRowTexts();
+    plain.unmount();
+
+    quarantineOn(TODAY, customOn(TODAY, "00000000-0000-4000-8000-000000000062", 1));
+    renderContainer();
+    await screen.findByText("Heute ist kein Tag deines aktiven Ernährungsplans.");
+    expect(await screen.findAllByTestId("nutrition-v2-conflict")).toHaveLength(1);
+    expect(screen.queryByTestId("nutrition-v2-today-recording")).toBeNull();
+    expect(weekRowTexts()).toEqual(before);
+    for (const row of screen.getAllByTestId("nutrition-v2-week-row")) {
+      expect(row.querySelectorAll("button, a, input, [tabindex]")).toHaveLength(0);
+      expect(row).toHaveTextContent(/kcal geplant$/);
+    }
+  });
+
+  it("is visible for another date, labelled with that date, and read from that date", async () => {
+    putEntry(serverSkipOn(EARLIER));
+    quarantineOn(EARLIER, customOn(EARLIER, "00000000-0000-4000-8000-000000000063", 1));
+    renderContainer();
+
+    const notice = await screen.findByTestId("nutrition-v2-conflict");
+    expect(notice).toHaveTextContent("Mittagessen am 24. September wurde geändert");
+    await waitFor(() => expect(notice).toHaveTextContent("Aktuell: Ausgelassen"));
+    expect(readsOf(EARLIER)).toBeGreaterThan(0);
+  });
+
+  it("appears exactly once on a plan day, outside today's recording section", async () => {
+    quarantineOn(TODAY, customOn(TODAY, "00000000-0000-4000-8000-000000000064", 1));
+    renderContainer();
+    await slotRow("lunch");
+
+    const notices = await screen.findAllByTestId("nutrition-v2-conflict");
+    expect(notices).toHaveLength(1);
+    expect(screen.getByTestId("nutrition-v2-today-recording")).not.toContainElement(notices[0]);
+    expect(screen.getByTestId("nutrition-v2-conflicts")).toContainElement(notices[0]);
+  });
+
+  it("applies again from outside the plan: refetches the conflict's date, then writes a new intent", async () => {
+    const user = userEvent.setup();
+    session.today = "2026-10-05";
+    putEntry(serverSkipOn(EARLIER));
+    quarantineOn(EARLIER, customOn(EARLIER, "00000000-0000-4000-8000-000000000065", 1));
+    renderContainer();
+
+    const notice = await screen.findByTestId("nutrition-v2-conflict");
+    await waitFor(() => expect(notice).toHaveTextContent("Aktuell: Ausgelassen"));
+    const readsBefore = readsOf(EARLIER);
+    await user.click(within(notice).getByRole("button", { name: "Erneut anwenden" }));
+
+    await waitFor(() => expect(screen.queryByTestId("nutrition-v2-conflict")).toBeNull());
+    expect(readsOf(EARLIER)).toBeGreaterThan(readsBefore);
+    expect(intents()).toHaveLength(1);
+    expect(intents()[0]).toMatchObject({ op: "correct", entryId: `slot:${EARLIER}:lunch`, expectedRevision: 2 });
+    expect(intents()[0].intentId).not.toBe("00000000-0000-4000-8000-000000000065");
+    expect(stored(`slot:${EARLIER}:lunch`)).toMatchObject({ revision: 3, name: "Pizza" });
+    expect(loadQueue()).toEqual([]);
+  });
+
+  it("dismisses from outside the plan: only the local record goes, nothing is written", async () => {
+    const user = userEvent.setup();
+    session.today = "2026-10-05";
+    putEntry(serverSkipOn(EARLIER));
+    quarantineOn(EARLIER, customOn(EARLIER, "00000000-0000-4000-8000-000000000066", 1));
+    const other = quarantineOn(TODAY, customOn(TODAY, "00000000-0000-4000-8000-000000000067", 1));
+    renderContainer();
+
+    const notices = await screen.findAllByTestId("nutrition-v2-conflict");
+    const earlier = notices.find((notice) => notice.dataset.entryId === `slot:${EARLIER}:lunch`)!;
+    await user.click(within(earlier).getByRole("button", { name: "Verwerfen" }));
+
+    await waitFor(() => expect(screen.getAllByTestId("nutrition-v2-conflict")).toHaveLength(1));
+    expect(loadQueue().map((entry) => entry.id)).toEqual([other]);
+    expect(writer.writeNutritionV2Entry).not.toHaveBeenCalled();
+    expect(stored(`slot:${EARLIER}:lunch`)).toEqual(serverSkipOn(EARLIER));
+  });
+
+  it("renders without any Firestore mutation or queue change", async () => {
+    put(`users/alice/${C.state}/current`, makeState({ activePlanId: null }));
+    quarantineOn(EARLIER, customOn(EARLIER, "00000000-0000-4000-8000-000000000068", 1));
+    const queueBefore = localStorage.getItem("FITSSAI_OFFLINE_QUEUE");
+    const docsBefore = structuredClone([...store.docs.entries()]);
+    renderContainer();
+
+    await screen.findByTestId("nutrition-v2-conflict");
+    await settle();
+    expect(writer.writeNutritionV2Entry).not.toHaveBeenCalled();
+    expect([...store.docs.entries()]).toEqual(docsBefore);
+    expect(localStorage.getItem("FITSSAI_OFFLINE_QUEUE")).toBe(queueBefore);
   });
 });

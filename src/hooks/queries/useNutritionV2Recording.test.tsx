@@ -594,3 +594,46 @@ describe("dismiss", () => {
     expect(conflictsOf()).toHaveLength(1);
   });
 });
+
+describe("account-scoped entry lanes", () => {
+  it("never makes another account wait on the same deterministic entry id", async () => {
+    const held = deferred<never>();
+    writer.writeNutritionV2Entry.mockImplementationOnce(() => held.promise);
+    const { result, rerender } = mount();
+
+    // Alice's write for the entry is in flight and unresolved.
+    let aliceOutcome: Promise<unknown> = Promise.resolve();
+    act(() => {
+      aliceOutcome = result.current.submit(recordLunch(900)).catch((error: unknown) => error);
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(writer.writeNutritionV2Entry).toHaveBeenCalledTimes(1);
+
+    // Bob signs in and records the same slot: same deterministic entry id.
+    session.user = { uid: "bob", id: "bob" };
+    session.profile = { status: "success", data: { id: "bob", age: 30 } };
+    rerender();
+    let bobResult: Awaited<ReturnType<typeof result.current.submit>> | undefined;
+    await act(async () => {
+      bobResult = await result.current.submit(recordLunch(500));
+    });
+
+    // Bob's writer started without waiting for Alice's, each with its own uid.
+    expect(bobResult).toMatchObject({ status: "committed" });
+    expect(writer.writeNutritionV2Entry.mock.calls.map(([uid, intent]) => [uid, (intent as NutritionEntryIntent).entryId])).toEqual([
+      ["alice", lunch()],
+      ["bob", lunch()],
+    ]);
+
+    // Alice's write settling later cannot queue under Bob or touch his result.
+    await act(async () => {
+      held.reject(firestoreError("unavailable"));
+      expect(await aliceOutcome).toBeInstanceOf(AccountChangedError);
+    });
+    expect(localStorage.getItem(STORAGE)).toBeNull();
+    expect(bobResult).toMatchObject({ status: "committed" });
+    expect(writer.writeNutritionV2Entry).toHaveBeenCalledTimes(2);
+  });
+});

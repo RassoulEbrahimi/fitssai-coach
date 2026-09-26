@@ -115,13 +115,13 @@ const useOnline = (): boolean => useSyncExternalStore(subscribeOnline, readOnlin
  * Write or queue
  * ------------------------------------------------------------------ */
 
-// Module scope: every mounted hook shares one lane per entry. A settled lane
-// is one resolved promise per entry touched this session, so it is kept.
+// Module scope: every mounted hook shares one lane per account and entry. A
+// settled lane is one resolved promise per entry touched, so it is kept.
 const lanes = new Map<string, Promise<void>>();
 
-/** Runs `task` once every earlier task for the same entry has settled. */
-const runInEntryLane = <T>(entryId: string, task: () => Promise<T>): Promise<T> => {
-  const key = nutritionEntrySerializeKey(entryId);
+/** Runs `task` once every earlier task of the same account for the same entry has settled. */
+const runInEntryLane = <T>(ownerUid: string, entryId: string, task: () => Promise<T>): Promise<T> => {
+  const key = nutritionEntrySerializeKey(ownerUid, entryId);
   const run = (lanes.get(key) ?? Promise.resolve()).then(task);
   lanes.set(
     key,
@@ -176,7 +176,7 @@ const writeOrQueue = async (queryClient: QueryClient, { uid, intent, date }: Wri
     return { status: "queued", queueEntryId: entry.id };
   };
 
-  return await runInEntryLane(intent.entryId, async () => {
+  return await runInEntryLane(uid, intent.entryId, async () => {
     assertAccountOwner(uid);
     if (!navigator.onLine) return queueIt();
     // Never overtake an older intent for the same entry.
