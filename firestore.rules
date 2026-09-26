@@ -6,6 +6,10 @@
 // privilege-escalation path: the previous `allow write` let a signed-in user
 // set `role: "admin"` on their own profile straight from the client SDK.
 //
+// Since then, Nutrition has been carved out of the generic owner wildcard
+// under /users/{userId}: Nutrition V2 (`nutrition_v2_*`) and legacy
+// `nutrition_plans` are owner-readable and closed to client writes.
+//
 // Everything here is exercised by rules-tests/firestore.rules.test.ts against
 // the real rules engine in the Firestore emulator. Those tests were first run
 // against the captured production rules, where the eight role-escalation cases
@@ -36,6 +40,22 @@ service cloud.firestore {
       return ['role', 'admin', 'isAdmin', 'roles', 'permissions'];
     }
 
+    // Nutrition V2 owns every user subcollection whose name starts with
+    // `nutrition_v2_`, today's six and any added later. Legacy Nutrition's
+    // `nutrition_plans` is closed to client writes alongside it.
+    //
+    // Rules have no deny precedence: `allow` conditions on overlapping matches
+    // are OR-combined, so an explicit read-only block below cannot take back a
+    // write the generic owner wildcard already grants. The wildcard itself has
+    // to leave these names out, and this predicate is how it does.
+    function isNutritionV2Collection(name) {
+      return name.matches('nutrition_v2_.*');
+    }
+
+    function isNutritionCollection(name) {
+      return isNutritionV2Collection(name) || name == 'nutrition_plans';
+    }
+
     match /users/{userId} {
       allow read: if isOwner(userId);
 
@@ -57,17 +77,62 @@ service cloud.firestore {
       // would be a behaviour change without a security benefit.
       allow delete: if isOwner(userId);
 
-      // User-scoped data: workout_plans, workout_logs, nutrition_plans,
-      // ai_logs and anything else under the profile. Unchanged from production
-      // — the protection above is scoped to the profile document and must not
-      // leak down here and start refusing legitimate writes.
+      // User-scoped data: workout_plans, workout_logs, ai_logs and anything
+      // else under the profile, except Nutrition. Unchanged from production
+      // for every other name — the protection above is scoped to the profile
+      // document and must not leak down here and start refusing legitimate
+      // writes.
+      //
+      // Nutrition is carved out at both levels, by name, so neither grant can
+      // ever reach it; its access is spelled out in the blocks further down.
       match /{subcollection}/{docId} {
-        allow read, write: if isOwner(userId);
+        allow read, write: if isOwner(userId)
+                           && !isNutritionCollection(subcollection);
 
-        // workout_set_logs under a workout_log.
+        // workout_set_logs under a workout_log. The parent check keeps nested
+        // documents under a Nutrition collection out of this grant too.
         match /{nested}/{nestedDocId} {
-          allow read, write: if isOwner(userId);
+          allow read, write: if isOwner(userId)
+                             && !isNutritionCollection(subcollection)
+                             && !isNutritionCollection(nested);
         }
+      }
+
+      // Nutrition V2. Server-owned in this slice: the owner reads, and no
+      // client writes, because nothing here allows one. Cloud Functions write
+      // through the Admin SDK, which bypasses rules. Entries get a narrowly
+      // validated client write in a later slice; until then they are
+      // read-only like the rest. Any other `nutrition_v2_*` name, and anything
+      // nested under these, matches no allow and is denied.
+      match /nutrition_v2_state/{docId} {
+        allow read: if isOwner(userId);
+      }
+
+      match /nutrition_v2_targets/{docId} {
+        allow read: if isOwner(userId);
+      }
+
+      match /nutrition_v2_plans/{docId} {
+        allow read: if isOwner(userId);
+      }
+
+      match /nutrition_v2_slots/{docId} {
+        allow read: if isOwner(userId);
+      }
+
+      match /nutrition_v2_entries/{docId} {
+        allow read: if isOwner(userId);
+      }
+
+      match /nutrition_v2_generations/{docId} {
+        allow read: if isOwner(userId);
+      }
+
+      // Legacy Nutrition: read-only for clients. The legacy view still reads
+      // its latest plan; nothing on the client may create, change or delete
+      // one any more.
+      match /nutrition_plans/{docId} {
+        allow read: if isOwner(userId);
       }
     }
 

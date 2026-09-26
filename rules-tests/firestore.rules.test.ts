@@ -8,6 +8,10 @@ import {
   type RulesTestEnvironment,
 } from "@firebase/rules-unit-testing";
 import { doc, getDoc, setDoc, updateDoc, deleteDoc, collection, getDocs } from "firebase/firestore";
+import {
+  NUTRITION_LEGACY_PLANS_COLLECTION,
+  NUTRITION_V2_COLLECTIONS,
+} from "../shared/nutrition/collections";
 
 /*
   Firestore Security Rules, exercised against the real rules engine in the
@@ -230,7 +234,9 @@ describe("user subcollections stay reachable", () => {
   });
 
   it("the other user-scoped collections still work", async () => {
-    for (const sub of ["workout_plans", "nutrition_plans", "ai_logs"]) {
+    // nutrition_plans left this list when legacy Nutrition became read-only;
+    // its contract is covered in the Nutrition blocks below.
+    for (const sub of ["workout_plans", "ai_logs"]) {
       await assertSucceeds(
         setDoc(doc(alice(), "users", ALICE, sub, "doc1"), { createdAt: "2026-08-27" })
       );
@@ -365,5 +371,209 @@ describe("server-owned AI bookkeeping is invisible to clients", () => {
     await assertSucceeds(
       setDoc(doc(alice(), "users", ALICE, "ai_logs", "legacy"), { note: "client-owned" })
     );
+  });
+});
+
+/*
+  Nutrition V2 is server-owned in this slice: the owner reads, no client
+  writes. The generic owner wildcard under /users/{userId} used to grant read
+  and write to any subcollection name, and rules OR their allows, so these
+  tests check that the wildcard itself no longer reaches Nutrition — at the
+  subcollection level and at the nested level alike.
+*/
+const V2_COLLECTIONS = Object.values(NUTRITION_V2_COLLECTIONS);
+const V2_SERVER_OWNED = V2_COLLECTIONS.filter(
+  (name) => name !== NUTRITION_V2_COLLECTIONS.entries
+);
+
+describe("Nutrition V2 is owner-readable", () => {
+  it("covers exactly the six canonical collections", () => {
+    expect([...V2_COLLECTIONS].sort()).toEqual([
+      "nutrition_v2_entries",
+      "nutrition_v2_generations",
+      "nutrition_v2_plans",
+      "nutrition_v2_slots",
+      "nutrition_v2_state",
+      "nutrition_v2_targets",
+    ]);
+  });
+
+  it.each(V2_COLLECTIONS)("alice can read her own %s", async (name) => {
+    await seed(["users", ALICE, name, "doc1"], { v: 1 });
+
+    await assertSucceeds(getDoc(doc(alice(), "users", ALICE, name, "doc1")));
+    await assertSucceeds(getDocs(collection(alice(), "users", ALICE, name)));
+  });
+
+  it.each(V2_COLLECTIONS)("bob cannot read alice's %s", async (name) => {
+    await seed(["users", ALICE, name, "doc1"], { v: 1 });
+
+    await assertFails(getDoc(doc(bob(), "users", ALICE, name, "doc1")));
+    await assertFails(getDocs(collection(bob(), "users", ALICE, name)));
+  });
+
+  it.each(V2_COLLECTIONS)("an unauthenticated client cannot read %s", async (name) => {
+    await seed(["users", ALICE, name, "doc1"], { v: 1 });
+
+    await assertFails(getDoc(doc(anon(), "users", ALICE, name, "doc1")));
+    await assertFails(getDocs(collection(anon(), "users", ALICE, name)));
+  });
+});
+
+describe("Nutrition V2 refuses every client write", () => {
+  const expectNoOwnerWrites = async (name: string) => {
+    await seed(["users", ALICE, name, "existing"], { v: 1 });
+
+    await assertFails(setDoc(doc(alice(), "users", ALICE, name, "new"), { v: 1 }));
+    await assertFails(updateDoc(doc(alice(), "users", ALICE, name, "existing"), { v: 2 }));
+    await assertFails(
+      setDoc(doc(alice(), "users", ALICE, name, "existing"), { v: 2 }, { merge: true })
+    );
+    await assertFails(deleteDoc(doc(alice(), "users", ALICE, name, "existing")));
+  };
+
+  it.each(V2_SERVER_OWNED)("alice cannot create, update or delete her %s", expectNoOwnerWrites);
+
+  it("alice cannot yet create, update or delete her nutrition_v2_entries", async () => {
+    // A narrowly validated entry write arrives in a later slice; not here.
+    await expectNoOwnerWrites(NUTRITION_V2_COLLECTIONS.entries);
+  });
+
+  it.each(V2_COLLECTIONS)("bob cannot write alice's %s", async (name) => {
+    await assertFails(setDoc(doc(bob(), "users", ALICE, name, "doc1"), { v: 1 }));
+  });
+
+  it.each(V2_COLLECTIONS)("an unauthenticated client cannot write %s", async (name) => {
+    await assertFails(setDoc(doc(anon(), "users", ALICE, name, "doc1"), { v: 1 }));
+  });
+});
+
+describe("the owner wildcard no longer reaches Nutrition", () => {
+  it("a future nutrition_v2_* collection is neither readable nor writable", async () => {
+    // Protected by the namespace, not by a list of today's names.
+    await seed(["users", ALICE, "nutrition_v2_future", "doc1"], { v: 1 });
+
+    await assertFails(getDoc(doc(alice(), "users", ALICE, "nutrition_v2_future", "doc1")));
+    await assertFails(
+      setDoc(doc(alice(), "users", ALICE, "nutrition_v2_future", "doc2"), { v: 1 })
+    );
+  });
+
+  it.each(V2_COLLECTIONS)("nothing nested under %s is writable", async (name) => {
+    await seed(["users", ALICE, name, "doc1", "child", "c1"], { v: 1 });
+
+    await assertFails(
+      setDoc(doc(alice(), "users", ALICE, name, "doc1", "child", "c2"), { v: 1 })
+    );
+    await assertFails(
+      updateDoc(doc(alice(), "users", ALICE, name, "doc1", "child", "c1"), { v: 2 })
+    );
+    await assertFails(deleteDoc(doc(alice(), "users", ALICE, name, "doc1", "child", "c1")));
+    await assertFails(getDoc(doc(alice(), "users", ALICE, name, "doc1", "child", "c1")));
+  });
+
+  it("nothing nested under legacy nutrition_plans is writable", async () => {
+    await assertFails(
+      setDoc(doc(alice(), "users", ALICE, "nutrition_plans", "p1", "child", "c1"), { v: 1 })
+    );
+  });
+
+  it.each(V2_COLLECTIONS)(
+    "%s is not writable as a nested collection under an unrelated parent",
+    async (name) => {
+      // The nested wildcard level: e.g. workout_logs/{id}/nutrition_v2_entries.
+      await assertFails(
+        setDoc(doc(alice(), "users", ALICE, "workout_logs", "log1", name, "x"), { v: 1 })
+      );
+      await assertFails(
+        setDoc(doc(alice(), "users", ALICE, "workout_logs", "log1", "nutrition_v2_future", "x"), {
+          v: 1,
+        })
+      );
+    }
+  );
+
+  it("unrelated user subcollections keep their read/write contract", async () => {
+    // Includes names that merely resemble the namespace without starting it.
+    for (const sub of [
+      "workout_plans",
+      "workout_logs",
+      "ai_logs",
+      "nutrition_notes",
+      "my_nutrition_v2_things",
+    ]) {
+      await assertSucceeds(setDoc(doc(alice(), "users", ALICE, sub, "d1"), { v: 1 }));
+      await assertSucceeds(updateDoc(doc(alice(), "users", ALICE, sub, "d1"), { v: 2 }));
+      await assertSucceeds(getDoc(doc(alice(), "users", ALICE, sub, "d1")));
+      await assertSucceeds(deleteDoc(doc(alice(), "users", ALICE, sub, "d1")));
+    }
+  });
+
+  it("nested workout_set_logs keep their read/write/delete contract", async () => {
+    const path = ["users", ALICE, "workout_logs", "log1", "workout_set_logs", "set1"] as const;
+
+    await assertSucceeds(setDoc(doc(alice(), ...path), { setNumber: 1, repsCompleted: 10 }));
+    await assertSucceeds(updateDoc(doc(alice(), ...path), { repsCompleted: 12 }));
+    await assertSucceeds(getDoc(doc(alice(), ...path)));
+    await assertSucceeds(deleteDoc(doc(alice(), ...path)));
+  });
+
+  it("workout_plans keep their full owner contract, and bob stays out", async () => {
+    await assertSucceeds(
+      setDoc(doc(alice(), "users", ALICE, "workout_plans", "plan1"), { content: {} })
+    );
+    await assertSucceeds(
+      updateDoc(doc(alice(), "users", ALICE, "workout_plans", "plan1"), { content: { a: 1 } })
+    );
+    await assertSucceeds(deleteDoc(doc(alice(), "users", ALICE, "workout_plans", "plan1")));
+
+    await seed(["users", ALICE, "workout_plans", "plan2"], { content: {} });
+    await assertFails(getDoc(doc(bob(), "users", ALICE, "workout_plans", "plan2")));
+    await assertFails(deleteDoc(doc(bob(), "users", ALICE, "workout_plans", "plan2")));
+  });
+});
+
+describe("legacy nutrition_plans is client read-only", () => {
+  const LEGACY = NUTRITION_LEGACY_PLANS_COLLECTION;
+
+  it("alice can read her own plans, including the latest-plan query", async () => {
+    await seed(["users", ALICE, LEGACY, "p1"], { content: {}, createdAt: new Date() });
+
+    await assertSucceeds(getDoc(doc(alice(), "users", ALICE, LEGACY, "p1")));
+    await assertSucceeds(getDocs(collection(alice(), "users", ALICE, LEGACY)));
+  });
+
+  it("alice cannot create a plan", async () => {
+    await assertFails(setDoc(doc(alice(), "users", ALICE, LEGACY, "p1"), { content: {} }));
+  });
+
+  it("alice cannot update a plan", async () => {
+    await seed(["users", ALICE, LEGACY, "p1"], { content: {} });
+
+    await assertFails(updateDoc(doc(alice(), "users", ALICE, LEGACY, "p1"), { content: { a: 1 } }));
+    await assertFails(
+      setDoc(doc(alice(), "users", ALICE, LEGACY, "p1"), { content: { a: 1 } }, { merge: true })
+    );
+  });
+
+  it("alice cannot delete a plan", async () => {
+    // The AdminPanel's direct client delete of a nutrition plan is refused
+    // from here on, by design; deletion belongs to a server-authorized path.
+    await seed(["users", ALICE, LEGACY, "p1"], { content: {} });
+
+    await assertFails(deleteDoc(doc(alice(), "users", ALICE, LEGACY, "p1")));
+  });
+
+  it("bob cannot read alice's plans", async () => {
+    await seed(["users", ALICE, LEGACY, "p1"], { content: {} });
+
+    await assertFails(getDoc(doc(bob(), "users", ALICE, LEGACY, "p1")));
+    await assertFails(getDocs(collection(bob(), "users", ALICE, LEGACY)));
+  });
+
+  it("an unauthenticated client cannot read them", async () => {
+    await seed(["users", ALICE, LEGACY, "p1"], { content: {} });
+
+    await assertFails(getDoc(doc(anon(), "users", ALICE, LEGACY, "p1")));
   });
 });
