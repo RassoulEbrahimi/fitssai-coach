@@ -118,6 +118,15 @@ describe("write-path contracts", () => {
     expect(offenders).toEqual([]);
   });
 
+  it("keeps Training replay on the transient retry path: only the Nutrition handler rejects terminally", () => {
+    // NUT-07 added quarantine-and-continue for ReplayRejectedError only.
+    for (const path of ["lib/offlineHandlers.ts", "lib/setLogWriter.ts", "lib/daySessionRecord.ts"]) {
+      expect(read(path), path).not.toMatch(/ReplayRejectedError/);
+    }
+    expect(read("lib/nutrition/v2/entryReplay.ts")).toMatch(/new ReplayRejectedError/);
+    expect(read("lib/offlineHandlers.ts")).toMatch(/NUTRITION_ENTRY_WRITE:\s*replayNutritionEntryWrite/);
+  });
+
   it("adds no AI or provider call", () => {
     const preferences = read("lib/coachingPreferences.ts");
 

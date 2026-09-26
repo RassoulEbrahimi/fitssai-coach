@@ -6,8 +6,8 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import "@/lib/i18n";
 
 /*
-  NUT-06. Online recording for today's slots and extra meals, through the real
-  container. Nothing is written because the shell renders, the plan exists,
+  NUT-06/NUT-07. Recording for today's slots and extra meals, through the real
+  container — online, or queued on this device while offline. Nothing is written because the shell renders, the plan exists,
   the sheet opens or a portion changes — only "Speichern" or "Entfernen"
   writes. PLANNED and RECORDED stay visibly apart, recorded values read as
   estimates ("ca."), and the week rows keep no controls.
@@ -56,7 +56,14 @@ const session = vi.hoisted(() => ({
 const writer = vi.hoisted(() => ({ writeNutritionV2Entry: vi.fn() }));
 
 vi.mock("firebase/firestore", () => firestore);
-vi.mock("@/lib/firebase", () => ({ db: {} }));
+vi.mock("@/lib/firebase", () => ({
+  db: {},
+  auth: {
+    get currentUser() {
+      return session.user;
+    },
+  },
+}));
 vi.mock("@/hooks/useAuth", () => ({ useAuth: () => ({ user: session.user }) }));
 vi.mock("@/hooks/queries/useProfile", () => ({ useProfile: () => session.profile }));
 vi.mock("@/hooks/useBerlinToday", () => ({ useBerlinToday: () => session.today }));
@@ -64,6 +71,8 @@ vi.mock("@/lib/nutrition/v2/entryWriter", () => writer);
 
 import { NutritionV2TodayContainer } from "./NutritionV2TodayContainer";
 import { NutritionEntryConflictError } from "@/lib/nutrition/v2/entryTransaction";
+import { resetNutritionHandoffForTests } from "@/lib/nutrition/v2/entryHandoff";
+import { enqueue, loadQueue, updateEntry } from "@/lib/offlineQueue";
 import {
   NUTRITION_V2_COLLECTIONS,
   NUTRITION_V2_ENABLED,
@@ -120,6 +129,8 @@ beforeEach(() => {
   vi.useFakeTimers({ toFake: ["Date"] });
   vi.setSystemTime(new Date("2026-09-26T10:00:00Z"));
   store.docs.clear();
+  localStorage.clear();
+  resetNutritionHandoffForTests();
   session.user = { uid: "alice", id: "alice" };
   session.profile = { status: "success", data: { id: "alice", age: 30 } };
   session.today = TODAY;
@@ -369,14 +380,28 @@ describe("today's recording surface", () => {
     expect(intents()).toHaveLength(1);
   });
 
-  it("disables recording offline and says why, without writing", async () => {
+  it("records offline on this device, shows it as waiting to synchronise, and writes nothing", async () => {
     Object.defineProperty(navigator, "onLine", { configurable: true, get: () => false });
+    const user = userEvent.setup();
     renderContainer();
     await slotRow("lunch");
 
-    expect(screen.getByText("Du bist offline. Erfassen ist nur mit Internetverbindung möglich.")).toBeInTheDocument();
-    for (const button of screen.getAllByRole("button")) expect(button).toBeDisabled();
+    expect(screen.getByTestId("nutrition-v2-offline-note")).toHaveTextContent(
+      "Du bist offline. Änderungen werden lokal gespeichert und synchronisiert, sobald du wieder online bist."
+    );
+    const sheet = await openSlot(user, "lunch", "erfassen");
+    await user.click(within(sheet).getByRole("button", { name: "Speichern" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+
     expect(writer.writeNutritionV2Entry).not.toHaveBeenCalled();
+    expect(loadQueue()).toMatchObject([{ ownerUid: "alice", type: "NUTRITION_ENTRY_WRITE", payload: { intent: { op: "record" } } }]);
+    const lunch = await slotRow("lunch");
+    expect(within(lunch).getByTestId("nutrition-v2-slot-recorded")).toHaveTextContent("Erfasst · ca. 703 kcal");
+    expect(within(lunch).getByTestId("nutrition-v2-pending")).toHaveTextContent("Lokal gespeichert – wird synchronisiert");
+    // Planned stays planned, and the week counts the local recording.
+    expect(lunch).toHaveTextContent("703 kcal geplant");
+    expect(screen.getAllByTestId("nutrition-v2-week-row")[3]).toHaveTextContent("Teilweise erfasst");
+    expect(stored(`slot:${TODAY}:lunch`)).toBeUndefined();
   });
 
   it("offers no recording surface to an ineligible account", async () => {
@@ -412,5 +437,141 @@ describe("recorded extras", () => {
     expect(extras).toHaveLength(1);
     expect(extras[0]).toHaveTextContent("Apfel");
     expect(extras[0]).toHaveTextContent("Erfasst · ca. 80 kcal");
+  });
+});
+
+/* ------------------------------------------------------------------ *
+ * NUT-07: pending changes and rejected offline changes
+ * ------------------------------------------------------------------ */
+
+const LUNCH_ID = `slot:${TODAY}:lunch`;
+const offlinePizza = (intentId: string, expectedRevision = 0, op: "record" | "correct" = "record"): NutritionEntryIntent => ({
+  intentId,
+  entryId: LUNCH_ID,
+  expectedRevision,
+  op,
+  desired: {
+    schemaVersion: plannedMealEntry(TODAY, "lunch").schemaVersion,
+    entryId: LUNCH_ID,
+    kind: "slot",
+    date: TODAY,
+    slotId: "lunch",
+    recording: "custom",
+    name: "Pizza",
+    estimateBasis: "userStated",
+    nutritionEstimate: { kcal: 900, proteinG: null, carbsG: null, fatG: null },
+  },
+});
+
+const queueFor = (intent: NutritionEntryIntent, owner = "alice", status: "pending" | "failed" | "quarantined" = "pending") => {
+  const { entry } = enqueue("NUTRITION_ENTRY_WRITE", { intent, date: TODAY }, "alice");
+  if (status === "quarantined") updateEntry(entry.id, { status, rejection: { code: "staleRevision", message: "changed" } });
+  if (status === "failed") updateEntry(entry.id, { status, attempts: 1, nextAttemptAt: Date.now() + 1000 });
+  if (owner !== "alice") {
+    const queue = JSON.parse(localStorage.getItem("FITSSAI_OFFLINE_QUEUE")!) as { id: string }[];
+    localStorage.setItem("FITSSAI_OFFLINE_QUEUE", JSON.stringify(queue.map((item) => (item.id === entry.id ? { ...item, ownerUid: owner } : item))));
+  }
+  return entry.id;
+};
+
+describe("offline changes", () => {
+  it("shows a change waiting after a transient failure as still pending, not as a conflict", async () => {
+    queueFor(offlinePizza("00000000-0000-4000-8000-000000000011"), "alice", "failed");
+    renderContainer();
+
+    const lunch = await slotRow("lunch");
+    expect(within(lunch).getByTestId("nutrition-v2-slot-recorded")).toHaveTextContent("Erfasst: Pizza · ca. 900 kcal");
+    expect(within(lunch).getByTestId("nutrition-v2-pending")).toHaveTextContent("Lokal gespeichert – Synchronisierung wird erneut versucht");
+    expect(screen.queryByTestId("nutrition-v2-conflict")).toBeNull();
+  });
+
+  it("ignores another account's queued and rejected changes", async () => {
+    queueFor(offlinePizza("00000000-0000-4000-8000-000000000012"), "bob");
+    queueFor(offlinePizza("00000000-0000-4000-8000-000000000013"), "bob", "quarantined");
+    renderContainer();
+
+    const lunch = await slotRow("lunch");
+    expect(within(lunch).getByTestId("nutrition-v2-slot-recorded")).toHaveTextContent("Nicht erfasst");
+    expect(within(lunch).queryByTestId("nutrition-v2-pending")).toBeNull();
+    expect(screen.queryByTestId("nutrition-v2-conflict")).toBeNull();
+  });
+});
+
+describe("a rejected offline change", () => {
+  const serverSkip = () => ({
+    ...skipEntry(TODAY, "lunch"),
+    revision: 2,
+    appliedIntentIds: ["00000000-0000-4000-8000-000000000001", "00000000-0000-4000-8000-000000000002"],
+  });
+
+  it("is shown neutrally with the server's current state, never as saved, and rendering writes nothing", async () => {
+    putEntry(serverSkip());
+    queueFor(offlinePizza("00000000-0000-4000-8000-000000000021", 1, "correct"), "alice", "quarantined");
+    renderContainer();
+
+    const notice = await screen.findByTestId("nutrition-v2-conflict");
+    expect(notice).toHaveTextContent("Offline-Änderung nicht übernommen");
+    expect(notice).toHaveTextContent(
+      "Mittagessen wurde geändert, bevor deine Offline-Änderung übernommen werden konnte. Sie wurde nicht gespeichert."
+    );
+    expect(notice).toHaveTextContent("Deine Änderung: Erfasst: Pizza · ca. 900 kcal");
+    expect(notice).toHaveTextContent("Aktuell: Ausgelassen");
+    expect(notice).not.toHaveTextContent(/gespeichert\.$|Synchronisiert/);
+    // The rejected change does not project: the slot shows the server's copy.
+    expect(within(await slotRow("lunch")).getByTestId("nutrition-v2-slot-recorded")).toHaveTextContent("Ausgelassen");
+
+    await settle();
+    expect(writer.writeNutritionV2Entry).not.toHaveBeenCalled();
+    expect(loadQueue()).toHaveLength(1);
+  });
+
+  it("applies again as a NEW intent against the current server revision, then clears the notice", async () => {
+    const user = userEvent.setup();
+    putEntry(serverSkip());
+    queueFor(offlinePizza("00000000-0000-4000-8000-000000000031", 1, "correct"), "alice", "quarantined");
+    renderContainer();
+
+    const notice = await screen.findByTestId("nutrition-v2-conflict");
+    await user.click(within(notice).getByRole("button", { name: "Erneut anwenden" }));
+
+    await waitFor(() => expect(screen.queryByTestId("nutrition-v2-conflict")).toBeNull());
+    expect(intents()).toHaveLength(1);
+    expect(intents()[0]).toMatchObject({ op: "correct", expectedRevision: 2, desired: { name: "Pizza" } });
+    expect(intents()[0].intentId).not.toBe("00000000-0000-4000-8000-000000000031");
+    expect(stored(LUNCH_ID)).toMatchObject({ revision: 3, recording: "custom", name: "Pizza" });
+    expect(loadQueue()).toEqual([]);
+    await waitFor(() =>
+      expect(within(screen.getAllByTestId("nutrition-v2-slot")[1]).getByTestId("nutrition-v2-slot-recorded")).toHaveTextContent(
+        "Erfasst: Pizza · ca. 900 kcal"
+      )
+    );
+  });
+
+  it("is discarded on this device only: no write, and the server's copy stays", async () => {
+    const user = userEvent.setup();
+    putEntry(serverSkip());
+    queueFor(offlinePizza("00000000-0000-4000-8000-000000000041", 1, "correct"), "alice", "quarantined");
+    renderContainer();
+
+    const notice = await screen.findByTestId("nutrition-v2-conflict");
+    await user.click(within(notice).getByRole("button", { name: "Verwerfen" }));
+
+    await waitFor(() => expect(screen.queryByTestId("nutrition-v2-conflict")).toBeNull());
+    expect(loadQueue()).toEqual([]);
+    expect(writer.writeNutritionV2Entry).not.toHaveBeenCalled();
+    expect(stored(LUNCH_ID)).toEqual(serverSkip());
+    expect(within(await slotRow("lunch")).getByTestId("nutrition-v2-slot-recorded")).toHaveTextContent("Ausgelassen");
+  });
+
+  it("cannot be applied again offline, and says so", async () => {
+    Object.defineProperty(navigator, "onLine", { configurable: true, get: () => false });
+    putEntry(serverSkip());
+    queueFor(offlinePizza("00000000-0000-4000-8000-000000000051", 1, "correct"), "alice", "quarantined");
+    renderContainer();
+
+    const notice = await screen.findByTestId("nutrition-v2-conflict");
+    expect(within(notice).getByRole("button", { name: "Erneut anwenden" })).toBeDisabled();
+    expect(notice).toHaveTextContent("Erneut anwenden ist nur mit Internetverbindung möglich.");
+    expect(within(notice).getByRole("button", { name: "Verwerfen" })).toBeEnabled();
   });
 });

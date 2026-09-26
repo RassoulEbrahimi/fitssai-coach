@@ -8,6 +8,7 @@ import {
   useNutritionV2State,
 } from "@/hooks/queries/useNutritionV2";
 import { useNutritionV2Recording } from "@/hooks/queries/useNutritionV2Recording";
+import { useNutritionV2EntryOverlay } from "@/hooks/queries/useNutritionV2EntryOverlay";
 import { buildNutritionDayRecordings } from "@/lib/nutrition/v2/dayRecordings";
 import { deriveNutritionV2TodayView } from "@/lib/nutrition/v2/todayView";
 import { NutritionV2TodayShell } from "./NutritionV2TodayShell";
@@ -21,10 +22,17 @@ import { NutritionV2TodayRecording } from "./NutritionV2TodayRecording";
  * gated on a signed-in, eligible (adult) account, so an ineligible or
  * signed-out person causes no V2 Firestore read at all.
  *
- * When today is a plan day it also offers online recording for today's slots
- * and extra meals (NUT-06). Rendering writes nothing; only a confirmed action
- * in the recording sheet does. Only today is offered — never a future date,
- * and backfilling earlier days is not part of this surface.
+ * When today is a plan day it also offers recording for today's slots and
+ * extra meals (NUT-06), online or queued offline (NUT-07). Rendering writes
+ * nothing; only a confirmed action in the recording sheet does. Only today is
+ * offered — never a future date, and backfilling earlier days is not part of
+ * this surface.
+ *
+ * The recorded entries shown are the strict committed read with this
+ * account's own queued changes laid over it (`useNutritionV2EntryOverlay`).
+ * Plans, slot heads and targets are shown exactly as read. A rejected offline
+ * change is shown as a conflict until the person applies it again or
+ * discards it.
  *
  * Not mounted anywhere while `NUTRITION_V2_ENABLED` is false: the app still
  * shows legacy Nutrition, and this container never falls back to it.
@@ -35,7 +43,9 @@ export const NutritionV2TodayContainer: React.FC = () => {
   const plan = useActiveNutritionV2Plan();
   const activePlan = plan.status === "success" ? plan.data : null;
   const slots = useNutritionV2Slots(activePlan);
-  const entries = useNutritionV2EntriesRange(activePlan?.startDate, activePlan?.endDate);
+  const committedEntries = useNutritionV2EntriesRange(activePlan?.startDate, activePlan?.endDate);
+  const overlay = useNutritionV2EntryOverlay(committedEntries, activePlan?.startDate, activePlan?.endDate);
+  const entries = overlay.entries;
   const today = useBerlinToday();
   const recording = useNutritionV2Recording();
 
@@ -51,7 +61,17 @@ export const NutritionV2TodayContainer: React.FC = () => {
   return (
     <NutritionV2TodayShell
       view={view}
-      todayRecording={recordings ? <NutritionV2TodayRecording recordings={recordings} recording={recording} /> : null}
+      todayRecording={
+        recordings ? (
+          <NutritionV2TodayRecording
+            recordings={recordings}
+            recording={recording}
+            pending={overlay.pending}
+            conflicts={overlay.conflicts}
+            entries={entryList ?? []}
+          />
+        ) : null
+      }
     />
   );
 };

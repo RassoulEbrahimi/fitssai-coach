@@ -4,13 +4,18 @@ import { join, relative, resolve } from "path";
 import { NUTRITION_V2_ENABLED } from "@shared/nutrition/featureFlag";
 
 /*
-  NUT-05/NUT-06 boundary guard, on source. The Nutrition V2 read layer, Today
-  shell and online recording exist, but while NUTRITION_V2_ENABLED is false
-  nothing the app mounts may reach them: the nutrition tab stays on the legacy
-  path. V2 modules never import legacy Nutrition, never read the server-only or
-  generation collections, and never touch the offline queue. The one write is
-  the recorded-entry transaction, in exactly one module, reached through
-  exactly one hook.
+  NUT-05/NUT-06/NUT-07 boundary guard, on source. The Nutrition V2 read layer,
+  Today shell, online recording and offline convergence exist, but while
+  NUTRITION_V2_ENABLED is false nothing the app mounts may reach their UI: the
+  nutrition tab stays on the legacy path. V2 modules never import legacy
+  Nutrition and never read the server-only or generation collections. The one
+  write is the recorded-entry transaction, in exactly one module, reached
+  through the recording hook and the offline replay handler only.
+
+  NUT-07's one crossing: the generic offline replay registry
+  (offlineHandlers.ts) imports the V2 replay handler. It only ever runs for a
+  NUTRITION_ENTRY_WRITE queue entry, and only the V2 recording hook enqueues
+  one, so with V2 unreachable it never runs.
 */
 
 const root = resolve(__dirname, "../../..");
@@ -38,18 +43,26 @@ const v2Modules = [
   "src/lib/nutrition/v2/recording.ts",
   "src/lib/nutrition/v2/entryTransaction.ts",
   "src/lib/nutrition/v2/entryWriter.ts",
+  "src/lib/nutrition/v2/nutritionWriteIntents.ts",
+  "src/lib/nutrition/v2/entryHandoff.ts",
+  "src/lib/nutrition/v2/entryReplay.ts",
   "src/hooks/queries/useNutritionV2.ts",
   "src/hooks/queries/useNutritionV2Recording.ts",
+  "src/hooks/queries/useNutritionV2EntryOverlay.ts",
   "src/components/nutrition/v2/NutritionV2TodayShell.tsx",
   "src/components/nutrition/v2/NutritionV2TodayContainer.tsx",
   "src/components/nutrition/v2/NutritionV2TodayRecording.tsx",
   "src/components/nutrition/v2/NutritionV2RecordingSheet.tsx",
+  "src/components/nutrition/v2/NutritionV2ConflictNotice.tsx",
   "src/components/nutrition/v2/recordingFormat.ts",
 ];
 
-/** The only module that writes Firestore, and the only hook that reaches it. */
+/** The only module that writes Firestore, and the only modules that reach it. */
 const entryWriterModule = "src/lib/nutrition/v2/entryWriter.ts";
 const recordingHookModule = "src/hooks/queries/useNutritionV2Recording.ts";
+const replayHandlerModule = "src/lib/nutrition/v2/entryReplay.ts";
+/** The one non-V2 production module allowed to import V2 code. */
+const replayRegistryModule = "src/lib/offlineHandlers.ts";
 
 /** Source without comments, so prose about a write is not mistaken for one. */
 const code = (path: string) =>
@@ -74,10 +87,15 @@ describe("Nutrition V2 reachability", () => {
     expect(found.sort()).toEqual([...v2Modules].sort());
   });
 
-  it("is not imported by any production module outside the V2 modules", () => {
+  it("is not imported by any production module outside the V2 modules, except the replay registry", () => {
     const importers = productionSources.filter((path) => !v2Modules.includes(path) && IMPORTS_V2_MODULE.test(read(path)));
+    expect(importers).toEqual([replayRegistryModule]);
 
-    expect(importers).toEqual([]);
+    // And that registry imports the replay handler only.
+    const imported = [...read(replayRegistryModule).matchAll(new RegExp(IMPORTS_V2_MODULE.source, "g"))].map(
+      (match) => match[1]
+    );
+    expect(imported).toEqual(["@/lib/nutrition/v2/entryReplay"]);
   });
 
   it("leaves the Dashboard nutrition tab on the legacy path", () => {
@@ -128,7 +146,7 @@ describe("Nutrition V2 module boundary", () => {
     expect(mutating).toEqual([recordingHookModule]);
 
     const writerImporters = productionSources.filter((path) => /from\s+["'][^"']*\/entryWriter["']/.test(read(path)));
-    expect(writerImporters).toEqual([recordingHookModule]);
+    expect(writerImporters.sort()).toEqual([recordingHookModule, replayHandlerModule].sort());
   });
 
   it("writes only the recorded-entries collection", () => {
@@ -138,10 +156,21 @@ describe("Nutrition V2 module boundary", () => {
     expect(writer).not.toMatch(/nutrition_plans|NUTRITION_LEGACY/);
   });
 
-  it("never touches the offline queue, replay or persisted cache", () => {
+  it("uses the existing offline queue, never the replay loop, the Training queue hook or the persisted cache", () => {
     for (const path of v2Modules) {
-      expect(read(path), path).not.toMatch(
-        /offlineQueue|offlineReplay|offlineHandlers|useOfflineQueue|QueryProvider|persistQueryClient/
+      expect(read(path), path).not.toMatch(/offlineReplay|offlineHandlers|useOfflineQueue|QueryProvider|persistQueryClient/);
+    }
+    // Only Nutrition entry writes are ever enqueued, and only by the recording hook.
+    const enqueuers = v2Modules.filter((path) => /\benqueue\(/.test(code(path)));
+    expect(enqueuers).toEqual([recordingHookModule]);
+    const enqueued = [...code(recordingHookModule).matchAll(/\benqueue\(\s*"(\w+)"/g)].map((match) => match[1]);
+    expect(new Set(enqueued)).toEqual(new Set(["NUTRITION_ENTRY_WRITE"]));
+  });
+
+  it("never enables Firestore's own offline persistence", () => {
+    for (const path of productionSources) {
+      expect(code(path), path).not.toMatch(
+        /enableIndexedDbPersistence|enableMultiTabIndexedDbPersistence|persistentLocalCache|persistentMultipleTabManager/
       );
     }
   });
@@ -155,6 +184,8 @@ describe("Nutrition V2 module boundary", () => {
       "src/lib/nutrition/v2/dayRecordings.ts",
       "src/lib/nutrition/v2/recording.ts",
       "src/lib/nutrition/v2/entryTransaction.ts",
+      "src/lib/nutrition/v2/nutritionWriteIntents.ts",
+      "src/lib/nutrition/v2/entryHandoff.ts",
     ]) {
       expect(read(path), path).not.toMatch(/from\s+["'](firebase\/|@\/lib\/firebase|react|@tanstack)/);
     }
