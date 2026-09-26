@@ -38,6 +38,14 @@ export interface BackendCapabilities {
    * the backend either way, and no plan is ever changed by either path.
    */
   weeklySummaryAI: boolean;
+  /**
+   * Setting a Nutrition V2 target. False: `nutritionSetTarget` exists, but no
+   * target policy is signed off, so it can only answer
+   * `TARGET_POLICY_NOT_CONFIGURED`.
+   */
+  nutritionTargets: boolean;
+  /** Generating a Nutrition V2 plan. False: there is no such callable yet. */
+  nutritionGeneration: boolean;
 }
 
 export const BACKEND_CAPABILITIES: Readonly<BackendCapabilities> = Object.freeze({
@@ -49,4 +57,10 @@ export const BACKEND_CAPABILITIES: Readonly<BackendCapabilities> = Object.freeze
   // that remains so — and a false here would still leave the review working,
   // because the wording falls back to the app's own.
   weeklySummaryAI: true,
+  // False from NUT-08: the target plumbing is deployed, but the production
+  // policy registry is empty, so no target can actually be set. It moves only
+  // with a signed-off policy.
+  nutritionTargets: false,
+  // False: Nutrition plan generation does not exist yet.
+  nutritionGeneration: false,
 });

@@ -21,7 +21,9 @@ import type { NutritionV2TodayView } from "@/lib/nutrition/v2/todayView";
  * passes in for today (NUT-06); the shell itself stays read-only. Rejected
  * offline changes (NUT-07) are the separate `conflicts` section, shown above
  * every state but loading — with or without a plan, on a plan day or not —
- * and it carries no recording controls.
+ * and it carries no recording controls. The TARGET section (NUT-08) is shown
+ * for every eligible view, above the plan: a target is what the person aims
+ * for and exists independently of any plan.
  */
 
 interface NutritionV2TodayShellProps {
@@ -30,6 +32,8 @@ interface NutritionV2TodayShellProps {
   todayRecording?: React.ReactNode;
   /** The account's rejected offline changes, shown whatever the view. */
   conflicts?: React.ReactNode;
+  /** The current target and its setup, shown for every eligible view. */
+  target?: React.ReactNode;
 }
 
 /** The weekday and date of a calendar day. Formatted in UTC so the day never shifts. */
@@ -122,7 +126,7 @@ const Week = ({ week, title, language }: { week: NutritionWeek; title: string; l
   </section>
 );
 
-export const NutritionV2TodayShell: React.FC<NutritionV2TodayShellProps> = ({ view, todayRecording, conflicts }) => {
+export const NutritionV2TodayShell: React.FC<NutritionV2TodayShellProps> = ({ view, todayRecording, conflicts, target }) => {
   const { t, i18n } = useTranslation();
   const language = i18n.language || "de";
 
@@ -195,6 +199,7 @@ export const NutritionV2TodayShell: React.FC<NutritionV2TodayShellProps> = ({ vi
       </CardHeader>
       <CardContent className="space-y-6">
         {conflicts}
+        {view.status !== "error" && view.status !== "ineligible" && target}
         {body}
       </CardContent>
     </Card>

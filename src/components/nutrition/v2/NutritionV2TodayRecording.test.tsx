@@ -65,7 +65,7 @@ vi.mock("@/lib/firebase", () => ({
   },
 }));
 vi.mock("@/hooks/useAuth", () => ({ useAuth: () => ({ user: session.user }) }));
-vi.mock("@/hooks/queries/useProfile", () => ({ useProfile: () => session.profile }));
+vi.mock("@/hooks/queries/useProfile", () => ({ useProfile: () => session.profile, useUpdateProfile: () => ({ mutateAsync: vi.fn() }) }));
 vi.mock("@/hooks/useBerlinToday", () => ({ useBerlinToday: () => session.today }));
 vi.mock("@/lib/nutrition/v2/entryWriter", () => writer);
 

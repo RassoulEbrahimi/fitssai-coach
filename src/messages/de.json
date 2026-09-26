@@ -603,6 +603,90 @@
           "storage": "Lokales Speichern fehlgeschlagen. Es wurde nichts gespeichert."
         }
       }
+    },
+    "target": {
+      "title": "Ziel",
+      "loading": "Ziel wird geladen",
+      "error": "Dein Ziel konnte gerade nicht geladen werden.",
+      "none": "Du hast noch kein Ernährungsziel festgelegt.",
+      "valuesLabel": "Deine Zielwerte pro Tag",
+      "kcal": "Kalorien",
+      "proteinG": "Eiweiß",
+      "carbsG": "Kohlenhydrate",
+      "fatG": "Fett",
+      "kcalValue": "{{value}} kcal",
+      "gramValue": "{{value}} g",
+      "mode": {
+        "calculated": "Berechnetes Ziel",
+        "manual": "Selbst festgelegtes Ziel"
+      },
+      "since": "gilt seit {{date}}",
+      "set": "Ziel festlegen",
+      "change": "Ziel ändern",
+      "stale": {
+        "title": "Deine Profildaten haben sich seit diesem Ziel geändert.",
+        "description": "Dein Ziel bleibt bestehen, bis du ein neues festlegst.",
+        "action": "Ziel prüfen"
+      },
+      "cannotCompare": {
+        "title": "Profilangaben prüfen",
+        "description": "Einige Angaben, auf denen dieses Ziel beruht, fehlen oder sind ungültig. Ob es noch zu deinem Profil passt, lässt sich so nicht prüfen.",
+        "action": "Angaben prüfen"
+      },
+      "fieldName": {
+        "age": "Alter",
+        "height": "Größe",
+        "weight": "Gewicht",
+        "biologicalSex": "Biologisches Geschlecht",
+        "fitnessGoal": "Fitnessziel",
+        "activityLevel": "Aktivitätslevel",
+        "nutritionTargetMode": "Art des Ziels",
+        "manualTargetKcal": "Kalorienziel"
+      },
+      "setup": {
+        "title": "Ziel festlegen",
+        "description": "Dein Ziel wird aus deinem gespeicherten Profil ermittelt. Geänderte Angaben werden zuerst in deinem Profil gespeichert.",
+        "modeLabel": "Art des Ziels",
+        "mode": {
+          "calculated": "Berechnen",
+          "manual": "Selbst festlegen"
+        },
+        "field": {
+          "height": "Größe (cm)",
+          "weight": "Gewicht (kg)",
+          "biologicalSex": "Biologisches Geschlecht",
+          "activityLevel": "Aktivitätslevel",
+          "fitnessGoal": "Fitnessziel",
+          "manualTargetKcal": "Kalorienziel pro Tag (kcal)"
+        },
+        "sex": {
+          "female": "Weiblich",
+          "male": "Männlich",
+          "notSpecified": "Keine Angabe"
+        },
+        "activity": {
+          "sedentary": "Überwiegend sitzend",
+          "lightlyActive": "Leicht aktiv",
+          "moderatelyActive": "Mäßig aktiv",
+          "veryActive": "Sehr aktiv",
+          "extremelyActive": "Extrem aktiv"
+        },
+        "invalid": "Bitte prüfe diese Angabe.",
+        "submit": "Ziel festlegen",
+        "submitting": "Wird festgelegt …",
+        "cancel": "Abbrechen",
+        "offline": "Ein Ziel kann nur mit Internetverbindung festgelegt werden.",
+        "unavailable": "Ein Ziel kann gerade nicht festgelegt werden.",
+        "profileSaved": "Deine Profilangaben wurden gespeichert.",
+        "profileSaveFailed": "Deine Profilangaben konnten nicht gespeichert werden. Es wurde kein Ziel festgelegt.",
+        "result": {
+          "notConfigured": "Die Zielberechnung ist noch nicht verfügbar.",
+          "missing": "Für dieses Ziel fehlen noch Angaben: {{fields}}.",
+          "invalid": "Bitte prüfe diese Angaben: {{fields}}.",
+          "ineligible": "Ernährungsziele sind nur für Erwachsene mit Altersangabe verfügbar.",
+          "failed": "Das Ziel konnte gerade nicht festgelegt werden. Bitte versuche es später noch einmal."
+        }
+      }
     }
   }
 }

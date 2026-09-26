@@ -78,6 +78,19 @@ describe("what the response says", () => {
     expect(result.capabilities).toEqual(BACKEND_CAPABILITIES);
   });
 
+  it("does not claim Nutrition targets or generation", () => {
+    // NUT-08 deploys the target plumbing, but no target policy is signed off
+    // and Nutrition generation does not exist, so neither is usable.
+    expect(result.capabilities.nutritionTargets).toBe(false);
+    expect(result.capabilities.nutritionGeneration).toBe(false);
+    expect(Object.keys(result.capabilities).sort()).toEqual([
+      "nutritionGeneration",
+      "nutritionTargets",
+      "planGeneration",
+      "weeklySummaryAI",
+    ]);
+  });
+
   it("returns no personal data beyond the caller's own uid", () => {
     const keys = Object.keys(result).sort();
 

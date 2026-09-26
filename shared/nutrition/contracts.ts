@@ -99,9 +99,81 @@ export const nutritionTargetModeSchema = z.enum(NUTRITION_TARGET_MODES);
 export type NutritionTargetMode = z.infer<typeof nutritionTargetModeSchema>;
 
 /**
- * One version of the person's target. A change creates a new version; an
+ * An instant as Firestore stores it: whole seconds since the epoch and the
+ * nanoseconds within that second.
+ *
+ * Structural on purpose, so this contract stays Firebase-independent: the
+ * client SDK's `Timestamp` carries `seconds`/`nanoseconds` as own properties,
+ * the Admin SDK's as getters, and both parse. Not `.strict()` for the same
+ * reason — an SDK timestamp has private fields of its own — and the parsed
+ * value is the plain `{ seconds, nanoseconds }`, never the SDK class.
+ */
+export const nutritionTimestampSchema = z.object({
+  seconds: z.number().int("seconds must be a whole number"),
+  nanoseconds: z.number().int("nanoseconds must be a whole number").min(0).max(999_999_999),
+});
+
+export type NutritionTimestamp = z.infer<typeof nutritionTimestampSchema>;
+
+/**
+ * Which target policy produced a target, and which version of it. A policy
+ * is the versioned, signed-off rule that turns profile answers into target
+ * values; the policies themselves live on the server, not in this contract.
+ */
+export const targetPolicyRefSchema = z
+  .object({
+    id: z.string().regex(/^[a-z0-9][a-z0-9._-]*$/, "policy id must be a lower-case identifier"),
+    version: z.number().int("policy version must be a whole number").positive("policy version starts at 1"),
+  })
+  .strict();
+
+export type TargetPolicyRef = z.infer<typeof targetPolicyRefSchema>;
+
+/** A lower-case hex SHA-256 digest. */
+const sha256HexSchema = z.string().regex(/^[0-9a-f]{64}$/, "hash must be a lower-case hex SHA-256 digest");
+
+/**
+ * What a target's profile inputs looked like, without the inputs themselves:
+ * the SHA-256 of the canonical fingerprint material (`./fingerprint`) and the
+ * names of the profile fields it covers — never their values.
+ *
+ * `fields` is a list of names in canonical (sorted, unique) order. A name this
+ * build does not know is still a valid document — a newer policy may read a
+ * newer field — and simply cannot be compared (`deriveNutritionTargetFreshness`).
+ */
+export const profileFingerprintSchema = z
+  .object({
+    hash: sha256HexSchema,
+    fields: z
+      .array(z.string().regex(/^[A-Za-z][A-Za-z0-9]*$/, "a fingerprint field is a field name"))
+      .refine((fields) => fields.every((field, index) => index === 0 || fields[index - 1] < field), {
+        message: "fingerprint fields are sorted and unique",
+      }),
+  })
+  .strict();
+
+export type ProfileFingerprint = z.infer<typeof profileFingerprintSchema>;
+
+/**
+ * One version of the person's TARGET: what they aim for — never what a plan
+ * proposes and never what was recorded. A change creates a new version; an
  * existing version is never edited, so anything that points at one keeps
  * meaning what it meant.
+ *
+ *   values                     unrounded; rounding is presentation
+ *   effectiveFrom              the Berlin date the server created it on
+ *   effectiveOrder             the account state revision that created it, so
+ *                              two versions of the same date have an order
+ *   policy                     the target policy (id and version) that
+ *                              computed it — manual targets too, since their
+ *                              bounds are policy as well
+ *   profileFingerprint         the hash and field names of the profile inputs
+ *                              it was computed from; never the raw inputs
+ *   supersedesTargetVersionId  the version that was current before it, if any
+ *   createdAt                  the server instant it was created
+ *
+ * Calculated and manual targets share this one shape; they differ only in
+ * `mode`, `policy` and the fields their fingerprint covers.
  */
 export const targetVersionSchema = z
   .object({
@@ -110,8 +182,17 @@ export const targetVersionSchema = z
     mode: nutritionTargetModeSchema,
     values: nutritionValuesSchema,
     effectiveFrom: nutritionDateSchema,
+    effectiveOrder: z.number().int("effectiveOrder must be a whole number").positive("effectiveOrder starts at 1"),
+    policy: targetPolicyRefSchema,
+    profileFingerprint: profileFingerprintSchema,
+    supersedesTargetVersionId: nutritionDocIdSchema.nullable(),
+    createdAt: nutritionTimestampSchema,
   })
-  .strict();
+  .strict()
+  .refine((target) => target.supersedesTargetVersionId !== target.targetVersionId, {
+    message: "a target version cannot supersede itself",
+    path: ["supersedesTargetVersionId"],
+  });
 
 export type TargetVersion = z.infer<typeof targetVersionSchema>;
 
@@ -519,14 +600,77 @@ export type GenerationRequestStatus = z.infer<typeof generationRequestStatusSche
  * Per-account state
  * ------------------------------------------------------------------ */
 
-/** Pointers to the account's current Nutrition V2 records. */
+/**
+ * How many applied state requests the account state remembers, for request
+ * idempotency. Operational storage only — like the entry intent ring it has
+ * no nutrition meaning. The oldest record is evicted first.
+ */
+export const NUTRITION_STATE_REQUEST_LEDGER_SIZE = 20;
+
+/**
+ * The id of one explicit server request (e.g. one "set target" action): a
+ * lower-case UUID, created once per action and kept through every retry of
+ * it. Never a document id — the server mints those.
+ */
+export const nutritionRequestIdSchema = z
+  .string()
+  .refine((value) => isUuid(value) && value === value.toLowerCase(), { message: "request id must be a lower-case UUID" });
+
+/** The state-changing operations that are recorded in the request ledger. */
+export const NUTRITION_STATE_OPERATIONS = ["setTarget"] as const;
+
+export type NutritionStateOperation = (typeof NUTRITION_STATE_OPERATIONS)[number];
+
+/** One applied request and what it produced. */
+export const nutritionStateRequestSchema = z.discriminatedUnion("operation", [
+  z
+    .object({
+      requestId: nutritionRequestIdSchema,
+      operation: z.literal("setTarget"),
+      resultTargetVersionId: nutritionDocIdSchema,
+    })
+    .strict(),
+]);
+
+export type NutritionStateRequest = z.infer<typeof nutritionStateRequestSchema>;
+
+/**
+ * The account's Nutrition V2 state: pointers to its current records, and the
+ * account's concurrency anchor.
+ *
+ *   revision        1 once the state exists (it is created by its first
+ *                   applied request); every applied state-changing request is
+ *                   exactly +1. Reads never change it.
+ *   recentRequests  the requests already applied, oldest first, at most
+ *                   `NUTRITION_STATE_REQUEST_LEDGER_SIZE`. A request whose id is
+ *                   listed here has already happened; replaying it returns
+ *                   what it produced.
+ */
 export const nutritionUserStateSchema = z
   .object({
     schemaVersion: nutritionSchemaVersionSchema,
+    revision: z.number().int("revision must be a whole number").positive("revision starts at 1"),
     activePlanId: nutritionDocIdSchema.nullable(),
     currentTargetVersionId: nutritionDocIdSchema.nullable(),
     activeGenerationRequestId: nutritionDocIdSchema.nullable(),
+    recentRequests: z
+      .array(nutritionStateRequestSchema)
+      .max(NUTRITION_STATE_REQUEST_LEDGER_SIZE, `at most ${NUTRITION_STATE_REQUEST_LEDGER_SIZE} requests are kept`),
   })
-  .strict();
+  .strict()
+  .superRefine((state, ctx) => {
+    const ids = state.recentRequests.map((request) => request.requestId);
+    if (new Set(ids).size !== ids.length) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["recentRequests"], message: "a request id is applied at most once" });
+    }
+    // Every applied request moved the revision by exactly one.
+    if (state.recentRequests.length > state.revision) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["recentRequests"],
+        message: "more requests are recorded than the revision has applied",
+      });
+    }
+  });
 
 export type NutritionUserState = z.infer<typeof nutritionUserStateSchema>;

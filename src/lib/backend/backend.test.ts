@@ -36,6 +36,19 @@ describe("client and server agree", () => {
     expect(serverConfig).toContain(`FUNCTIONS_REGION = "${FUNCTIONS_REGION}"`);
   });
 
+  it("names the same capabilities, and the server claims no Nutrition target or generation", () => {
+    const serverConfig = stripComments(read("functions/src/config.ts"));
+    const client = stripComments(read("src/lib/backend/index.ts"));
+
+    for (const capability of ["planGeneration", "weeklySummaryAI", "nutritionTargets", "nutritionGeneration"]) {
+      expect(client).toMatch(new RegExp(`\\b${capability}: boolean;`));
+      expect(serverConfig).toMatch(new RegExp(`\\b${capability}: boolean;`));
+    }
+    // NUT-08: the target callable exists, but no target policy is signed off.
+    expect(serverConfig).toMatch(/\bnutritionTargets: false,/);
+    expect(serverConfig).toMatch(/\bnutritionGeneration: false,/);
+  });
+
   it("keeps FitssAI's backend in Europe", () => {
     expect(FUNCTIONS_REGION.startsWith("europe-")).toBe(true);
   });

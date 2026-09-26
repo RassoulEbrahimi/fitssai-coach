@@ -4,6 +4,7 @@ import {
   GENERATION_REQUEST_STATUSES,
   NUTRITION_PLAN_DAY_COUNT,
   NUTRITION_SCHEMA_VERSION,
+  NUTRITION_STATE_REQUEST_LEDGER_SIZE,
   addNutritionDays,
   extraEntryId,
   NUTRITION_ENTRY_INTENT_RING_SIZE,
@@ -30,6 +31,11 @@ const target = {
   mode: "manual",
   values,
   effectiveFrom: "2026-10-01",
+  effectiveOrder: 1,
+  policy: { id: "test-fixture-manual", version: 1 },
+  profileFingerprint: { hash: "0123456789abcdef".repeat(4), fields: ["manualTargetKcal"] },
+  supersedesTargetVersionId: null,
+  createdAt: { seconds: 1_790_000_000, nanoseconds: 500 },
 };
 
 /** A 7-day plan starting on the fall-back Sunday, so it spans a DST switch. */
@@ -65,9 +71,11 @@ const slotHead = {
 
 const state = {
   schemaVersion: 2,
+  revision: 1,
   activePlanId: "plan-1",
   currentTargetVersionId: "tv-1",
   activeGenerationRequestId: null,
+  recentRequests: [{ requestId: "3f2b8c1e-9a4d-4e6f-8b21-7c5d0e9a1b34", operation: "setTarget", resultTargetVersionId: "tv-1" }],
 };
 
 const UUID = "3f2b8c1e-9a4d-4e6f-8b21-7c5d0e9a1b34";
@@ -554,5 +562,143 @@ describe("targets and state", () => {
   it("state pointers are ids or null", () => {
     expect(nutritionUserStateSchema.safeParse({ ...state, activePlanId: "" }).success).toBe(false);
     expect(nutritionUserStateSchema.safeParse({ ...state, activePlanId: undefined }).success).toBe(false);
+  });
+});
+
+describe("TargetVersion (NUT-08)", () => {
+  it("keeps values unrounded", () => {
+    expect(targetVersionSchema.parse(target).values).toEqual(values);
+  });
+
+  it.each([
+    "effectiveOrder",
+    "policy",
+    "profileFingerprint",
+    "supersedesTargetVersionId",
+    "createdAt",
+  ])("requires %s: an incomplete V2 target is malformed, never defaulted", (field) => {
+    const { [field as keyof typeof target]: _omit, ...without } = target;
+    expect(targetVersionSchema.safeParse(without).success).toBe(false);
+  });
+
+  it("rejects raw profile inputs carried on the target or its fingerprint", () => {
+    expect(targetVersionSchema.safeParse({ ...target, weight: 70 }).success).toBe(false);
+    expect(
+      targetVersionSchema.safeParse({ ...target, profileFingerprint: { ...target.profileFingerprint, values: { weight: 70 } } })
+        .success
+    ).toBe(false);
+  });
+
+  it("orders versions with a positive whole effectiveOrder", () => {
+    for (const bad of [0, -1, 1.5, "1", null]) {
+      expect(targetVersionSchema.safeParse({ ...target, effectiveOrder: bad }).success).toBe(false);
+    }
+  });
+
+  it("records the policy id and a positive version", () => {
+    for (const policy of [{ id: "", version: 1 }, { id: "Policy A", version: 1 }, { id: "p", version: 0 }, { id: "p" }]) {
+      expect(targetVersionSchema.safeParse({ ...target, policy }).success).toBe(false);
+    }
+  });
+
+  it("fingerprints with a SHA-256 hex digest and sorted, unique field names", () => {
+    const withFingerprint = (profileFingerprint: unknown) => targetVersionSchema.safeParse({ ...target, profileFingerprint });
+    expect(withFingerprint({ hash: "abc", fields: [] }).success).toBe(false);
+    expect(withFingerprint({ hash: "A".repeat(64), fields: [] }).success).toBe(false);
+    expect(withFingerprint({ hash: "a".repeat(64), fields: ["weight", "height"] }).success).toBe(false);
+    expect(withFingerprint({ hash: "a".repeat(64), fields: ["height", "height"] }).success).toBe(false);
+    expect(withFingerprint({ hash: "a".repeat(64), fields: ["height", "weight"] }).success).toBe(true);
+    // A field this build does not know is a valid document; freshness cannot compare it.
+    expect(withFingerprint({ hash: "a".repeat(64), fields: ["futureField", "height"] }).success).toBe(true);
+  });
+
+  it("cannot supersede itself", () => {
+    expect(targetVersionSchema.safeParse({ ...target, supersedesTargetVersionId: "tv-0" }).success).toBe(true);
+    expect(targetVersionSchema.safeParse({ ...target, supersedesTargetVersionId: "tv-1" }).success).toBe(false);
+  });
+
+  it("reads createdAt from either Firestore SDK's timestamp, as a plain instant", () => {
+    class ClientTimestamp {
+      constructor(
+        readonly seconds: number,
+        readonly nanoseconds: number
+      ) {}
+      toDate() {
+        return new Date(this.seconds * 1000);
+      }
+    }
+    class AdminTimestamp {
+      private readonly _seconds = 1_790_000_000;
+      private readonly _nanoseconds = 7;
+      get seconds() {
+        return this._seconds;
+      }
+      get nanoseconds() {
+        return this._nanoseconds;
+      }
+    }
+
+    const fromClient = targetVersionSchema.parse({ ...target, createdAt: new ClientTimestamp(1_790_000_000, 7) });
+    const fromAdmin = targetVersionSchema.parse({ ...target, createdAt: new AdminTimestamp() });
+    expect(fromClient.createdAt).toEqual({ seconds: 1_790_000_000, nanoseconds: 7 });
+    expect(fromAdmin.createdAt).toEqual({ seconds: 1_790_000_000, nanoseconds: 7 });
+    // An ISO string loses nothing a person sees, but it is not an instant here.
+    expect(targetVersionSchema.safeParse({ ...target, createdAt: "2026-09-27T10:00:00Z" }).success).toBe(false);
+    expect(targetVersionSchema.safeParse({ ...target, createdAt: { seconds: 1, nanoseconds: 1e9 } }).success).toBe(false);
+  });
+});
+
+describe("NutritionUserState (NUT-08)", () => {
+  const request = (n: number) => ({
+    requestId: `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`,
+    operation: "setTarget",
+    resultTargetVersionId: `tv-${n}`,
+  });
+
+  it.each(["revision", "recentRequests"])("requires %s: never defaulted", (field) => {
+    const { [field as keyof typeof state]: _omit, ...without } = state;
+    expect(nutritionUserStateSchema.safeParse(without).success).toBe(false);
+  });
+
+  it("starts at revision 1 and counts in whole numbers", () => {
+    for (const bad of [0, -1, 1.5, "1"]) {
+      expect(nutritionUserStateSchema.safeParse({ ...state, revision: bad }).success).toBe(false);
+    }
+  });
+
+  it(`keeps at most ${NUTRITION_STATE_REQUEST_LEDGER_SIZE} requests, each once`, () => {
+    const full = Array.from({ length: NUTRITION_STATE_REQUEST_LEDGER_SIZE }, (_, index) => request(index + 1));
+    const revision = 100;
+    expect(nutritionUserStateSchema.safeParse({ ...state, revision, recentRequests: full }).success).toBe(true);
+    expect(
+      nutritionUserStateSchema.safeParse({ ...state, revision, recentRequests: [...full, request(99)] }).success
+    ).toBe(false);
+    expect(nutritionUserStateSchema.safeParse({ ...state, revision, recentRequests: [request(1), request(1)] }).success).toBe(
+      false
+    );
+  });
+
+  it("never records more requests than the revision applied", () => {
+    expect(nutritionUserStateSchema.safeParse({ ...state, revision: 1, recentRequests: [request(1), request(2)] }).success).toBe(
+      false
+    );
+  });
+
+  it("records only known operations with a lower-case request id", () => {
+    expect(nutritionUserStateSchema.safeParse({ ...state, recentRequests: [{ ...request(1), operation: "generate" }] }).success).toBe(
+      false
+    );
+    expect(
+      nutritionUserStateSchema.safeParse({
+        ...state,
+        recentRequests: [{ ...request(1), requestId: "3F2B8C1E-9A4D-4E6F-8B21-7C5D0E9A1B34" }],
+      }).success
+    ).toBe(false);
+    expect(nutritionUserStateSchema.safeParse({ ...state, recentRequests: [{ ...request(1), extra: 1 }] }).success).toBe(false);
+  });
+
+  it("is an infrastructure bound, the same size as the entry intent ring", () => {
+    expect(NUTRITION_STATE_REQUEST_LEDGER_SIZE).toBe(20);
+    expect(NUTRITION_STATE_REQUEST_LEDGER_SIZE).toBe(NUTRITION_ENTRY_INTENT_RING_SIZE);
   });
 });
