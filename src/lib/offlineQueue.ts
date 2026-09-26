@@ -1,8 +1,10 @@
 
 import { auth } from '@/lib/firebase';
 import { assertAccountOwner } from '@/lib/accountIdentity';
+import type { NutritionDate, NutritionEntryIntent } from '@shared/nutrition';
 
-export type OfflineMutationType = 'TOGGLE_DAY_COMPLETION' | 'TOGGLE_SET' | 'TOGGLE_DAY' | 'UPDATE_SET_PERFORMANCE';
+export type OfflineMutationType =
+    | 'TOGGLE_DAY_COMPLETION' | 'TOGGLE_SET' | 'TOGGLE_DAY' | 'UPDATE_SET_PERFORMANCE' | 'NUTRITION_ENTRY_WRITE';
 
 /**
  * Marking one *exercise* complete.
@@ -80,11 +82,27 @@ export interface UpdateSetPerformancePayload {
     weightKg?: number | null;
 }
 
+/**
+ * One Nutrition V2 recorded-entry write (NUT-07).
+ *
+ * `intent` is the exact canonical intent the explicit action created — the
+ * one the online transaction runs — never a copy of its fields. Its
+ * `intentId` is the action's idempotency identity; the queue entry's own `id`
+ * is only transport identity. `date` is the Berlin date the entry belongs to.
+ * The replay handler validates the whole payload against the shared schemas
+ * and quarantines a malformed one rather than writing or retrying it.
+ */
+export interface NutritionEntryWritePayload {
+    intent: NutritionEntryIntent;
+    date: NutritionDate;
+}
+
 export type OfflineMutationPayloads = {
     TOGGLE_DAY_COMPLETION: ToggleDayCompletionPayload;
     TOGGLE_SET: ToggleSetPayload;
     TOGGLE_DAY: ToggleDayPayload;
     UPDATE_SET_PERFORMANCE: UpdateSetPerformancePayload;
+    NUTRITION_ENTRY_WRITE: NutritionEntryWritePayload;
 };
 
 /**
@@ -110,6 +128,19 @@ export const isLegacyDayCompletionPayload = (
     );
 };
 
+/**
+ * Why replay set an entry aside for good. Stored on the quarantined entry so
+ * the owner can be shown what happened; the entry itself is kept.
+ */
+export interface OfflineEntryRejection {
+    /** Stable, machine-readable reason, e.g. `staleRevision` or `invalidPayload`. */
+    code: string;
+    /** Safe to show; never a raw server error. */
+    message: string;
+    /** JSON-serializable facts about the rejection, for the owning feature's UI. */
+    details?: Record<string, string | number | boolean | null>;
+}
+
 export interface OfflineMutationEntry<T extends OfflineMutationType = OfflineMutationType> {
     id: string;
     /** Absent only on quarantined legacy entries. Never reassigned. */
@@ -124,6 +155,15 @@ export interface OfflineMutationEntry<T extends OfflineMutationType = OfflineMut
     claimedAt?: number;
     leaseUntil?: number;
     nextAttemptAt?: number;
+    /**
+     * The earlier entry this one was derived from: its payload assumes that
+     * entry applies first. If that entry is rejected, this one is rejected with
+     * it instead of being written against a state it never saw. Set only at
+     * enqueue, never reassigned. Training entries never carry it.
+     */
+    readonly dependsOn?: string;
+    /** Set only on an entry quarantined by a terminal replay rejection. */
+    rejection?: OfflineEntryRejection;
 }
 
 const STORAGE_KEY = 'FITSSAI_OFFLINE_QUEUE';
@@ -197,6 +237,7 @@ export const enqueue = <T extends OfflineMutationType>(
     type: T,
     payload: OfflineMutationPayloads[T],
     expectedOwnerUid: string | null | undefined = auth.currentUser?.uid,
+    options: { dependsOn?: string | null } = {},
 ): { queue: OfflineMutationEntry[]; entry: OfflineMutationEntry<T> } => {
     const ownerUid = assertAccountOwner(expectedOwnerUid);
     const queue = loadQueue();
@@ -208,6 +249,7 @@ export const enqueue = <T extends OfflineMutationType>(
         createdAt: Date.now(),
         status: 'pending',
         attempts: 0,
+        ...(options.dependsOn ? { dependsOn: options.dependsOn } : {}),
     };
 
     const newQueue = [...queue, entry];
@@ -222,7 +264,7 @@ export const enqueue = <T extends OfflineMutationType>(
 
 export const updateEntry = (
     id: string,
-    patch: Partial<Pick<OfflineMutationEntry, 'status' | 'attempts' | 'lastError' | 'claimId' | 'claimedAt' | 'leaseUntil' | 'nextAttemptAt'>>
+    patch: Partial<Pick<OfflineMutationEntry, 'status' | 'attempts' | 'lastError' | 'claimId' | 'claimedAt' | 'leaseUntil' | 'nextAttemptAt' | 'rejection'>>
 ): OfflineMutationEntry[] => {
     const queue = loadQueue();
     const newQueue = queue.map((entry) =>
@@ -279,4 +321,118 @@ export const assertQueueClaim = (entry: OfflineMutationEntry): void => {
     const current = loadQueue().find(item => item.id === entry.id);
     if (!current || current.claimId !== entry.claimId || current.status !== 'syncing' ||
         !current.leaseUntil || current.leaseUntil <= Date.now()) throw new QueueClaimLostError();
+};
+
+/**
+ * A handler's verdict that its entry can never be applied as queued: a
+ * semantic conflict, or a payload that cannot be trusted. Replay quarantines
+ * the entry (kept, with `rejection`), refetches `invalidate`, and moves on to
+ * the next entry. It is never retried with backoff.
+ *
+ * Only for outcomes that are the same on every attempt. A transient failure
+ * must stay an ordinary error so the existing retry applies. The Training
+ * handlers never throw this.
+ */
+export class ReplayRejectedError extends Error {
+    readonly code: string;
+    readonly invalidate: readonly (readonly unknown[])[];
+    readonly details?: OfflineEntryRejection['details'];
+
+    constructor({ code, message, invalidate = [], details }: {
+        code: string;
+        message: string;
+        invalidate?: readonly (readonly unknown[])[];
+        details?: OfflineEntryRejection['details'];
+    }) {
+        super(message);
+        this.name = 'ReplayRejectedError';
+        this.code = code;
+        this.invalidate = invalidate;
+        this.details = details;
+    }
+
+    get rejection(): OfflineEntryRejection {
+        return { code: this.code, message: this.message, ...(this.details ? { details: this.details } : {}) };
+    }
+}
+
+/** The rejection given to an entry whose `dependsOn` entry was rejected. */
+export const DEPENDENCY_REJECTED_CODE = 'dependencyRejected';
+
+const dependencyRejection = (dependsOn: string): OfflineEntryRejection => ({
+    code: DEPENDENCY_REJECTED_CODE,
+    message: 'Eine frühere Änderung, auf der diese aufbaut, wurde nicht übernommen.',
+    details: { dependsOn },
+});
+
+const quarantined = (entry: OfflineMutationEntry, rejection: OfflineEntryRejection): OfflineMutationEntry => ({
+    ...entry,
+    ownerUid: entry.ownerUid,
+    status: 'quarantined',
+    rejection,
+    lastError: rejection.message,
+    // Not a failure: no retry schedule, and nobody holds it any more.
+    claimId: undefined,
+    claimedAt: undefined,
+    leaseUntil: undefined,
+    nextAttemptAt: undefined,
+});
+
+/**
+ * Quarantine the claimed `entry` with `rejection`, and with it every later
+ * entry of the same owner that depends on it, directly or through another
+ * dependent. One write. Attempts are left as they were: a rejection is not a
+ * failed attempt.
+ *
+ * Returns the ids quarantined as dependents.
+ */
+export const quarantineRejectedEntry = (entry: OfflineMutationEntry, rejection: OfflineEntryRejection): string[] => {
+    assertAccountOwner(entry.ownerUid);
+    const queue = loadQueue();
+    const current = queue.find(item => item.id === entry.id);
+    if (!current || current.claimId !== entry.claimId || current.status !== 'syncing') throw new QueueClaimLostError();
+    const rejected = new Set([entry.id]);
+    const dependents: string[] = [];
+    const next = queue.map(item => {
+        if (item.id === entry.id) return quarantined(item, rejection);
+        if (item.ownerUid !== entry.ownerUid || !item.dependsOn || !rejected.has(item.dependsOn)) return item;
+        if (item.status === 'quarantined' || item.status === 'synced') return item;
+        rejected.add(item.id);
+        dependents.push(item.id);
+        return quarantined(item, dependencyRejection(item.dependsOn));
+    });
+    saveQueue(next);
+    return dependents;
+};
+
+/**
+ * Whether `entry` depends on an entry that is quarantined now. Such an entry
+ * is never replayed: it assumes a change that did not happen.
+ */
+export const hasRejectedDependency = (entry: OfflineMutationEntry, queue: OfflineMutationEntry[]): boolean =>
+    !!entry.dependsOn &&
+    queue.some(item => item.id === entry.dependsOn && item.ownerUid === entry.ownerUid && item.status === 'quarantined');
+
+/** Quarantine an unclaimed `entry` whose dependency was rejected. */
+export const quarantineDependentEntry = (entry: OfflineMutationEntry): void => {
+    assertAccountOwner(entry.ownerUid);
+    if (!entry.dependsOn) return;
+    const rejection = dependencyRejection(entry.dependsOn);
+    saveQueue(loadQueue().map(item =>
+        item.id === entry.id && item.status !== 'quarantined' ? quarantined(item, rejection) : item));
+};
+
+/**
+ * Remove quarantined entries of `ownerUid`, locally only. Entries of another
+ * account, entries that are not quarantined and unknown ids are left alone.
+ * Returns how many were removed.
+ */
+export const removeQuarantinedEntries = (ids: readonly string[], ownerUid: string): number => {
+    assertAccountOwner(ownerUid);
+    const wanted = new Set(ids);
+    const queue = loadQueue();
+    const next = queue.filter(entry =>
+        !(wanted.has(entry.id) && entry.ownerUid === ownerUid && entry.status === 'quarantined'));
+    if (next.length !== queue.length) saveQueue(next);
+    return queue.length - next.length;
 };

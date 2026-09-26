@@ -539,11 +539,29 @@
       "extrasTitle": "Eigene Mahlzeiten",
       "addExtra": "Eigene Mahlzeit",
       "unavailable": {
-        "offline": "Du bist offline. Erfassen ist nur mit Internetverbindung möglich.",
         "pending": "Erfassen ist gleich verfügbar.",
         "error": "Erfassen ist gerade nicht möglich.",
         "signedOut": "Erfassen ist gerade nicht möglich.",
         "ineligible": "Erfassen ist gerade nicht möglich."
+      },
+      "offlineNote": "Du bist offline. Änderungen werden lokal gespeichert und synchronisiert, sobald du wieder online bist.",
+      "pending": "Lokal gespeichert – wird synchronisiert",
+      "pendingRetry": "Lokal gespeichert – Synchronisierung wird erneut versucht",
+      "conflict": {
+        "title": "Offline-Änderung nicht übernommen",
+        "body": "{{entry}} wurde geändert, bevor deine Offline-Änderung übernommen werden konnte. Sie wurde nicht gespeichert.",
+        "requested": "Deine Änderung: {{change}}",
+        "requestedRemove": "Eintrag entfernen",
+        "current": "Aktuell: {{state}}",
+        "applyAgain": "Erneut anwenden",
+        "applying": "Wird angewendet …",
+        "dismiss": "Verwerfen",
+        "offline": "Erneut anwenden ist nur mit Internetverbindung möglich.",
+        "changedAgain": "Der Eintrag wurde erneut geändert. Bitte prüfe die aktuelle Fassung.",
+        "failed": "Das hat nicht geklappt. Bitte versuche es später noch einmal.",
+        "extra": "Eine eigene Mahlzeit",
+        "extraNamed": "Die eigene Mahlzeit „{{name}}“",
+        "onDate": "{{entry}} am {{date}}"
       },
       "sheet": {
         "slotTitle": "{{slot}} erfassen",
@@ -578,10 +596,10 @@
         "cancel": "Abbrechen",
         "error": {
           "conflict": "Dieser Eintrag wurde inzwischen geändert. Die aktuelle Fassung wird geladen – bitte prüfe sie und bestätige erneut.",
-          "offline": "Du bist offline. Es wurde nichts gespeichert.",
           "futureDate": "Zukünftige Tage können nicht erfasst werden.",
           "unavailable": "Erfassen ist gerade nicht möglich. Es wurde nichts gespeichert.",
-          "failed": "Speichern fehlgeschlagen. Bitte versuche es erneut."
+          "failed": "Speichern fehlgeschlagen. Bitte versuche es erneut.",
+          "storage": "Lokales Speichern fehlgeschlagen. Es wurde nichts gespeichert."
         }
       }
     }

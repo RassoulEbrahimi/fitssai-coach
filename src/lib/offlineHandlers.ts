@@ -12,6 +12,7 @@ import {
 import { exercisePositionLogId, writeSetLogChange } from "@/lib/setLogWriter";
 import { isValidPerformanceChange } from "@/lib/setPerformance";
 import { readSetWritePosition } from "@/lib/setWriteIntents";
+import { replayNutritionEntryWrite } from "@/lib/nutrition/v2/entryReplay";
 
 type ToggleSetPayload = {
   planId: string; weekKey: string; dayIndex: number; exerciseIndex: number;
@@ -181,4 +182,12 @@ export const handlers = {
       queryKeys.completion.byWeek(payload.planId, payload.weekKey),
     ];
   },
+
+  /**
+   * One Nutrition V2 recorded-entry intent (NUT-07), through the same
+   * transaction writer as the online write. The only handler that can reject
+   * an entry for good (a revision conflict or a malformed payload); see
+   * `replayNutritionEntryWrite`.
+   */
+  NUTRITION_ENTRY_WRITE: replayNutritionEntryWrite,
 };

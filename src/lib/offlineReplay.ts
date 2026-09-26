@@ -2,8 +2,9 @@ import { auth } from '@/lib/firebase';
 import { AccountChangedError } from '@/lib/accountIdentity';
 import { handlers } from '@/lib/offlineHandlers';
 import {
-  assertQueueClaim, claimEntry, isReplayEligible, loadQueue, notifyEntryReplayed, removeEntry, updateEntry,
-  MAX_RETRY_DELAY_MS, QueueClaimLostError, QueueStorageError,
+  assertQueueClaim, claimEntry, hasRejectedDependency, isReplayEligible, loadQueue, notifyEntryReplayed,
+  quarantineDependentEntry, quarantineRejectedEntry, removeEntry, updateEntry,
+  MAX_RETRY_DELAY_MS, QueueClaimLostError, QueueStorageError, ReplayRejectedError,
 } from '@/lib/offlineQueue';
 
 // Shared by ALL hook instances. React state/ref timing cannot serialize workers.
@@ -12,6 +13,8 @@ let flushing = false;
 export interface ReplayResult {
   completed: number;
   failed: number;
+  /** Entries set aside for good in this run: rejected, or depending on a rejected one. */
+  quarantined: number;
   storageError?: QueueStorageError;
 }
 
@@ -19,7 +22,7 @@ export async function flushOfflineQueue(
   ownerUid: string,
   invalidate: (keys: readonly (readonly unknown[])[]) => void,
 ): Promise<ReplayResult> {
-  const result: ReplayResult = { completed: 0, failed: 0 };
+  const result: ReplayResult = { completed: 0, failed: 0, quarantined: 0 };
   if (flushing || auth.currentUser?.uid !== ownerUid) return result;
   flushing = true;
   const run = async () => {
@@ -27,6 +30,13 @@ export async function flushOfflineQueue(
       if (auth.currentUser?.uid !== ownerUid) break;
       const fresh = loadQueue().find(entry => entry.id === snapshot.id);
       if (!fresh || fresh.ownerUid !== ownerUid || fresh.status === 'quarantined') continue;
+      // It assumes a change that was rejected, so it is rejected too - never
+      // written against a state it was not made for.
+      if (hasRejectedDependency(fresh, loadQueue())) {
+        quarantineDependentEntry(fresh);
+        result.quarantined++;
+        continue;
+      }
       // Preserve intent order: an older uncertain write must settle before later edits.
       if (!isReplayEligible(fresh)) break;
       const entry = claimEntry(fresh.id, ownerUid);
@@ -53,6 +63,20 @@ export async function flushOfflineQueue(
         if (error instanceof AccountChangedError) {
           updateEntry(entry.id, { status: 'pending', claimId: undefined, leaseUntil: undefined });
           break;
+        }
+        // Terminal: the same answer on every attempt. Keep the entry, set it
+        // aside with its reason, refetch what it names, and go on - later
+        // entries do not wait behind a write that can never apply.
+        if (error instanceof ReplayRejectedError) {
+          // Only the owner's session may set its entry aside.
+          if (auth.currentUser?.uid !== ownerUid) {
+            updateEntry(entry.id, { status: 'pending', claimId: undefined, leaseUntil: undefined });
+            break;
+          }
+          const dependents = quarantineRejectedEntry(entry, error.rejection);
+          result.quarantined += 1 + dependents.length;
+          invalidate(error.invalidate);
+          continue;
         }
         const attempts = Math.min((entry.attempts || 0) + 1, 10);
         updateEntry(entry.id, {
