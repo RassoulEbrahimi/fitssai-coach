@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { isNutritionDate } from "./dates";
+import { addNutritionDays, isNutritionDate } from "./dates";
 import {
   NUTRITION_DOC_ID_PATTERN,
   NUTRITION_SLOT_IDS,
@@ -17,7 +17,8 @@ import {
  *   RECORDED ESTIMATE what the person said they ate (`RecordedEntry`)
  *
  * Planned never means consumed: a `RecordedEntry` exists only because the
- * person explicitly recorded it, and its values are an estimate that is
+ * person explicitly recorded it (a planned meal, a skip, or something custom),
+ * and its values are an estimate that is
  * snapshotted when it is recorded and never recomputed from the plan again.
  * An active base plan's content is immutable; a change to one day's slot is a
  * date- and slot-scoped `MealOverride`, never an edit of the plan.
@@ -116,9 +117,19 @@ export type TargetVersion = z.infer<typeof targetVersionSchema>;
  * Plans
  * ------------------------------------------------------------------ */
 
-/** A meal the plan proposes for a slot. Planned, not eaten. */
+/** A V2 plan covers exactly this many contiguous calendar dates. */
+export const NUTRITION_PLAN_DAY_COUNT = 7;
+
+/**
+ * A meal the plan proposes. Planned, not eaten.
+ *
+ * `mealId` is the meal's own identity inside the plan — never its name — so a
+ * later reference ("replace with another meal of this plan") stays valid
+ * whatever the meal is called.
+ */
 export const plannedMealSchema = z
   .object({
+    mealId: nutritionDocIdSchema,
     slotId: nutritionSlotIdSchema,
     name: displayTextSchema,
     values: nutritionValuesSchema,
@@ -127,38 +138,79 @@ export const plannedMealSchema = z
 
 export type PlannedMeal = z.infer<typeof plannedMealSchema>;
 
-export const NUTRITION_PLAN_STATUSES = ["active", "superseded"] as const;
+/** One dated day of a plan and the meals planned for its slots. */
+export const nutritionPlanDaySchema = z
+  .object({
+    date: nutritionDateSchema,
+    meals: z.array(plannedMealSchema),
+  })
+  .strict();
 
-export const nutritionPlanStatusSchema = z.enum(NUTRITION_PLAN_STATUSES);
-
-export type NutritionPlanStatus = z.infer<typeof nutritionPlanStatusSchema>;
+export type NutritionPlanDay = z.infer<typeof nutritionPlanDaySchema>;
 
 /**
- * A base plan: at most one planned meal per slot. Its `meals` are immutable
- * once the plan is active — only `status` moves.
+ * A base plan: Plan → dated Day → Meal Slot → Meal.
+ *
+ * Exactly `NUTRITION_PLAN_DAY_COUNT` days, one per calendar date from
+ * `startDate` to `endDate`, in order. Every day carries its own ISO date; no
+ * day is identified by a weekday. `slotOrder` is the plan's configured slots;
+ * a day plans each of them at most once and plans nothing outside them. Once
+ * the plan is active its content is immutable — a day's change is a
+ * date- and slot-scoped `MealOverride`, never an edit here.
+ *
+ * Structure only. Whether a plan is nutritionally acceptable (every slot
+ * filled, totals near the target) is plan-validation policy, not this contract.
  */
 export const nutritionPlanSchema = z
   .object({
     schemaVersion: nutritionSchemaVersionSchema,
     planId: nutritionDocIdSchema,
-    status: nutritionPlanStatusSchema,
-    /** The target version the plan was made for, when there was one. */
-    targetVersionId: nutritionDocIdSchema.nullable(),
     startDate: nutritionDateSchema,
-    meals: z.array(plannedMealSchema),
+    endDate: nutritionDateSchema,
+    slotOrder: z.array(nutritionSlotIdSchema).min(1, "a plan configures at least one slot"),
+    days: z.array(nutritionPlanDaySchema),
   })
   .strict()
   .superRefine((plan, ctx) => {
-    const seen = new Set<string>();
-    plan.meals.forEach((meal, index) => {
-      if (seen.has(meal.slotId)) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          path: ["meals", index, "slotId"],
-          message: `slot ${meal.slotId} is planned more than once`,
-        });
+    const issue = (path: (string | number)[], message: string) =>
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path, message });
+
+    const configured = new Set<string>();
+    plan.slotOrder.forEach((slotId, index) => {
+      if (configured.has(slotId)) issue(["slotOrder", index], `slot ${slotId} is configured more than once`);
+      configured.add(slotId);
+    });
+
+    // A malformed date is already reported by its own field; zod still runs
+    // this refinement, so date arithmetic below must not see it.
+    if (!isNutritionDate(plan.startDate)) return;
+
+    if (plan.endDate !== addNutritionDays(plan.startDate, NUTRITION_PLAN_DAY_COUNT - 1)) {
+      issue(["endDate"], `endDate must be ${NUTRITION_PLAN_DAY_COUNT - 1} days after startDate`);
+    }
+    if (plan.days.length !== NUTRITION_PLAN_DAY_COUNT) {
+      issue(["days"], `a plan has exactly ${NUTRITION_PLAN_DAY_COUNT} days`);
+    }
+
+    const dates = new Set<string>();
+    const mealIds = new Set<string>();
+    plan.days.forEach((day, dayIndex) => {
+      if (dates.has(day.date)) {
+        issue(["days", dayIndex, "date"], `date ${day.date} appears more than once`);
+      } else if (day.date !== addNutritionDays(plan.startDate, dayIndex)) {
+        issue(["days", dayIndex, "date"], "days must be the contiguous dates from startDate, in order");
       }
-      seen.add(meal.slotId);
+      dates.add(day.date);
+
+      const slots = new Set<string>();
+      day.meals.forEach((meal, mealIndex) => {
+        const path = ["days", dayIndex, "meals", mealIndex];
+        if (!configured.has(meal.slotId)) issue([...path, "slotId"], `slot ${meal.slotId} is not configured`);
+        if (slots.has(meal.slotId)) issue([...path, "slotId"], `slot ${meal.slotId} is planned twice on ${day.date}`);
+        slots.add(meal.slotId);
+        if (mealIds.has(meal.mealId)) issue([...path, "mealId"], `mealId ${meal.mealId} is not unique in the plan`);
+        mealIds.add(meal.mealId);
+      });
     });
   });
 
@@ -168,26 +220,29 @@ export type NutritionPlan = z.infer<typeof nutritionPlanSchema>;
  * Slot selection and overrides
  * ------------------------------------------------------------------ */
 
-/** Who proposed a replacement meal. */
-export const MEAL_OVERRIDE_ORIGINS = ["user", "suggestion"] as const;
-
-export const mealOverrideOriginSchema = z.enum(MEAL_OVERRIDE_ORIGINS);
-
-export type MealOverrideOrigin = z.infer<typeof mealOverrideOriginSchema>;
-
-/**
- * A replacement for one slot on one date. Still planned, not eaten; it leaves
- * the base plan untouched.
- */
-export const mealOverrideSchema = z
+/** The meal a replacement puts in the slot, as it will be shown. */
+const replacementMealSchema = z
   .object({
     name: displayTextSchema,
     values: nutritionValuesSchema,
-    origin: mealOverrideOriginSchema,
   })
   .strict();
 
+/**
+ * A replacement for one slot on one date. Still planned, not eaten; it leaves
+ * the base plan untouched. It comes either from an AI suggestion or from
+ * another meal of the same plan (named by `sourceMealId`).
+ */
+export const mealOverrideSchema = z.discriminatedUnion("source", [
+  z.object({ source: z.literal("aiSuggestion"), meal: replacementMealSchema }).strict(),
+  z
+    .object({ source: z.literal("planMeal"), sourceMealId: nutritionDocIdSchema, meal: replacementMealSchema })
+    .strict(),
+]);
+
 export type MealOverride = z.infer<typeof mealOverrideSchema>;
+
+export type MealOverrideSource = MealOverride["source"];
 
 /** What a slot on a date shows: the base plan's meal, or an override. */
 export const slotSelectionSchema = z.discriminatedUnion("kind", [
@@ -218,7 +273,7 @@ export type SlotHead = z.infer<typeof slotHeadSchema>;
  * Recorded entries
  * ------------------------------------------------------------------ */
 
-/** A slot entry fills one of the day's slots; an extra entry is anything else. */
+/** A slot entry records one of the day's slots; an extra entry is anything else. */
 export const RECORDED_ENTRY_KINDS = ["slot", "extra"] as const;
 
 export const recordedEntryKindSchema = z.enum(RECORDED_ENTRY_KINDS);
@@ -226,17 +281,7 @@ export const recordedEntryKindSchema = z.enum(RECORDED_ENTRY_KINDS);
 export type RecordedEntryKind = z.infer<typeof recordedEntryKindSchema>;
 
 /**
- * What the person recorded having eaten: the base plan's meal, the slot's
- * override, or something they described themselves.
- */
-export const RECORDED_ENTRY_SOURCES = ["baseMeal", "override", "userDescribed"] as const;
-
-export const recordedEntrySourceSchema = z.enum(RECORDED_ENTRY_SOURCES);
-
-export type RecordedEntrySource = z.infer<typeof recordedEntrySourceSchema>;
-
-/**
- * Where the nutrition estimate came from:
+ * Where a nutrition estimate came from:
  *
  *   planMealTimesPortion  the planned meal's values times the eaten portion
  *   userStated            numbers the person gave
@@ -263,38 +308,64 @@ export const nutritionEstimateSchema = z
 
 export type NutritionEstimate = z.infer<typeof nutritionEstimateSchema>;
 
+const recordedEntryBase = {
+  schemaVersion: nutritionSchemaVersionSchema,
+  entryId: z.string(),
+  kind: recordedEntryKindSchema,
+  date: nutritionDateSchema,
+  slotId: nutritionSlotIdSchema.nullable(),
+};
+
 /**
- * One thing the person explicitly recorded eating.
+ * One thing the person explicitly recorded — never inferred from the plan.
  *
- * A snapshot: `name`, `nutritionEstimate` and `portion` are what was true when
- * it was recorded. Editing the plan or the override later never recomputes it.
+ * `recording` says what was recorded:
  *
- * Consistency rules:
- *   - a slot entry has a `slotId` and the id `slot:{date}:{slotId}`;
- *     an extra entry has no `slotId` and an id `extra:{uuid}`.
- *   - `baseMeal` / `override` sources need the `planId` they came from, and
- *     only a slot entry can have them.
- *   - `none` ⇔ no estimate.
- *   - `planMealTimesPortion` needs a plan-backed source, a portion, and all
- *     four values (a planned meal's values are complete).
- *   - `portion` is present only for `planMealTimesPortion`.
+ *   plannedMeal  the slot's planned meal was eaten. Snapshots its name and
+ *                `planMealTimesPortion` estimate (all four values, since a
+ *                planned meal's values are complete) with the portion eaten.
+ *   skip         the slot was explicitly skipped. No meal, no estimate.
+ *   custom       something the person described: `userStated` numbers or none.
+ *
+ * Every field is a snapshot of the moment of recording. Changing the plan or
+ * the slot's override later never recomputes it.
+ *
+ * Identity: a slot entry has a `slotId` and the id `slot:{date}:{slotId}`; an
+ * extra entry has no `slotId` and an id `extra:{uuid}`. Only `custom` can be
+ * an extra entry.
  */
 export const recordedEntrySchema = z
-  .object({
-    schemaVersion: nutritionSchemaVersionSchema,
-    entryId: z.string(),
-    kind: recordedEntryKindSchema,
-    date: nutritionDateSchema,
-    slotId: nutritionSlotIdSchema.nullable(),
-    planId: nutritionDocIdSchema.nullable(),
-    source: recordedEntrySourceSchema,
-    name: displayTextSchema,
-    estimateBasis: estimateBasisSchema,
-    /** Multiplier on the planned meal. Positive: nothing eaten is not recorded. */
-    portion: quantitySchema.positive("portion must be greater than zero").nullable(),
-    nutritionEstimate: nutritionEstimateSchema.nullable(),
-  })
-  .strict()
+  .discriminatedUnion("recording", [
+    z
+      .object({
+        ...recordedEntryBase,
+        recording: z.literal("plannedMeal"),
+        planId: nutritionDocIdSchema,
+        name: displayTextSchema,
+        estimateBasis: z.literal("planMealTimesPortion"),
+        /** Multiplier on the planned meal. Positive: nothing eaten is a skip, not a portion. */
+        portion: quantitySchema.positive("portion must be greater than zero"),
+        nutritionEstimate: nutritionValuesSchema,
+      })
+      .strict(),
+    z
+      .object({
+        ...recordedEntryBase,
+        recording: z.literal("skip"),
+        estimateBasis: z.literal("none"),
+        nutritionEstimate: z.null(),
+      })
+      .strict(),
+    z
+      .object({
+        ...recordedEntryBase,
+        recording: z.literal("custom"),
+        name: displayTextSchema,
+        estimateBasis: z.enum(["userStated", "none"]),
+        nutritionEstimate: nutritionEstimateSchema.nullable(),
+      })
+      .strict(),
+  ])
   .superRefine((entry, ctx) => {
     const issue = (path: string, message: string) =>
       ctx.addIssue({ code: z.ZodIssueCode.custom, path: [path], message });
@@ -302,57 +373,49 @@ export const recordedEntrySchema = z
     if (entry.kind === "slot") {
       if (entry.slotId === null) {
         issue("slotId", "a slot entry needs a slotId");
-      } else if (entry.entryId !== slotEntryId(entry.date, entry.slotId)) {
+      } else if (isNutritionDate(entry.date) && entry.entryId !== slotEntryId(entry.date, entry.slotId)) {
         issue("entryId", "a slot entry's id must be slot:{date}:{slotId}");
       }
     } else {
       if (entry.slotId !== null) issue("slotId", "an extra entry has no slotId");
       if (!isExtraEntryId(entry.entryId)) issue("entryId", "an extra entry's id must be extra:{uuid}");
+      if (entry.recording !== "custom") issue("recording", `${entry.recording} is only recorded for a slot`);
     }
 
-    const planBacked = entry.source === "baseMeal" || entry.source === "override";
-    if (planBacked && entry.kind !== "slot") issue("source", `${entry.source} is only valid for a slot entry`);
-    if (planBacked && entry.planId === null) issue("planId", `${entry.source} needs the planId it came from`);
-
-    const estimate = entry.nutritionEstimate;
-    switch (entry.estimateBasis) {
-      case "none":
-        if (estimate !== null) issue("nutritionEstimate", "basis none has no estimate");
-        break;
-      case "userStated":
-        if (estimate === null) issue("nutritionEstimate", "basis userStated needs an estimate");
-        break;
-      case "planMealTimesPortion":
-        if (!planBacked) issue("estimateBasis", "planMealTimesPortion needs a plan-backed source");
-        if (entry.portion === null) issue("portion", "planMealTimesPortion needs a portion");
-        if (
-          estimate === null ||
-          estimate.proteinG === null ||
-          estimate.carbsG === null ||
-          estimate.fatG === null
-        ) {
-          issue("nutritionEstimate", "planMealTimesPortion needs all four values");
-        }
-        break;
-    }
-    if (entry.estimateBasis !== "planMealTimesPortion" && entry.portion !== null) {
-      issue("portion", "portion is only recorded for planMealTimesPortion");
+    if (entry.recording === "custom") {
+      if (entry.estimateBasis === "none" && entry.nutritionEstimate !== null) {
+        issue("nutritionEstimate", "basis none has no estimate");
+      }
+      if (entry.estimateBasis === "userStated" && entry.nutritionEstimate === null) {
+        issue("nutritionEstimate", "basis userStated needs an estimate");
+      }
     }
   });
 
 export type RecordedEntry = z.infer<typeof recordedEntrySchema>;
 
+export type RecordedEntryRecording = RecordedEntry["recording"];
+
 /* ------------------------------------------------------------------ *
- * Generation requests
+ * Plan generation requests
  * ------------------------------------------------------------------ */
 
-export const GENERATION_REQUEST_TYPES = ["basePlan", "slotSuggestions"] as const;
+/**
+ * What a plan-generation request asks for: the first plan, or a new one in
+ * place of the current plan. Replacement suggestions are a separate concept
+ * and are not generation requests.
+ */
+export const GENERATION_REQUEST_KINDS = ["initial", "regenerate"] as const;
 
-export const generationRequestTypeSchema = z.enum(GENERATION_REQUEST_TYPES);
+export const generationRequestKindSchema = z.enum(GENERATION_REQUEST_KINDS);
 
-export type GenerationRequestType = z.infer<typeof generationRequestTypeSchema>;
+export type GenerationRequestKind = z.infer<typeof generationRequestKindSchema>;
 
-export const GENERATION_REQUEST_STATUSES = ["pending", "running", "succeeded", "failed"] as const;
+/**
+ * A request's lifecycle. `discarded_stale`: the request finished but its
+ * result no longer applied and was not used.
+ */
+export const GENERATION_REQUEST_STATUSES = ["queued", "running", "succeeded", "failed", "discarded_stale"] as const;
 
 export const generationRequestStatusSchema = z.enum(GENERATION_REQUEST_STATUSES);
 

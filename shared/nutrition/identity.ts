@@ -15,12 +15,13 @@ import { isNutritionDate, type NutritionDate } from "./dates";
  */
 
 /**
- * The meal slots of a Nutrition day, in day order.
+ * The canonical meal slots of a Nutrition V2 day, in day order.
  *
- * Ids, not labels: the UI decides what to call each one. None contains `:` or
- * `__`, the separators the composite ids below rely on.
+ * Ids, not labels: the UI decides what to call each one, and the two snacks
+ * are told apart by position, never by a time of day or a weekday. None
+ * contains `:` or `__`, the separators the composite ids below rely on.
  */
-export const NUTRITION_SLOT_IDS = ["breakfast", "lunch", "dinner", "snack"] as const;
+export const NUTRITION_SLOT_IDS = ["breakfast", "lunch", "snack_1", "dinner", "snack_2"] as const;
 
 export type NutritionSlotId = (typeof NUTRITION_SLOT_IDS)[number];
 
@@ -28,7 +29,8 @@ export const isNutritionSlotId = (value: unknown): value is NutritionSlotId =>
   typeof value === "string" && (NUTRITION_SLOT_IDS as readonly string[]).includes(value);
 
 /**
- * A Nutrition V2 document id (plan, target version, generation request).
+ * A Nutrition V2 document or meal id (plan, meal, target version, generation
+ * request).
  *
  * Letters, digits and `-` only: that covers Firestore auto-ids and UUIDs, and
  * keeps `__` — the slot-head separator — out of every id that is embedded in

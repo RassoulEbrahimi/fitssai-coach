@@ -1,16 +1,20 @@
 import { describe, it, expect } from "vitest";
 import {
+  GENERATION_REQUEST_KINDS,
+  GENERATION_REQUEST_STATUSES,
+  NUTRITION_PLAN_DAY_COUNT,
   NUTRITION_SCHEMA_VERSION,
+  addNutritionDays,
+  extraEntryId,
+  generationRequestKindSchema,
   generationRequestStatusSchema,
-  generationRequestTypeSchema,
   nutritionPlanSchema,
   nutritionUserStateSchema,
   nutritionValuesSchema,
   recordedEntrySchema,
+  slotEntryId,
   slotHeadSchema,
   targetVersionSchema,
-  extraEntryId,
-  slotEntryId,
 } from "@shared/nutrition";
 
 const values = { kcal: 612.4, proteinG: 38.25, carbsG: 71.1, fatG: 17.333 };
@@ -23,24 +27,35 @@ const target = {
   effectiveFrom: "2026-10-01",
 };
 
+/** A 7-day plan starting on the fall-back Sunday, so it spans a DST switch. */
+const START = "2026-10-25";
+
+const planDay = (date: string, index: number) => ({
+  date,
+  meals: [
+    { mealId: `m-${index}-1`, slotId: "breakfast", name: "Haferflocken mit Beeren", values },
+    { mealId: `m-${index}-2`, slotId: "lunch", name: "Linsen-Curry", values },
+    { mealId: `m-${index}-3`, slotId: "snack_1", name: "Apfel", values },
+  ],
+});
+
 const plan = {
   schemaVersion: 2,
   planId: "plan-1",
-  status: "active",
-  targetVersionId: "tv-1",
-  startDate: "2026-10-05",
-  meals: [
-    { slotId: "breakfast", name: "Haferflocken mit Beeren", values },
-    { slotId: "lunch", name: "Linsen-Curry", values },
-  ],
+  startDate: START,
+  endDate: "2026-10-31",
+  slotOrder: ["breakfast", "lunch", "snack_1", "dinner", "snack_2"],
+  days: Array.from({ length: 7 }, (_, index) => planDay(addNutritionDays(START, index), index)),
 };
+
+const withDays = (days: unknown[]) => ({ ...plan, days });
 
 const slotHead = {
   schemaVersion: 2,
   planId: "plan-1",
   date: "2026-10-25",
   slotId: "lunch",
-  selection: { kind: "override", override: { name: "Ofengemüse", values, origin: "user" } },
+  selection: { kind: "override", override: { source: "aiSuggestion", meal: { name: "Ofengemüse", values } } },
 };
 
 const state = {
@@ -52,32 +67,49 @@ const state = {
 
 const UUID = "3f2b8c1e-9a4d-4e6f-8b21-7c5d0e9a1b34";
 
-const slotEntry = {
+const plannedMealEntry = {
   schemaVersion: 2,
   entryId: slotEntryId("2026-10-25", "lunch"),
   kind: "slot",
   date: "2026-10-25",
   slotId: "lunch",
+  recording: "plannedMeal",
   planId: "plan-1",
-  source: "baseMeal",
   name: "Linsen-Curry",
   estimateBasis: "planMealTimesPortion",
   portion: 1.5,
   nutritionEstimate: { kcal: 918.6, proteinG: 57.375, carbsG: 106.65, fatG: 25.9995 },
 };
 
-const extraEntry = {
+const skipEntry = {
+  schemaVersion: 2,
+  entryId: slotEntryId("2026-10-25", "snack_2"),
+  kind: "slot",
+  date: "2026-10-25",
+  slotId: "snack_2",
+  recording: "skip",
+  estimateBasis: "none",
+  nutritionEstimate: null,
+};
+
+const customExtraEntry = {
   schemaVersion: 2,
   entryId: extraEntryId(UUID),
   kind: "extra",
   date: "2026-10-25",
   slotId: null,
-  planId: null,
-  source: "userDescribed",
+  recording: "custom",
   name: "Apfel",
   estimateBasis: "userStated",
-  portion: null,
   nutritionEstimate: { kcal: 80, proteinG: null, carbsG: null, fatG: null },
+};
+
+const customSlotEntry = {
+  ...customExtraEntry,
+  entryId: slotEntryId("2026-10-25", "dinner"),
+  kind: "slot",
+  slotId: "dinner",
+  name: "Pizza beim Italiener",
 };
 
 const documents = [
@@ -85,8 +117,10 @@ const documents = [
   ["NutritionPlan", nutritionPlanSchema, plan],
   ["SlotHead", slotHeadSchema, slotHead],
   ["NutritionUserState", nutritionUserStateSchema, state],
-  ["RecordedEntry (slot)", recordedEntrySchema, slotEntry],
-  ["RecordedEntry (extra)", recordedEntrySchema, extraEntry],
+  ["RecordedEntry (plannedMeal)", recordedEntrySchema, plannedMealEntry],
+  ["RecordedEntry (skip)", recordedEntrySchema, skipEntry],
+  ["RecordedEntry (custom, extra)", recordedEntrySchema, customExtraEntry],
+  ["RecordedEntry (custom, slot)", recordedEntrySchema, customSlotEntry],
 ] as const;
 
 describe("schemaVersion", () => {
@@ -132,143 +166,270 @@ describe("NutritionValues", () => {
   });
 });
 
+describe("NutritionPlan", () => {
+  it(`covers exactly ${NUTRITION_PLAN_DAY_COUNT} dated days`, () => {
+    const parsed = nutritionPlanSchema.parse(plan);
+    expect(parsed.days.map((day) => day.date)).toEqual([
+      "2026-10-25",
+      "2026-10-26",
+      "2026-10-27",
+      "2026-10-28",
+      "2026-10-29",
+      "2026-10-30",
+      "2026-10-31",
+    ]);
+  });
+
+  it("rejects a duplicate date", () => {
+    const days = [...plan.days];
+    days[3] = { ...days[3], date: days[2].date };
+    expect(nutritionPlanSchema.safeParse(withDays(days)).success).toBe(false);
+  });
+
+  it("rejects non-contiguous or out-of-order dates", () => {
+    const gap = [...plan.days];
+    gap[6] = { ...gap[6], date: "2026-11-01" };
+    expect(nutritionPlanSchema.safeParse(withDays(gap)).success).toBe(false);
+
+    const swapped = [...plan.days];
+    [swapped[1], swapped[2]] = [swapped[2], swapped[1]];
+    expect(nutritionPlanSchema.safeParse(withDays(swapped)).success).toBe(false);
+  });
+
+  it("rejects fewer or more than seven days", () => {
+    expect(nutritionPlanSchema.safeParse(withDays(plan.days.slice(0, 6))).success).toBe(false);
+    const eight = [...plan.days, planDay("2026-11-01", 7)];
+    expect(nutritionPlanSchema.safeParse({ ...withDays(eight), endDate: "2026-11-01" }).success).toBe(false);
+  });
+
+  it("rejects an endDate that is not six days after startDate", () => {
+    expect(nutritionPlanSchema.safeParse({ ...plan, endDate: "2026-11-01" }).success).toBe(false);
+    expect(nutritionPlanSchema.safeParse({ ...plan, endDate: "2026-10-30" }).success).toBe(false);
+  });
+
+  it("rejects malformed plan dates without throwing", () => {
+    expect(nutritionPlanSchema.safeParse({ ...plan, startDate: "2026-02-30" }).success).toBe(false);
+    expect(nutritionPlanSchema.safeParse({ ...plan, endDate: "31.10.2026" }).success).toBe(false);
+    const days = [...plan.days];
+    days[0] = { ...days[0], date: "Sonntag" };
+    expect(nutritionPlanSchema.safeParse(withDays(days)).success).toBe(false);
+  });
+
+  it("rejects the same slot twice within a day", () => {
+    const days = [...plan.days];
+    days[4] = {
+      ...days[4],
+      meals: [...days[4].meals, { mealId: "m-extra", slotId: "lunch", name: "Nudeln", values }],
+    };
+    expect(nutritionPlanSchema.safeParse(withDays(days)).success).toBe(false);
+  });
+
+  it("allows the same slot on different days", () => {
+    expect(nutritionPlanSchema.safeParse(plan).success).toBe(true);
+  });
+
+  it("rejects a slot the plan does not configure", () => {
+    expect(nutritionPlanSchema.safeParse({ ...plan, slotOrder: ["breakfast", "lunch"] }).success).toBe(false);
+  });
+
+  it("rejects a duplicate or unknown configured slot, or none at all", () => {
+    expect(nutritionPlanSchema.safeParse({ ...plan, slotOrder: [...plan.slotOrder, "lunch"] }).success).toBe(false);
+    expect(nutritionPlanSchema.safeParse({ ...plan, slotOrder: [...plan.slotOrder, "snack"] }).success).toBe(false);
+    expect(nutritionPlanSchema.safeParse({ ...plan, slotOrder: [] }).success).toBe(false);
+  });
+
+  it("needs a unique meal identity across the plan", () => {
+    const days = [...plan.days];
+    days[1] = { ...days[1], meals: [{ ...days[1].meals[0], mealId: "m-0-1" }, ...days[1].meals.slice(1)] };
+    expect(nutritionPlanSchema.safeParse(withDays(days)).success).toBe(false);
+
+    const days2 = [...plan.days];
+    days2[1] = { ...days2[1], meals: [{ ...days2[1].meals[0], mealId: "Haferflocken mit Beeren" }] };
+    expect(nutritionPlanSchema.safeParse(withDays(days2)).success).toBe(false);
+  });
+
+  it("rejects an empty meal name but sets no layout length limit", () => {
+    const empty = [...plan.days];
+    empty[0] = { ...empty[0], meals: [{ ...empty[0].meals[0], name: "  " }] };
+    expect(nutritionPlanSchema.safeParse(withDays(empty)).success).toBe(false);
+
+    const long = [...plan.days];
+    long[0] = { ...long[0], meals: [{ ...long[0].meals[0], name: "Sehr ausführliches Gericht ".repeat(30) }] };
+    expect(nutritionPlanSchema.safeParse(withDays(long)).success).toBe(true);
+  });
+});
+
+describe("SlotHead and MealOverride", () => {
+  it("selects the base meal", () => {
+    expect(slotHeadSchema.safeParse({ ...slotHead, selection: { kind: "base" } }).success).toBe(true);
+  });
+
+  it("accepts an override from another meal of the plan", () => {
+    const fromPlan = {
+      kind: "override",
+      override: { source: "planMeal", sourceMealId: "m-2-2", meal: { name: "Linsen-Curry", values } },
+    };
+    expect(slotHeadSchema.safeParse({ ...slotHead, selection: fromPlan }).success).toBe(true);
+    expect(
+      slotHeadSchema.safeParse({
+        ...slotHead,
+        selection: { ...fromPlan, override: { ...fromPlan.override, sourceMealId: undefined } },
+      }).success
+    ).toBe(false);
+  });
+
+  it("rejects unknown override sources and shapes", () => {
+    for (const override of [
+      { source: "user", meal: { name: "x", values } },
+      { source: "aiSuggestion" },
+      { source: "aiSuggestion", meal: { name: "x", values }, sourceMealId: "m-1" },
+    ]) {
+      expect(slotHeadSchema.safeParse({ ...slotHead, selection: { kind: "override", override } }).success).toBe(false);
+    }
+    expect(slotHeadSchema.safeParse({ ...slotHead, selection: { kind: "skip" } }).success).toBe(false);
+  });
+
+  it("rejects malformed ids, dates and slots", () => {
+    expect(slotHeadSchema.safeParse({ ...slotHead, planId: "plan__1" }).success).toBe(false);
+    expect(slotHeadSchema.safeParse({ ...slotHead, date: "2026-13-01" }).success).toBe(false);
+    expect(slotHeadSchema.safeParse({ ...slotHead, slotId: "snack" }).success).toBe(false);
+  });
+});
+
+describe("RecordedEntry recordings", () => {
+  it("a planned-meal recording snapshots all four values with its portion", () => {
+    expect(
+      recordedEntrySchema.safeParse({
+        ...plannedMealEntry,
+        nutritionEstimate: { ...plannedMealEntry.nutritionEstimate, fatG: null },
+      }).success
+    ).toBe(false);
+    expect(recordedEntrySchema.safeParse({ ...plannedMealEntry, portion: 0 }).success).toBe(false);
+    expect(recordedEntrySchema.safeParse({ ...plannedMealEntry, portion: null }).success).toBe(false);
+    expect(recordedEntrySchema.safeParse({ ...plannedMealEntry, estimateBasis: "userStated" }).success).toBe(false);
+    expect(recordedEntrySchema.safeParse({ ...plannedMealEntry, planId: null }).success).toBe(false);
+  });
+
+  it("a skip carries no meal and no estimate", () => {
+    expect(recordedEntrySchema.safeParse({ ...skipEntry, name: "Nichts" }).success).toBe(false);
+    expect(
+      recordedEntrySchema.safeParse({ ...skipEntry, nutritionEstimate: { kcal: 0, proteinG: 0, carbsG: 0, fatG: 0 } })
+        .success
+    ).toBe(false);
+    expect(recordedEntrySchema.safeParse({ ...skipEntry, estimateBasis: "userStated" }).success).toBe(false);
+  });
+
+  it("only a custom recording can be an extra entry", () => {
+    expect(
+      recordedEntrySchema.safeParse({ ...plannedMealEntry, kind: "extra", slotId: null, entryId: extraEntryId(UUID) })
+        .success
+    ).toBe(false);
+    expect(
+      recordedEntrySchema.safeParse({ ...skipEntry, kind: "extra", slotId: null, entryId: extraEntryId(UUID) }).success
+    ).toBe(false);
+  });
+
+  it("rejects an unknown recording", () => {
+    for (const recording of ["baseMeal", "override", "userDescribed", "consumed"]) {
+      expect(recordedEntrySchema.safeParse({ ...customSlotEntry, recording }).success).toBe(false);
+    }
+  });
+});
+
 describe("RecordedEntry estimate semantics", () => {
   it("keeps a null macro as unknown, not zero", () => {
-    const parsed = recordedEntrySchema.parse(extraEntry);
+    const parsed = recordedEntrySchema.parse(customExtraEntry);
     expect(parsed.nutritionEstimate).toEqual({ kcal: 80, proteinG: null, carbsG: null, fatG: null });
   });
 
   it("needs kcal whenever there is an estimate", () => {
     expect(
       recordedEntrySchema.safeParse({
-        ...extraEntry,
+        ...customExtraEntry,
         nutritionEstimate: { kcal: null, proteinG: 1, carbsG: 1, fatG: 1 },
       }).success
     ).toBe(false);
   });
 
-  it("basis none carries no estimate", () => {
-    const none = { ...extraEntry, estimateBasis: "none", nutritionEstimate: null };
+  it("custom basis none carries no estimate; userStated needs one", () => {
+    const none = { ...customExtraEntry, estimateBasis: "none", nutritionEstimate: null };
     expect(recordedEntrySchema.safeParse(none).success).toBe(true);
-    expect(recordedEntrySchema.safeParse({ ...none, nutritionEstimate: extraEntry.nutritionEstimate }).success).toBe(
+    expect(
+      recordedEntrySchema.safeParse({ ...none, nutritionEstimate: customExtraEntry.nutritionEstimate }).success
+    ).toBe(false);
+    expect(recordedEntrySchema.safeParse({ ...customExtraEntry, nutritionEstimate: null }).success).toBe(false);
+  });
+
+  it("custom cannot claim a planMealTimesPortion basis or a portion", () => {
+    expect(recordedEntrySchema.safeParse({ ...customSlotEntry, estimateBasis: "planMealTimesPortion" }).success).toBe(
       false
     );
-  });
-
-  it("basis userStated needs an estimate", () => {
-    expect(recordedEntrySchema.safeParse({ ...extraEntry, nutritionEstimate: null }).success).toBe(false);
-  });
-
-  it("basis planMealTimesPortion needs all four values, a portion and a plan-backed source", () => {
-    expect(
-      recordedEntrySchema.safeParse({
-        ...slotEntry,
-        nutritionEstimate: { ...slotEntry.nutritionEstimate, fatG: null },
-      }).success
-    ).toBe(false);
-    expect(recordedEntrySchema.safeParse({ ...slotEntry, portion: null }).success).toBe(false);
-    expect(recordedEntrySchema.safeParse({ ...slotEntry, portion: 0 }).success).toBe(false);
-    expect(recordedEntrySchema.safeParse({ ...slotEntry, source: "userDescribed" }).success).toBe(false);
-  });
-
-  it("records a portion only for planMealTimesPortion", () => {
-    expect(recordedEntrySchema.safeParse({ ...extraEntry, portion: 1 }).success).toBe(false);
+    expect(recordedEntrySchema.safeParse({ ...customSlotEntry, portion: 1 }).success).toBe(false);
   });
 
   it("rejects negative or non-finite estimates", () => {
     for (const bad of [-1, Number.NaN, Number.POSITIVE_INFINITY]) {
-      expect(
-        recordedEntrySchema.safeParse({ ...extraEntry, nutritionEstimate: { ...extraEntry.nutritionEstimate, kcal: bad } })
-          .success
-      ).toBe(false);
-      expect(
-        recordedEntrySchema.safeParse({
-          ...extraEntry,
-          nutritionEstimate: { ...extraEntry.nutritionEstimate, proteinG: bad },
-        }).success
-      ).toBe(false);
+      for (const key of ["kcal", "proteinG"] as const) {
+        expect(
+          recordedEntrySchema.safeParse({
+            ...customExtraEntry,
+            nutritionEstimate: { ...customExtraEntry.nutritionEstimate, [key]: bad },
+          }).success
+        ).toBe(false);
+      }
     }
   });
 
   it("has no actualCalories field", () => {
-    expect(recordedEntrySchema.safeParse({ ...extraEntry, actualCalories: 80 }).success).toBe(false);
+    expect(recordedEntrySchema.safeParse({ ...customExtraEntry, actualCalories: 80 }).success).toBe(false);
+    expect(recordedEntrySchema.safeParse({ ...plannedMealEntry, actualCalories: 918 }).success).toBe(false);
   });
 });
 
 describe("RecordedEntry identity", () => {
   it("a slot entry's id must match its date and slot", () => {
-    expect(recordedEntrySchema.safeParse({ ...slotEntry, entryId: "slot:2026-10-24:lunch" }).success).toBe(false);
-    expect(recordedEntrySchema.safeParse({ ...slotEntry, entryId: "slot:2026-10-25:dinner" }).success).toBe(false);
-    expect(recordedEntrySchema.safeParse({ ...slotEntry, slotId: null }).success).toBe(false);
+    expect(recordedEntrySchema.safeParse({ ...plannedMealEntry, entryId: "slot:2026-10-24:lunch" }).success).toBe(
+      false
+    );
+    expect(recordedEntrySchema.safeParse({ ...plannedMealEntry, entryId: "slot:2026-10-25:dinner" }).success).toBe(
+      false
+    );
+    expect(recordedEntrySchema.safeParse({ ...skipEntry, slotId: null }).success).toBe(false);
   });
 
   it("an extra entry needs an extra:{uuid} id and no slot", () => {
-    expect(recordedEntrySchema.safeParse({ ...extraEntry, entryId: slotEntryId("2026-10-25", "lunch") }).success).toBe(
-      false
-    );
-    expect(recordedEntrySchema.safeParse({ ...extraEntry, entryId: "extra:not-a-uuid" }).success).toBe(false);
-    expect(recordedEntrySchema.safeParse({ ...extraEntry, slotId: "snack" }).success).toBe(false);
+    expect(
+      recordedEntrySchema.safeParse({ ...customExtraEntry, entryId: slotEntryId("2026-10-25", "lunch") }).success
+    ).toBe(false);
+    expect(recordedEntrySchema.safeParse({ ...customExtraEntry, entryId: "extra:not-a-uuid" }).success).toBe(false);
+    expect(recordedEntrySchema.safeParse({ ...customExtraEntry, slotId: "snack_1" }).success).toBe(false);
   });
 
-  it("a plan-backed source needs a planId and a slot entry", () => {
-    expect(recordedEntrySchema.safeParse({ ...slotEntry, planId: null }).success).toBe(false);
-    expect(recordedEntrySchema.safeParse({ ...extraEntry, source: "override", planId: "plan-1" }).success).toBe(
-      false
-    );
-  });
-
-  it("rejects malformed dates", () => {
-    expect(recordedEntrySchema.safeParse({ ...extraEntry, date: "2026-02-30" }).success).toBe(false);
-    expect(recordedEntrySchema.safeParse({ ...extraEntry, date: "25.10.2026" }).success).toBe(false);
+  it("rejects malformed dates without throwing", () => {
+    expect(recordedEntrySchema.safeParse({ ...customExtraEntry, date: "2026-02-30" }).success).toBe(false);
+    expect(recordedEntrySchema.safeParse({ ...plannedMealEntry, date: "25.10.2026" }).success).toBe(false);
   });
 });
 
-describe("plans, slots, targets and state", () => {
-  it("a plan plans each slot at most once", () => {
-    const twice = { ...plan, meals: [...plan.meals, { slotId: "lunch", name: "Nudeln", values }] };
-    expect(nutritionPlanSchema.safeParse(twice).success).toBe(false);
+describe("plan generation requests", () => {
+  it("have the canonical kinds and statuses", () => {
+    expect(GENERATION_REQUEST_KINDS).toEqual(["initial", "regenerate"]);
+    expect(GENERATION_REQUEST_STATUSES).toEqual(["queued", "running", "succeeded", "failed", "discarded_stale"]);
   });
 
-  it("rejects unknown slots, statuses and target modes", () => {
-    expect(
-      nutritionPlanSchema.safeParse({ ...plan, meals: [{ slotId: "Montag", name: "x", values }] }).success
-    ).toBe(false);
-    expect(nutritionPlanSchema.safeParse({ ...plan, status: "draft" }).success).toBe(false);
+  it("reject anything else, including replacement suggestions", () => {
+    for (const kind of ["basePlan", "slotSuggestions", "replacement", "suggestion"]) {
+      expect(generationRequestKindSchema.safeParse(kind).success).toBe(false);
+    }
+    for (const status of ["pending", "done", "discarded", "stale"]) {
+      expect(generationRequestStatusSchema.safeParse(status).success).toBe(false);
+    }
+  });
+});
+
+describe("targets and state", () => {
+  it("rejects an unknown target mode", () => {
     expect(targetVersionSchema.safeParse({ ...target, mode: "auto" }).success).toBe(false);
-  });
-
-  it("rejects an empty meal name but sets no layout length limit", () => {
-    expect(nutritionPlanSchema.safeParse({ ...plan, meals: [{ slotId: "lunch", name: "  ", values }] }).success).toBe(
-      false
-    );
-    const longName = "Sehr ausführlich beschriebenes Gericht ".repeat(20);
-    expect(
-      nutritionPlanSchema.safeParse({ ...plan, meals: [{ slotId: "lunch", name: longName, values }] }).success
-    ).toBe(true);
-  });
-
-  it("a slot head selects the base meal or an override", () => {
-    expect(slotHeadSchema.safeParse({ ...slotHead, selection: { kind: "base" } }).success).toBe(true);
-    expect(slotHeadSchema.safeParse({ ...slotHead, selection: { kind: "override" } }).success).toBe(false);
-    expect(slotHeadSchema.safeParse({ ...slotHead, selection: { kind: "skip" } }).success).toBe(false);
-    expect(
-      slotHeadSchema.safeParse({
-        ...slotHead,
-        selection: { kind: "override", override: { name: "x", values, origin: "ai" } },
-      }).success
-    ).toBe(false);
-  });
-
-  it("a slot head rejects malformed ids and dates", () => {
-    expect(slotHeadSchema.safeParse({ ...slotHead, planId: "plan__1" }).success).toBe(false);
-    expect(slotHeadSchema.safeParse({ ...slotHead, date: "2026-13-01" }).success).toBe(false);
-  });
-
-  it("validates generation request enums", () => {
-    expect(generationRequestTypeSchema.safeParse("basePlan").success).toBe(true);
-    expect(generationRequestTypeSchema.safeParse("recipe").success).toBe(false);
-    expect(generationRequestStatusSchema.safeParse("succeeded").success).toBe(true);
-    expect(generationRequestStatusSchema.safeParse("done").success).toBe(false);
   });
 
   it("state pointers are ids or null", () => {

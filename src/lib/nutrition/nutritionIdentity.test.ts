@@ -16,16 +16,24 @@ import {
 const UUID = "3f2b8c1e-9a4d-4e6f-8b21-7c5d0e9a1b34";
 
 describe("slot ids", () => {
+  it("are the canonical V2 slots, in day order", () => {
+    expect(NUTRITION_SLOT_IDS).toEqual(["breakfast", "lunch", "snack_1", "dinner", "snack_2"]);
+  });
+
   it("are stable ids, free of the composite-id separators", () => {
     for (const slotId of NUTRITION_SLOT_IDS) {
-      expect(slotId).toMatch(/^[a-z]+$/);
+      expect(slotId).not.toContain(":");
+      expect(slotId).not.toContain("__");
       expect(isNutritionSlotId(slotId)).toBe(true);
     }
   });
 
-  it.each(["Frühstück", "Breakfast", "Montag", "monday", "", "breakfast:1"])("rejects %j", (value) => {
-    expect(isNutritionSlotId(value)).toBe(false);
-  });
+  it.each(["Frühstück", "Breakfast", "Montag", "monday", "", "breakfast:1", "snack", "snack_3", "snack1", "Snack_1"])(
+    "rejects %j",
+    (value) => {
+      expect(isNutritionSlotId(value)).toBe(false);
+    }
+  );
 });
 
 describe("slotEntryId", () => {
@@ -55,12 +63,13 @@ describe("slotEntryId", () => {
     expect(() => slotEntryId(date, slotId as NutritionSlotId)).toThrow(RangeError);
   });
 
-  it("round-trips through parseEntryId", () => {
-    expect(parseEntryId(slotEntryId("2026-03-29", "snack"))).toEqual({
-      kind: "slot",
-      date: "2026-03-29",
-      slotId: "snack",
-    });
+  it("keeps the two snacks apart", () => {
+    expect(slotEntryId("2026-03-29", "snack_1")).toBe("slot:2026-03-29:snack_1");
+    expect(slotEntryId("2026-03-29", "snack_2")).toBe("slot:2026-03-29:snack_2");
+  });
+
+  it.each(["breakfast", "lunch", "snack_1", "dinner", "snack_2"] as const)("round-trips %s through parseEntryId", (slotId) => {
+    expect(parseEntryId(slotEntryId("2026-03-29", slotId))).toEqual({ kind: "slot", date: "2026-03-29", slotId });
   });
 });
 
@@ -90,6 +99,7 @@ describe("parseEntryId", () => {
     "slot:2026-02-30:lunch",
     "slot:2026-03-29:Frühstück",
     "slot:2026-03-29:lunch:extra",
+    "slot:2026-03-29:snack",
     "slot:2026-03-29",
     `extra:${UUID.toUpperCase()}`,
     "extra:",
@@ -137,15 +147,17 @@ describe("slotHeadId", () => {
     ["x".repeat(129), "2026-10-25", "lunch"],
     ["plan-a", "2026-02-30", "lunch"],
     ["plan-a", "2026-10-25", "Sonntag"],
+    ["plan-a", "2026-10-25", "snack"],
   ])("rejects %j / %j / %j", (planId, date, slotId) => {
     expect(() => slotHeadId(planId, date, slotId as NutritionSlotId)).toThrow(RangeError);
   });
 
-  it("round-trips through parseSlotHeadId", () => {
-    expect(parseSlotHeadId(slotHeadId(UUID, "2026-03-29", "breakfast"))).toEqual({
+  it.each(["breakfast", "snack_1", "snack_2"] as const)("round-trips %s through parseSlotHeadId", (slotId) => {
+    expect(slotHeadId(UUID, "2026-03-29", slotId)).toBe(`${UUID}__2026-03-29__${slotId}`);
+    expect(parseSlotHeadId(slotHeadId(UUID, "2026-03-29", slotId))).toEqual({
       planId: UUID,
       date: "2026-03-29",
-      slotId: "breakfast",
+      slotId,
     });
   });
 
