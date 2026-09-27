@@ -58,8 +58,6 @@ describe("a registry over a deployment", () => {
     ["thinking level MINIMAL", { thinkingLevel: "MINIMAL" }],
     ["maxOutputTokens above the model's 65,536", { maxOutputTokens: 65_537 }],
     ["maxOutputTokens zero", { maxOutputTokens: 0 }],
-    ["temperature zero", { temperature: 0 }],
-    ["temperature above two", { temperature: 2.5 }],
   ])("with a setting the model cannot accept (%s): a configuration error, nothing built", (_label, patch) => {
     let built = 0;
     const registry = createNutritionVertexProviderRegistry(
@@ -76,6 +74,30 @@ describe("a registry over a deployment", () => {
     const [field, value] = Object.entries(patch)[0];
     expect((error as Error).message).toContain(`provider.${field}`);
     if (typeof value === "string" || (typeof value === "number" && value > 2)) expect((error as Error).message).not.toContain(String(value));
+    expect(built).toBe(0);
+  });
+
+  // NUT-12B.1: gemini-3.8-flash takes no custom sampling or candidate count, so
+  // a deployment written for the NUT-12B shape is refused, never silently used.
+  it.each<[string, Record<string, unknown>]>([
+    ["temperature", { temperature: 1 }],
+    ["topP", { topP: 0.93 }],
+    ["candidateCount", { candidateCount: 1 }],
+  ])("a stale deployment whose provider still carries %s: a configuration error, no value exposed, nothing built", (_label, patch) => {
+    let built = 0;
+    const registry = createNutritionVertexProviderRegistry(
+      { ...FIXTURE_VERTEX_DEPLOYMENT, provider: { ...FIXTURE_VERTEX_CONFIGURATION, ...patch } },
+      { createClient: () => ((built += 1), createFakeGoogleGenAiClient([{ reply: {} }])) }
+    );
+    let error: unknown;
+    try {
+      registry.current();
+    } catch (caught) {
+      error = caught;
+    }
+    expect(error).toBeInstanceOf(NutritionGenerationProviderConfigurationError);
+    expect((error as Error).message).toContain("provider");
+    for (const leak of ["0.93", "fixture-project", "fixture-location"]) expect((error as Error).message).not.toContain(leak);
     expect(built).toBe(0);
   });
 

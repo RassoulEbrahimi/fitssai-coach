@@ -1515,8 +1515,10 @@ describe("the production generator registry behind an open gate", () => {
     ["thinking level MINIMAL", { ...FIXTURE_VERTEX_DEPLOYMENT, provider: { ...FIXTURE_VERTEX_CONFIGURATION, thinkingLevel: "MINIMAL" } }],
     ["maxOutputTokens 65,537", { ...FIXTURE_VERTEX_DEPLOYMENT, provider: { ...FIXTURE_VERTEX_CONFIGURATION, maxOutputTokens: 65_537 } }],
     ["maxOutputTokens 0", { ...FIXTURE_VERTEX_DEPLOYMENT, provider: { ...FIXTURE_VERTEX_CONFIGURATION, maxOutputTokens: 0 } }],
-    ["temperature 0", { ...FIXTURE_VERTEX_DEPLOYMENT, provider: { ...FIXTURE_VERTEX_CONFIGURATION, temperature: 0 } }],
-    ["temperature 2.5", { ...FIXTURE_VERTEX_DEPLOYMENT, provider: { ...FIXTURE_VERTEX_CONFIGURATION, temperature: 2.5 } }],
+    // NUT-12B.1: a stale deployment still carrying a setting gemini-3.8-flash does not take is refused, never silently used.
+    ["stale temperature", { ...FIXTURE_VERTEX_DEPLOYMENT, provider: { ...FIXTURE_VERTEX_CONFIGURATION, temperature: 1 } }],
+    ["stale topP", { ...FIXTURE_VERTEX_DEPLOYMENT, provider: { ...FIXTURE_VERTEX_CONFIGURATION, topP: 0.93 } }],
+    ["stale candidateCount", { ...FIXTURE_VERTEX_DEPLOYMENT, provider: { ...FIXTURE_VERTEX_CONFIGURATION, candidateCount: 1 } }],
   ])("misconfigured (%s): refused explicitly as GENERATION_PROVIDER_NOT_CONFIGURED, no client built, nothing written", async (_label, deployment) => {
     const h = setup();
     let built = 0;
@@ -1525,17 +1527,22 @@ describe("the production generator registry behind an open gate", () => {
       createClient: () => ((built += 1), client),
     });
     const before = h.snapshot();
+    const plansBefore = h.planIds();
 
     const error = (await refusal(h.call({ requestId: RID }, { enabled: true, registry }))) as NutritionGenerationError;
     expect(error.code).toBe("GENERATION_PROVIDER_NOT_CONFIGURED");
     const mapped = toNutritionHttpsError(error);
     expect(mapped.message).toBe("GENERATION_PROVIDER_NOT_CONFIGURED");
     expect(mapped.details).toBeUndefined();
-    for (const leak of ["MINIMAL", "65537", "2.5", "fixture-project", "fixture-location"]) {
+    for (const leak of ["MINIMAL", "65537", "0.93", "fixture-project", "fixture-location"]) {
       expect(`${error.message} ${JSON.stringify(error.details)}`).not.toContain(leak);
     }
     expect(built).toBe(0);
     expect(client.requests).toEqual([]);
+    // No operation claim, request, plan, quota or state write: the store is byte-for-byte unchanged.
+    expect(h.operation(RID)).toBeUndefined();
+    expect(h.request(RID)).toBeUndefined();
+    expect(h.planIds()).toEqual(plansBefore);
     expect(h.snapshot()).toBe(before);
   });
 
@@ -1553,6 +1560,15 @@ describe("the production generator registry behind an open gate", () => {
     expect(plan?.days.map((day) => day.date)).toEqual(Array.from({ length: 7 }, (_, index) => addNutritionDays(TOMORROW, index)));
     expect(plan?.days.flatMap((day) => day.meals.map((meal) => meal.mealId))).toEqual(Array.from({ length: 21 }, (_, index) => `meal-${index + 1}`));
     expect(plan?.days[0].meals.map((meal) => meal.name)).toEqual(["Haferbrei mit Beeren 1", "Linsensuppe mit Brot 1", "Gemüsepfanne mit Reis 1"]);
+    // NUT-12B.1: the SDK was asked with only what gemini-3.8-flash takes — no sampling, candidate count or penalty.
+    expect(client.requests).toHaveLength(1);
+    expect(client.requests[0].model).toBe("gemini-3.8-flash");
+    const sent = client.requests[0].config as Record<string, unknown>;
+    expect(Object.keys(sent).sort()).toEqual(["maxOutputTokens", "responseJsonSchema", "responseMimeType", "systemInstruction", "thinkingConfig"]);
+    for (const field of ["temperature", "topP", "topK", "candidateCount", "candidate_count", "frequencyPenalty", "presencePenalty"]) {
+      expect(Object.prototype.hasOwnProperty.call(sent, field), field).toBe(false);
+    }
+    expect(client.signals).toHaveLength(1);
     // Only the lifecycle's own fields were written: no prompt, reply, project or location anywhere.
     const stored = h.snapshot();
     for (const leak of ["fixture-project", "fixture-location", "systemInstruction", "responseJsonSchema"]) {

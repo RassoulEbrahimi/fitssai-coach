@@ -66,7 +66,6 @@ export const createFakeGoogleGenAiClient = (steps: FakeGenAiStep[]): FakeGoogleG
 export const FIXTURE_VERTEX_CONFIGURATION: NutritionVertexProviderConfiguration = Object.freeze({
   project: "fixture-project",
   location: "fixture-location",
-  temperature: 0.3,
   maxOutputTokens: 4096,
   thinkingLevel: "LOW",
   timeoutMs: 2_000,

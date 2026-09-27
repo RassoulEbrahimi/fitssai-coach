@@ -23,7 +23,6 @@ import { NUTRITION_PLAN_SYSTEM_INSTRUCTION } from "./prompt";
 import {
   NUTRITION_GEMINI_MAX_OUTPUT_TOKENS,
   NUTRITION_GEMINI_MODEL_ID,
-  NUTRITION_GEMINI_TEMPERATURE_MAX,
   NUTRITION_MAX_TRANSPORT_ATTEMPTS_CEILING,
   NUTRITION_THINKING_LEVELS,
   NUTRITION_VERTEX_PROVIDER_ID,
@@ -79,6 +78,39 @@ const build = (steps: FakeGenAiStep[], configuration: Record<string, unknown> = 
 
 const valid = { reply: fixtureVertexReply(SLOTS) };
 
+/**
+ * Request fields `gemini-3.8-flash` does not take (NUT-12B.1): custom sampling,
+ * a candidate count in either spelling, and repetition penalties.
+ */
+const UNSUPPORTED_REQUEST_FIELDS = ["temperature", "topP", "topK", "candidateCount", "candidate_count", "frequencyPenalty", "presencePenalty"];
+
+/**
+ * The adapter over a client that keeps each request object exactly as the SDK
+ * would receive it — abort signal included, nothing cloned or stripped — so its
+ * own properties can be asserted directly.
+ */
+const buildRaw = (configuration: Record<string, unknown> = {}) => {
+  const requests: Array<{ model?: unknown; contents?: unknown; config: Record<string, unknown> }> = [];
+  const provider = createNutritionVertexProvider(
+    { ...FIXTURE_VERTEX_CONFIGURATION, ...configuration },
+    {
+      createClient: () => ({
+        models: {
+          generateContent: async (request) => {
+            requests.push(request as (typeof requests)[number]);
+            return { text: JSON.stringify(valid.reply) };
+          },
+        },
+      }),
+      newMealId: fixtureMealIds(),
+    }
+  );
+  return { provider, requests };
+};
+
+const ownKeys = (value: object) => Object.keys(value).sort();
+const hasOwn = (value: object, key: string) => Object.prototype.hasOwnProperty.call(value, key);
+
 const rejectionOf = async (step: FakeGenAiStep) => {
   const answer = await build([step]).provider.generate(INPUT);
   expect(answer).toBeInstanceOf(NutritionProviderAnswerRejection);
@@ -129,20 +161,10 @@ describe("what the model is sent", () => {
     const request = client.requests[0];
     expect(Object.keys(request).sort()).toEqual(["config", "contents", "model"]);
     const config = request.config as Record<string, unknown>;
-    expect(Object.keys(config).sort()).toEqual([
-      "candidateCount",
-      "maxOutputTokens",
-      "responseJsonSchema",
-      "responseMimeType",
-      "systemInstruction",
-      "temperature",
-      "thinkingConfig",
-    ]);
+    expect(Object.keys(config).sort()).toEqual(["maxOutputTokens", "responseJsonSchema", "responseMimeType", "systemInstruction", "thinkingConfig"]);
     expect(config.systemInstruction).toBe(NUTRITION_PLAN_SYSTEM_INSTRUCTION);
-    expect(config.temperature).toBe(FIXTURE_VERTEX_CONFIGURATION.temperature);
     expect(config.maxOutputTokens).toBe(FIXTURE_VERTEX_CONFIGURATION.maxOutputTokens);
     expect(config.thinkingConfig).toEqual({ thinkingLevel: "LOW" });
-    expect(config.candidateCount).toBe(1);
     expect(config.responseMimeType).toBe("application/json");
 
     const prompt = String(request.contents);
@@ -199,6 +221,60 @@ describe("what the model is sent", () => {
     await provider.generate(INPUT);
     await provider.repair?.({ input: INPUT, failure: { kind: "rejectedByPolicy" } });
     expect(built()).toBe(1);
+  });
+});
+
+describe("the request shape gemini-3.8-flash accepts (NUT-12B.1)", () => {
+  it("is exactly the model, the contents and the adapter's own config fields — abort signal included", async () => {
+    const { provider, requests } = buildRaw();
+    await provider.generate(INPUT);
+
+    expect(requests).toHaveLength(1);
+    const request = requests[0];
+    expect(ownKeys(request)).toEqual(["config", "contents", "model"]);
+    expect(request.model).toBe("gemini-3.8-flash");
+    expect(ownKeys(request.config)).toEqual([
+      "abortSignal",
+      "maxOutputTokens",
+      "responseJsonSchema",
+      "responseMimeType",
+      "systemInstruction",
+      "thinkingConfig",
+    ]);
+    expect(request.config.systemInstruction).toBe(NUTRITION_PLAN_SYSTEM_INSTRUCTION);
+    expect(request.config.maxOutputTokens).toBe(FIXTURE_VERTEX_CONFIGURATION.maxOutputTokens);
+    expect(request.config.responseMimeType).toBe("application/json");
+    expect(request.config.responseJsonSchema).toEqual(expect.objectContaining({ type: "object", required: ["days"] }));
+    expect(request.config.abortSignal).toBeInstanceOf(AbortSignal);
+    expect(request.config.thinkingConfig).toStrictEqual({ thinkingLevel: "LOW" });
+  });
+
+  it.each(UNSUPPORTED_REQUEST_FIELDS)("never carries %s — not as a value, not as an undefined key", async (field) => {
+    for (const thinkingLevel of ["LOW", "MEDIUM", "HIGH", null]) {
+      const { provider, requests } = buildRaw({ thinkingLevel });
+      await provider.generate(INPUT);
+      await provider.repair?.({ input: INPUT, failure: { kind: "rejectedByPolicy" } });
+      expect(requests).toHaveLength(2);
+      for (const request of requests) {
+        expect(hasOwn(request.config, field), `config.${field}`).toBe(false);
+        expect(hasOwn(request, field), field).toBe(false);
+        expect(hasOwn(request.config.thinkingConfig ?? {}, field), `thinkingConfig.${field}`).toBe(false);
+      }
+    }
+  });
+
+  it("with thinking level null: no thinkingConfig key at all — not undefined, not null", async () => {
+    const { provider, requests } = buildRaw({ thinkingLevel: null });
+    await provider.generate(INPUT);
+    expect(hasOwn(requests[0].config, "thinkingConfig")).toBe(false);
+    expect(ownKeys(requests[0].config)).toEqual(["abortSignal", "maxOutputTokens", "responseJsonSchema", "responseMimeType", "systemInstruction"]);
+  });
+
+  it.each(["LOW", "MEDIUM", "HIGH"] as const)("with thinking level %s: sent exactly as { thinkingLevel: %j }", async (thinkingLevel) => {
+    const { provider, requests } = buildRaw({ thinkingLevel });
+    await provider.generate(INPUT);
+    expect(requests[0].config.thinkingConfig).toStrictEqual({ thinkingLevel });
+    expect(ownKeys(requests[0].config.thinkingConfig as object)).toEqual(["thinkingLevel"]);
   });
 });
 
@@ -419,7 +495,7 @@ describe("transport: bounded retries, no retry for what would fail again", () =>
 });
 
 describe("configuration is explicit, never defaulted", () => {
-  it.each(["project", "location", "temperature", "maxOutputTokens", "thinkingLevel", "timeoutMs", "maxTransportAttempts"])(
+  it.each(["project", "location", "maxOutputTokens", "thinkingLevel", "timeoutMs", "maxTransportAttempts"])(
     "a configuration without %s is refused, naming the field and no value",
     (field) => {
       const { [field as keyof typeof FIXTURE_VERTEX_CONFIGURATION]: _dropped, ...rest } = FIXTURE_VERTEX_CONFIGURATION;
@@ -485,7 +561,10 @@ describe("configuration stays within what the pinned model accepts", () => {
   it("pins the model's limits beside the model", () => {
     expect(NUTRITION_THINKING_LEVELS).toEqual(["LOW", "MEDIUM", "HIGH"]);
     expect(NUTRITION_GEMINI_MAX_OUTPUT_TOKENS).toBe(65_536);
-    expect(NUTRITION_GEMINI_TEMPERATURE_MAX).toBe(2);
+  });
+
+  it("has exactly these settings: no sampling, candidate or penalty setting exists", () => {
+    expect(ownKeys(FIXTURE_VERTEX_CONFIGURATION)).toEqual(["location", "maxOutputTokens", "maxTransportAttempts", "project", "thinkingLevel", "timeoutMs"]);
   });
 
   it.each(["LOW", "MEDIUM", "HIGH"])("thinking level %s is accepted and sent", async (thinkingLevel) => {
@@ -514,12 +593,17 @@ describe("configuration stays within what the pinned model accepts", () => {
     expect(await judged({ maxOutputTokens })).toBe("refused");
   });
 
-  it.each([0.1, 1, 2])("temperature %s is accepted", async (temperature) => {
-    expect(await judged({ temperature })).toBe("accepted");
-  });
-
-  it.each([0, -0.5, 2.0001, 3, Number.NaN])("temperature %s is refused before a client is built", async (temperature) => {
-    expect(await judged({ temperature })).toBe("refused");
+  it.each<[string, Record<string, unknown>]>([
+    ["temperature 1", { temperature: 1 }],
+    ["temperature 0.37", { temperature: 0.37 }],
+    ["topP", { topP: 0.93 }],
+    ["topK", { topK: 41 }],
+    ["candidateCount", { candidateCount: 1 }],
+    ["candidate_count", { candidate_count: 1 }],
+    ["frequencyPenalty", { frequencyPenalty: 0.27 }],
+    ["presencePenalty", { presencePenalty: 0.19 }],
+  ])("a stale configuration carrying %s is refused by the strict schema before a client is built", async (_label, patch) => {
+    expect(await judged(patch)).toBe("refused");
   });
 });
 
