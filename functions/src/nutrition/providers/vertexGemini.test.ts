@@ -21,8 +21,11 @@ import type { NutritionGenerationInput } from "../generationInput";
 import { NutritionGenerationProviderConfigurationError, NutritionProviderAnswerRejection } from "../generationProvider";
 import { NUTRITION_PLAN_SYSTEM_INSTRUCTION } from "./prompt";
 import {
+  NUTRITION_GEMINI_MAX_OUTPUT_TOKENS,
   NUTRITION_GEMINI_MODEL_ID,
+  NUTRITION_GEMINI_TEMPERATURE_MAX,
   NUTRITION_MAX_TRANSPORT_ATTEMPTS_CEILING,
+  NUTRITION_THINKING_LEVELS,
   NUTRITION_VERTEX_PROVIDER_ID,
   NutritionProviderCallError,
   createNutritionVertexProvider,
@@ -448,6 +451,80 @@ describe("configuration is explicit, never defaulted", () => {
   });
 
   it("accepts the fixture configuration as given and freezes it", () => {
+    expect(parseNutritionVertexProviderConfiguration(FIXTURE_VERTEX_CONFIGURATION)).toEqual(FIXTURE_VERTEX_CONFIGURATION);
+  });
+});
+
+describe("configuration stays within what the pinned model accepts", () => {
+  /** Whether `patch` is accepted, and — if refused — that it is refused before any client exists or any call is made. */
+  const judged = async (patch: Record<string, unknown>) => {
+    let built = 0;
+    const client = createFakeGoogleGenAiClient([valid]);
+    const create = () =>
+      createNutritionVertexProvider({ ...FIXTURE_VERTEX_CONFIGURATION, ...patch }, { createClient: () => ((built += 1), client), newMealId: fixtureMealIds() });
+    let provider: ReturnType<typeof create>;
+    try {
+      provider = create();
+    } catch (error) {
+      expect(error).toBeInstanceOf(NutritionGenerationProviderConfigurationError);
+      const message = (error as Error).message;
+      for (const value of Object.values(patch)) {
+        if ((typeof value === "string" && value !== "") || (typeof value === "number" && value !== 0 && value !== 1 && value !== 2)) {
+          expect(message, "no raw setting value").not.toContain(String(value));
+        }
+      }
+      expect(built).toBe(0);
+      expect(client.requests).toEqual([]);
+      return "refused" as const;
+    }
+    await provider.generate(INPUT);
+    expect(client.requests).toHaveLength(1);
+    return "accepted" as const;
+  };
+
+  it("pins the model's limits beside the model", () => {
+    expect(NUTRITION_THINKING_LEVELS).toEqual(["LOW", "MEDIUM", "HIGH"]);
+    expect(NUTRITION_GEMINI_MAX_OUTPUT_TOKENS).toBe(65_536);
+    expect(NUTRITION_GEMINI_TEMPERATURE_MAX).toBe(2);
+  });
+
+  it.each(["LOW", "MEDIUM", "HIGH"])("thinking level %s is accepted and sent", async (thinkingLevel) => {
+    expect(await judged({ thinkingLevel })).toBe("accepted");
+    const client = createFakeGoogleGenAiClient([valid]);
+    await createNutritionVertexProvider({ ...FIXTURE_VERTEX_CONFIGURATION, thinkingLevel }, { createClient: () => client }).generate(INPUT);
+    expect((client.requests[0].config as Record<string, unknown>).thinkingConfig).toEqual({ thinkingLevel });
+  });
+
+  it("no thinking level (null) is accepted, and sends none", async () => {
+    expect(await judged({ thinkingLevel: null })).toBe("accepted");
+  });
+
+  it.each(["MINIMAL", "minimal", "low", "MAXIMUM", "THINKING_LEVEL_UNSPECIFIED", ""])(
+    "thinking level %j is refused before a client is built",
+    async (thinkingLevel) => {
+      expect(await judged({ thinkingLevel })).toBe("refused");
+    }
+  );
+
+  it.each([1, 8_192, 65_536])("maxOutputTokens %i is accepted", async (maxOutputTokens) => {
+    expect(await judged({ maxOutputTokens })).toBe("accepted");
+  });
+
+  it.each([0, -1, 65_537, 1_000_000, 1.5])("maxOutputTokens %s is refused before a client is built", async (maxOutputTokens) => {
+    expect(await judged({ maxOutputTokens })).toBe("refused");
+  });
+
+  it.each([0.1, 1, 2])("temperature %s is accepted", async (temperature) => {
+    expect(await judged({ temperature })).toBe("accepted");
+  });
+
+  it.each([0, -0.5, 2.0001, 3, Number.NaN])("temperature %s is refused before a client is built", async (temperature) => {
+    expect(await judged({ temperature })).toBe("refused");
+  });
+});
+
+describe("the fixture configuration", () => {
+  it("parses and freezes", () => {
     const parsed = parseNutritionVertexProviderConfiguration(FIXTURE_VERTEX_CONFIGURATION);
     expect(parsed).toEqual(FIXTURE_VERTEX_CONFIGURATION);
     expect(Object.isFrozen(parsed)).toBe(true);

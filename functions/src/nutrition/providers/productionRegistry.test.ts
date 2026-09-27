@@ -54,6 +54,31 @@ describe("a registry over a deployment", () => {
     expect(built).toBe(0);
   });
 
+  it.each<[string, Record<string, unknown>]>([
+    ["thinking level MINIMAL", { thinkingLevel: "MINIMAL" }],
+    ["maxOutputTokens above the model's 65,536", { maxOutputTokens: 65_537 }],
+    ["maxOutputTokens zero", { maxOutputTokens: 0 }],
+    ["temperature zero", { temperature: 0 }],
+    ["temperature above two", { temperature: 2.5 }],
+  ])("with a setting the model cannot accept (%s): a configuration error, nothing built", (_label, patch) => {
+    let built = 0;
+    const registry = createNutritionVertexProviderRegistry(
+      { ...FIXTURE_VERTEX_DEPLOYMENT, provider: { ...FIXTURE_VERTEX_CONFIGURATION, ...patch } },
+      { createClient: () => ((built += 1), createFakeGoogleGenAiClient([{ reply: {} }])) }
+    );
+    let error: unknown;
+    try {
+      registry.current();
+    } catch (caught) {
+      error = caught;
+    }
+    expect(error).toBeInstanceOf(NutritionGenerationProviderConfigurationError);
+    const [field, value] = Object.entries(patch)[0];
+    expect((error as Error).message).toContain(`provider.${field}`);
+    if (typeof value === "string" || (typeof value === "number" && value > 2)) expect((error as Error).message).not.toContain(String(value));
+    expect(built).toBe(0);
+  });
+
   it("names the fields at fault and none of their values", () => {
     const registry = createNutritionVertexProviderRegistry({ ...FIXTURE_VERTEX_DEPLOYMENT, provider: { ...FIXTURE_VERTEX_CONFIGURATION, location: "" } });
     expect(() => registry.current()).toThrow(/provider\.location/);

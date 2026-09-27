@@ -1511,16 +1511,31 @@ describe("the production generator registry behind an open gate", () => {
     ["no project", { ...FIXTURE_VERTEX_DEPLOYMENT, provider: { ...FIXTURE_VERTEX_CONFIGURATION, project: undefined } }],
     ["no timeout", { ...FIXTURE_VERTEX_DEPLOYMENT, provider: { ...FIXTURE_VERTEX_CONFIGURATION, timeoutMs: undefined } }],
     ["no lease", { provider: FIXTURE_VERTEX_CONFIGURATION }],
+    // Settings the pinned model cannot accept are configuration errors, never a paid call that fails.
+    ["thinking level MINIMAL", { ...FIXTURE_VERTEX_DEPLOYMENT, provider: { ...FIXTURE_VERTEX_CONFIGURATION, thinkingLevel: "MINIMAL" } }],
+    ["maxOutputTokens 65,537", { ...FIXTURE_VERTEX_DEPLOYMENT, provider: { ...FIXTURE_VERTEX_CONFIGURATION, maxOutputTokens: 65_537 } }],
+    ["maxOutputTokens 0", { ...FIXTURE_VERTEX_DEPLOYMENT, provider: { ...FIXTURE_VERTEX_CONFIGURATION, maxOutputTokens: 0 } }],
+    ["temperature 0", { ...FIXTURE_VERTEX_DEPLOYMENT, provider: { ...FIXTURE_VERTEX_CONFIGURATION, temperature: 0 } }],
+    ["temperature 2.5", { ...FIXTURE_VERTEX_DEPLOYMENT, provider: { ...FIXTURE_VERTEX_CONFIGURATION, temperature: 2.5 } }],
   ])("misconfigured (%s): refused explicitly as GENERATION_PROVIDER_NOT_CONFIGURED, no client built, nothing written", async (_label, deployment) => {
     const h = setup();
     let built = 0;
+    const client = createFakeGoogleGenAiClient([{ reply: {} }]);
     const registry = createNutritionVertexProviderRegistry(deployment, {
-      createClient: () => ((built += 1), createFakeGoogleGenAiClient([{ reply: {} }])),
+      createClient: () => ((built += 1), client),
     });
     const before = h.snapshot();
 
-    expect(await code(h.call({ requestId: RID }, { registry }))).toBe("GENERATION_PROVIDER_NOT_CONFIGURED");
+    const error = (await refusal(h.call({ requestId: RID }, { enabled: true, registry }))) as NutritionGenerationError;
+    expect(error.code).toBe("GENERATION_PROVIDER_NOT_CONFIGURED");
+    const mapped = toNutritionHttpsError(error);
+    expect(mapped.message).toBe("GENERATION_PROVIDER_NOT_CONFIGURED");
+    expect(mapped.details).toBeUndefined();
+    for (const leak of ["MINIMAL", "65537", "2.5", "fixture-project", "fixture-location"]) {
+      expect(`${error.message} ${JSON.stringify(error.details)}`).not.toContain(leak);
+    }
     expect(built).toBe(0);
+    expect(client.requests).toEqual([]);
     expect(h.snapshot()).toBe(before);
   });
 

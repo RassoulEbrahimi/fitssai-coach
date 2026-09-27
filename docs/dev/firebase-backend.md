@@ -703,6 +703,7 @@ and the Vertex project, location and data-processing terms are not signed off.
 | Backend gate | `NUTRITION_AI_PRODUCTION_ENABLED = false` (`functions/src/nutrition/aiGate.ts`) — a reviewed constant, not a client flag, not derived from any environment; the deployed callable passes it, and tests inject `generationEnabled: true` explicitly |
 | Vertex project / location | **Not configured.** `PRODUCTION_NUTRITION_VERTEX_DEPLOYMENT = null`; the adapter requires both explicitly and has no default (no `global`, no `us-central1`, no `europe-*`) |
 | Operational values | Temperature, output cap, thinking level, per-attempt timeout, transport attempts (ceiling 3) and the claim lease are required configuration with **no production value chosen**; the Function timeout is unchanged |
+| Model capability limits | Validated as configuration, before any client is built (a setting outside them is `GENERATION_PROVIDER_NOT_CONFIGURED`, never a paid call that fails): thinking level `LOW`, `MEDIUM`, `HIGH` or none (`null`, model default) — `gemini-3.8-flash` has no `MINIMAL`; `maxOutputTokens` 1 … 65,536 (`NUTRITION_GEMINI_MAX_OUTPUT_TOKENS`); temperature in (0, 2], as `@google/genai` 2.19.0 documents it. Ceilings only — not the production values |
 | TargetPolicy | Unconfigured — `PRODUCTION_TARGET_POLICIES = []` |
 | PlanValidationPolicy | Unconfigured — `PRODUCTION_PLAN_VALIDATION_POLICIES = []` |
 | First-plan slots | Unconfigured — `productionInitialSlotConfiguration` maps nothing |

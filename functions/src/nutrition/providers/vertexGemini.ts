@@ -56,8 +56,30 @@ export const NUTRITION_GEMINI_MODEL_ID = "gemini-3.8-flash";
 /** Identifies the implementation. Never a key, a project, a location or an endpoint. */
 export const NUTRITION_VERTEX_PROVIDER_ID = "google-vertex-nutrition";
 
-/** The thinking levels a configuration may name; null sends no thinking setting. */
-export const NUTRITION_THINKING_LEVELS = ["MINIMAL", "LOW", "MEDIUM", "HIGH"] as const;
+/*
+ * What the pinned model can accept. These are capability limits of
+ * `gemini-3.8-flash` and the generation-config contract — never Nutrition
+ * policy, and never the production values, which a deployment chooses inside
+ * them. A setting outside them is a configuration error before any client is
+ * built, not a paid request that fails. A model migration revisits all three.
+ */
+
+/**
+ * The thinking levels the pinned model supports (it has no MINIMAL). A
+ * configuration may also name none (null): no thinking setting is sent and the
+ * model uses its default.
+ */
+export const NUTRITION_THINKING_LEVELS = ["LOW", "MEDIUM", "HIGH"] as const;
+
+/** The pinned model's maximum output tokens: the ceiling, not the configured value. */
+export const NUTRITION_GEMINI_MAX_OUTPUT_TOKENS = 65_536;
+
+/**
+ * The generation-config temperature range, (0, 2]: zero excluded, two
+ * included, as the installed `@google/genai` 2.19.0 documents it
+ * (`GenerationConfig.temperature`: "The valid range is (0.0, 2.0]").
+ */
+export const NUTRITION_GEMINI_TEMPERATURE_MAX = 2;
 
 /**
  * A structural ceiling on transport attempts, whatever a configuration asks:
@@ -78,8 +100,11 @@ export const nutritionVertexProviderConfigurationSchema = z
     project: nonBlank,
     /** The Vertex AI location. No default: which one is signed off is NUT-12C's. */
     location: nonBlank,
-    temperature: z.number().finite().min(0).max(2),
-    maxOutputTokens: z.number().int().positive(),
+    /** In (0, 2]. */
+    temperature: z.number().finite().gt(0).max(NUTRITION_GEMINI_TEMPERATURE_MAX),
+    /** In [1, the model's ceiling]. */
+    maxOutputTokens: z.number().int().min(1).max(NUTRITION_GEMINI_MAX_OUTPUT_TOKENS),
+    /** One of the model's levels, or null to send none. */
     thinkingLevel: z.enum(NUTRITION_THINKING_LEVELS).nullable(),
     /** One attempt's budget, in ms. A timeout is not retried. */
     timeoutMs: z.number().int().positive(),
