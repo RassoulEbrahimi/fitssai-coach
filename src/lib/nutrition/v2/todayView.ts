@@ -1,4 +1,11 @@
-import type { NutritionDate, NutritionPlan, NutritionUserState, RecordedEntry, SlotHead } from "@shared/nutrition";
+import {
+  planOwnsDate,
+  type NutritionDate,
+  type NutritionPlan,
+  type NutritionUserState,
+  type RecordedEntry,
+  type SlotHead,
+} from "@shared/nutrition";
 import type { NutritionV2Access, NutritionV2Read } from "./readStatus";
 import { buildNutritionWeek, type NutritionWeek } from "./resolvedPlan";
 
@@ -15,19 +22,64 @@ export type NutritionV2TodayView =
   /** No state document: V2 has not been initialised for the account. */
   | { status: "notInitialized" }
   | { status: "noActivePlan" }
-  /** A plan is active, but today's Berlin date is not one of its days. */
+  /** No plan owns today's Berlin date; the week is the latest activated plan's. */
   | { status: "outsidePlan"; week: NutritionWeek }
   | { status: "today"; week: NutritionWeek };
 
 export interface NutritionV2TodayInputs {
   access: NutritionV2Access;
   state: NutritionV2Read<NutritionUserState | null>;
+  /** The plan `state.activePlanId` names: the latest activated plan. */
   plan: NutritionV2Read<NutritionPlan | null>;
+  /** The plan that owns `today` (`useNutritionV2PlanForDate`), if any. */
+  todayPlan: NutritionV2Read<NutritionPlan | null>;
+  /** The slot heads of the plan `selectNutritionV2TodayPlan` chose. */
   slots: NutritionV2Read<SlotHead[]>;
+  /** The entries of that plan's dates. */
   entries: NutritionV2Read<RecordedEntry[]>;
   /** Today's Berlin calendar date. */
   today: NutritionDate;
 }
+
+/**
+ * The plan Today shows: the one that OWNS today, whatever the state pointer
+ * says — a successor activated for a later start (next week's repeat,
+ * tomorrow's regeneration) leaves its predecessor owning today. Only when no
+ * plan owns today is the pointer's plan shown, as the week outside of which
+ * today falls.
+ *
+ * Each read must agree with the other: a "plan for today" that does not own
+ * today is an error, and the pointer's plan must be the one the state names.
+ * `null` data: nothing to show yet (no state, no activated plan).
+ */
+export const selectNutritionV2TodayPlan = ({
+  state,
+  plan,
+  todayPlan,
+  today,
+}: Pick<NutritionV2TodayInputs, "state" | "plan" | "todayPlan" | "today">): NutritionV2Read<NutritionPlan | null> => {
+  if (state.status !== "success") return state;
+  const activePlanId = state.data?.activePlanId ?? null;
+  if (activePlanId === null) return { status: "success", data: null };
+
+  // The pointer's plan is read strictly even when another plan owns today: a
+  // missing or malformed active plan is still an error, never skipped.
+  if (plan.status !== "success") return plan;
+  // The pointer read follows the pointer; until it does, there is nothing to show.
+  if (plan.data === null || plan.data.planId !== activePlanId) return { status: "pending" };
+
+  if (todayPlan.status !== "success") return todayPlan;
+  if (todayPlan.data !== null) {
+    if (!planOwnsDate(todayPlan.data, today)) {
+      return { status: "error", error: new Error("the plan read for today does not own today") };
+    }
+    return todayPlan;
+  }
+
+  // No plan owns today, so the latest plan cannot either; if it does, the reads disagree.
+  if (planOwnsDate(plan.data, today)) return { status: "pending" };
+  return plan;
+};
 
 const LOADING: NutritionV2TodayView = { status: "loading" };
 const ERROR: NutritionV2TodayView = { status: "error" };
@@ -37,6 +89,7 @@ export const deriveNutritionV2TodayView = ({
   access,
   state,
   plan,
+  todayPlan,
   slots,
   entries,
   today,
@@ -59,17 +112,16 @@ export const deriveNutritionV2TodayView = ({
   if (state.data === null) return { status: "notInitialized" };
   if (state.data.activePlanId === null) return { status: "noActivePlan" };
 
-  if (plan.status === "error") return ERROR;
-  if (plan.status !== "success") return LOADING;
-  // The plan read follows the pointer, so this is the plan the state names.
-  if (plan.data === null || plan.data.planId !== state.data.activePlanId) return LOADING;
+  const shown = selectNutritionV2TodayPlan({ state, plan, todayPlan, today });
+  if (shown.status === "error") return ERROR;
+  if (shown.status !== "success" || shown.data === null) return LOADING;
 
   if (slots.status === "error" || entries.status === "error") return ERROR;
   if (slots.status !== "success" || entries.status !== "success") return LOADING;
 
   let week: NutritionWeek;
   try {
-    week = buildNutritionWeek({ plan: plan.data, slotHeads: slots.data, entries: entries.data, today });
+    week = buildNutritionWeek({ plan: shown.data, slotHeads: slots.data, entries: entries.data, today });
   } catch {
     return ERROR;
   }

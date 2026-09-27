@@ -2,7 +2,6 @@ import { randomUUID } from "node:crypto";
 import { Timestamp, type Firestore } from "firebase-admin/firestore";
 import {
   NUTRITION_SCHEMA_VERSION,
-  NUTRITION_STATE_REQUEST_LEDGER_SIZE,
   NUTRITION_V2_COLLECTIONS,
   NUTRITION_V2_STATE_DOC_ID,
   computeNutritionTargetFingerprint,
@@ -29,6 +28,7 @@ import {
 } from "../../../shared/nutrition";
 import { requireAuth, type AuthContextLike } from "../auth";
 import { NutritionTargetError } from "./errors";
+import { appendNutritionStateRequest } from "./stateLedger";
 import { nodeSha256Hex } from "./sha256";
 import type { TargetPolicyRegistry } from "./targetPolicy/types";
 
@@ -86,11 +86,24 @@ const internal = (message: string) => new NutritionTargetError("INTERNAL", messa
  * The state transition
  * ------------------------------------------------------------------ */
 
-/** Appends `request` and evicts the oldest records beyond the ledger size. */
-export const appendNutritionStateRequest = (
-  ledger: readonly NutritionStateRequest[],
-  request: NutritionStateRequest
-): NutritionStateRequest[] => [...ledger, request].slice(-NUTRITION_STATE_REQUEST_LEDGER_SIZE);
+/**
+ * The `setTarget` record of an applied request id, or null when the id was
+ * never applied. The same id applied by another operation is not the same
+ * request, and is refused rather than replayed as something it is not.
+ */
+export const findAppliedSetTarget = (
+  state: NutritionUserState | null,
+  requestId: string
+): Extract<NutritionStateRequest, { operation: "setTarget" }> | null => {
+  const applied = state?.recentRequests.find((request) => request.requestId === requestId);
+  if (!applied) return null;
+  if (applied.operation !== "setTarget") {
+    throw new NutritionTargetError("INVALID_REQUEST", "The request id was used for another operation.");
+  }
+  return applied;
+};
+
+export { appendNutritionStateRequest };
 
 export interface SetTargetTransitionInput {
   requestId: string;
@@ -119,7 +132,7 @@ export const planSetTargetTransition = (
   state: NutritionUserState | null,
   input: SetTargetTransitionInput
 ): SetTargetTransition => {
-  const applied = state?.recentRequests.find((request) => request.requestId === input.requestId);
+  const applied = findAppliedSetTarget(state, input.requestId);
   if (applied) return { kind: "replay", targetVersionId: applied.resultTargetVersionId };
 
   const revision = (state?.revision ?? 0) + 1;
@@ -224,7 +237,7 @@ export const handleNutritionSetTarget = async (
   // 5. An applied request answers with what it created, whatever changed since.
   try {
     const known = parseState(await stateRef.get());
-    const applied = known?.recentRequests.find((entry) => entry.requestId === requestId);
+    const applied = findAppliedSetTarget(known, requestId);
     if (applied) {
       return requireReplayedTarget(await targetRef(applied.resultTargetVersionId).get(), applied.resultTargetVersionId, mode);
     }

@@ -1,5 +1,9 @@
 import { HttpsError, type FunctionsErrorCode } from "firebase-functions/v2/https";
-import type { NutritionSetTargetErrorCode, NutritionTargetProfileField } from "../../../shared/nutrition";
+import type {
+  NutritionPlanErrorCode,
+  NutritionSetTargetErrorCode,
+  NutritionTargetProfileField,
+} from "../../../shared/nutrition";
 
 /**
  * Failures of the Nutrition callables that are safe to send to a client.
@@ -32,11 +36,51 @@ export class NutritionTargetError extends Error {
 export const isNutritionTargetError = (value: unknown): value is NutritionTargetError =>
   value instanceof NutritionTargetError;
 
+export interface NutritionPlanErrorDetails {
+  /** NOT_ELIGIBLE only: the NUT-03 reason code, never the age. */
+  reason?: "minor" | "missingAge";
+}
+
+/**
+ * A refusal or failure of a Nutrition plan operation (NUT-09 repeat, and the
+ * shared activation core). `STALE_ACTIVE_PLAN` and `STALE_TARGET` are typed
+ * outcomes a later caller (generation finalisation) can map to its own
+ * "discard as stale" without reading a message.
+ */
+export class NutritionPlanError extends Error {
+  constructor(
+    readonly code: Exclude<NutritionPlanErrorCode, "UNAUTHENTICATED">,
+    message: string,
+    readonly details: NutritionPlanErrorDetails = {}
+  ) {
+    super(message);
+    this.name = "NutritionPlanError";
+  }
+}
+
+export const isNutritionPlanError = (value: unknown): value is NutritionPlanError => value instanceof NutritionPlanError;
+
 const HTTPS_CODES: Readonly<Record<NutritionTargetError["code"], FunctionsErrorCode>> = {
   INVALID_REQUEST: "invalid-argument",
   NOT_ELIGIBLE: "permission-denied",
   TARGET_POLICY_NOT_CONFIGURED: "failed-precondition",
   PROFILE_INCOMPLETE: "failed-precondition",
+  INTERNAL: "internal",
+};
+
+const PLAN_HTTPS_CODES: Readonly<Record<NutritionPlanError["code"], FunctionsErrorCode>> = {
+  INVALID_REQUEST: "invalid-argument",
+  NOT_ELIGIBLE: "permission-denied",
+  NO_CURRENT_TARGET: "failed-precondition",
+  NO_ACTIVE_PLAN: "failed-precondition",
+  PLAN_NOT_ACTIVE: "failed-precondition",
+  TARGET_CHANGED: "failed-precondition",
+  PLAN_NOT_REPEATABLE: "failed-precondition",
+  PLAN_VALIDATION_POLICY_NOT_CONFIGURED: "failed-precondition",
+  PLAN_VALIDATION_FAILED: "failed-precondition",
+  // Another request changed the state first; the caller may read and retry.
+  STALE_ACTIVE_PLAN: "aborted",
+  STALE_TARGET: "aborted",
   INTERNAL: "internal",
 };
 
@@ -50,6 +94,10 @@ export const toNutritionHttpsError = (error: unknown): HttpsError => {
   if (isNutritionTargetError(error)) {
     const details = Object.keys(error.details).length > 0 ? error.details : undefined;
     return new HttpsError(HTTPS_CODES[error.code], error.code, details);
+  }
+  if (isNutritionPlanError(error)) {
+    const details = Object.keys(error.details).length > 0 ? error.details : undefined;
+    return new HttpsError(PLAN_HTTPS_CODES[error.code], error.code, details);
   }
   return new HttpsError("internal", "INTERNAL");
 };

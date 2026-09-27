@@ -4,13 +4,14 @@ import {
   useActiveNutritionV2Plan,
   useNutritionV2Access,
   useNutritionV2EntriesRange,
+  useNutritionV2PlanForDate,
   useNutritionV2Slots,
   useNutritionV2State,
 } from "@/hooks/queries/useNutritionV2";
 import { useNutritionV2Recording } from "@/hooks/queries/useNutritionV2Recording";
 import { useNutritionV2EntryOverlay } from "@/hooks/queries/useNutritionV2EntryOverlay";
 import { buildNutritionDayRecordings } from "@/lib/nutrition/v2/dayRecordings";
-import { deriveNutritionV2TodayView } from "@/lib/nutrition/v2/todayView";
+import { deriveNutritionV2TodayView, selectNutritionV2TodayPlan } from "@/lib/nutrition/v2/todayView";
 import { NutritionV2TodayShell } from "./NutritionV2TodayShell";
 import { NutritionV2TodayRecording } from "./NutritionV2TodayRecording";
 import { NutritionV2Conflicts } from "./NutritionV2Conflicts";
@@ -19,8 +20,13 @@ import { NutritionV2TargetSection } from "./NutritionV2TargetSection";
 /**
  * Nutrition V2 Today/week data container.
  *
- * Reads state → active plan → its slot heads and the entries of its seven
- * dates, derives the planned week, and hands it to the shell. Every read is
+ * Reads state → the plan that OWNS today (NUT-09) → its slot heads and the
+ * entries of its dates, derives the planned week, and hands it to the shell.
+ * The owning plan is not always the one `state.activePlanId` names: a
+ * successor activated for a later start (next week's repeat, tomorrow's
+ * regeneration) leaves its predecessor owning today, and Today, the week and
+ * recording stay on that predecessor. Only when no plan owns today is the
+ * pointer's plan shown, as the week today falls outside of. Every read is
  * gated on a signed-in, eligible (adult) account, so an ineligible or
  * signed-out person causes no V2 Firestore read at all.
  *
@@ -44,16 +50,19 @@ import { NutritionV2TargetSection } from "./NutritionV2TargetSection";
 export const NutritionV2TodayContainer: React.FC = () => {
   const access = useNutritionV2Access();
   const state = useNutritionV2State();
-  const plan = useActiveNutritionV2Plan();
-  const activePlan = plan.status === "success" ? plan.data : null;
-  const slots = useNutritionV2Slots(activePlan);
-  const committedEntries = useNutritionV2EntriesRange(activePlan?.startDate, activePlan?.endDate);
-  const overlay = useNutritionV2EntryOverlay(committedEntries, activePlan?.startDate, activePlan?.endDate);
-  const entries = overlay.entries;
   const today = useBerlinToday();
+  const plan = useActiveNutritionV2Plan();
+  const todayPlan = useNutritionV2PlanForDate(today);
+  const shown = selectNutritionV2TodayPlan({ state, plan, todayPlan, today });
+  const shownPlan = shown.status === "success" ? shown.data : null;
+  // Slot heads and entries of the plan shown — never of a later successor.
+  const slots = useNutritionV2Slots(shownPlan);
+  const committedEntries = useNutritionV2EntriesRange(shownPlan?.startDate, shownPlan?.endDate);
+  const overlay = useNutritionV2EntryOverlay(committedEntries, shownPlan?.startDate, shownPlan?.endDate);
+  const entries = overlay.entries;
   const recording = useNutritionV2Recording();
 
-  const view = deriveNutritionV2TodayView({ access, state, plan, slots, entries, today });
+  const view = deriveNutritionV2TodayView({ access, state, plan, todayPlan, slots, entries, today });
   const todayDay = view?.status === "today" ? view.week.today : null;
   const entryList = entries.status === "success" ? entries.data : null;
   const recordings = useMemo(

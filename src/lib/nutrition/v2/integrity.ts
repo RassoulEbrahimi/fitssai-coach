@@ -5,6 +5,7 @@ import {
   isNutritionDate,
   nutritionPlanSchema,
   nutritionUserStateSchema,
+  planOwnsDate,
   recordedEntrySchema,
   slotHeadId,
   slotHeadSchema,
@@ -136,6 +137,35 @@ export const parseNutritionV2Plan = (
     throw new NutritionV2IntegrityError("idMismatch", path, `document carries planId ${plan.planId}`);
   }
   return plan;
+};
+
+/**
+ * The base plan that owns `date`, from a query for the plan with the latest
+ * `startDate <= date` (at most one document). Plans are activated in start
+ * order and a successor ends its predecessor's ownership the day before it
+ * starts, so that candidate is the only plan that can own the date; it does
+ * when `planOwnsDate` says so, and otherwise no plan does (`null`).
+ *
+ * The candidate must be a valid plan stored under its own id and must start
+ * on or before `date`; anything else is an integrity failure.
+ */
+export const parseNutritionV2PlanForDate = (date: NutritionDate, docs: readonly NutritionV2RawDoc[]): NutritionPlan | null => {
+  if (!isNutritionDate(date)) throw new RangeError("a plan-for-date read needs a date YYYY-MM-DD");
+  if (docs.length > 1) {
+    throw new NutritionV2IntegrityError("outOfScope", NUTRITION_V2_COLLECTIONS.plans, "more than one candidate plan was returned");
+  }
+  if (docs.length === 0) return null;
+
+  const [{ id, data }] = docs;
+  const path = documentPath(NUTRITION_V2_COLLECTIONS.plans, id);
+  const plan = parseStrict(nutritionPlanSchema, data, path);
+  if (plan.planId !== id) {
+    throw new NutritionV2IntegrityError("idMismatch", path, `document carries planId ${plan.planId}`);
+  }
+  if (plan.startDate > date) {
+    throw new NutritionV2IntegrityError("outOfScope", path, `plan starts after ${date}`);
+  }
+  return planOwnsDate(plan, date) ? plan : null;
 };
 
 /* ------------------------------------------------------------------ *

@@ -44,7 +44,11 @@ describe("fixture target policies stay out of production", () => {
 
   it("live only in src/testing/, which the build excludes", () => {
     const definers = walk(SRC).filter((file) => /FIXTURE_\w+_POLICY\s*=/.test(readFileSync(file, "utf-8")));
-    expect(definers.map(rel)).toEqual(["src/testing/fixtureTargetPolicies.ts"]);
+    // NUT-09 adds the fixture plan-validation policies next to them.
+    expect(definers.map(rel).sort()).toEqual([
+      "src/testing/fixturePlanValidationPolicies.ts",
+      "src/testing/fixtureTargetPolicies.ts",
+    ]);
 
     const build = JSON.parse(
       readFileSync(join(FUNCTIONS_ROOT, "tsconfig.json"), "utf-8").replace(/\/\*[\s\S]*?\*\//g, "")
@@ -72,8 +76,15 @@ describe("the production target seam carries no formula", () => {
   it("sweeps the nutrition sources", () => {
     expect(nutritionSources.map(rel).sort()).toEqual([
       "src/nutrition/errors.ts",
+      // NUT-09: plan persistence.
+      "src/nutrition/planActivation.ts",
+      "src/nutrition/planValidation/decide.ts",
+      "src/nutrition/planValidation/registry.ts",
+      "src/nutrition/planValidation/types.ts",
+      "src/nutrition/repeatPlan.ts",
       "src/nutrition/setTarget.ts",
       "src/nutrition/sha256.ts",
+      "src/nutrition/stateLedger.ts",
       "src/nutrition/targetPolicy/registry.ts",
       "src/nutrition/targetPolicy/types.ts",
     ]);

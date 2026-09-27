@@ -15,6 +15,8 @@ import {
   deleteDoc,
   collection,
   getDocs,
+  limit,
+  orderBy,
   query,
   runTransaction,
   where,
@@ -462,10 +464,14 @@ describe("the Nutrition V2 client reads (NUT-05)", () => {
       where("date", ">=", "2026-09-23"),
       where("date", "<=", "2026-09-29")
     );
+  // NUT-09: the plan that owns a date — the latest plan starting on or before it.
+  const planForDate = (db: ReturnType<typeof alice>) =>
+    query(collection(db, "users", ALICE, V2.plans), where("startDate", "<=", "2026-09-28"), orderBy("startDate", "desc"), limit(1));
 
   beforeEach(async () => {
     await seed(["users", ALICE, V2.state, NUTRITION_V2_STATE_DOC_ID], { activePlanId: "plan-1" });
-    await seed(["users", ALICE, V2.plans, "plan-1"], { planId: "plan-1" });
+    await seed(["users", ALICE, V2.plans, "plan-1"], { planId: "plan-1", startDate: "2026-09-23" });
+    await seed(["users", ALICE, V2.plans, "plan-2"], { planId: "plan-2", startDate: "2026-09-30" });
     await seed(["users", ALICE, V2.targets, "target-1"], { targetVersionId: "target-1" });
     await seed(["users", ALICE, V2.slots, "plan-1__2026-09-25__lunch"], { planId: "plan-1", date: "2026-09-25" });
     await seed(["users", ALICE, V2.entries, "slot:2026-09-25:lunch"], { date: "2026-09-25" });
@@ -484,6 +490,8 @@ describe("the Nutrition V2 client reads (NUT-05)", () => {
     expect(onDate.docs.map((d) => d.id)).toEqual(["slot:2026-09-25:lunch"]);
     const inRange = await assertSucceeds(getDocs(entriesInRange(alice())));
     expect(inRange.docs.map((d) => d.id)).toEqual(["slot:2026-09-25:lunch"]);
+    const owning = await assertSucceeds(getDocs(planForDate(alice())));
+    expect(owning.docs.map((d) => d.id)).toEqual(["plan-1"]);
   });
 
   it("bob and an unauthenticated client can run none of them against alice", async () => {
@@ -494,6 +502,7 @@ describe("the Nutrition V2 client reads (NUT-05)", () => {
       await assertFails(getDocs(slotsOfPlan(db)));
       await assertFails(getDocs(entriesOnDate(db)));
       await assertFails(getDocs(entriesInRange(db)));
+      await assertFails(getDocs(planForDate(db)));
     }
   });
 });

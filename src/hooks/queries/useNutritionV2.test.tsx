@@ -33,6 +33,8 @@ const firestore = vi.hoisted(() => {
     })),
     collection: vi.fn((_db: unknown, ...segments: string[]) => ({ path: segments.join("/") })),
     where: vi.fn((field: string, op: string, value: unknown) => ({ field, op, value })),
+    orderBy: vi.fn((field: string, value = "asc") => ({ field, op: "orderBy", value })),
+    limit: vi.fn((value: number) => ({ field: "", op: "limit", value })),
     query: vi.fn((ref: { path: string }, ...constraints: Where[]) => ({ ref, constraints })),
     getDoc: vi.fn(async (ref: { path: string; id: string }) => {
       const data = store.docs.get(ref.path);
@@ -40,9 +42,16 @@ const firestore = vi.hoisted(() => {
     }),
     getDocs: vi.fn(async (q: { ref: { path: string }; constraints: Where[] }) => {
       const prefix = `${q.ref.path}/`;
-      const docs = [...store.docs.entries()]
-        .filter(([path, data]) => path.startsWith(prefix) && !path.slice(prefix.length).includes("/") && matches(data, q.constraints))
-        .map(([path, data]) => ({ id: path.slice(prefix.length), data: () => data }));
+      const filters = q.constraints.filter(({ op }) => op !== "orderBy" && op !== "limit");
+      let rows = [...store.docs.entries()].filter(
+        ([path, data]) => path.startsWith(prefix) && !path.slice(prefix.length).includes("/") && matches(data, filters)
+      );
+      for (const { field, op, value } of q.constraints) {
+        const at = (data: unknown) => (data as Record<string, string>)[field];
+        if (op === "orderBy") rows = [...rows].sort(([, a], [, b]) => (at(a) < at(b) ? -1 : 1) * (value === "desc" ? -1 : 1));
+        if (op === "limit") rows = rows.slice(0, Number(value));
+      }
+      const docs = rows.map(([path, data]) => ({ id: path.slice(prefix.length), data: () => data }));
       return { empty: docs.length === 0, docs };
     }),
     setDoc: vi.fn(),
@@ -70,6 +79,7 @@ import {
   useNutritionV2Access,
   useNutritionV2EntriesByDate,
   useNutritionV2EntriesRange,
+  useNutritionV2PlanForDate,
   useNutritionV2Slots,
   useNutritionV2State,
 } from "./useNutritionV2";
@@ -324,6 +334,59 @@ describe("useActiveNutritionV2Plan", () => {
     expect(integrityError(result.current).code).toBe("malformed");
   });
 
+  it.each([
+    "targetVersionId",
+    "source",
+    "repeatedFromPlanId",
+    "generationRequestId",
+    "validation",
+    "createdAt",
+    "activatedAt",
+    "lifecycle",
+  ])("errors on a plan without its NUT-09 %s, never defaulting it", async (field) => {
+    put(statePath("alice"), makeState());
+    const { [field as keyof ReturnType<typeof makePlan>]: _omit, ...without } = makePlan();
+    put(`users/alice/${C.plans}/${PLAN_ID}`, without);
+    const { result } = mount(() => useActiveNutritionV2Plan());
+    await settled(() => result.current);
+
+    expect(integrityError(result.current).code).toBe("malformed");
+  });
+
+  it.each([
+    ["an impossible lifecycle", { lifecycle: { status: "active", effectiveUntil: PLAN_END, supersededByPlanId: null } }],
+    ["a draft lifecycle", { lifecycle: { status: "draft", effectiveUntil: null, supersededByPlanId: null } }],
+    ["a repeat without its source", { source: "repeated", repeatedFromPlanId: null }],
+    ["a validation carrying a threshold", { validation: { policy: { id: "p", version: 1 }, outcome: "accepted", maxDeviation: 0.1 } }],
+    ["a createdAt that is not an instant", { createdAt: "2026-09-22T08:00:00Z" }],
+  ])("errors on a plan with %s", async (_name, patch) => {
+    put(statePath("alice"), makeState());
+    put(`users/alice/${C.plans}/${PLAN_ID}`, { ...makePlan(), ...patch });
+    const { result } = mount(() => useActiveNutritionV2Plan());
+    await settled(() => result.current);
+
+    expect(integrityError(result.current).code).toBe("malformed");
+  });
+
+  it("reads the plan's persistence metadata as stored, with a client SDK timestamp as a plain instant", async () => {
+    class ClientTimestamp {
+      constructor(
+        readonly seconds: number,
+        readonly nanoseconds: number
+      ) {}
+    }
+    put(statePath("alice"), makeState());
+    put(`users/alice/${C.plans}/${PLAN_ID}`, {
+      ...makePlan(),
+      createdAt: new ClientTimestamp(1_790_000_000, 0),
+      activatedAt: new ClientTimestamp(1_790_000_000, 0),
+    });
+    const { result } = mount(() => useActiveNutritionV2Plan());
+    await settled(() => result.current);
+
+    expect(result.current).toEqual({ status: "success", data: makePlan() });
+  });
+
   it("errors when the Firestore id is not the plan's planId", async () => {
     put(statePath("alice"), makeState());
     put(`users/alice/${C.plans}/${PLAN_ID}`, makePlan({ planId: "plan-2" }));
@@ -344,6 +407,100 @@ describe("useActiveNutritionV2Plan", () => {
 });
 
 /* ------------------------------------------------------------------ */
+
+describe("useNutritionV2PlanForDate (NUT-09)", () => {
+  // After a repeat: the state points to next week's plan, the source still owns 28–29 Sep.
+  const source = {
+    ...makePlan(),
+    lifecycle: { status: "superseded" as const, effectiveUntil: PLAN_END, supersededByPlanId: "plan-2" },
+  };
+  const repeat = { ...makePlan({ planId: "plan-2", startDate: "2026-09-30" }), source: "repeated" as const, repeatedFromPlanId: PLAN_ID };
+  const seedRepeat = (uid = "alice") => {
+    put(statePath(uid), makeState({ activePlanId: "plan-2", revision: 5 }));
+    put(`users/${uid}/${C.plans}/${PLAN_ID}`, source);
+    put(`users/${uid}/${C.plans}/plan-2`, repeat);
+  };
+
+  it.each([
+    ["2026-09-28", PLAN_ID],
+    ["2026-09-29", PLAN_ID],
+    ["2026-09-30", "plan-2"],
+    ["2026-10-06", "plan-2"],
+  ])("returns the plan owning %s: %s, whatever the state points to", async (date, planId) => {
+    seedRepeat();
+    const { result, client } = mount(() => useNutritionV2PlanForDate(date));
+    await settled(() => result.current);
+
+    expect(result.current.status === "success" && result.current.data?.planId).toBe(planId);
+    expect(client.getQueryData(queryKeys.nutrition.plans.forDate("alice", date, "plan-2"))).toMatchObject({ planId });
+  });
+
+  it("asks for the latest plan starting on or before the date, under the account's own plans", async () => {
+    seedRepeat();
+    const { result } = mount(() => useNutritionV2PlanForDate("2026-09-28"));
+    await settled(() => result.current);
+
+    expect(queriedPaths()).toEqual([`users/alice/${C.plans}`]);
+    expect(firestore.where.mock.calls).toEqual([["startDate", "<=", "2026-09-28"]]);
+    expect(firestore.orderBy.mock.calls).toEqual([["startDate", "desc"]]);
+    expect(firestore.limit.mock.calls).toEqual([[1]]);
+    expect(writeSpies().every((spy) => spy.mock.calls.length === 0)).toBe(true);
+  });
+
+  it("returns the current active plan that owns the date normally", async () => {
+    put(statePath("alice"), makeState());
+    put(`users/alice/${C.plans}/${PLAN_ID}`, makePlan());
+    const { result } = mount(() => useNutritionV2PlanForDate("2026-09-26"));
+    await settled(() => result.current);
+    expect(result.current).toEqual({ status: "success", data: makePlan() });
+  });
+
+  it.each(["2026-09-22", "2026-10-07"])("is null for %s, which no plan owns", async (date) => {
+    seedRepeat();
+    const { result } = mount(() => useNutritionV2PlanForDate(date));
+    await settled(() => result.current);
+    expect(result.current).toEqual({ status: "success", data: null });
+  });
+
+  it("reads nothing and is null without an activated plan", async () => {
+    put(statePath("alice"), makeState({ activePlanId: null }));
+    const { result } = mount(() => useNutritionV2PlanForDate("2026-09-28"));
+    await settled(() => result.current);
+    expect(result.current).toEqual({ status: "success", data: null });
+    expect(firestore.getDocs).not.toHaveBeenCalled();
+  });
+
+  it("errors on a malformed candidate, never skipping it", async () => {
+    seedRepeat();
+    put(`users/alice/${C.plans}/${PLAN_ID}`, { ...source, lifecycle: { status: "superseded", effectiveUntil: null } });
+    const { result } = mount(() => useNutritionV2PlanForDate("2026-09-28"));
+    await settled(() => result.current);
+    expect(integrityError(result.current).code).toBe("malformed");
+  });
+
+  it("errors when the Firestore id is not the candidate's planId", async () => {
+    seedRepeat();
+    put(`users/alice/${C.plans}/plan-x`, { ...source, startDate: source.startDate });
+    store.docs.delete(`users/alice/${C.plans}/${PLAN_ID}`);
+    const { result } = mount(() => useNutritionV2PlanForDate("2026-09-28"));
+    await settled(() => result.current);
+    expect(integrityError(result.current).code).toBe("idMismatch");
+  });
+
+  it("keeps accounts apart", async () => {
+    seedRepeat("alice");
+    put(statePath("bob"), makeState({ activePlanId: "plan-2", revision: 5 }));
+    const aliceKey = queryKeys.nutrition.plans.forDate("alice", "2026-09-28", "plan-2");
+    const bobKey = queryKeys.nutrition.plans.forDate("bob", "2026-09-28", "plan-2");
+    expect(aliceKey).not.toEqual(bobKey);
+
+    signIn("bob");
+    const { result } = mount(() => useNutritionV2PlanForDate("2026-09-28"));
+    await settled(() => result.current);
+    expect(result.current).toEqual({ status: "success", data: null });
+    expect(queriedPaths()).toEqual([`users/bob/${C.plans}`]);
+  });
+});
 
 describe("useCurrentNutritionV2Target", () => {
   it("is null without reading a target when the pointer is null", async () => {
