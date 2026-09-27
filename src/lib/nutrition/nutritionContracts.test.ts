@@ -75,12 +75,32 @@ const plan = {
 
 const withDays = (days: unknown[]) => ({ ...plan, days });
 
+const overrideUuid = "5b1f9e62-3c4a-4d8e-9f10-2a6b7c8d9e0f";
+
+/** One override committed at revision 1 (NUT-10). */
+const slotOverride = {
+  overrideId: overrideUuid,
+  planId: "plan-1",
+  date: "2026-10-25",
+  slotId: "lunch",
+  baseMealId: "m-0-1",
+  previousOverrideId: null,
+  meal: { mealId: "ov-1", slotId: "lunch", name: "Ofengemüse", values },
+  source: { kind: "planMeal", sourceMealId: "m-2-1" },
+  createdAtRevision: 1,
+  createdAt: { seconds: 1_790_000_100, nanoseconds: 0 },
+};
+
 const slotHead = {
   schemaVersion: 2,
   planId: "plan-1",
   date: "2026-10-25",
   slotId: "lunch",
-  selection: { kind: "override", override: { source: "aiSuggestion", meal: { name: "Ofengemüse", values } } },
+  revision: 1,
+  selection: { kind: "override", overrideId: overrideUuid },
+  overrides: { [overrideUuid]: slotOverride },
+  appliedRequestIds: ["3f2b8c1e-9a4d-4e6f-8b21-7c5d0e9a1b34"],
+  updatedAt: { seconds: 1_790_000_100, nanoseconds: 0 },
 };
 
 const state = {
@@ -345,31 +365,27 @@ describe("NutritionPlan", () => {
 });
 
 describe("SlotHead and MealOverride", () => {
-  it("selects the base meal", () => {
-    expect(slotHeadSchema.safeParse({ ...slotHead, selection: { kind: "base" } }).success).toBe(true);
+  // The full NUT-10 contract is pinned in nutritionSlotOverride.test.ts.
+  it("selects the base meal, or an override of the head's own history", () => {
+    expect(slotHeadSchema.safeParse({ ...slotHead, revision: 2, selection: { kind: "base" } }).success).toBe(true);
+    expect(slotHeadSchema.safeParse({ ...slotHead, selection: { kind: "override", overrideId: "6c2a0f73-4d5b-4e9f-8a21-3b7c8d9e0f1a" } }).success).toBe(false);
   });
 
-  it("accepts an override from another meal of the plan", () => {
-    const fromPlan = {
-      kind: "override",
-      override: { source: "planMeal", sourceMealId: "m-2-2", meal: { name: "Linsen-Curry", values } },
-    };
-    expect(slotHeadSchema.safeParse({ ...slotHead, selection: fromPlan }).success).toBe(true);
-    expect(
-      slotHeadSchema.safeParse({
-        ...slotHead,
-        selection: { ...fromPlan, override: { ...fromPlan.override, sourceMealId: undefined } },
-      }).success
-    ).toBe(false);
+  it("refuses the interim embedded shape: a selection never carries the meal", () => {
+    const interim = { kind: "override", override: { source: "aiSuggestion", meal: { name: "Ofengemüse", values } } };
+    expect(slotHeadSchema.safeParse({ ...slotHead, selection: interim }).success).toBe(false);
+    const { revision: _revision, overrides: _overrides, appliedRequestIds: _ring, updatedAt: _updatedAt, ...nut01 } = slotHead;
+    expect(slotHeadSchema.safeParse({ ...nut01, selection: { kind: "base" } }).success).toBe(false);
   });
 
   it("rejects unknown override sources and shapes", () => {
-    for (const override of [
-      { source: "user", meal: { name: "x", values } },
-      { source: "aiSuggestion" },
-      { source: "aiSuggestion", meal: { name: "x", values }, sourceMealId: "m-1" },
+    for (const source of [
+      { kind: "user" },
+      { kind: "aiSuggestion" },
+      { kind: "planMeal" },
+      { kind: "planMeal", sourceMealId: "m-2-1", candidateId: "c-1" },
     ]) {
-      expect(slotHeadSchema.safeParse({ ...slotHead, selection: { kind: "override", override } }).success).toBe(false);
+      expect(slotHeadSchema.safeParse({ ...slotHead, overrides: { [overrideUuid]: { ...slotOverride, source } } }).success).toBe(false);
     }
     expect(slotHeadSchema.safeParse({ ...slotHead, selection: { kind: "skip" } }).success).toBe(false);
   });

@@ -58,7 +58,7 @@ import {
   type RecordedEntrySnapshot,
 } from "@shared/nutrition";
 import { firestore, resetWorkoutFirestore, rows, writes } from "@/test/mocks/workoutFirestore";
-import { intentUuid } from "@/test/nutritionV2Fixtures";
+import { intentUuid, makeSlotHead } from "@/test/nutritionV2Fixtures";
 
 const DATE = "2026-09-26";
 const LUNCH = slotEntryId(DATE, "lunch");
@@ -236,15 +236,9 @@ describe("chained offline edits", () => {
 describe("the frozen snapshot rule", () => {
   it("§29: a recording of planned Meal A replays as Meal A after another device replaced the slot with Meal B", async () => {
     queueIntent(recordIntent(1, mealA));
-    // Meanwhile, another device replaces the planned meal.
+    // Meanwhile, another device replaces the planned meal (a NUT-10 slot head, committed first).
     const headPath = `users/A/${NUTRITION_V2_COLLECTIONS.slots}/${slotHeadId("plan-1", DATE, "lunch")}`;
-    const head = {
-      schemaVersion: NUTRITION_SCHEMA_VERSION,
-      planId: "plan-1",
-      date: DATE,
-      slotId: "lunch",
-      selection: { kind: "override", override: { source: "aiSuggestion", meal: { name: "Meal B", values: { kcal: 500, proteinG: 1, carbsG: 1, fatG: 1 } } } },
-    };
+    const head = makeSlotHead(DATE, "lunch", { name: "Meal B", values: { kcal: 500, proteinG: 1, carbsG: 1, fatG: 1 } });
     rows.set(headPath, head);
 
     expect(await flush()).toMatchObject({ completed: 1 });

@@ -49,6 +49,7 @@ describe("rules-test entry documents", () => {
       slotId: "lunch",
       name: "Linsen-Curry",
       values: { kcal: 700.2, proteinG: 40, carbsG: 80, fatG: 20 },
+      slotRevision: 0,
     };
     expect(buildPlannedMealRecording(lunch, 1.5)).toEqual(metaFree(plannedMealDoc()));
     expect(buildSkipRecording({ date: DATE, slotId: "breakfast" })).toEqual(metaFree(skipDoc()));

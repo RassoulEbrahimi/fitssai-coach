@@ -55,8 +55,11 @@ describe("fixtures", () => {
 });
 
 describe("resolveNutritionDay", () => {
-  it("1. resolves an explicit base selection to the base meal", () => {
-    const day = resolveNutritionDay(plan, [makeSlotHead(DAY, "lunch", null)], DAY);
+  it("1. resolves an explicit base selection to the base meal, whatever the history holds", () => {
+    const head = makeSlotHead(DAY, "lunch", null);
+    // The undone override is still in the history; the selection is base.
+    expect(Object.keys(head.overrides)).toHaveLength(1);
+    const day = resolveNutritionDay(plan, [head], DAY);
 
     expect(day?.meals[1]).toEqual({
       source: "base",
@@ -66,22 +69,23 @@ describe("resolveNutritionDay", () => {
       mealId: mealIdFor(2, "lunch"),
       name: "lunch 2",
       values: values(702.2, 40, 80, 20),
+      slotRevision: 2,
     });
   });
 
   it("2. resolves a slot without a head to the base meal", () => {
     const day = resolveNutritionDay(plan, [], DAY);
 
-    expect(day?.meals.map((meal) => [meal.source, meal.source === "base" && meal.mealId])).toEqual([
-      ["base", mealIdFor(2, "breakfast")],
-      ["base", mealIdFor(2, "lunch")],
-      ["base", mealIdFor(2, "dinner")],
+    expect(day?.meals.map((meal) => [meal.source, meal.mealId, meal.slotRevision])).toEqual([
+      ["base", mealIdFor(2, "breakfast"), 0],
+      ["base", mealIdFor(2, "lunch"), 0],
+      ["base", mealIdFor(2, "dinner"), 0],
     ]);
   });
 
   it("3. applies an override to exactly its date and slot", () => {
-    const override = aiOverride("Linsen-Curry", 900);
-    const heads = [makeSlotHead(DAY, "lunch", override)];
+    const heads = [makeSlotHead(DAY, "lunch", aiOverride("Linsen-Curry", 900))];
+    const override = Object.values(heads[0].overrides)[0];
 
     const day = resolveNutritionDay(plan, heads, DAY);
     expect(day?.meals[1]).toEqual({
@@ -89,12 +93,14 @@ describe("resolveNutritionDay", () => {
       planId: PLAN_ID,
       date: DAY,
       slotId: "lunch",
+      // The override's own server-stable meal id — never invented, never the base meal's.
+      mealId: override.meal.mealId,
       name: "Linsen-Curry",
       values: override.meal.values,
+      slotRevision: 1,
       override,
     });
-    // No invented V2 meal id for an override.
-    expect(day?.meals[1]).not.toHaveProperty("mealId");
+    expect(day?.meals[1].mealId).not.toBe(mealIdFor(2, "lunch"));
     // Same date, other slots: base.
     expect(day?.meals[0].source).toBe("base");
     expect(day?.meals[2].source).toBe("base");

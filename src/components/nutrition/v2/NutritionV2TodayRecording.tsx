@@ -2,11 +2,14 @@ import React, { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { extraEntryId, parseEntryId, type NutritionSlotId, type RecordedEntry } from "@shared/nutrition";
+import { extraEntryId, parseEntryId, type NutritionPlan, type NutritionSlotId, type RecordedEntry } from "@shared/nutrition";
 import type { NutritionDayRecordings } from "@/lib/nutrition/v2/dayRecordings";
 import type { NutritionEntryPendingState } from "@/lib/nutrition/v2/nutritionWriteIntents";
+import { nutritionSlotReplacementBlock } from "@/lib/nutrition/v2/slotReplacement";
 import type { NutritionV2Recording } from "@/hooks/queries/useNutritionV2Recording";
+import type { NutritionV2SlotOverride } from "@/hooks/queries/useNutritionV2SlotOverride";
 import { NutritionV2RecordingSheet, type NutritionV2RecordingTarget } from "./NutritionV2RecordingSheet";
+import { NutritionV2SlotReplaceSheet } from "./NutritionV2SlotReplaceSheet";
 import { formatNutritionKcal, recordedEntryLabel } from "./recordingFormat";
 
 /**
@@ -23,6 +26,13 @@ import { formatNutritionKcal, recordedEntryLabel } from "./recordingFormat";
  * synchronised later (NUT-07). An entry with such a change says so — it is
  * never presented as saved on the server. Rejected offline changes are not
  * shown here but by the container, whatever the view (`NutritionV2Conflicts`).
+ *
+ * With `replacement` (NUT-10), each slot also offers "Ersetzen": a separate
+ * sheet that replaces the PLANNED meal with another meal of the same plan, or
+ * undoes the last replacement — online only, and never once the slot is
+ * recorded (or has a recording waiting to synchronise). The row keeps showing
+ * the current meal until the server has confirmed and the slot was read
+ * again. A replaced meal says so.
  */
 
 type OpenTarget = { kind: "slot"; slotId: NutritionSlotId } | { kind: "extra"; uuid: string; editing: boolean };
@@ -62,13 +72,19 @@ export const NutritionV2TodayRecording: React.FC<{
   recording: NutritionV2Recording;
   /** Entries with changes still waiting to be synchronised. */
   pending?: ReadonlyMap<string, NutritionEntryPendingState>;
-}> = ({ recordings, recording, pending = NO_PENDING }) => {
+  /** Slot replacement (NUT-10): the plan that owns the date, and the mutation. */
+  replacement?: { plan: NutritionPlan; slotOverride: NutritionV2SlotOverride };
+}> = ({ recordings, recording, pending = NO_PENDING, replacement }) => {
   const { t, i18n } = useTranslation();
   const language = i18n.language || "de";
   const [open, setOpen] = useState<OpenTarget | null>(null);
+  const [replacing, setReplacing] = useState<NutritionSlotId | null>(null);
 
   const unavailable = recording.availability.status === "unavailable" ? recording.availability.reason : null;
   const target = resolveTarget(open, recordings);
+  // Resolved against the latest read, so the sheet always shows the slot as it is now.
+  const replacingSlot = replacing ? (recordings.slots.find((slot) => slot.meal.slotId === replacing) ?? null) : null;
+  const replaceUnavailable = replacement?.slotOverride.availability.status === "unavailable";
 
   return (
     <section aria-label={t("nutritionV2.recording.title")} className="space-y-3" data-testid="nutrition-v2-today-recording">
@@ -106,11 +122,27 @@ export const NutritionV2TodayRecording: React.FC<{
                 <p className="font-medium text-foreground">{slot.meal.name}</p>
                 <p className="text-sm text-muted-foreground">
                   {t("nutritionV2.recording.planned", { kcal: formatNutritionKcal(slot.meal.values.kcal, language) })}
+                  {slot.meal.source === "override" && (
+                    <span data-testid="nutrition-v2-slot-replaced"> · {t("nutritionV2.replace.replacedNote")}</span>
+                  )}
                 </p>
                 <p className="text-sm text-foreground" data-testid="nutrition-v2-slot-recorded">
                   {slot.active ? recordedEntryLabel(slot.active, t, language) : t("nutritionV2.recording.state.none")}
                 </p>
                 <PendingNote state={pending.get(slot.entryId)} />
+                {replacement && (
+                  <Button
+                    type="button"
+                    variant="link"
+                    size="sm"
+                    className="-ml-3 min-h-11 px-3 text-sm"
+                    disabled={replaceUnavailable}
+                    aria-label={t("nutritionV2.replace.actionSlot", { slot: slotLabel })}
+                    onClick={() => setReplacing(slot.meal.slotId)}
+                  >
+                    {t("nutritionV2.replace.action")}
+                  </Button>
+                )}
               </div>
               <Button
                 type="button"
@@ -178,6 +210,23 @@ export const NutritionV2TodayRecording: React.FC<{
       </div>
 
       <NutritionV2RecordingSheet target={target} recording={recording} onClose={() => setOpen(null)} />
+      {replacement && (
+        <NutritionV2SlotReplaceSheet
+          slot={replacingSlot}
+          plan={replacement.plan}
+          block={
+            replacingSlot
+              ? nutritionSlotReplacementBlock({
+                  online: replacement.slotOverride.online,
+                  slot: replacingSlot,
+                  pending: pending.get(replacingSlot.entryId),
+                })
+              : null
+          }
+          slotOverride={replacement.slotOverride}
+          onClose={() => setReplacing(null)}
+        />
+      )}
     </section>
   );
 };

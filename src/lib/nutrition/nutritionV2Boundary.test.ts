@@ -25,6 +25,12 @@ import { NUTRITION_V2_ENABLED } from "@shared/nutrition/featureFlag";
   function, nutritionRepeatPlan, through one hook that no UI uses yet. Nothing
   on the client writes a plan, a slot head or the state, and no plan operation
   is ever queued offline.
+
+  NUT-10 adds slot overrides: one more module calls one more function,
+  nutritionUpdateSlot, through one hook used by the Today container. It is
+  online-only and never queued, writes nothing to the cache before the server
+  confirms, and touches the suggestions key only to drop it after a commit —
+  it never reads suggestions.
 */
 
 const root = resolve(__dirname, "../../..");
@@ -76,6 +82,11 @@ const v2Modules = [
   // NUT-09: plan persistence plumbing (no UI).
   "src/lib/nutrition/v2/planCallable.ts",
   "src/hooks/queries/useNutritionV2RepeatPlan.ts",
+  // NUT-10: slot overrides.
+  "src/lib/nutrition/v2/slotCallable.ts",
+  "src/lib/nutrition/v2/slotReplacement.ts",
+  "src/hooks/queries/useNutritionV2SlotOverride.ts",
+  "src/components/nutrition/v2/NutritionV2SlotReplaceSheet.tsx",
 ];
 
 /** The one module that calls a function, and the one hook that reaches it (NUT-08). */
@@ -84,6 +95,9 @@ const targetHookModule = "src/hooks/queries/useNutritionV2Target.ts";
 /** NUT-09: the one module that calls nutritionRepeatPlan, and the one hook that reaches it. */
 const planCallableModule = "src/lib/nutrition/v2/planCallable.ts";
 const repeatPlanHookModule = "src/hooks/queries/useNutritionV2RepeatPlan.ts";
+/** NUT-10: the one module that calls nutritionUpdateSlot, and the one hook that reaches it. */
+const slotCallableModule = "src/lib/nutrition/v2/slotCallable.ts";
+const slotHookModule = "src/hooks/queries/useNutritionV2SlotOverride.ts";
 
 /** The only module that writes Firestore, and the only modules that reach it. */
 const entryWriterModule = "src/lib/nutrition/v2/entryWriter.ts";
@@ -149,8 +163,17 @@ describe("Nutrition V2 module boundary", () => {
     for (const path of v2Modules) {
       const source = read(path);
       expect(source, path).not.toMatch(/NUTRITION_V2_SUGGESTIONS_COLLECTION|_nutrition_v2_suggestions/);
-      expect(source, path).not.toMatch(/\.generations\b|queryKeys\.nutrition\.(generation|suggestions)/);
+      expect(source, path).not.toMatch(/\.generations\b|queryKeys\.nutrition\.generation/);
+      // NUT-10: the slot hook drops the suggestions key after a commit; nothing reads it.
+      const suggestionKeys = [...code(path).matchAll(/queryKeys\.nutrition\.suggestions\w*/g)];
+      if (path !== slotHookModule) expect(suggestionKeys, path).toEqual([]);
     }
+    const hook = code(slotHookModule);
+    expect([...hook.matchAll(/queryKeys\.nutrition\.suggestions\w*/g)]).toHaveLength(1);
+    expect(hook).toMatch(
+      /removeQueries\(\{\s*queryKey: queryKeys\.nutrition\.suggestions\(uid, request\.planId, request\.date, request\.slotId\),\s*exact: true,\s*\}\)/
+    );
+    expect(hook).not.toMatch(/useQuery\b|fetchQuery|getQueryData/);
   });
 
   it("never spells a V2 collection name", () => {
@@ -168,8 +191,8 @@ describe("Nutrition V2 module boundary", () => {
 
   it("calls exactly one function, nutritionSetTarget, from one module reached only through the target hook", () => {
     const calling = v2Modules.filter((path) => /\b(httpsCallable|getFunctions)\b/.test(code(path)));
-    // NUT-09 adds exactly one more calling module (next test).
-    expect(calling.sort()).toEqual([planCallableModule, targetCallableModule].sort());
+    // NUT-09 and NUT-10 add exactly one more calling module each (below).
+    expect(calling.sort()).toEqual([planCallableModule, slotCallableModule, targetCallableModule].sort());
     expect(code(targetCallableModule)).toMatch(/httpsCallable<[^>]+>\(\s*getFunctions\(getApp\(\), FUNCTIONS_REGION\),\s*NUTRITION_SET_TARGET_CALLABLE\s*\)/);
     expect([...code(targetCallableModule).matchAll(/\bhttpsCallable\b/g)]).toHaveLength(2); // the import and the one call
 
@@ -192,7 +215,7 @@ describe("Nutrition V2 module boundary", () => {
     const plan = code(planCallableModule);
     expect(plan).toMatch(/httpsCallable<[^>]+>\(\s*getFunctions\(getApp\(\), FUNCTIONS_REGION\),\s*NUTRITION_REPEAT_PLAN_CALLABLE\s*\)/);
     expect([...plan.matchAll(/\bhttpsCallable\b/g)]).toHaveLength(2); // the import and the one call
-    expect(plan).not.toMatch(/NUTRITION_SET_TARGET_CALLABLE/);
+    expect(plan).not.toMatch(/NUTRITION_SET_TARGET_CALLABLE|NUTRITION_UPDATE_SLOT_CALLABLE/);
     expect(code(targetCallableModule)).not.toMatch(/NUTRITION_REPEAT_PLAN_CALLABLE/);
 
     const importers = productionSources.filter((path) => /from\s+["'][^"']*\/planCallable["']/.test(read(path)));
@@ -210,12 +233,51 @@ describe("Nutrition V2 module boundary", () => {
     expect(hook).not.toMatch(/queryKeys\.(nutritionLegacy|workout|plans?|logs?)\b|nutrition\.(entries|targets)\b/);
   });
 
+  it("calls nutritionUpdateSlot from one module, reached only through the slot hook the Today container uses", () => {
+    const slot = code(slotCallableModule);
+    expect(slot).toMatch(/httpsCallable<[^>]+>\(\s*getFunctions\(getApp\(\), FUNCTIONS_REGION\),\s*NUTRITION_UPDATE_SLOT_CALLABLE\s*\)/);
+    expect([...slot.matchAll(/\bhttpsCallable\b/g)]).toHaveLength(2); // the import and the one call
+    expect(slot).not.toMatch(/NUTRITION_SET_TARGET_CALLABLE|NUTRITION_REPEAT_PLAN_CALLABLE/);
+    // The strict schema runs before the payload leaves.
+    expect(slot).toMatch(/const payload = nutritionUpdateSlotRequestSchema\.parse\(request\);/);
+
+    const sheet = "src/components/nutrition/v2/NutritionV2SlotReplaceSheet.tsx";
+    const importers = productionSources.filter((path) => /from\s+["'][^"']*\/slotCallable["']/.test(read(path)));
+    expect(importers.sort()).toEqual([slotHookModule, sheet].sort());
+    // The sheet imports the error guard only; the call goes through the hook.
+    expect(read(sheet)).not.toMatch(/callNutritionUpdateSlot/);
+
+    const hookImporters = productionSources.filter((path) => /useNutritionV2SlotOverride["']/.test(read(path)));
+    expect(hookImporters.sort()).toEqual(
+      ["src/components/nutrition/v2/NutritionV2TodayContainer.tsx", "src/components/nutrition/v2/NutritionV2TodayRecording.tsx", sheet].sort()
+    );
+    // Only the container runs the hook; the section and the sheet take its type and error guard.
+    const running = hookImporters.filter((path) => /useNutritionV2SlotOverride\(\)/.test(code(path)));
+    expect(running).toEqual(["src/components/nutrition/v2/NutritionV2TodayContainer.tsx"]);
+  });
+
+  it("a slot action is confirmed, never optimistic, never queued, and refetches only what disagreed", () => {
+    const hook = code(slotHookModule);
+    expect(hook).not.toMatch(/setQueryData|setQueriesData|onMutate|optimistic/i);
+    expect(hook).not.toMatch(/\benqueue\(|offlineQueue|NUTRITION_ENTRY_WRITE|NUTRITION_SLOT/);
+    expect(hook).toMatch(/if \(!navigator\.onLine\) return Promise\.reject\(new NutritionV2SlotOverrideUnavailableError\("offline"\)\);/);
+    const touched = [...hook.matchAll(/queryKey:\s*queryKeys\.nutrition\.([\w.]+)\(/g)].map((match) => match[1]);
+    // Success: the slot heads, and the dropped suggestions key. A refusal: the read that disagreed.
+    expect(touched.sort()).toEqual(["entries.all", "plans.all", "slots.byPlan", "slots.byPlan", "state", "suggestions"].sort());
+    expect(hook).not.toMatch(/nutrition\.targets|queryKeys\.(nutritionLegacy|workout|plans?|logs?)\b/);
+    // The address travels; meal content never does.
+    expect(hook).not.toMatch(/\b(kcal|proteinG|carbsG|fatG|values|meal)\b/);
+    for (const path of ["src/lib/offlineQueue.ts", "src/lib/offlineReplay.ts", "src/lib/offlineHandlers.ts"]) {
+      expect(read(path), path).not.toMatch(/SLOT_WRITE|slotOverride|nutritionUpdateSlot|NUTRITION_SLOT/i);
+    }
+  });
+
   it("writes through one transaction in one module, reached only through the recording hook", () => {
     const transactional = v2Modules.filter((path) => /\brunTransaction\b/.test(code(path)));
     expect(transactional).toEqual([entryWriterModule]);
 
     const mutating = v2Modules.filter((path) => /\buseMutation\b/.test(code(path)));
-    expect(mutating.sort()).toEqual([recordingHookModule, targetHookModule, repeatPlanHookModule].sort());
+    expect(mutating.sort()).toEqual([recordingHookModule, targetHookModule, repeatPlanHookModule, slotHookModule].sort());
 
     const writerImporters = productionSources.filter((path) => /from\s+["'][^"']*\/entryWriter["']/.test(read(path)));
     expect(writerImporters.sort()).toEqual([recordingHookModule, replayHandlerModule].sort());
@@ -260,6 +322,7 @@ describe("Nutrition V2 module boundary", () => {
       "src/lib/nutrition/v2/entryHandoff.ts",
       "src/lib/nutrition/v2/targetSetup.ts",
       "src/lib/nutrition/v2/sha256.ts",
+      "src/lib/nutrition/v2/slotReplacement.ts",
     ]) {
       expect(read(path), path).not.toMatch(/from\s+["'](firebase\/|@\/lib\/firebase|react|@tanstack)/);
     }

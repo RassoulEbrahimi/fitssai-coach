@@ -124,10 +124,9 @@ describe("buildPlannedMealRecording", () => {
     const recorded = buildPlannedMealRecording(meal, 1);
     const before = structuredClone(recorded);
 
-    if (head.selection.kind === "override") {
-      head.selection.override.meal.name = "Ofengemüse";
-      head.selection.override.meal.values.kcal = 400;
-    }
+    const stored = Object.values(head.overrides)[0];
+    stored.meal.name = "Ofengemüse";
+    stored.meal.values.kcal = 400;
     if (meal.source === "override") meal.override.meal.values.kcal = 400;
 
     expect(recorded).toEqual(before);

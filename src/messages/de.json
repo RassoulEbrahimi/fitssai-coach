@@ -687,6 +687,40 @@
           "failed": "Das Ziel konnte gerade nicht festgelegt werden. Bitte versuche es später noch einmal."
         }
       }
+    },
+    "replace": {
+      "action": "Ersetzen",
+      "actionSlot": "{{slot}} ersetzen",
+      "replacedNote": "Ersetzt",
+      "sheet": {
+        "title": "{{slot}} ersetzen",
+        "current": "Geplant: {{name}} · {{kcal}} kcal",
+        "planMealsTitle": "Aus dem Plan",
+        "planMealsHint": "Andere Gerichte dieser Mahlzeit aus deinem Plan.",
+        "noPlanMeals": "Dein Plan hat für diese Mahlzeit kein anderes Gericht.",
+        "option": "{{name}} · {{kcal}} kcal",
+        "confirm": "Ersetzen",
+        "confirming": "Wird ersetzt …",
+        "undo": "Rückgängig",
+        "undoing": "Wird rückgängig gemacht …",
+        "undoHint": "Rückgängig stellt das vorherige Gericht wieder her.",
+        "cancel": "Abbrechen"
+      },
+      "blocked": {
+        "offline": "Ersetzen ist nur mit Internetverbindung möglich.",
+        "recorded": "Diese Mahlzeit ist bereits erfasst. Danach kann das geplante Gericht nicht mehr geändert werden.",
+        "pendingRecord": "Für diese Mahlzeit wird gerade eine Erfassung synchronisiert. Danach kann das geplante Gericht nicht mehr geändert werden."
+      },
+      "error": {
+        "STALE_REVISION": "Der Plan wurde inzwischen geändert. Bitte prüfe die aktuelle Fassung.",
+        "NOTHING_TO_UNDO": "Der Plan wurde inzwischen geändert. Bitte prüfe die aktuelle Fassung.",
+        "SLOT_HAS_RECORD": "Diese Mahlzeit ist bereits erfasst. Danach kann das geplante Gericht nicht mehr geändert werden.",
+        "PLAN_CHANGED_FOR_DATE": "Der Plan für diesen Tag hat sich geändert. Bitte prüfe die aktuelle Fassung.",
+        "DATE_FROZEN": "Vergangene Tage können nicht mehr geändert werden.",
+        "offline": "Ersetzen ist nur mit Internetverbindung möglich.",
+        "unavailable": "Ersetzen ist gerade nicht möglich.",
+        "failed": "Das hat nicht geklappt. Bitte versuche es später noch einmal."
+      }
     }
   }
 }

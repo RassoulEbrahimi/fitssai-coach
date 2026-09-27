@@ -96,8 +96,15 @@ export class FakeFirestore {
     get: async () => {
       let rows = this.childrenOf(path).filter(([, data]) =>
         filters.every(([field, op, value]) => {
-          if (op !== "==") throw new Error("the fake supports only == filters");
-          return data[field] === value;
+          if (op === "==") return data[field] === value;
+          // Range filters, as Firestore applies them: a missing field never matches.
+          if (data[field] === undefined) return false;
+          const order = compareValues(data[field], value);
+          if (op === "<") return order < 0;
+          if (op === "<=") return order <= 0;
+          if (op === ">") return order > 0;
+          if (op === ">=") return order >= 0;
+          throw new Error(`the fake does not support the ${op} filter`);
         })
       );
 
@@ -141,6 +148,7 @@ export class FakeFirestore {
 
   async runTransaction<T>(
     body: (tx: {
+      /** A document read, or — as the Admin SDK allows — a query read inside the transaction. */
       get: (ref: { path: string }) => Promise<Doc>;
       set: (
         ref: { path: string },
@@ -160,7 +168,10 @@ export class FakeFirestore {
     const run = this.lock.then(async () => {
       const buffered: Array<() => void> = [];
       const result = await body({
-        get: async (ref) => this.snapshot(ref.path),
+        get: async (ref) =>
+          typeof (ref as { where?: unknown }).where === "function"
+            ? ((await (ref as unknown as { get: () => Promise<unknown> }).get()) as Doc)
+            : this.snapshot(ref.path),
         set: (ref, value, options) =>
           buffered.push(() => this.writeAt(ref.path, value, options?.merge === true)),
         create: (ref, value) =>
