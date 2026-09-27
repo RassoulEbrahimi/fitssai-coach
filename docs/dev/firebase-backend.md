@@ -487,6 +487,15 @@ client-chosen document id is a client-chosen write target.
 A *failed* attempt may be retried with the same id: nothing was persisted or
 charged, so there is nothing to reuse.
 
+Since NUT-11 the record is a generic core (`functions/src/operationRecords.ts`)
+shared by two operation families. Workout plan generation keeps exactly its
+ids (`{uid}__{requestId}`), fields, 240 s lease and quota coupling through
+the adapter in `functions/src/idempotency.ts`. Nutrition plan generation
+uses its own namespace, `nutritionPlan__{uid}__{requestId}` tagged
+`namespace: "nutritionPlan"`, an injected lease, no quota, and terminal
+outcomes without a result (`failed`, `discarded`) that are never retried
+under the same id. A record of one family is never read as the other's.
+
 ## AI logging
 
 Authoritative logs go to **`_ai_logs`** — top-level, client-denied.
@@ -542,7 +551,7 @@ the browser bundle and readable by every visitor. Tests fail if one appears.
 | Four-week workout-plan generation | **Live** (PR55) |
 | Weekly review + coaching recommendation | **Live** (PR58, hardened in PR59) — metrics and the recommendation category are deterministic; the model only rephrases them, on an explicit click |
 | Nutrition targets | Plumbing only (NUT-08) — `nutritionSetTarget` is deployed, but no target policy is signed off, so it answers `TARGET_POLICY_NOT_CONFIGURED`; the V2 UI is unreachable |
-| Nutrition generation | Not implemented |
+| Nutrition generation | Infrastructure only (NUT-11) — `nutritionRequestPlan` and its lifecycle are deployed, but there is no production generator, plan-validation policy or first-plan slot mapping, so it answers `GENERATION_PROVIDER_NOT_CONFIGURED` and writes nothing |
 | Exercise suggestions in Add Workout | Not implemented — that tab offers exercises for one day, which a four-week generator is not |
 | AI usage statistics in Profile | Not available — the authoritative log is server-only by design |
 
@@ -615,12 +624,60 @@ been signed off, so the deployed callable answers
 `PLAN_VALIDATION_POLICY_NOT_CONFIGURED` once its preconditions hold and
 writes nothing. Structural validity is not approval. Test-only fixture
 policies live in `functions/src/testing/`, which the build excludes.
-`nutritionGeneration` stays `false`: there is no plan generation.
+`nutritionGeneration` stays `false`.
 
 `state.activePlanId` is the latest activated plan, which may start later than
 today. The client shows a date from the plan that OWNS it — one query for the
 latest plan with `startDate <= date`, checked with `planOwnsDate` — so after
 a repeat or a regeneration from tomorrow, Today stays on the predecessor.
+Its "Diese Woche" list is always that plan's seven dates; a date it handed on
+to a successor (a regeneration from tomorrow) is resolved from the successor,
+read by `supersededByPlanId`, with the successor's own slot heads (NUT-11).
+
+## Nutrition V2 plan generation
+
+`nutritionRequestPlan` (NUT-11) takes exactly `{ requestId }`. Its lifecycle
+is complete; **nothing is configured to generate**. The production generator
+registry (`functions/src/nutrition/generationProvider.ts`), plan-validation
+registry and first-plan slot configuration (`generationInput.ts`) are all
+empty, so a new request by an eligible adult is answered
+`GENERATION_PROVIDER_NOT_CONFIGURED` and writes nothing — no request, no state
+pointer, no plan, no operation record, no quota. An existing request is
+answered from what is stored — a finished one replays, a live one is reported
+as running — without needing any configuration; only new work (a new request,
+or a takeover that would call the generator) needs a generator, a policy and
+the generator's operation lease. There is no model,
+prompt, secret, quota value or AI log for Nutrition. A deterministic test
+generator lives in `functions/src/testing/`, which the build excludes.
+
+A request is one document, `users/{uid}/nutrition_v2_generations/{requestId}`
+(`generationRequestSchema`): immutable `requestId`, `idempotencyKey`
+(`nutritionPlan:{requestId}`), `kind`, `basePlanId`, `targetVersionId`,
+`payloadFingerprint` and `createdAt`; forward-only `status` (`queued` →
+`running` → `succeeded` | `failed` | `discarded_stale`), `resultPlanId`,
+`errorCode`, `finishedAt` and `acknowledgedAt`. There is no cancel. The
+owner reads it; no client writes it.
+
+The server decides the kind: `initial` (no active plan) starts today in
+Berlin, `regenerate` starts tomorrow and the old plan keeps today; a base
+that starts tomorrow or later is refused (`PLAN_NOT_REGENERABLE`). One claim
+transaction creates the request (`running`), its operation record with a
+server-minted plan id, and `state.activeGenerationRequestId`; one active
+generation per account (a live one is answered, a finished pointer is
+replaced, an abandoned one is ended `GENERATION_ABANDONED`). The generator
+sees only the minimized input — start date, TARGET values, slots, dietary
+preference — and the request keeps only its SHA-256 fingerprint. Adult
+eligibility is judged from the profile each transaction reads itself: a claim
+by an ineligible account is `NOT_ELIGIBLE` with nothing written, and a
+takeover or finalisation that finds the account no longer eligible ends the
+request `discarded_stale` `ELIGIBILITY_CHANGED` without a plan. A candidate
+is checked by the shared plan-content schema, the requested dates and slots,
+and the policy, with at most one repair. Success activates through the NUT-09
+core inside the finalisation's own transaction and clears the pointer;
+another plan or target becoming current meanwhile discards the result
+(`discarded_stale`); a failure keeps the current plan. `revision` moves by
+one per state-changing transaction, and generation never enters the request
+ledger. `nutritionGeneration` stays `false`.
 
 
 
@@ -748,8 +805,8 @@ project selected.
   *Current role-management limitation*.
 * No App Check, no Storage rules, no per-collection field validation beyond the
   authorization fields named above.
-* No nutrition generation and no exercise-level suggestions — see the
-  capability table above.
+* No production Nutrition generation (the infrastructure has no generator)
+  and no exercise-level suggestions — see the capability table above.
 * No Firestore migration or backfill of any kind.
 * No Firebase Functions deployment from CI.
 

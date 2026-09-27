@@ -87,6 +87,7 @@ const WeekRow = ({ day, language }: { day: NutritionWeekDay; language: string })
     <li
       data-testid="nutrition-v2-week-row"
       data-date={day.date}
+      data-plan-id={day.planId}
       data-recording={day.recording}
       aria-current={day.isToday ? "date" : undefined}
       className={cn(

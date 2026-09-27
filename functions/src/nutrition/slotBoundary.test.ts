@@ -74,7 +74,16 @@ describe("no production suggestion source", () => {
     const index = code("src/index.ts");
     const exported = [...index.matchAll(/export const (\w+)\s*=\s*onCall/g)].map((match) => match[1]);
     expect(exported.sort()).toEqual(
-      ["coachBackendStatus", "generateWeeklyReview", "generateWorkoutPlan", "nutritionRepeatPlan", "nutritionSetTarget", "nutritionUpdateSlot"].sort()
+      [
+        "coachBackendStatus",
+        "generateWeeklyReview",
+        "generateWorkoutPlan",
+        "nutritionRepeatPlan",
+        // NUT-11: plan generation (no production provider; never a suggestion source).
+        "nutritionRequestPlan",
+        "nutritionSetTarget",
+        "nutritionUpdateSlot",
+      ].sort()
     );
     expect(index).not.toMatch(/storeReplacementSuggestionSet|suggestionStore/);
   });

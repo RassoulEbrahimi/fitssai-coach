@@ -1,5 +1,12 @@
 import type { Firestore } from "firebase-admin/firestore";
 import { AiError } from "./errors";
+import {
+  OPERATION_COLLECTION,
+  WORKOUT_PLAN_OPERATIONS,
+  createOperationRecordStore,
+  newClaimToken,
+  operationLeaseExpiry,
+} from "./operationRecords";
 
 /**
  * Duplicate-request protection.
@@ -23,7 +30,14 @@ import { AiError } from "./errors";
  * that the bookkeeping calls a failure.
  */
 
-export const OPERATION_COLLECTION = "_ai_operations";
+/**
+ * The record lives in `_ai_operations` under `{uid}__{requestId}`, exactly as
+ * it always has: this module is the Workout family's adapter over the generic
+ * record core in `./operationRecords`, which Nutrition generation shares under
+ * its own namespace. The claim, finalise and fail rules below — and every
+ * field they write — are unchanged.
+ */
+export { OPERATION_COLLECTION };
 
 /**
  * How long a claim stays another invocation's business.
@@ -44,8 +58,9 @@ export const isValidRequestId = (value: unknown): value is string =>
   typeof value === "string" && REQUEST_ID_PATTERN.test(value);
 
 export const operationDocId = (uid: string, requestId: string): string =>
-  `${uid}__${requestId.toLowerCase()}`;
+  WORKOUT_PLAN_OPERATIONS.docId(uid, requestId);
 
+/** The statuses a Workout record takes. (The generic record also knows `discarded`, which Workout never writes.) */
 export type OperationStatus = "in_progress" | "completed" | "failed";
 
 /**
@@ -159,28 +174,11 @@ export interface OperationStore {
   fail(input: FailInput): Promise<void>;
 }
 
-/** Distinct per claim, so ownership is provable rather than assumed. */
-const newClaimToken = (): string =>
-  globalThis.crypto?.randomUUID?.() ??
-  `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 14)}`;
-
-const readString = (data: Record<string, unknown> | undefined, key: string): string | undefined => {
-  const value = data?.[key];
-  return typeof value === "string" && value !== "" ? value : undefined;
-};
-
-/** An unreadable or absent expiry counts as expired: a stuck record is worse. */
-const leaseIsLive = (data: Record<string, unknown> | undefined, at: Date): boolean => {
-  const expiry = Date.parse(String(data?.leaseExpiresAt ?? ""));
-  return Number.isFinite(expiry) && expiry > at.getTime();
-};
-
 export const createFirestoreOperationStore = (
   firestore: Firestore,
   now: () => Date = () => new Date()
 ): OperationStore => {
-  const ref = (uid: string, requestId: string) =>
-    firestore.collection(OPERATION_COLLECTION).doc(operationDocId(uid, requestId));
+  const records = createOperationRecordStore({ firestore, namespace: WORKOUT_PLAN_OPERATIONS });
 
   const inTransaction = <T>(body: (transaction: OperationTransaction) => Promise<T>): Promise<T> =>
     (
@@ -193,15 +191,12 @@ export const createFirestoreOperationStore = (
     claim: async ({ uid, requestId, mintPlanId, reserveQuota }) =>
       inTransaction<ClaimResult>(async (transaction) => {
         const at = now();
-        const docRef = ref(uid, requestId);
-        const data = (await transaction.get(docRef)).data();
-        const status = data?.status as OperationStatus | undefined;
-        const knownPlanId = readString(data, "planId");
+        const record = await records.read(transaction, uid, requestId, at);
 
-        if (status === "completed" && knownPlanId) {
-          return { kind: "replay", planId: knownPlanId };
+        if (record.status === "completed" && record.planId) {
+          return { kind: "replay", planId: record.planId };
         }
-        if (status === "in_progress" && leaseIsLive(data, at)) return { kind: "in_progress" };
+        if (record.status === "in_progress" && record.leaseLive) return { kind: "in_progress" };
 
         /*
           Either new, or a failed attempt being retried, or a claim whose
@@ -210,34 +205,28 @@ export const createFirestoreOperationStore = (
           the reservation and the reserved plan id carry over rather than being
           taken again, so a crash cannot cost a user two of their three plans.
         */
-        const leaseExpiresAt = new Date(at.getTime() + CLAIM_LEASE_MS);
+        const leaseExpiresAt = operationLeaseExpiry(at, CLAIM_LEASE_MS);
         if (!(await reserveQuota(transaction, leaseExpiresAt))) {
           return { kind: "quota_exceeded" };
         }
 
         const claimToken = newClaimToken();
-        const planId = knownPlanId ?? mintPlanId();
-        const attempts = typeof data?.attempts === "number" ? data.attempts : 0;
+        const planId = record.planId ?? mintPlanId();
 
-        transaction.set(
-          docRef,
-          {
-            uid,
-            status: "in_progress",
-            claimToken,
-            planId,
-            // Descriptive, for anyone reading a record in the console. The
-            // allowance itself is the quota document's business, not this
-            // one's: two documents that both decide cost would eventually
-            // disagree about it.
-            quotaCharged: true,
-            attempts: attempts + 1,
-            startedAt: readString(data, "startedAt") ?? at.toISOString(),
-            claimedAt: at.toISOString(),
-            leaseExpiresAt: leaseExpiresAt.toISOString(),
-          },
-          { merge: true }
-        );
+        records.writeClaim(transaction, {
+          uid,
+          requestId,
+          previous: record,
+          at,
+          claimToken,
+          planId,
+          leaseMs: CLAIM_LEASE_MS,
+          // Descriptive, for anyone reading a record in the console. The
+          // allowance itself is the quota document's business, not this
+          // one's: two documents that both decide cost would eventually
+          // disagree about it.
+          fields: { quotaCharged: true },
+        });
 
         return { kind: "claimed", claimToken, planId };
       }),
@@ -245,21 +234,20 @@ export const createFirestoreOperationStore = (
     finalize: async ({ uid, requestId, claimToken, consumeQuota, writeResult }) =>
       inTransaction<FinalizeResult>(async (transaction) => {
         const at = now();
-        const docRef = ref(uid, requestId);
-        const data = (await transaction.get(docRef)).data();
-        const planId = readString(data, "planId");
+        const record = await records.read(transaction, uid, requestId, at);
+        const planId = record.planId;
 
         /*
           A finished request first, and unconditionally. Completion clears the
           lease, so asking about the lease before this would turn every replay
           into a refusal.
         */
-        if (data?.status === "completed" && planId) {
+        if (record.status === "completed" && planId) {
           return { kind: "superseded", planId };
         }
         // Not ours any more: another invocation took the request over while
         // this one was with the provider. Its plan is the one that counts.
-        if (readString(data, "claimToken") !== claimToken || !planId) return { kind: "lost" };
+        if (record.claimToken !== claimToken || !planId) return { kind: "lost" };
         /*
           Ours by name, but not any more in fact. Past the lease this claim is
           not evidence that anybody is still working on the request: the
@@ -270,24 +258,13 @@ export const createFirestoreOperationStore = (
           change — so the lease is what has to be checked, and it is checked
           here rather than left to the execution budget to make unreachable.
         */
-        if (!leaseIsLive(data, at)) return { kind: "lost" };
+        if (!record.leaseLive) return { kind: "lost" };
 
         // Before any write in this transaction: the quota read has to happen
         // while reads are still allowed.
         await consumeQuota(transaction);
         writeResult(transaction, planId);
-        transaction.set(
-          docRef,
-          {
-            uid,
-            status: "completed",
-            planId,
-            quotaCharged: true,
-            completedAt: at.toISOString(),
-            leaseExpiresAt: null,
-          },
-          { merge: true }
-        );
+        records.writeCompleted(transaction, { uid, requestId, at, planId, fields: { quotaCharged: true } });
 
         return { kind: "committed", planId };
       }),
@@ -296,27 +273,15 @@ export const createFirestoreOperationStore = (
       if (claimToken === undefined) return;
       await inTransaction<void>(async (transaction) => {
         const at = now();
-        const docRef = ref(uid, requestId);
-        const data = (await transaction.get(docRef)).data();
+        const record = await records.read(transaction, uid, requestId, at);
 
         // A completed request is finished for good, and a claim we no longer
         // hold is not ours to fail.
-        if (data?.status === "completed") return;
-        if (readString(data, "claimToken") !== claimToken) return;
+        if (record.status === "completed") return;
+        if (record.claimToken !== claimToken) return;
 
         await releaseQuota(transaction);
-        transaction.set(
-          docRef,
-          {
-            uid,
-            status: "failed",
-            quotaCharged: false,
-            claimToken: null,
-            leaseExpiresAt: null,
-            failedAt: at.toISOString(),
-          },
-          { merge: true }
-        );
+        records.writeEnded(transaction, { uid, requestId, at, status: "failed", fields: { quotaCharged: false } });
       });
     },
   };

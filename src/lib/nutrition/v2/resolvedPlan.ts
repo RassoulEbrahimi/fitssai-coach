@@ -1,6 +1,5 @@
 import {
   isActiveRecordedEntry,
-  planOwnedUntil,
   planOwnsDate,
   selectedMealOverride,
   slotEntryId,
@@ -199,6 +198,8 @@ export const nutritionRecordingCoverage = (
 /** One dated row of the plan week: only what the Today/week shell shows. */
 export interface NutritionWeekDay {
   date: NutritionDate;
+  /** The base plan that owns this date — the one its planned values come from. */
+  planId: string;
   /** This row is today's Berlin date. */
   isToday: boolean;
   recording: NutritionRecordingStatus;
@@ -209,50 +210,93 @@ export interface NutritionWeekDay {
 }
 
 export interface NutritionWeek {
+  /** The plan whose week this is: the plan that owns today, or the latest plan outside of it. */
   planId: string;
+  /** The week's first and last date: always that plan's own seven. */
   startDate: NutritionDate;
   endDate: NutritionDate;
-  /** The plan's days it still owns, in plan order. */
+  /** Seven dated rows, each resolved against the plan that owns its date. */
   days: NutritionWeekDay[];
-  /** Today's resolved day, or null when the plan does not own today. */
+  /** Today's resolved day, or null when today is not one of the week's dates. */
   today: ResolvedNutritionDay | null;
 }
 
+/** A base plan and its own slot heads. */
+export interface NutritionWeekPlan {
+  plan: NutritionPlan;
+  slotHeads: readonly SlotHead[];
+}
+
 /**
- * The plan days as the week shell shows them: all seven of an active plan,
- * and of a superseded plan only those it still owns (through
- * `effectiveUntil`) — the later dates are its successor's. `today` is the
- * Berlin calendar date supplied by the caller; it is compared by date, never
- * by weekday. Recorded values are not part of this model at all.
+ * The plan that owns the rest of `plan`'s week, or null when `plan` owns all
+ * seven of its dates. A plan superseded by a successor that starts inside its
+ * week (a regeneration from tomorrow) hands its later dates to that
+ * successor, named by `supersededByPlanId`; one superseded by next week's
+ * repeat keeps all seven.
+ */
+export const nutritionWeekSuccessorId = (plan: Pick<NutritionPlan, "endDate" | "lifecycle">): string | null =>
+  plan.lifecycle.status === "superseded" && plan.lifecycle.effectiveUntil < plan.endDate
+    ? plan.lifecycle.supersededByPlanId
+    : null;
+
+/**
+ * The seven dates of `plan`'s week as the week shell shows them, each resolved
+ * against the base plan that OWNS that date:
+ *
+ *   - the dates `plan` owns (all seven while it is active; through
+ *     `effectiveUntil` once superseded) from `plan` and its slot heads;
+ *   - any later date from `successor` — the plan that superseded it — and the
+ *     successor's own slot heads, never `plan`'s meals beyond its ownership.
+ *
+ * Dates are compared as calendar dates, never weekdays, and two plans are
+ * never combined by weekday. A date neither plan owns, a successor that is not
+ * the one `plan` names, or a successor missing when one is needed, throws:
+ * the week is always exactly seven rows, never a shorter guess. `today` is
+ * the Berlin calendar date supplied by the caller. Recorded values are not
+ * part of this model; coverage counts explicit entries only. Neither plan is
+ * changed.
  */
 export const buildNutritionWeek = ({
   plan,
   slotHeads,
+  successor = null,
   entries,
   today,
 }: {
   plan: NutritionPlan;
   slotHeads: readonly SlotHead[];
+  /** Required exactly when `nutritionWeekSuccessorId(plan)` names a plan. */
+  successor?: NutritionWeekPlan | null;
   entries: readonly RecordedEntry[];
   today: NutritionDate;
 }): NutritionWeek => {
-  const heads = indexHeads(plan, slotHeads);
-  let todayDay: ResolvedNutritionDay | null = null;
+  const successorId = nutritionWeekSuccessorId(plan);
+  if (successor && successor.plan.planId !== successorId) {
+    throw new Error(`plan ${successor.plan.planId} does not own the rest of plan ${plan.planId}'s week`);
+  }
+  const owners = [
+    { plan, heads: indexHeads(plan, slotHeads) },
+    ...(successor ? [{ plan: successor.plan, heads: indexHeads(successor.plan, successor.slotHeads) }] : []),
+  ];
 
-  const owned = plan.days.filter((planDay) => planOwnsDate(plan, planDay.date));
-  const days = owned.map((planDay): NutritionWeekDay => {
-    const resolved = resolveDay(plan, heads, planDay.date);
-    if (!resolved) throw new Error(`plan ${plan.planId} does not resolve its own day ${planDay.date}`);
-    const isToday = planDay.date === today;
+  let todayDay: ResolvedNutritionDay | null = null;
+  const days = plan.days.map((planDay): NutritionWeekDay => {
+    const { date } = planDay;
+    const owner = owners.find((candidate) => planOwnsDate(candidate.plan, date));
+    if (!owner) throw new Error(`no plan of the week owns ${date}`);
+    const resolved = resolveDay(owner.plan, owner.heads, date);
+    if (!resolved) throw new Error(`plan ${owner.plan.planId} does not resolve its own day ${date}`);
+    const isToday = date === today;
     if (isToday) todayDay = resolved;
     return {
-      date: planDay.date,
+      date,
+      planId: owner.plan.planId,
       isToday,
-      recording: nutritionRecordingCoverage(plan.slotOrder, planDay.date, entries).status,
+      recording: nutritionRecordingCoverage(owner.plan.slotOrder, date, entries).status,
       plannedKcal: resolved.planned.kcal,
       mealCount: resolved.meals.length,
     };
   });
 
-  return { planId: plan.planId, startDate: plan.startDate, endDate: planOwnedUntil(plan), days, today: todayDay };
+  return { planId: plan.planId, startDate: plan.startDate, endDate: plan.endDate, days, today: todayDay };
 };

@@ -16,6 +16,9 @@ import { productionTargetPolicyRegistry } from "./nutrition/targetPolicy/registr
 import { handleNutritionRepeatPlan } from "./nutrition/repeatPlan";
 import { productionPlanValidationPolicyRegistry } from "./nutrition/planValidation/registry";
 import { handleNutritionUpdateSlot } from "./nutrition/updateSlot";
+import { handleNutritionRequestPlan } from "./nutrition/requestPlan";
+import { productionNutritionGenerationProviderRegistry } from "./nutrition/generationProvider";
+import { productionInitialSlotConfiguration } from "./nutrition/generationInput";
 
 /**
  * FitssAI Coach backend entry point.
@@ -133,6 +136,45 @@ export const generateWeeklyReview = onCall(
         throw new HttpsError("failed-precondition", error.code, error.details);
       }
       throw new HttpsError("internal", "INTERNAL");
+    }
+  }
+);
+
+/**
+ * Nutrition V2: generate and activate a plan for the caller (NUT-11).
+ *
+ * The request is only `{ requestId }`. The lifecycle behind it — one active
+ * generation per account, a persistent generation request, a minimized input,
+ * at most one repair, and one atomic finalisation through the NUT-09
+ * activation core — is complete, but NOTHING is configured to generate: the
+ * production generator registry, plan-validation registry and first-plan slot
+ * configuration are all empty. A call therefore answers
+ * `GENERATION_PROVIDER_NOT_CONFIGURED` once the caller is an eligible adult,
+ * and writes nothing — no request, no state pointer, no plan, no operation
+ * record.
+ *
+ * No secret, no model, no prompt, no quota and no log: nothing here is paid for.
+ */
+export const nutritionRequestPlan = onCall(
+  {
+    region: FUNCTIONS_REGION,
+    maxInstances: 5,
+    // Today it reads a profile and refuses. A configured generator brings its
+    // own execution budget, together with the operation lease that covers it.
+    timeoutSeconds: 30,
+    memory: "256MiB",
+  },
+  async (request) => {
+    try {
+      return await handleNutritionRequestPlan(request, {
+        firestore: db(),
+        providers: productionNutritionGenerationProviderRegistry,
+        policies: productionPlanValidationPolicyRegistry,
+        initialSlots: productionInitialSlotConfiguration,
+      });
+    } catch (error) {
+      // Only our codes cross; see nutrition/errors.ts.
+      throw toNutritionHttpsError(error);
     }
   }
 );

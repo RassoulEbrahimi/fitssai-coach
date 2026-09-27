@@ -268,7 +268,9 @@ describe("buildNutritionWeek", () => {
     expect(week.days.filter((day) => day.isToday).map((day) => day.date)).toEqual([TODAY]);
     expect(week.today?.date).toBe(TODAY);
     expect(week.days.every((day) => day.mealCount === 3)).toBe(true);
-    expect(Object.keys(week.days[0]).sort()).toEqual(["date", "isToday", "mealCount", "plannedKcal", "recording"]);
+    // NUT-11: each row names the plan that owns its date.
+    expect(Object.keys(week.days[0]).sort()).toEqual(["date", "isToday", "mealCount", "planId", "plannedKcal", "recording"]);
+    expect(week.days.every((day) => day.planId === plan.planId)).toBe(true);
   });
 
   it("6. row kcal is the resolved day's planned kcal", () => {

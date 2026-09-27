@@ -875,11 +875,17 @@ describe("Nutrition V2 read sources", () => {
     }
   });
 
-  it("never spell a collection name, and never name generations or suggestions", () => {
+  it("never spell a collection name, never name suggestions, and read generations only by id", () => {
     for (const [name, source] of Object.entries(sources)) {
       expect(source, name).not.toMatch(/["'`]_?nutrition_v2_\w*["'`]/);
-      expect(source, name).not.toMatch(/\bgenerations\b|SUGGESTIONS/);
+      expect(source, name).not.toMatch(/SUGGESTIONS/);
     }
+    // NUT-11: a generation request is read exactly by the id a pointer names — never listed or queried.
+    expect(sources.readers).not.toMatch(/v2Collection\(uid, "generations"\)/);
+    expect([...sources.readers.matchAll(/"generations"/g)]).toHaveLength(1);
+    expect(sources.readers).toMatch(/getDoc\(v2Doc\(uid, "generations", requestId\)\)/);
+    expect(sources.integrity).toMatch(/requirePointed\(NUTRITION_V2_COLLECTIONS\.generations, requestId, snapshot\)/);
+    expect([...sources.hooks.matchAll(/queryKeys\.nutrition\.generation\.(\w+)/g)].map((match) => match[1])).toEqual(["byId"]);
   });
 
   it("never cast Firestore data to a V2 contract type", () => {

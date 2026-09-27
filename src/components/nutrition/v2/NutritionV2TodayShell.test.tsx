@@ -75,6 +75,7 @@ import {
   makePlan,
   makeSlotHead,
   makeState,
+  mealIdFor,
   plannedMealEntry,
   skipEntry,
   slotHeadDocId,
@@ -287,6 +288,43 @@ describe("NutritionV2TodayContainer", () => {
     expect(today?.dataset.date).toBe(TODAY);
     expect(today).toHaveTextContent("Teilweise erfasst");
     expect(rows().find((row) => row.dataset.date === OVERRIDE_DAY)).toHaveTextContent("1.905 kcal geplant");
+  });
+
+  it("NUT-11: after a regeneration it keeps seven rows — today from the old plan, tomorrow from its successor", async () => {
+    session.today = "2026-09-28";
+    const old = { ...plan, lifecycle: { status: "superseded" as const, effectiveUntil: "2026-09-28", supersededByPlanId: "plan-2" } };
+    const successor = makePlan({ planId: "plan-2", startDate: "2026-09-29", slotOrder: ["breakfast", "lunch", "snack_1", "dinner"] });
+    put(`users/alice/${C.state}/current`, makeState({ activePlanId: "plan-2", revision: 3 }));
+    put(`users/alice/${C.plans}/${PLAN_ID}`, old);
+    put(`users/alice/${C.plans}/plan-2`, successor);
+    // The successor's own head on its first day, and the old plan's head on today.
+    const fixtureHead = makeSlotHead("2026-09-29", "lunch", aiOverride("Nachfolger-Curry", 1000), "plan-2");
+    // The fixture numbers base meals from the 23 Sep week; the successor's first day is its own day 0.
+    const successorHead = {
+      ...fixtureHead,
+      overrides: Object.fromEntries(
+        Object.entries(fixtureHead.overrides).map(([id, override]) => [id, { ...override, baseMealId: mealIdFor(0, "lunch") }])
+      ),
+    };
+    put(`users/alice/${C.slots}/${slotHeadDocId(successorHead)}`, successorHead);
+    renderContainer();
+
+    await waitFor(() => expect(rows()).toHaveLength(7));
+    expect(rows().map((row) => [row.dataset.date, row.dataset.planId])).toEqual([
+      ["2026-09-23", PLAN_ID],
+      ["2026-09-24", PLAN_ID],
+      ["2026-09-25", PLAN_ID],
+      ["2026-09-26", PLAN_ID],
+      ["2026-09-27", PLAN_ID],
+      ["2026-09-28", PLAN_ID],
+      ["2026-09-29", "plan-2"],
+    ]);
+    expect(rows().find((row) => row.getAttribute("aria-current") === "date")?.dataset.date).toBe("2026-09-28");
+    // 29 Sep: the successor's breakfast, snack and dinner (400.4 + 150 + 600.3) and its own lunch override (1000).
+    expect(rows().find((row) => row.dataset.date === "2026-09-29")).toHaveTextContent("2.151 kcal geplant");
+    // Slot heads were read for each plan by its own id.
+    const slotQueries = firestore.where.mock.calls.filter(([field]) => field === "planId").map(([, , value]) => value);
+    expect(new Set(slotQueries)).toEqual(new Set([PLAN_ID, "plan-2"]));
   });
 
   it.each([

@@ -1,6 +1,7 @@
 import { HttpsError, type FunctionsErrorCode } from "firebase-functions/v2/https";
 import type {
   NutritionPlanErrorCode,
+  NutritionRequestPlanErrorCode,
   NutritionSetTargetErrorCode,
   NutritionSlotErrorCode,
   NutritionTargetProfileField,
@@ -87,6 +88,30 @@ export class NutritionSlotError extends Error {
 
 export const isNutritionSlotError = (value: unknown): value is NutritionSlotError => value instanceof NutritionSlotError;
 
+export interface NutritionGenerationErrorDetails {
+  /** NOT_ELIGIBLE only: the NUT-03 reason code, never the age. */
+  reason?: "minor" | "missingAge";
+}
+
+/**
+ * A refusal of `nutritionRequestPlan` (NUT-11), raised before anything is
+ * written. A generation that ran and produced no plan is not one of these: it
+ * is a terminal generation request, answered as such.
+ */
+export class NutritionGenerationError extends Error {
+  constructor(
+    readonly code: Exclude<NutritionRequestPlanErrorCode, "UNAUTHENTICATED">,
+    message: string,
+    readonly details: NutritionGenerationErrorDetails = {}
+  ) {
+    super(message);
+    this.name = "NutritionGenerationError";
+  }
+}
+
+export const isNutritionGenerationError = (value: unknown): value is NutritionGenerationError =>
+  value instanceof NutritionGenerationError;
+
 const HTTPS_CODES: Readonly<Record<NutritionTargetError["code"], FunctionsErrorCode>> = {
   INVALID_REQUEST: "invalid-argument",
   NOT_ELIGIBLE: "permission-denied",
@@ -130,6 +155,18 @@ const SLOT_HTTPS_CODES: Readonly<Record<NutritionSlotError["code"], FunctionsErr
   INTERNAL: "internal",
 };
 
+const GENERATION_HTTPS_CODES: Readonly<Record<NutritionGenerationError["code"], FunctionsErrorCode>> = {
+  INVALID_REQUEST: "invalid-argument",
+  NOT_ELIGIBLE: "permission-denied",
+  GENERATION_PROVIDER_NOT_CONFIGURED: "failed-precondition",
+  PLAN_VALIDATION_POLICY_NOT_CONFIGURED: "failed-precondition",
+  NO_CURRENT_TARGET: "failed-precondition",
+  PLAN_NOT_ACTIVE: "failed-precondition",
+  PLAN_NOT_REGENERABLE: "failed-precondition",
+  GENERATION_SLOTS_NOT_CONFIGURED: "failed-precondition",
+  INTERNAL: "internal",
+};
+
 /**
  * The one mapping from a thrown value to what the callable answers. An
  * `HttpsError` the handler threw itself (unauthenticated) passes through;
@@ -148,6 +185,10 @@ export const toNutritionHttpsError = (error: unknown): HttpsError => {
   if (isNutritionSlotError(error)) {
     const details = Object.keys(error.details).length > 0 ? error.details : undefined;
     return new HttpsError(SLOT_HTTPS_CODES[error.code], error.code, details);
+  }
+  if (isNutritionGenerationError(error)) {
+    const details = Object.keys(error.details).length > 0 ? error.details : undefined;
+    return new HttpsError(GENERATION_HTTPS_CODES[error.code], error.code, details);
   }
   return new HttpsError("internal", "INTERNAL");
 };
