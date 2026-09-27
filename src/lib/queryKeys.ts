@@ -78,6 +78,11 @@ export const queryKeys = {
       active: (userId: string | undefined) => ['nutrition-v2', userId, 'plans', 'active'] as const,
       byId: (userId: string | undefined, planId: string | undefined) =>
         ['nutrition-v2', userId, 'plans', 'byId', planId] as const,
+      // The base plan that owns a date. Which plan that is changes only when a
+      // plan is activated, which also moves the state pointer — so the key
+      // carries the pointer, and a new pointer is a new read.
+      forDate: (userId: string | undefined, date: string, activePlanId: string | undefined) =>
+        ['nutrition-v2', userId, 'plans', 'forDate', date, activePlanId] as const,
     },
     slots: {
       /** Every slot-head key of the account: the prefix of `byPlan(...)`. */

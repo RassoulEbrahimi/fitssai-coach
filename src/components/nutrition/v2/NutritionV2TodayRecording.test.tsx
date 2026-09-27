@@ -22,6 +22,8 @@ const firestore = vi.hoisted(() => ({
   doc: vi.fn((_db: unknown, ...segments: string[]) => ({ path: segments.join("/"), id: segments[segments.length - 1] })),
   collection: vi.fn((_db: unknown, ...segments: string[]) => ({ path: segments.join("/") })),
   where: vi.fn((field: string, op: string, value: unknown) => ({ field, op, value })),
+  orderBy: vi.fn((field: string, value = "asc") => ({ field, op: "orderBy", value })),
+  limit: vi.fn((value: number) => ({ field: "", op: "limit", value })),
   query: vi.fn((ref: { path: string }, ...constraints: { field: string; op: string; value: string }[]) => ({
     ref,
     constraints,
@@ -33,15 +35,21 @@ const firestore = vi.hoisted(() => ({
   getDocs: vi.fn(
     async (q: { ref: { path: string }; constraints: { field: string; op: string; value: string }[] }) => {
       const prefix = `${q.ref.path}/`;
-      const docs = [...store.docs.entries()]
+      const filters = q.constraints.filter(({ op }) => op !== "orderBy" && op !== "limit");
+      let rows = [...store.docs.entries()]
         .filter(([path]) => path.startsWith(prefix) && !path.slice(prefix.length).includes("/"))
         .filter(([, data]) =>
-          q.constraints.every(({ field, op, value }) => {
+          filters.every(({ field, op, value }) => {
             const actual = (data as Record<string, string>)[field];
             return op === "==" ? actual === value : op === ">=" ? actual >= value : actual <= value;
           })
-        )
-        .map(([path, data]) => ({ id: path.slice(prefix.length), data: () => structuredClone(data) }));
+        );
+      for (const { field, op, value } of q.constraints) {
+        const at = (data: unknown) => (data as Record<string, string>)[field];
+        if (op === "orderBy") rows = [...rows].sort(([, a], [, b]) => (at(a) < at(b) ? -1 : 1) * (value === "desc" ? -1 : 1));
+        if (op === "limit") rows = rows.slice(0, Number(value));
+      }
+      const docs = rows.map(([path, data]) => ({ id: path.slice(prefix.length), data: () => structuredClone(data) }));
       return { empty: docs.length === 0, docs };
     }
   ),
@@ -423,6 +431,81 @@ describe("today's recording surface", () => {
 
   it("keeps Nutrition V2 switched off", () => {
     expect(NUTRITION_V2_ENABLED).toBe(false);
+  });
+});
+
+describe("after next week was activated by a repeat (NUT-09)", () => {
+  // Monday 28 Sep. The source (23–29 Sep) is superseded through 29 Sep; the
+  // state points to the repeat (30 Sep – 6 Oct), which does not own today.
+  const MONDAY = "2026-09-28";
+  const source = {
+    ...plan,
+    lifecycle: { status: "superseded" as const, effectiveUntil: "2026-09-29", supersededByPlanId: "plan-2" },
+  };
+  const next = makePlan({ planId: "plan-2", startDate: "2026-09-30" });
+  const repeat = {
+    ...next,
+    source: "repeated" as const,
+    repeatedFromPlanId: PLAN_ID,
+    days: next.days.map((day) => ({ ...day, meals: day.meals.map((meal) => ({ ...meal, name: `Next ${meal.name}` })) })),
+  };
+
+  beforeEach(() => {
+    vi.setSystemTime(new Date("2026-09-28T10:00:00Z"));
+    session.today = MONDAY;
+    put(`users/alice/${C.state}/current`, makeState({ activePlanId: "plan-2", revision: 5 }));
+    put(`users/alice/${C.plans}/${PLAN_ID}`, source);
+    put(`users/alice/${C.plans}/plan-2`, repeat);
+    // A head of the future plan: never read or shown for 28 Sep.
+    put(`users/alice/${C.slots}/plan-2__2026-09-30__lunch`, {
+      schemaVersion: 2,
+      planId: "plan-2",
+      date: "2026-09-30",
+      slotId: "lunch",
+      selection: { kind: "override", override: { source: "aiSuggestion", meal: { name: "Future override", values: { kcal: 1, proteinG: 1, carbsG: 1, fatG: 1 } } } },
+    });
+  });
+
+  it("shows today on the source plan, not outside the plan", async () => {
+    renderContainer();
+
+    expect(await slotRow("lunch")).toHaveTextContent("lunch 5");
+    expect(screen.queryByText("Heute ist kein Tag deines aktiven Ernährungsplans.")).toBeNull();
+    const rows = screen.getAllByTestId("nutrition-v2-week-row");
+    expect(rows.map((row) => row.dataset.date)).toEqual([
+      "2026-09-23",
+      "2026-09-24",
+      "2026-09-25",
+      "2026-09-26",
+      "2026-09-27",
+      "2026-09-28",
+      "2026-09-29",
+    ]);
+    expect(rows.find((row) => row.getAttribute("aria-current") === "date")?.dataset.date).toBe(MONDAY);
+    expect(document.body).not.toHaveTextContent(/Next |Future override/);
+
+    // Slot heads are read for the source only; the future plan's are not read at all.
+    const slotQueries = firestore.getDocs.mock.calls
+      .map(([q]) => q as { ref: { path: string }; constraints: { field: string; value: unknown }[] })
+      .filter((q) => q.ref.path.endsWith(`/${C.slots}`))
+      .map((q) => q.constraints.map(({ field, value }) => `${field}=${value}`).join());
+    expect(new Set(slotQueries)).toEqual(new Set([`planId=${PLAN_ID}`]));
+  });
+
+  it("records today's planned meal against the source plan", async () => {
+    const user = userEvent.setup();
+    renderContainer();
+
+    const sheet = await openSlot(user, "lunch", "erfassen");
+    expect(within(sheet).getByText("Geplant: lunch 5 · 705 kcal")).toBeInTheDocument();
+    await user.click(within(sheet).getByRole("button", { name: "Speichern" }));
+
+    await waitFor(() => expect(intents()).toHaveLength(1));
+    expect(intents()[0]).toMatchObject({
+      op: "record",
+      entryId: `slot:${MONDAY}:lunch`,
+      desired: { recording: "plannedMeal", planId: PLAN_ID, name: "lunch 5", portion: 1 },
+    });
   });
 });
 

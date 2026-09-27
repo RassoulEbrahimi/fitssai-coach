@@ -617,6 +617,11 @@ writes nothing. Structural validity is not approval. Test-only fixture
 policies live in `functions/src/testing/`, which the build excludes.
 `nutritionGeneration` stays `false`: there is no plan generation.
 
+`state.activePlanId` is the latest activated plan, which may start later than
+today. The client shows a date from the plan that OWNS it — one query for the
+latest plan with `startDate <= date`, checked with `planOwnsDate` — so after
+a repeat or a regeneration from tomorrow, Today stays on the predecessor.
+
 
 
 ## Data minimisation

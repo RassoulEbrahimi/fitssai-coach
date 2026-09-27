@@ -359,6 +359,7 @@ describe("deriveNutritionV2TodayView", () => {
     access: { status: "eligible", uid: "alice" },
     state: ok(makeState()),
     plan: ok(plan),
+    todayPlan: ok(plan),
     slots: ok([]),
     entries: ok([]),
     today: TODAY,
@@ -382,7 +383,7 @@ describe("deriveNutritionV2TodayView", () => {
   });
 
   it("is loading while any needed read is pending, and an error when any fails", () => {
-    for (const key of ["state", "plan", "slots", "entries"] as const) {
+    for (const key of ["state", "plan", "todayPlan", "slots", "entries"] as const) {
       expect(view({ [key]: { status: "pending" } })).toEqual({ status: "loading" });
       expect(view({ [key]: { status: "error", error: new Error("x") } })).toEqual({ status: "error" });
     }
@@ -397,13 +398,16 @@ describe("deriveNutritionV2TodayView", () => {
     expect(today?.status).toBe("today");
     expect(today?.status === "today" && today.week.today?.date).toBe(TODAY);
 
-    const outside = view({ today: "2026-10-05" });
+    const outside = view({ today: "2026-10-05", todayPlan: ok(null) });
     expect(outside?.status).toBe("outsidePlan");
     expect(outside?.status === "outsidePlan" && outside.week.days).toHaveLength(7);
   });
 
   it("never shows a plan other than the one the state points to", () => {
     expect(view({ plan: ok(makePlan({ planId: "plan-2" })) })).toEqual({ status: "loading" });
+    expect(view({ plan: ok(makePlan({ planId: "plan-2" })), todayPlan: ok(null), today: "2026-10-05" })).toEqual({
+      status: "loading",
+    });
   });
 
   it("turns an inconsistent read set into an error, not a partial week", () => {

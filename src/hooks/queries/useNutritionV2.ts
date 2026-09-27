@@ -16,6 +16,7 @@ import {
 import {
   readNutritionV2Entries,
   readNutritionV2Plan,
+  readNutritionV2PlanForDate,
   readNutritionV2SlotHeads,
   readNutritionV2State,
   readNutritionV2Target,
@@ -116,6 +117,10 @@ export const useNutritionV2State = (): NutritionV2Read<NutritionUserState | null
  * The plan `state.activePlanId` names, read exactly by that id. `null` data
  * when V2 is not initialised or no plan is active. The key carries the plan
  * id, so a new pointer is a new read and never reuses another plan's entry.
+ *
+ * This is the latest ACTIVATED plan — the concurrency pointer — which may
+ * start in the future. The plan to show for a date is the one that owns it:
+ * `useNutritionV2PlanForDate`.
  */
 export const useActiveNutritionV2Plan = (): NutritionV2Read<NutritionPlan | null> => {
   const uid = useEligibleUid();
@@ -132,6 +137,34 @@ export const useActiveNutritionV2Plan = (): NutritionV2Read<NutritionPlan | null
 
   if (state.status !== "success") return state;
   if (planId === null) return { status: "success", data: null };
+  return toRead(query, enabled);
+};
+
+/**
+ * The base plan that OWNS `date` (NUT-09): the plan to show for that date. It
+ * is not always the plan `state.activePlanId` names — that pointer is the
+ * latest activated plan, which may start later while its predecessor still
+ * owns the dates before it (a repeat of next week, a regeneration from
+ * tomorrow). `null` data when no plan owns the date, or no plan was ever
+ * activated. The key carries the date and the state pointer, and sits under
+ * `plans.all`, so an activation reaches it.
+ */
+export const useNutritionV2PlanForDate = (date: NutritionDate | null | undefined): NutritionV2Read<NutritionPlan | null> => {
+  const uid = useEligibleUid();
+  const state = useNutritionV2State();
+  const activePlanId = state.status === "success" ? (state.data?.activePlanId ?? null) : null;
+  const enabled = !!uid && activePlanId !== null && isNutritionDate(date);
+
+  const query = useQuery({
+    queryKey: queryKeys.nutrition.plans.forDate(uid, date ?? "", activePlanId ?? undefined),
+    queryFn: () => readNutritionV2PlanForDate(requireUid(uid), required(date, "a date")),
+    enabled,
+    retry: retryUnlessIntegrity,
+  });
+
+  if (state.status !== "success") return state;
+  // Without an activated plan there is no plan to own any date.
+  if (activePlanId === null) return { status: "success", data: null };
   return toRead(query, enabled);
 };
 

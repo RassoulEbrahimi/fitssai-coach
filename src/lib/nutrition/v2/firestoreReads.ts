@@ -1,4 +1,4 @@
-import { collection, doc, getDoc, getDocs, query, where } from "firebase/firestore";
+import { collection, doc, getDoc, getDocs, limit, orderBy, query, where } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import {
   NUTRITION_V2_COLLECTIONS,
@@ -14,6 +14,7 @@ import {
   assertNutritionV2DateSpan,
   parseNutritionV2Entries,
   parseNutritionV2Plan,
+  parseNutritionV2PlanForDate,
   parseNutritionV2SlotHeads,
   parseNutritionV2State,
   parseNutritionV2Target,
@@ -61,6 +62,22 @@ export const readNutritionV2Target = async (uid: string, targetVersionId: string
 export const readNutritionV2Plan = async (uid: string, planId: string): Promise<NutritionPlan> => {
   const snap = await getDoc(v2Doc(uid, "plans", planId));
   return parseNutritionV2Plan(planId, { id: snap.id, exists: snap.exists(), data: snap.exists() ? snap.data() : undefined });
+};
+
+/**
+ * The base plan that owns `date` (NUT-09), or null when none does. Not the
+ * state pointer: a successor activated for a later start leaves its
+ * predecessor owning the dates before it. One query — the plan with the
+ * latest `startDate <= date` — checked strictly (`parseNutritionV2PlanForDate`).
+ */
+export const readNutritionV2PlanForDate = async (uid: string, date: NutritionDate): Promise<NutritionPlan | null> => {
+  const snap = await getDocs(
+    query(v2Collection(uid, "plans"), where("startDate", "<=", date), orderBy("startDate", "desc"), limit(1))
+  );
+  return parseNutritionV2PlanForDate(
+    date,
+    snap.docs.map((d) => ({ id: d.id, data: d.data() }))
+  );
 };
 
 /** The slot heads stored for `plan`, and only for it. */

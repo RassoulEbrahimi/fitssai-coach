@@ -1,5 +1,7 @@
 import {
   isActiveRecordedEntry,
+  planOwnedUntil,
+  planOwnsDate,
   slotEntryId,
   type MealOverride,
   type NutritionDate,
@@ -202,16 +204,18 @@ export interface NutritionWeek {
   planId: string;
   startDate: NutritionDate;
   endDate: NutritionDate;
-  /** The plan's days, in plan order. */
+  /** The plan's days it still owns, in plan order. */
   days: NutritionWeekDay[];
-  /** Today's resolved day, or null when today is not a day of the plan. */
+  /** Today's resolved day, or null when the plan does not own today. */
   today: ResolvedNutritionDay | null;
 }
 
 /**
- * The seven plan days as the week shell shows them. `today` is the Berlin
- * calendar date supplied by the caller; it is compared by date, never by
- * weekday. Recorded values are not part of this model at all.
+ * The plan days as the week shell shows them: all seven of an active plan,
+ * and of a superseded plan only those it still owns (through
+ * `effectiveUntil`) — the later dates are its successor's. `today` is the
+ * Berlin calendar date supplied by the caller; it is compared by date, never
+ * by weekday. Recorded values are not part of this model at all.
  */
 export const buildNutritionWeek = ({
   plan,
@@ -227,7 +231,8 @@ export const buildNutritionWeek = ({
   const heads = indexHeads(plan, slotHeads);
   let todayDay: ResolvedNutritionDay | null = null;
 
-  const days = plan.days.map((planDay): NutritionWeekDay => {
+  const owned = plan.days.filter((planDay) => planOwnsDate(plan, planDay.date));
+  const days = owned.map((planDay): NutritionWeekDay => {
     const resolved = resolveDay(plan, heads, planDay.date);
     if (!resolved) throw new Error(`plan ${plan.planId} does not resolve its own day ${planDay.date}`);
     const isToday = planDay.date === today;
@@ -241,5 +246,5 @@ export const buildNutritionWeek = ({
     };
   });
 
-  return { planId: plan.planId, startDate: plan.startDate, endDate: plan.endDate, days, today: todayDay };
+  return { planId: plan.planId, startDate: plan.startDate, endDate: planOwnedUntil(plan), days, today: todayDay };
 };

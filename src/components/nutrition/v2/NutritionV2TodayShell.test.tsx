@@ -19,6 +19,8 @@ const firestore = vi.hoisted(() => ({
   doc: vi.fn((_db: unknown, ...segments: string[]) => ({ path: segments.join("/"), id: segments[segments.length - 1] })),
   collection: vi.fn((_db: unknown, ...segments: string[]) => ({ path: segments.join("/") })),
   where: vi.fn((field: string, op: string, value: unknown) => ({ field, op, value })),
+  orderBy: vi.fn((field: string, value = "asc") => ({ field, op: "orderBy", value })),
+  limit: vi.fn((value: number) => ({ field: "", op: "limit", value })),
   query: vi.fn((ref: { path: string }, ...constraints: { field: string; op: string; value: string }[]) => ({
     ref,
     constraints,
@@ -30,15 +32,21 @@ const firestore = vi.hoisted(() => ({
   getDocs: vi.fn(
     async (q: { ref: { path: string }; constraints: { field: string; op: string; value: string }[] }) => {
       const prefix = `${q.ref.path}/`;
-      const docs = [...store.docs.entries()]
+      const filters = q.constraints.filter(({ op }) => op !== "orderBy" && op !== "limit");
+      let rows = [...store.docs.entries()]
         .filter(([path]) => path.startsWith(prefix))
         .filter(([, data]) =>
-          q.constraints.every(({ field, op, value }) => {
+          filters.every(({ field, op, value }) => {
             const actual = (data as Record<string, string>)[field];
             return op === "==" ? actual === value : op === ">=" ? actual >= value : actual <= value;
           })
-        )
-        .map(([path, data]) => ({ id: path.slice(prefix.length), data: () => data }));
+        );
+      for (const { field, op, value } of q.constraints) {
+        const at = (data: unknown) => (data as Record<string, string>)[field];
+        if (op === "orderBy") rows = [...rows].sort(([, a], [, b]) => (at(a) < at(b) ? -1 : 1) * (value === "desc" ? -1 : 1));
+        if (op === "limit") rows = rows.slice(0, Number(value));
+      }
+      const docs = rows.map(([path, data]) => ({ id: path.slice(prefix.length), data: () => data }));
       return { empty: docs.length === 0, docs };
     }
   ),
