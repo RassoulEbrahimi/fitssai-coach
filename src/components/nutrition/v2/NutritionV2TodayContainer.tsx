@@ -14,6 +14,7 @@ import { deriveNutritionV2TodayView } from "@/lib/nutrition/v2/todayView";
 import { NutritionV2TodayShell } from "./NutritionV2TodayShell";
 import { NutritionV2TodayRecording } from "./NutritionV2TodayRecording";
 import { NutritionV2Conflicts } from "./NutritionV2Conflicts";
+import { NutritionV2TargetSection } from "./NutritionV2TargetSection";
 
 /**
  * Nutrition V2 Today/week data container.
@@ -31,7 +32,9 @@ import { NutritionV2Conflicts } from "./NutritionV2Conflicts";
  *
  * The recorded entries shown are the strict committed read with this
  * account's own queued changes laid over it (`useNutritionV2EntryOverlay`).
- * Plans, slot heads and targets are shown exactly as read. A rejected offline
+ * Plans, slot heads and targets are shown exactly as read. The current
+ * TARGET and its setup (NUT-08) are their own section, shown whenever the
+ * account is eligible — with or without a plan. A rejected offline
  * change is shown as a conflict — whatever the view: without a plan, outside
  * it, or for another date — until the person applies it again or discards it.
  *
@@ -63,6 +66,7 @@ export const NutritionV2TodayContainer: React.FC = () => {
     <NutritionV2TodayShell
       view={view}
       conflicts={<NutritionV2Conflicts conflicts={overlay.conflicts} today={today} recording={recording} />}
+      target={<NutritionV2TargetSection />}
       todayRecording={
         recordings ? (
           <NutritionV2TodayRecording recordings={recordings} recording={recording} pending={overlay.pending} />

@@ -19,6 +19,10 @@ import { FUNCTIONS_REGION } from "./region";
 export interface BackendCapabilities {
   planGeneration: boolean;
   weeklySummaryAI: boolean;
+  /** False: the target callable exists, but no target policy is signed off. */
+  nutritionTargets: boolean;
+  /** False: Nutrition plan generation does not exist yet. */
+  nutritionGeneration: boolean;
 }
 
 export interface CoachBackendStatus {

@@ -10,6 +10,9 @@ import { createFirestoreAiLogWriter } from "./logging/firestoreAiLogWriter";
 import { createFirestoreOperationStore } from "./idempotency";
 import { isAiError } from "./errors";
 import { db } from "./firebase";
+import { handleNutritionSetTarget } from "./nutrition/setTarget";
+import { toNutritionHttpsError } from "./nutrition/errors";
+import { productionTargetPolicyRegistry } from "./nutrition/targetPolicy/registry";
 
 /**
  * FitssAI Coach backend entry point.
@@ -127,6 +130,39 @@ export const generateWeeklyReview = onCall(
         throw new HttpsError("failed-precondition", error.code, error.details);
       }
       throw new HttpsError("internal", "INTERNAL");
+    }
+  }
+);
+
+/**
+ * Nutrition V2: create the caller's next TARGET version.
+ *
+ * The request is only `{ mode, requestId }`. The profile is read server-side
+ * under the verified uid, and the target and the account state commit in one
+ * transaction. The production policy registry is empty — no target formula
+ * and no manual bound is signed off — so today this answers
+ * `TARGET_POLICY_NOT_CONFIGURED` for both modes and writes nothing.
+ *
+ * No secret, no provider, no quota and no log: nothing here is paid for, and
+ * no profile value is recorded anywhere.
+ */
+export const nutritionSetTarget = onCall(
+  {
+    region: FUNCTIONS_REGION,
+    maxInstances: 5,
+    // Two reads and one small transaction.
+    timeoutSeconds: 30,
+    memory: "256MiB",
+  },
+  async (request) => {
+    try {
+      return await handleNutritionSetTarget(request, {
+        firestore: db(),
+        policies: productionTargetPolicyRegistry,
+      });
+    } catch (error) {
+      // Only our codes cross, and field names at most; see nutrition/errors.ts.
+      throw toNutritionHttpsError(error);
     }
   }
 );

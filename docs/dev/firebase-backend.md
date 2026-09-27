@@ -184,13 +184,20 @@ signed-in client → callable → verified auth context → response
   "backend": "fitssai-coach",
   "region": "europe-west3",
   "uid": "<caller's own uid>",
-  "capabilities": { "planGeneration": true, "weeklySummaryAI": true }
+  "capabilities": {
+    "planGeneration": true,
+    "weeklySummaryAI": true,
+    "nutritionTargets": false,
+    "nutritionGeneration": false
+  }
 }
 ```
 
-Both capability flags live in code, not in a comment. Each flipped when the
+The capability flags live in code, not in a comment. Each flipped when the
 capability behind it shipped, not before — `planGeneration` in PR55 and
-`weeklySummaryAI` in PR58.
+`weeklySummaryAI` in PR58. `nutritionTargets` stays false while no target
+policy is signed off (see "Nutrition V2 targets"), and `nutritionGeneration`
+while there is no Nutrition generation.
 
 ## Shared workout-plan schema
 
@@ -534,9 +541,43 @@ the browser bundle and readable by every visitor. Tests fail if one appears.
 |---|---|
 | Four-week workout-plan generation | **Live** (PR55) |
 | Weekly review + coaching recommendation | **Live** (PR58, hardened in PR59) — metrics and the recommendation category are deterministic; the model only rephrases them, on an explicit click |
+| Nutrition targets | Plumbing only (NUT-08) — `nutritionSetTarget` is deployed, but no target policy is signed off, so it answers `TARGET_POLICY_NOT_CONFIGURED`; the V2 UI is unreachable |
 | Nutrition generation | Not implemented |
 | Exercise suggestions in Add Workout | Not implemented — that tab offers exercises for one day, which a four-week generator is not |
 | AI usage statistics in Profile | Not available — the authoritative log is server-only by design |
+
+## Nutrition V2 targets
+
+`nutritionSetTarget` (NUT-08) creates the caller's next Nutrition TARGET
+version: what the person aims for, never planned or recorded intake. Its
+request is exactly `{ mode, requestId }` (`calculated` or `manual`, and a
+lower-case UUID); a uid, profile value or target value in the request is
+refused. The handler (`functions/src/nutrition/setTarget.ts`) reads
+`users/{uid}` itself, enforces the NUT-03 adult gate, resolves the target
+policy for the mode, checks the policy's required profile fields and
+validates the policy's result as canonical `NutritionValues`.
+
+**The production policy registry is empty**
+(`functions/src/nutrition/targetPolicy/registry.ts`). No target formula and no
+manual target bound has been signed off, so the deployed callable answers
+`TARGET_POLICY_NOT_CONFIGURED` for both modes and writes nothing. Test-only
+fixture policies live in `functions/src/testing/`, which the build excludes;
+a boundary test proves no production module imports them.
+
+With a policy, one transaction creates the immutable
+`users/{uid}/nutrition_v2_targets/{id}` document (`create`, never an
+overwrite) and creates or updates `users/{uid}/nutrition_v2_state/current`:
+the target pointer, `revision` +1 (the new target's `effectiveOrder`) and a
+bounded request ledger (`recentRequests`, 20 entries — idempotency storage,
+not nutrition policy). A repeated request id returns the target it created
+and writes nothing. The target stores its policy id and version and a
+SHA-256 profile fingerprint — the hash and the field names, never the
+values — which the client compares to show a stale target. Nothing is ever
+recalculated automatically.
+
+Stable error codes: `NOT_ELIGIBLE`, `TARGET_POLICY_NOT_CONFIGURED`,
+`PROFILE_INCOMPLETE` (field names only), `INVALID_REQUEST`, `INTERNAL`.
+No secret, provider, quota, `_ai_operations` record or log is involved.
 
 
 

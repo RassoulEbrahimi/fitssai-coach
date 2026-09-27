@@ -53,7 +53,7 @@ const session = vi.hoisted(() => ({
 vi.mock("firebase/firestore", () => firestore);
 vi.mock("@/lib/firebase", () => ({ db: {} }));
 vi.mock("@/hooks/useAuth", () => ({ useAuth: () => ({ user: session.user }) }));
-vi.mock("@/hooks/queries/useProfile", () => ({ useProfile: () => session.profile }));
+vi.mock("@/hooks/queries/useProfile", () => ({ useProfile: () => session.profile, useUpdateProfile: () => ({ mutateAsync: vi.fn() }) }));
 vi.mock("@/hooks/useBerlinToday", () => ({ useBerlinToday: () => session.today }));
 
 import { NutritionV2TodayShell } from "./NutritionV2TodayShell";
@@ -214,6 +214,25 @@ describe("NutritionV2TodayShell", () => {
     expect(rows().some((row) => row.hasAttribute("aria-current"))).toBe(false);
     for (const row of rows()) expect(row).not.toHaveTextContent(/^Heute/);
   });
+
+  it("shows the target section in every eligible view, with or without a plan (NUT-08)", () => {
+    const target = <div data-testid="target-slot" />;
+    const views: [NutritionV2TodayView, boolean][] = [
+      [{ status: "notInitialized" }, true],
+      [{ status: "noActivePlan" }, true],
+      [{ status: "outsidePlan", week: week("2026-10-05") }, true],
+      [{ status: "today", week: week() }, true],
+      [{ status: "loading" }, false],
+      [{ status: "error" }, false],
+      [{ status: "ineligible", reason: "minor" }, false],
+      [{ status: "ineligible", reason: "missingAge" }, false],
+    ];
+    for (const [view, shown] of views) {
+      const { unmount } = render(<NutritionV2TodayShell view={view} target={target} />);
+      expect(screen.queryByTestId("target-slot") !== null, view.status).toBe(shown);
+      unmount();
+    }
+  });
 });
 
 /* ------------------------------------------------------------------ */
@@ -288,6 +307,15 @@ describe("NutritionV2TodayContainer", () => {
   it("shows not initialised when the state document is absent", async () => {
     renderContainer();
     expect(await screen.findByText("Ernährung ist noch nicht eingerichtet")).toBeInTheDocument();
+  });
+
+  it("offers setting a target without state, and rendering creates neither state nor target (NUT-08)", async () => {
+    renderContainer();
+
+    const target = await screen.findByRole("region", { name: "Ziel" });
+    expect(target).toHaveTextContent("Du hast noch kein Ernährungsziel festgelegt.");
+    expect(within(target).getByRole("button", { name: "Ziel festlegen" })).toBeInTheDocument();
+    expect([...store.docs.keys()]).toEqual([]);
   });
 
   it("shows no active plan without reading a plan", async () => {

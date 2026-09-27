@@ -69,18 +69,29 @@ export const makePlan = ({
 
 export const makeState = (overrides: Partial<NutritionUserState> = {}): NutritionUserState => ({
   schemaVersion: NUTRITION_SCHEMA_VERSION,
+  revision: 1,
   activePlanId: PLAN_ID,
   currentTargetVersionId: "target-1",
   activeGenerationRequestId: null,
+  recentRequests: [],
   ...overrides,
 });
 
-export const makeTarget = (targetVersionId = "target-1"): TargetVersion => ({
+/** A SHA-256-shaped fingerprint hash. Fixture only: it is not the hash of anything. */
+export const FIXTURE_FINGERPRINT_HASH = "a".repeat(64);
+
+export const makeTarget = (targetVersionId = "target-1", overrides: Partial<TargetVersion> = {}): TargetVersion => ({
   schemaVersion: NUTRITION_SCHEMA_VERSION,
   targetVersionId,
   mode: "manual",
   values: values(2200, 140, 250, 70),
   effectiveFrom: PLAN_START,
+  effectiveOrder: 1,
+  policy: { id: "test-fixture-manual", version: 1 },
+  profileFingerprint: { hash: FIXTURE_FINGERPRINT_HASH, fields: ["manualTargetKcal"] },
+  supersedesTargetVersionId: null,
+  createdAt: { seconds: 1_790_000_000, nanoseconds: 0 },
+  ...overrides,
 });
 
 export const aiOverride = (name = "Linsen-Curry", kcal = 900): MealOverride => ({

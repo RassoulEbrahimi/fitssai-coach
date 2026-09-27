@@ -16,6 +16,10 @@ import { NUTRITION_V2_ENABLED } from "@shared/nutrition/featureFlag";
   (offlineHandlers.ts) imports the V2 replay handler. It only ever runs for a
   NUTRITION_ENTRY_WRITE queue entry, and only the V2 recording hook enqueues
   one, so with V2 unreachable it never runs.
+
+  NUT-08 adds the target plumbing: one module calls one function,
+  nutritionSetTarget, through one hook, and nothing on the client writes a
+  target or the state — the server does.
 */
 
 const root = resolve(__dirname, "../../..");
@@ -56,7 +60,19 @@ const v2Modules = [
   "src/components/nutrition/v2/NutritionV2ConflictNotice.tsx",
   "src/components/nutrition/v2/NutritionV2Conflicts.tsx",
   "src/components/nutrition/v2/recordingFormat.ts",
+  // NUT-08: target plumbing.
+  "src/lib/nutrition/v2/targetCallable.ts",
+  "src/lib/nutrition/v2/targetSetup.ts",
+  "src/lib/nutrition/v2/sha256.ts",
+  "src/hooks/queries/useNutritionV2Target.ts",
+  "src/components/nutrition/v2/NutritionV2TargetCard.tsx",
+  "src/components/nutrition/v2/NutritionV2TargetSetup.tsx",
+  "src/components/nutrition/v2/NutritionV2TargetSection.tsx",
 ];
+
+/** The one module that calls a function, and the one hook that reaches it (NUT-08). */
+const targetCallableModule = "src/lib/nutrition/v2/targetCallable.ts";
+const targetHookModule = "src/hooks/queries/useNutritionV2Target.ts";
 
 /** The only module that writes Firestore, and the only modules that reach it. */
 const entryWriterModule = "src/lib/nutrition/v2/entryWriter.ts";
@@ -132,11 +148,32 @@ describe("Nutrition V2 module boundary", () => {
     }
   });
 
-  it("never deletes, batches, patches, adds by auto id or calls a function", () => {
+  it("never deletes, batches, patches or adds by auto id", () => {
     for (const path of v2Modules) {
-      expect(code(path), path).not.toMatch(/\b(setDoc|addDoc|updateDoc|deleteDoc|writeBatch|httpsCallable)\b/);
+      expect(code(path), path).not.toMatch(/\b(setDoc|addDoc|updateDoc|deleteDoc|writeBatch)\b/);
       expect(code(path), path).not.toMatch(/\.(delete|update)\(/);
     }
+  });
+
+  it("calls exactly one function, nutritionSetTarget, from one module reached only through the target hook", () => {
+    const calling = v2Modules.filter((path) => /\b(httpsCallable|getFunctions)\b/.test(code(path)));
+    expect(calling).toEqual([targetCallableModule]);
+    expect(code(targetCallableModule)).toMatch(/httpsCallable<[^>]+>\(\s*getFunctions\(getApp\(\), FUNCTIONS_REGION\),\s*NUTRITION_SET_TARGET_CALLABLE\s*\)/);
+    expect([...code(targetCallableModule).matchAll(/\bhttpsCallable\b/g)]).toHaveLength(2); // the import and the one call
+
+    const importers = productionSources.filter((path) => /from\s+["'][^"']*\/targetCallable["']/.test(read(path)));
+    expect(importers.sort()).toEqual([targetHookModule, "src/components/nutrition/v2/NutritionV2TargetSetup.tsx"].sort());
+    // The setup component imports the error guard only; the call goes through the hook.
+    expect(read("src/components/nutrition/v2/NutritionV2TargetSetup.tsx")).not.toMatch(/callNutritionSetTarget/);
+  });
+
+  it("sends only { mode, requestId } and refetches only the state and targets after a target is set", () => {
+    const hook = code(targetHookModule);
+    expect(hook).toMatch(/callNutritionSetTarget\(\{ mode, requestId \}\)/);
+    const invalidated = [...hook.matchAll(/queryKey:\s*queryKeys\.nutrition\.([\w.]+)\(/g)].map((match) => match[1]);
+    expect(invalidated.sort()).toEqual(["state", "targets.all"]);
+    expect(hook).not.toMatch(/\benqueue\(|offlineQueue/);
+    expect(hook).not.toMatch(/queryKeys\.(nutritionLegacy|workout|plans?|logs?)\b/);
   });
 
   it("writes through one transaction in one module, reached only through the recording hook", () => {
@@ -144,7 +181,7 @@ describe("Nutrition V2 module boundary", () => {
     expect(transactional).toEqual([entryWriterModule]);
 
     const mutating = v2Modules.filter((path) => /\buseMutation\b/.test(code(path)));
-    expect(mutating).toEqual([recordingHookModule]);
+    expect(mutating.sort()).toEqual([recordingHookModule, targetHookModule].sort());
 
     const writerImporters = productionSources.filter((path) => /from\s+["'][^"']*\/entryWriter["']/.test(read(path)));
     expect(writerImporters.sort()).toEqual([recordingHookModule, replayHandlerModule].sort());
@@ -187,6 +224,8 @@ describe("Nutrition V2 module boundary", () => {
       "src/lib/nutrition/v2/entryTransaction.ts",
       "src/lib/nutrition/v2/nutritionWriteIntents.ts",
       "src/lib/nutrition/v2/entryHandoff.ts",
+      "src/lib/nutrition/v2/targetSetup.ts",
+      "src/lib/nutrition/v2/sha256.ts",
     ]) {
       expect(read(path), path).not.toMatch(/from\s+["'](firebase\/|@\/lib\/firebase|react|@tanstack)/);
     }
