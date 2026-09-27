@@ -100,6 +100,13 @@ describe("callNutritionRequestPlan", () => {
   });
 
   it("maps the production refusal to its code", async () => {
+    functions.invoke.mockRejectedValue(Object.assign(new Error("NUTRITION_AI_DISABLED"), { code: "functions/failed-precondition" }));
+    const error = await refusal(callNutritionRequestPlan({ requestId: REQUEST_ID }));
+    expect(error).toBeInstanceOf(NutritionRequestPlanCallError);
+    expect(error.code).toBe("NUTRITION_AI_DISABLED");
+  });
+
+  it("maps an unconfigured generator to its own code, distinct from the disabled gate", async () => {
     functions.invoke.mockRejectedValue(
       Object.assign(new Error("GENERATION_PROVIDER_NOT_CONFIGURED"), { code: "functions/failed-precondition" })
     );

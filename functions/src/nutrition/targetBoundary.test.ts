@@ -36,6 +36,9 @@ const productionSources = walk(SRC).filter((file) => {
 
 const nutritionSources = productionSources.filter((file) => rel(file).startsWith("src/nutrition/"));
 
+/** NUT-12B: the one directory whose modules may name the Nutrition model vendor. */
+const NUTRITION_PROVIDER_DIRECTORY = "src/nutrition/providers/";
+
 /**
  * NUT-11: the generation modules name the (unconfigured) provider seam by
  * design, and `errors.ts` names its NOT_CONFIGURED code. Everything else in
@@ -44,6 +47,11 @@ const nutritionSources = productionSources.filter((file) => rel(file).startsWith
  */
 const PROVIDER_SEAM_SOURCES = [
   "src/nutrition/errors.ts",
+  // NUT-12B: the Vertex adapter, its prompt, response contract and lazy registry.
+  "src/nutrition/providers/productionRegistry.ts",
+  "src/nutrition/providers/prompt.ts",
+  "src/nutrition/providers/responseContract.ts",
+  "src/nutrition/providers/vertexGemini.ts",
   "src/nutrition/generationCandidate.ts",
   "src/nutrition/generationInput.ts",
   "src/nutrition/generationLifecycle.ts",
@@ -90,6 +98,8 @@ describe("fixture target policies stay out of production", () => {
 describe("the production target seam carries no formula", () => {
   it("sweeps the nutrition sources", () => {
     expect(nutritionSources.map(rel).sort()).toEqual([
+      // NUT-12B: the backend AI gate.
+      "src/nutrition/aiGate.ts",
       "src/nutrition/errors.ts",
       // NUT-11: generation infrastructure (no production provider).
       "src/nutrition/generationCandidate.ts",
@@ -101,6 +111,11 @@ describe("the production target seam carries no formula", () => {
       "src/nutrition/planValidation/decide.ts",
       "src/nutrition/planValidation/registry.ts",
       "src/nutrition/planValidation/types.ts",
+      // NUT-12B: the Vertex AI adapter behind the closed gate.
+      "src/nutrition/providers/productionRegistry.ts",
+      "src/nutrition/providers/prompt.ts",
+      "src/nutrition/providers/responseContract.ts",
+      "src/nutrition/providers/vertexGemini.ts",
       "src/nutrition/repeatPlan.ts",
       "src/nutrition/requestPlan.ts",
       "src/nutrition/setTarget.ts",
@@ -123,7 +138,9 @@ describe("the production target seam carries no formula", () => {
   it.each(nutritionSources.map(rel))("%s uses no provider, quota, AI operation record or logging", (file) => {
     const source = code(join(FUNCTIONS_ROOT, file));
     expect(source).not.toMatch(/_ai_operations|OPERATION_COLLECTION|createFirestoreOperationStore/);
-    expect(source).not.toMatch(/quota|gemini|AiLog|console\./i);
+    expect(source).not.toMatch(/quota|AiLog|console\./i);
+    // Only the Nutrition adapter names its vendor's model.
+    if (!file.startsWith(NUTRITION_PROVIDER_DIRECTORY)) expect(source).not.toMatch(/gemini/i);
     if (!PROVIDER_SEAM_SOURCES.includes(file)) expect(source).not.toMatch(/provider/i);
   });
 

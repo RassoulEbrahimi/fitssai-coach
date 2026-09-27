@@ -90,8 +90,12 @@ export type NutritionRequestPlanResult = z.infer<typeof nutritionRequestPlanResu
  *   INVALID_REQUEST                        not `{ requestId }`, or the id was
  *                                          used by another operation
  *   NOT_ELIGIBLE                           not an adult with a known age (NUT-03)
- *   GENERATION_PROVIDER_NOT_CONFIGURED     no generation provider is configured
- *                                          — the production answer
+ *   NUTRITION_AI_DISABLED                  the backend's Nutrition AI gate is
+ *                                          off, so no new generation starts —
+ *                                          the production answer (NUT-12B)
+ *   GENERATION_PROVIDER_NOT_CONFIGURED     no generation provider is
+ *                                          configured, or its configuration
+ *                                          is incomplete
  *   PLAN_VALIDATION_POLICY_NOT_CONFIGURED  no plan-validation policy is signed off
  *   NO_CURRENT_TARGET                      the account has no target
  *   PLAN_NOT_ACTIVE                        the active plan pointer names a plan
@@ -107,6 +111,7 @@ export const NUTRITION_REQUEST_PLAN_ERROR_CODES = [
   "UNAUTHENTICATED",
   "INVALID_REQUEST",
   "NOT_ELIGIBLE",
+  "NUTRITION_AI_DISABLED",
   "GENERATION_PROVIDER_NOT_CONFIGURED",
   "PLAN_VALIDATION_POLICY_NOT_CONFIGURED",
   "NO_CURRENT_TARGET",

@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { HttpsError } from "firebase-functions/v2/https";
 import {
+  addNutritionDays,
   generationRequestSchema,
   nutritionPlanSchema,
   nutritionUserStateSchema,
@@ -27,6 +28,13 @@ import {
 } from "../testing/fixturePlanValidationPolicies";
 import { FIXTURE_MANUAL_POLICY, fixtureTargetPolicyRegistry } from "../testing/fixtureTargetPolicies";
 import {
+  FIXTURE_VERTEX_CONFIGURATION,
+  FIXTURE_VERTEX_DEPLOYMENT,
+  createFakeGoogleGenAiClient,
+  fixtureMealIds,
+  fixtureVertexReply,
+} from "../testing/fakeGoogleGenAiClient";
+import {
   ADULT_PROFILE,
   SOURCE_START,
   STATE_PATH,
@@ -38,9 +46,14 @@ import {
   storedTarget,
   targetPath,
 } from "../testing/nutritionPlanFixtures";
+import { NUTRITION_AI_PRODUCTION_ENABLED } from "./aiGate";
 import { NutritionGenerationError, toNutritionHttpsError } from "./errors";
 import { productionInitialSlotConfiguration } from "./generationInput";
-import { productionNutritionGenerationProviderRegistry } from "./generationProvider";
+import type { NutritionGenerationProviderRegistry } from "./generationProvider";
+import {
+  createNutritionVertexProviderRegistry,
+  productionNutritionGenerationProviderRegistry,
+} from "./providers/productionRegistry";
 import { productionPlanValidationPolicyRegistry } from "./planValidation/registry";
 import type { PlanValidationPolicy } from "./planValidation/types";
 import { handleNutritionRepeatPlan } from "./repeatPlan";
@@ -123,6 +136,9 @@ const setup = (options: Options = {}) => {
    * `via: "production"` swaps in the production generator registry only;
    * `production: true` swaps in every production registry — generator, policy
    * and first-plan slots — as a deployment that lost its configuration would.
+   * `enabled` is the backend AI gate (NUT-12B): these lifecycle tests pass it
+   * explicitly, on unless a test turns it off; `registry` replaces the
+   * generator registry outright.
    */
   const call = (
     data: unknown,
@@ -130,12 +146,16 @@ const setup = (options: Options = {}) => {
       uid = UID as string | null,
       via = provider as FakeNutritionPlanProvider | "production",
       production = false,
+      enabled = true,
+      registry = null as NutritionGenerationProviderRegistry | null,
     } = {}
   ) =>
     handleNutritionRequestPlan(uid === null ? { data } : { auth: { uid }, data }, {
       firestore,
+      generationEnabled: enabled,
       providers:
-        via === "production" || production ? productionNutritionGenerationProviderRegistry : fixtureGenerationProviderRegistry(via),
+        registry ??
+        (via === "production" || production ? productionNutritionGenerationProviderRegistry : fixtureGenerationProviderRegistry(via)),
       policies: production ? productionPlanValidationPolicyRegistry : policies,
       initialSlots: options.initialSlots === "production" || production ? productionInitialSlotConfiguration : FIXTURE_INITIAL_SLOTS,
       now: clock,
@@ -1272,5 +1292,301 @@ describe("replay does not depend on the configuration", () => {
     expect(await h.call({ requestId: RID })).toMatchObject({ status: "succeeded", resultPlanId: "gen-plan-1", replay: true });
     expect(await code(h.call({ requestId: OTHER }))).toBe("NOT_ELIGIBLE");
     expect(h.snapshot()).toBe(before);
+  });
+});
+
+/* ------------------------------------------------------------------ *
+ * The backend AI gate (NUT-12B)
+ * ------------------------------------------------------------------ */
+
+/** A generator registry that counts how often it is asked, around a working fixture generator. */
+const spyRegistry = (provider: FakeNutritionPlanProvider) => {
+  const inner = fixtureGenerationProviderRegistry(provider);
+  const spy: { asked: number; registry: NutritionGenerationProviderRegistry } = {
+    asked: 0,
+    registry: { current: () => ((spy.asked += 1), inner.current()) },
+  };
+  return spy;
+};
+
+describe("the backend AI gate", () => {
+  it("is off in production, and the deployed wiring passes exactly that", () => {
+    expect(NUTRITION_AI_PRODUCTION_ENABLED).toBe(false);
+  });
+
+  it("PRODUCTION: a new request with the production gate and registries answers NUTRITION_AI_DISABLED and writes nothing", async () => {
+    const h = setup();
+    const before = h.snapshot();
+    const revision = h.state()?.revision;
+
+    expect(await code(h.call({ requestId: RID }, { enabled: NUTRITION_AI_PRODUCTION_ENABLED, production: true }))).toBe("NUTRITION_AI_DISABLED");
+    expect(h.snapshot()).toBe(before);
+    expect(h.requests()).toEqual([]);
+    expect(h.firestore.under(OPERATION_COLLECTION)).toEqual([]);
+    expect(h.firestore.under("_ai_quota")).toEqual([]);
+    expect(h.firestore.under("_ai_logs")).toEqual([]);
+    expect(h.firestore.under(`users/${UID}/ai_logs`)).toEqual([]);
+    expect(h.state()?.revision).toBe(revision);
+    expect(h.state()?.activeGenerationRequestId).toBeNull();
+    expect(h.planIds()).toEqual(["plan-1"]);
+  });
+
+  it("maps NUTRITION_AI_DISABLED to a failed-precondition carrying only the code", async () => {
+    const h = setup();
+    const mapped = toNutritionHttpsError(await refusal(h.call({ requestId: RID }, { enabled: false })));
+    expect(mapped).toBeInstanceOf(HttpsError);
+    expect(mapped.code).toBe("failed-precondition");
+    expect(mapped.message).toBe("NUTRITION_AI_DISABLED");
+    expect(mapped.details).toBeUndefined();
+  });
+
+  it("NEW REQUEST: off beats a fully working generator — the registry is never asked and the generator never called", async () => {
+    const h = setup();
+    const spy = spyRegistry(h.provider);
+    const before = h.snapshot();
+
+    expect(await code(h.call({ requestId: RID }, { enabled: false, registry: spy.registry }))).toBe("NUTRITION_AI_DISABLED");
+    expect(spy.asked).toBe(0);
+    expect(h.provider.calls.generate).toEqual([]);
+    expect(h.snapshot()).toBe(before);
+  });
+
+  it("NEW FIRST PLAN: the same refusal, before eligibility and before any configuration is judged", async () => {
+    for (const options of [{ state: INITIAL_STATE, plans: {} }, { profile: { ...PROFILE, age: 17 } }, { policies: "production" as const }]) {
+      const h = setup(options);
+      const before = h.snapshot();
+      expect(await code(h.call({ requestId: RID }, { enabled: false }))).toBe("NUTRITION_AI_DISABLED");
+      expect(h.snapshot()).toBe(before);
+      expect(h.provider.calls.generate).toEqual([]);
+    }
+  });
+
+  it("is judged by value only: nothing but an explicit true lets work through", async () => {
+    const h = setup();
+    const before = h.snapshot();
+    for (const enabled of [false, "true", 1, 0, null] as unknown[]) {
+      expect(await code(h.call({ requestId: RID }, { enabled: enabled as boolean }))).toBe("NUTRITION_AI_DISABLED");
+    }
+    expect(h.snapshot()).toBe(before);
+  });
+
+  it.each<[string, FakeProviderScript, Record<string, unknown>]>([
+    ["SUCCEEDED", { generate: "valid" }, { status: "succeeded", resultPlanId: "gen-plan-1", replay: true }],
+    ["FAILED", { generate: "throws" }, { status: "failed", errorCode: "PROVIDER_FAILED", replay: true }],
+  ])("EXISTING %s request: replays with the gate off, without asking the registry, writing nothing", async (_label, script, expected) => {
+    const h = setup({ script });
+    await h.call({ requestId: RID });
+    const spy = spyRegistry(h.provider);
+    const before = h.snapshot();
+
+    expect(await h.call({ requestId: RID }, { enabled: false, registry: spy.registry })).toMatchObject(expected);
+    expect(spy.asked).toBe(0);
+    expect(h.provider.calls.generate).toHaveLength(1);
+    expect(h.snapshot()).toBe(before);
+  });
+
+  it("EXISTING DISCARDED request: replays as discarded with the gate off", async () => {
+    const h = setup({ script: { generate: "pending" } });
+    const generating = h.call({ requestId: RID });
+    await h.provider.whenPending();
+    await h.repeat(OTHER);
+    h.provider.release();
+    await generating;
+    const before = h.snapshot();
+
+    expect(await h.call({ requestId: RID }, { enabled: false })).toMatchObject({ status: "discarded_stale", errorCode: "STALE_ACTIVE_PLAN", replay: true });
+    expect(h.snapshot()).toBe(before);
+  });
+
+  it("EXISTING LIVE request, same id: answered as running with the gate off — no second call, no write", async () => {
+    const h = setup({ script: { generate: "pending" } });
+    const generating = h.call({ requestId: RID });
+    await h.provider.whenPending();
+    const spy = spyRegistry(h.provider);
+    const before = h.snapshot();
+
+    expect(await h.call({ requestId: RID }, { enabled: false, registry: spy.registry })).toEqual({
+      ok: true,
+      requestId: RID,
+      status: "running",
+      resultPlanId: null,
+      errorCode: null,
+      replay: false,
+    });
+    expect(spy.asked).toBe(0);
+    expect(h.provider.calls.generate).toHaveLength(1);
+    expect(h.snapshot()).toBe(before);
+    h.provider.release();
+    await generating;
+    expect(h.request(RID)?.status).toBe("succeeded");
+  });
+
+  it("ANOTHER request while one is live: the live one is answered with the gate off, and nothing is created", async () => {
+    const h = setup({ script: { generate: "pending" } });
+    const generating = h.call({ requestId: RID });
+    await h.provider.whenPending();
+    const before = h.snapshot();
+
+    expect(await h.call({ requestId: OTHER }, { enabled: false })).toMatchObject({ requestId: RID, status: "running", replay: false });
+    expect(h.request(OTHER)).toBeUndefined();
+    expect(h.operation(OTHER)).toBeUndefined();
+    expect(h.snapshot()).toBe(before);
+    h.provider.release();
+    await generating;
+  });
+
+  it("EXPIRED request, same id: no takeover with the gate off — refused, the request, record and state untouched, the registry never asked", async () => {
+    const h = setup({ script: { generate: "pending" } });
+    const stalled = h.call({ requestId: RID });
+    await h.provider.whenPending();
+    h.advance(LEASE + 1);
+    const spy = spyRegistry(h.provider);
+    const before = h.snapshot();
+    const record = structuredClone(h.operation(RID));
+
+    expect(await code(h.call({ requestId: RID }, { enabled: false, registry: spy.registry }))).toBe("NUTRITION_AI_DISABLED");
+    expect(spy.asked).toBe(0);
+    expect(h.provider.calls.generate).toHaveLength(1);
+    expect(h.snapshot()).toBe(before);
+    expect(h.request(RID)?.status).toBe("running");
+    expect(h.operation(RID)).toEqual(record);
+    expect(h.state()?.activeGenerationRequestId).toBe(RID);
+
+    // The stalled invocation lost its lease and cannot finish it…
+    h.provider.release();
+    expect(await stalled).toMatchObject({ requestId: RID, status: "running" });
+    expect(h.request(RID)?.status).toBe("running");
+    // …and with the gate on, the same id takes it over and completes, as the lifecycle says.
+    const recovered = fixtureGenerationProviderRegistry(createFakeNutritionPlanProvider({ generate: "valid" }));
+    expect(await h.call({ requestId: RID }, { registry: recovered })).toMatchObject({ requestId: RID, status: "succeeded", resultPlanId: "gen-plan-1" });
+  });
+
+  it("EXPIRED request, another id: the abandoned request is not ended and nothing is claimed with the gate off", async () => {
+    const h = setup({ script: { generate: "pending" } });
+    const stalled = h.call({ requestId: RID });
+    await h.provider.whenPending();
+    h.advance(LEASE + 1);
+    const before = h.snapshot();
+
+    expect(await code(h.call({ requestId: OTHER }, { enabled: false }))).toBe("NUTRITION_AI_DISABLED");
+    expect(h.snapshot()).toBe(before);
+    expect(h.request(RID)?.status).toBe("running");
+    expect(h.request(OTHER)).toBeUndefined();
+    h.provider.release();
+    await stalled;
+  });
+
+  it("EXPIRED and STALE: the takeover still ends it discarded_stale — convergence, with no generator and no new claim", async () => {
+    const h = setup({ script: { generate: "pending" } });
+    const stalled = h.call({ requestId: RID });
+    await h.provider.whenPending();
+    h.advance(LEASE + 1);
+    h.firestore.docs.set(STATE_PATH, { ...(h.state() as NutritionUserState), currentTargetVersionId: "target-2" });
+    const spy = spyRegistry(h.provider);
+
+    expect(await h.call({ requestId: RID }, { enabled: false, registry: spy.registry })).toMatchObject({
+      status: "discarded_stale",
+      errorCode: "STALE_TARGET",
+      replay: false,
+    });
+    expect(spy.asked).toBe(0);
+    expect(h.provider.calls.generate).toHaveLength(1);
+    expect(h.state()?.activeGenerationRequestId).toBeNull();
+    h.provider.release();
+    await stalled;
+  });
+});
+
+describe("the production generator registry behind an open gate", () => {
+  it("unconfigured: GENERATION_PROVIDER_NOT_CONFIGURED — a different answer from NUTRITION_AI_DISABLED — and nothing written", async () => {
+    const h = setup();
+    const before = h.snapshot();
+    expect(await code(h.call({ requestId: RID }, { enabled: true, via: "production" }))).toBe("GENERATION_PROVIDER_NOT_CONFIGURED");
+    expect(await code(h.call({ requestId: RID }, { enabled: false, via: "production" }))).toBe("NUTRITION_AI_DISABLED");
+    expect(h.snapshot()).toBe(before);
+  });
+
+  it.each<[string, unknown]>([
+    ["no location", { ...FIXTURE_VERTEX_DEPLOYMENT, provider: { ...FIXTURE_VERTEX_CONFIGURATION, location: "" } }],
+    ["no project", { ...FIXTURE_VERTEX_DEPLOYMENT, provider: { ...FIXTURE_VERTEX_CONFIGURATION, project: undefined } }],
+    ["no timeout", { ...FIXTURE_VERTEX_DEPLOYMENT, provider: { ...FIXTURE_VERTEX_CONFIGURATION, timeoutMs: undefined } }],
+    ["no lease", { provider: FIXTURE_VERTEX_CONFIGURATION }],
+    // Settings the pinned model cannot accept are configuration errors, never a paid call that fails.
+    ["thinking level MINIMAL", { ...FIXTURE_VERTEX_DEPLOYMENT, provider: { ...FIXTURE_VERTEX_CONFIGURATION, thinkingLevel: "MINIMAL" } }],
+    ["maxOutputTokens 65,537", { ...FIXTURE_VERTEX_DEPLOYMENT, provider: { ...FIXTURE_VERTEX_CONFIGURATION, maxOutputTokens: 65_537 } }],
+    ["maxOutputTokens 0", { ...FIXTURE_VERTEX_DEPLOYMENT, provider: { ...FIXTURE_VERTEX_CONFIGURATION, maxOutputTokens: 0 } }],
+    ["temperature 0", { ...FIXTURE_VERTEX_DEPLOYMENT, provider: { ...FIXTURE_VERTEX_CONFIGURATION, temperature: 0 } }],
+    ["temperature 2.5", { ...FIXTURE_VERTEX_DEPLOYMENT, provider: { ...FIXTURE_VERTEX_CONFIGURATION, temperature: 2.5 } }],
+  ])("misconfigured (%s): refused explicitly as GENERATION_PROVIDER_NOT_CONFIGURED, no client built, nothing written", async (_label, deployment) => {
+    const h = setup();
+    let built = 0;
+    const client = createFakeGoogleGenAiClient([{ reply: {} }]);
+    const registry = createNutritionVertexProviderRegistry(deployment, {
+      createClient: () => ((built += 1), client),
+    });
+    const before = h.snapshot();
+
+    const error = (await refusal(h.call({ requestId: RID }, { enabled: true, registry }))) as NutritionGenerationError;
+    expect(error.code).toBe("GENERATION_PROVIDER_NOT_CONFIGURED");
+    const mapped = toNutritionHttpsError(error);
+    expect(mapped.message).toBe("GENERATION_PROVIDER_NOT_CONFIGURED");
+    expect(mapped.details).toBeUndefined();
+    for (const leak of ["MINIMAL", "65537", "2.5", "fixture-project", "fixture-location"]) {
+      expect(`${error.message} ${JSON.stringify(error.details)}`).not.toContain(leak);
+    }
+    expect(built).toBe(0);
+    expect(client.requests).toEqual([]);
+    expect(h.snapshot()).toBe(before);
+  });
+
+  it("configured, with the gate on explicitly: the Vertex adapter over a fake client generates, and the server assembles and activates the plan", async () => {
+    const h = setup();
+    const client = createFakeGoogleGenAiClient([{ reply: fixtureVertexReply(["breakfast", "lunch", "dinner"]) }]);
+    const registry = createNutritionVertexProviderRegistry(FIXTURE_VERTEX_DEPLOYMENT, {
+      createClient: () => client,
+      newMealId: fixtureMealIds(),
+    });
+
+    expect(await h.call({ requestId: RID }, { registry })).toMatchObject({ status: "succeeded", resultPlanId: "gen-plan-1" });
+    const plan = h.plan("gen-plan-1");
+    expect(plan?.startDate).toBe(TOMORROW);
+    expect(plan?.days.map((day) => day.date)).toEqual(Array.from({ length: 7 }, (_, index) => addNutritionDays(TOMORROW, index)));
+    expect(plan?.days.flatMap((day) => day.meals.map((meal) => meal.mealId))).toEqual(Array.from({ length: 21 }, (_, index) => `meal-${index + 1}`));
+    expect(plan?.days[0].meals.map((meal) => meal.name)).toEqual(["Haferbrei mit Beeren 1", "Linsensuppe mit Brot 1", "Gemüsepfanne mit Reis 1"]);
+    // Only the lifecycle's own fields were written: no prompt, reply, project or location anywhere.
+    const stored = h.snapshot();
+    for (const leak of ["fixture-project", "fixture-location", "systemInstruction", "responseJsonSchema"]) {
+      expect(JSON.stringify(h.request(RID))).not.toContain(leak);
+      expect(JSON.stringify(h.operation(RID))).not.toContain(leak);
+    }
+    expect(stored).not.toContain("fixture-project");
+    expect(stored).not.toContain("fixture-location");
+  });
+
+  it("a reply carrying a meal id is refused before assembly and repaired once; the model's ids are never persisted", async () => {
+    const h = setup();
+    const injected = fixtureVertexReply(["breakfast", "lunch", "dinner"], (slotId, dayIndex) => ({
+      slotId,
+      mealId: `model-${slotId}-${dayIndex}`,
+      name: "Eintopf",
+      values: { kcal: 500, proteinG: 30, carbsG: 50, fatG: 15 },
+    }));
+    const client = createFakeGoogleGenAiClient([{ reply: injected }, { reply: fixtureVertexReply(["breakfast", "lunch", "dinner"]) }]);
+    const registry = createNutritionVertexProviderRegistry(FIXTURE_VERTEX_DEPLOYMENT, { createClient: () => client, newMealId: fixtureMealIds() });
+
+    expect(await h.call({ requestId: RID }, { registry })).toMatchObject({ status: "succeeded" });
+    expect(client.requests).toHaveLength(2);
+    expect(String(client.requests[1].contents)).toContain("must not contain any other field");
+    expect(h.snapshot()).not.toContain("model-");
+  });
+
+  it("a provider that fails ends the request PROVIDER_FAILED, with none of the provider's message kept", async () => {
+    const h = setup();
+    const client = createFakeGoogleGenAiClient([{ status: 403 }]);
+    const registry = createNutritionVertexProviderRegistry(FIXTURE_VERTEX_DEPLOYMENT, { createClient: () => client });
+
+    expect(await h.call({ requestId: RID }, { registry })).toMatchObject({ status: "failed", errorCode: "PROVIDER_FAILED" });
+    expect(h.snapshot()).not.toContain("fixture-project-123");
+    expect(h.snapshot()).not.toContain("ya29");
   });
 });

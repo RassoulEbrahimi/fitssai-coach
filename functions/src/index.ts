@@ -17,7 +17,8 @@ import { handleNutritionRepeatPlan } from "./nutrition/repeatPlan";
 import { productionPlanValidationPolicyRegistry } from "./nutrition/planValidation/registry";
 import { handleNutritionUpdateSlot } from "./nutrition/updateSlot";
 import { handleNutritionRequestPlan } from "./nutrition/requestPlan";
-import { productionNutritionGenerationProviderRegistry } from "./nutrition/generationProvider";
+import { productionNutritionGenerationProviderRegistry } from "./nutrition/providers/productionRegistry";
+import { NUTRITION_AI_PRODUCTION_ENABLED } from "./nutrition/aiGate";
 import { productionInitialSlotConfiguration } from "./nutrition/generationInput";
 
 /**
@@ -146,14 +147,17 @@ export const generateWeeklyReview = onCall(
  * The request is only `{ requestId }`. The lifecycle behind it — one active
  * generation per account, a persistent generation request, a minimized input,
  * at most one repair, and one atomic finalisation through the NUT-09
- * activation core — is complete, but NOTHING is configured to generate: the
- * production generator registry, plan-validation registry and first-plan slot
- * configuration are all empty. A call therefore answers
- * `GENERATION_PROVIDER_NOT_CONFIGURED` once the caller is an eligible adult,
- * and writes nothing — no request, no state pointer, no plan, no operation
- * record.
+ * activation core — is complete, and a Vertex AI generator exists (NUT-12B),
+ * but NOTHING can generate: the backend gate
+ * `NUTRITION_AI_PRODUCTION_ENABLED` is off, so a new request answers
+ * `NUTRITION_AI_DISABLED` before the generator registry is even asked, and
+ * writes nothing — no request, no state pointer, no plan, no operation record.
+ * Behind the gate, the generator's deployment configuration, the
+ * plan-validation registry and the first-plan slot configuration are all still
+ * empty.
  *
- * No secret, no model, no prompt, no quota and no log: nothing here is paid for.
+ * No secret (Vertex AI authenticates as the runtime's own identity), no quota
+ * and no log: nothing here is paid for.
  */
 export const nutritionRequestPlan = onCall(
   {
@@ -168,6 +172,7 @@ export const nutritionRequestPlan = onCall(
     try {
       return await handleNutritionRequestPlan(request, {
         firestore: db(),
+        generationEnabled: NUTRITION_AI_PRODUCTION_ENABLED,
         providers: productionNutritionGenerationProviderRegistry,
         policies: productionPlanValidationPolicyRegistry,
         initialSlots: productionInitialSlotConfiguration,

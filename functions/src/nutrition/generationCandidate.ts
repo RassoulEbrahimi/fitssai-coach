@@ -7,7 +7,11 @@ import {
 } from "../../../shared/nutrition";
 import { isNutritionPlanError } from "./errors";
 import type { NutritionGenerationInput } from "./generationInput";
-import type { NutritionCandidateFailure, NutritionPlanProvider } from "./generationProvider";
+import {
+  NutritionProviderAnswerRejection,
+  type NutritionCandidateFailure,
+  type NutritionPlanProvider,
+} from "./generationProvider";
 import { decidePlanValidation } from "./planValidation/decide";
 import type { PlanValidationPolicy } from "./planValidation/types";
 
@@ -18,6 +22,8 @@ import type { PlanValidationPolicy } from "./planValidation/types";
  *
  * Each answer is judged in a fixed order — structure fails before policy:
  *
+ *   0. a reply the generator's own transport contract refused (NUT-12B) is
+ *      invalid content, with the generator's normalised issues
  *   1. the shared plan-content schema: strict fields and the structural
  *      rules (seven contiguous dates, one meal per configured slot, …)
  *   2. the dates and slots that were asked for
@@ -58,6 +64,17 @@ const judge = (
   policy: PlanValidationPolicy | null,
   target: TargetVersion
 ): Judgement => {
+  // 0. A reply that was not even the generator's requested shape.
+  if (answer instanceof NutritionProviderAnswerRejection) {
+    return {
+      ok: false,
+      failure: {
+        kind: "invalidContent",
+        issues: answer.issues.slice(0, MAX_REPAIR_ISSUES).map(({ path, message }) => ({ path, message })),
+      },
+    };
+  }
+
   // 1. Structure.
   const parsed = nutritionPlanContentSchema.safeParse(answer);
   if (!parsed.success) {

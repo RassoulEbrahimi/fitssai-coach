@@ -30,7 +30,11 @@ import {
   type NutritionGenerationInput,
   type NutritionInitialSlotConfiguration,
 } from "./generationInput";
-import type { NutritionGenerationSetup } from "./generationProvider";
+import {
+  NutritionGenerationProviderConfigurationError,
+  type NutritionGenerationProviderRegistry,
+  type NutritionGenerationSetup,
+} from "./generationProvider";
 import {
   activateNutritionPlanInTransaction,
   parseNutritionStateSnapshot,
@@ -91,11 +95,22 @@ import type { PlanValidationPolicy, PlanValidationPolicyRegistry } from "./planV
  *
  * Answering for an existing request needs nothing configured: a finished
  * request replays, and a live one — this request or another — is answered,
- * whatever the generator or the policy registry says now. Only new work — a
- * new request, or a takeover that would call the generator — needs a
- * configured generator (GENERATION_PROVIDER_NOT_CONFIGURED), a policy in force
+ * whatever the gate, the generator or the policy registry says now. Only new
+ * work — a new request, or a takeover that would call the generator — needs
+ * the backend AI gate on (NUTRITION_AI_DISABLED, NUT-12B), a configured
+ * generator (GENERATION_PROVIDER_NOT_CONFIGURED), a policy in force
  * (PLAN_VALIDATION_POLICY_NOT_CONFIGURED) and the generator's operation lease,
- * and it is refused before anything is written.
+ * and it is refused before anything is written. The gate is judged first, and
+ * the generator registry is not even asked while it is off.
+ *
+ * With the gate off, an expired request is left exactly as it is: still
+ * `running`, its record and the state pointer untouched, answered
+ * NUTRITION_AI_DISABLED — just as, with the gate on and no generator, it is
+ * answered GENERATION_PROVIDER_NOT_CONFIGURED. It is not ended as abandoned,
+ * because the gate says nothing about the request; a later
+ * call with the gate on takes it over or ends it as the lifecycle says. A
+ * takeover that finds the request stale still ends it discarded_stale first:
+ * that is convergence, not work, and needs no generator.
  *
  * State revision: a transaction that changes the state document moves
  * `revision` by exactly one (claim, activation, a failure or discard that
@@ -152,14 +167,33 @@ const parseGenerationRequest = (snapshot: Snapshot, requestId: string): Generati
 const readProfile = async (ctx: NutritionGenerationContext, tx: ActivationTransaction): Promise<NutritionProfile> =>
   parseNutritionProfile((await tx.get(refsFor(ctx.firestore, ctx.uid).user)).data());
 
+/** What any new work needs first: the backend AI gate on. Throws before anything is written. */
+const requireGenerationEnabled = (generationEnabled: boolean): void => {
+  if (generationEnabled !== true) throw new NutritionGenerationError("NUTRITION_AI_DISABLED", "Nutrition AI generation is disabled.");
+};
+
+/** The generator in force, resolved only now; an incomplete configuration is refused, never defaulted. */
+const resolveSetup = (providers: NutritionGenerationProviderRegistry): NutritionGenerationSetup | null => {
+  try {
+    return providers.current();
+  } catch (error) {
+    if (error instanceof NutritionGenerationProviderConfigurationError) {
+      throw new NutritionGenerationError("GENERATION_PROVIDER_NOT_CONFIGURED", "The Nutrition generation provider is misconfigured.");
+    }
+    throw error;
+  }
+};
+
 /**
- * What new work needs: a configured generator with its operation lease and a
- * policy in force. Throws before anything is written when any is missing.
+ * What new work needs after the gate: a configured generator with its
+ * operation lease and a policy in force. Throws before anything is written
+ * when any is missing.
  */
 const requireWork = (
   ctx: NutritionGenerationContext,
-  setup: NutritionGenerationSetup | null
+  providers: NutritionGenerationProviderRegistry
 ): { setup: NutritionGenerationSetup; policy: PlanValidationPolicy } => {
+  const setup = resolveSetup(providers);
   if (!setup) throw new NutritionGenerationError("GENERATION_PROVIDER_NOT_CONFIGURED", "No Nutrition generation provider is configured.");
   const policy = ctx.policies.current();
   if (!policy) throw new NutritionGenerationError("PLAN_VALIDATION_POLICY_NOT_CONFIGURED", "No plan-validation policy is in force.");
@@ -311,13 +345,15 @@ export interface NutritionGenerationClaimInput {
   newPlanId: string;
   /** Minted before the transaction; this claim's proof of ownership. */
   claimToken: string;
-  /** The generator in force, if any. Needed only for new work. */
-  setup: NutritionGenerationSetup | null;
+  /** The backend AI gate. Judged only for new work, before the registry is asked. */
+  generationEnabled: boolean;
+  /** The generator registry. Asked only for new work, and only with the gate on. */
+  providers: NutritionGenerationProviderRegistry;
 }
 
 export const claimNutritionGeneration = (
   ctx: NutritionGenerationContext,
-  { requestId, at, newPlanId, claimToken, setup }: NutritionGenerationClaimInput
+  { requestId, at, newPlanId, claimToken, generationEnabled, providers }: NutritionGenerationClaimInput
 ): Promise<NutritionGenerationClaim> =>
   runTransaction(ctx.firestore, async (tx): Promise<NutritionGenerationClaim> => {
     const refs = refsFor(ctx.firestore, ctx.uid);
@@ -328,7 +364,7 @@ export const claimNutritionGeneration = (
     const record = await ctx.records.read(tx, ctx.uid, requestId, at);
     const state = parseNutritionStateSnapshot(await tx.get(refs.state));
 
-    if (request) return continueRequest(ctx, tx, { request, record, state, profile, at, claimToken, setup });
+    if (request) return continueRequest(ctx, tx, { request, record, state, profile, at, claimToken, generationEnabled, providers });
 
     // A new request. Its record cannot exist without it: they are created together.
     if (record.exists) throw internal("An operation record exists without its generation request.");
@@ -349,12 +385,14 @@ export const claimNutritionGeneration = (
       // A finished request's pointer is simply replaced below.
     }
 
-    // New work from here: an eligible adult by the profile read above, and a configured generator.
+    // New work from here: the AI gate on, an eligible adult by the profile read
+    // above, and a configured generator.
+    requireGenerationEnabled(generationEnabled);
     const eligibility = getNutritionEligibility(profile);
     if (!eligibility.eligible) {
       throw new NutritionGenerationError("NOT_ELIGIBLE", "Nutrition is for adults with a known age.", { reason: eligibility.reason });
     }
-    const work = requireWork(ctx, setup);
+    const work = requireWork(ctx, providers);
     if (!state || state.currentTargetVersionId === null) {
       throw new NutritionGenerationError("NO_CURRENT_TARGET", "No target is set.");
     }
@@ -430,7 +468,8 @@ const continueRequest = async (
     profile,
     at,
     claimToken,
-    setup,
+    generationEnabled,
+    providers,
   }: {
     request: GenerationRequest;
     record: OperationRecord;
@@ -438,7 +477,8 @@ const continueRequest = async (
     profile: NutritionProfile;
     at: Date;
     claimToken: string;
-    setup: NutritionGenerationSetup | null;
+    generationEnabled: boolean;
+    providers: NutritionGenerationProviderRegistry;
   }
 ): Promise<NutritionGenerationClaim> => {
   if (isTerminalGenerationRequestStatus(request.status)) return { kind: "finished", request, replay: true };
@@ -454,7 +494,9 @@ const continueRequest = async (
     return { kind: "finished", request: ended, replay: false };
   }
 
-  const work = requireWork(ctx, setup);
+  // Continuing is new work: the gate first, and the request is left as it is if it is off.
+  requireGenerationEnabled(generationEnabled);
+  const work = requireWork(ctx, providers);
   const refs = refsFor(ctx.firestore, ctx.uid);
   const target = requireStoredTarget(await tx.get(refs.target(request.targetVersionId)), request.targetVersionId);
   const basePlan =

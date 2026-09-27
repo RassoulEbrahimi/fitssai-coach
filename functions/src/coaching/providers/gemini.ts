@@ -1,4 +1,14 @@
-import { GoogleGenAI } from "@google/genai";
+import {
+  createGoogleGenAiClient,
+  defaultSleep,
+  extractGenAiText,
+  extractGenAiUsage,
+  genAiErrorStatus,
+  parseGenAiJson,
+  runWithTransportRetry,
+  type GoogleGenAiClient,
+  type TokenUsage,
+} from "../../ai/googleGenai";
 import { AiError } from "../../errors";
 import { SYSTEM_INSTRUCTION, buildPlanPrompt } from "../prompt";
 import { planResponseSchema, type ProviderSchema } from "../planResponseSchema";
@@ -19,6 +29,11 @@ import type { CoachProvider, WeeklyReviewFacts } from "../provider";
  * not decide whether the result is a plan — all of that belongs to the caller,
  * which is what keeps this file swappable and the validation boundary in one
  * place.
+ *
+ * Since NUT-12B the SDK itself sits behind the server-wide transport in
+ * `ai/googleGenai.ts`, which Nutrition's adapter uses too. Only the transport
+ * moved: the model, the API key, the prompts, the schemas, the settings and the
+ * retry bound below are Training's own, and unchanged.
  */
 
 /**
@@ -68,11 +83,7 @@ export const WEEKLY_REVIEW_GENERATION_CONFIG = Object.freeze({
   candidateCount: 1,
 });
 
-export interface TokenUsage {
-  inputTokens?: number;
-  outputTokens?: number;
-  totalTokens?: number;
-}
+export type { TokenUsage };
 
 export interface ProviderResult {
   /** Untrusted. The caller validates before anything is persisted. */
@@ -82,11 +93,7 @@ export interface ProviderResult {
 }
 
 /** The slice of the SDK this provider uses, so tests need no network. */
-export interface GeminiClient {
-  models: {
-    generateContent(request: Record<string, unknown>): Promise<unknown>;
-  };
-}
+export type GeminiClient = GoogleGenAiClient;
 
 export interface GeminiProviderOptions {
   apiKey: string;
@@ -99,44 +106,8 @@ export interface GeminiProviderOptions {
 
 const DEFAULT_TRANSPORT_ATTEMPTS = 2;
 
-const readNumber = (value: unknown): number | undefined =>
-  typeof value === "number" && Number.isFinite(value) ? value : undefined;
-
 /** Pull only numeric usage fields. Absent stays absent — nothing is inferred. */
-export const extractUsage = (response: unknown): TokenUsage => {
-  const metadata = (response as { usageMetadata?: Record<string, unknown> } | null)
-    ?.usageMetadata;
-  if (!metadata) return {};
-
-  return {
-    inputTokens: readNumber(metadata.promptTokenCount),
-    outputTokens: readNumber(metadata.candidatesTokenCount),
-    totalTokens: readNumber(metadata.totalTokenCount),
-  };
-};
-
-/** The model's text, wherever this SDK version puts it. */
-const extractText = (response: unknown): string | undefined => {
-  const direct = (response as { text?: unknown }).text;
-  if (typeof direct === "string") return direct;
-
-  const parts = (
-    response as {
-      candidates?: Array<{ content?: { parts?: Array<{ text?: unknown }> } }>;
-    }
-  ).candidates?.[0]?.content?.parts;
-
-  if (!Array.isArray(parts)) return undefined;
-  const text = parts
-    .map((part) => (typeof part.text === "string" ? part.text : ""))
-    .join("");
-  return text === "" ? undefined : text;
-};
-
-const statusOf = (error: unknown): number | undefined => {
-  const candidate = error as { status?: unknown; code?: unknown };
-  return readNumber(candidate.status) ?? readNumber(candidate.code);
-};
+export const extractUsage = (response: unknown): TokenUsage => extractGenAiUsage(response);
 
 /**
  * Map a provider failure onto our own vocabulary.
@@ -145,7 +116,7 @@ const statusOf = (error: unknown): number | undefined => {
  * quota details and request ids, none of which belong in a browser.
  */
 export const classifyProviderError = (error: unknown): AiError => {
-  const status = statusOf(error);
+  const status = genAiErrorStatus(error);
   if (status === 429) {
     return new AiError("PROVIDER_RATE_LIMITED", "Provider rate limited the request.");
   }
@@ -153,11 +124,6 @@ export const classifyProviderError = (error: unknown): AiError => {
     return new AiError("PROVIDER_UNAVAILABLE", `Provider returned ${status}.`);
   }
   return new AiError("PROVIDER_UNAVAILABLE", "Provider request failed.");
-};
-
-const isRetryable = (error: unknown): boolean => {
-  const status = statusOf(error);
-  return status === 429 || (status !== undefined && status >= 500);
 };
 
 export interface GeminiProvider extends CoachProvider {
@@ -192,16 +158,14 @@ const WEEKLY_REVIEW_CALL: CallShape = {
 
 export const createGeminiProvider = (options: GeminiProviderOptions): GeminiProvider => {
   const maxAttempts = options.maxTransportAttempts ?? DEFAULT_TRANSPORT_ATTEMPTS;
-  const sleep = options.sleep ?? ((ms: number) => new Promise((r) => setTimeout(r, ms)));
+  const sleep = options.sleep ?? defaultSleep;
 
   const client: GeminiClient =
-    options.client ?? (new GoogleGenAI({ apiKey: options.apiKey }) as unknown as GeminiClient);
+    options.client ?? createGoogleGenAiClient({ kind: "developerApi", apiKey: options.apiKey });
 
   const call = async (prompt: string, shape: CallShape): Promise<ProviderResult> => {
-    let lastError: unknown;
-
-    for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
-      try {
+    const outcome = await runWithTransportRetry(
+      async (): Promise<ProviderResult> => {
         const response = await client.models.generateContent({
           model: GEMINI_MODEL_ID,
           contents: prompt,
@@ -213,31 +177,22 @@ export const createGeminiProvider = (options: GeminiProviderOptions): GeminiProv
           },
         });
 
-        const text = extractText(response);
+        const text = extractGenAiText(response);
         if (text === undefined) {
           // A response with no text is not a transport problem; retrying it
           // would just buy the same nothing again.
           return { output: undefined, usage: extractUsage(response) };
         }
 
-        let parsed: unknown;
-        try {
-          parsed = JSON.parse(text);
-        } catch {
-          // Not JSON despite the schema. Untrusted output stays untrusted; the
-          // caller's validation will reject it.
-          parsed = undefined;
-        }
+        // Not JSON despite the schema comes back as undefined. Untrusted output
+        // stays untrusted; the caller's validation will reject it.
+        return { output: parseGenAiJson(text), usage: extractUsage(response) };
+      },
+      { maxAttempts, sleep }
+    );
 
-        return { output: parsed, usage: extractUsage(response) };
-      } catch (error) {
-        lastError = error;
-        if (!isRetryable(error) || attempt === maxAttempts) break;
-        await sleep(250 * attempt);
-      }
-    }
-
-    throw classifyProviderError(lastError);
+    if (outcome.ok) return outcome.value;
+    throw classifyProviderError(outcome.error);
   };
 
   return {
