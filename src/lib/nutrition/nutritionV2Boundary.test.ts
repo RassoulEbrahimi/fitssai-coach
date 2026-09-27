@@ -36,6 +36,11 @@ import { NUTRITION_V2_ENABLED } from "@shared/nutrition/featureFlag";
   only, never queued, never optimistic and has no cancel. Generation requests
   are read — strictly, by the id a pointer names, never listed — by the read
   layer alone.
+
+  NUT-12D.1 adds the Nutrition profile completion: a pure completeness and
+  save planner, and a card and sheet that read and save the existing profile
+  through useProfile/useUpdateProfile only — no V2 read, no callable and no
+  V2 document.
 */
 
 const root = resolve(__dirname, "../../..");
@@ -96,7 +101,14 @@ const v2Modules = [
   // NUT-11: generation plumbing (no UI).
   "src/lib/nutrition/v2/generationCallable.ts",
   "src/hooks/queries/useNutritionV2RequestPlan.ts",
+  // NUT-12D.1: profile completion.
+  "src/lib/nutrition/v2/profileCompletion.ts",
+  "src/components/nutrition/v2/NutritionV2ProfileCompletion.tsx",
 ];
+
+/** NUT-12D.1: the profile completion planner and its card and sheet. */
+const profileCompletionModule = "src/lib/nutrition/v2/profileCompletion.ts";
+const profileCompletionComponent = "src/components/nutrition/v2/NutritionV2ProfileCompletion.tsx";
 
 /** The one module that calls a function, and the one hook that reaches it (NUT-08). */
 const targetCallableModule = "src/lib/nutrition/v2/targetCallable.ts";
@@ -375,9 +387,24 @@ describe("Nutrition V2 module boundary", () => {
       "src/lib/nutrition/v2/targetSetup.ts",
       "src/lib/nutrition/v2/sha256.ts",
       "src/lib/nutrition/v2/slotReplacement.ts",
+      profileCompletionModule,
     ]) {
       expect(read(path), path).not.toMatch(/from\s+["'](firebase\/|@\/lib\/firebase|react|@tanstack)/);
     }
+  });
+
+  it("completes the profile through the existing profile hooks only (NUT-12D.1)", () => {
+    for (const path of [profileCompletionModule, profileCompletionComponent]) {
+      const source = code(path);
+      expect(source, path).not.toMatch(/useNutritionV2|Callable|httpsCallable|getFunctions|NUTRITION_V2_COLLECTIONS|queryKeys|useQuery\b|useMutation\b/);
+      // Profile answers only: the target mode and a manual calorie target are not part of it.
+      expect(source, path).not.toMatch(/nutritionTargetMode|nutrition_target_mode|manualTargetKcal|manual_target_kcal/);
+    }
+    const component = code(profileCompletionComponent);
+    expect(component).toMatch(/useProfile\(\)/);
+    expect(component).toMatch(/useUpdateProfile\(\)/);
+    const importers = productionSources.filter((path) => /\/NutritionV2ProfileCompletion["']/.test(read(path)));
+    expect(importers).toEqual(["src/components/nutrition/v2/NutritionV2TodayContainer.tsx"]);
   });
 
   it("uses no resolved-day query: a resolved day is derived", () => {

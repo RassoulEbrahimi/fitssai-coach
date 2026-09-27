@@ -24,6 +24,15 @@ import type { NutritionV2TodayView } from "@/lib/nutrition/v2/todayView";
  * and it carries no recording controls. The TARGET section (NUT-08) is shown
  * for every eligible view, above the plan: a target is what the person aims
  * for and exists independently of any plan.
+ *
+ * The PROFILE section (NUT-12D.1) is shown for eligible and ineligible views
+ * alike: completing the Nutrition profile answers must stay possible while
+ * Nutrition itself is unavailable. It comes first in an eligible view, and
+ * after a minor's ineligibility message. With a missing age it replaces that
+ * message, since it says why and offers the way out. When the
+ * account has neither a target nor a plan, the container marks the profile
+ * section as the empty state, and the no-state/no-plan message is not
+ * repeated beneath it.
  */
 
 interface NutritionV2TodayShellProps {
@@ -34,6 +43,12 @@ interface NutritionV2TodayShellProps {
   conflicts?: React.ReactNode;
   /** The current target and its setup, shown for every eligible view. */
   target?: React.ReactNode;
+  /** The Nutrition profile section, shown for eligible and ineligible views. */
+  profile?: React.ReactNode;
+  /** The profile section is the empty state: no separate no-state/no-plan message. */
+  profileIsEmptyState?: boolean;
+  /** A compact action in the card header (refresh). */
+  headerAction?: React.ReactNode;
 }
 
 /** The weekday and date of a calendar day. Formatted in UTC so the day never shifts. */
@@ -127,7 +142,15 @@ const Week = ({ week, title, language }: { week: NutritionWeek; title: string; l
   </section>
 );
 
-export const NutritionV2TodayShell: React.FC<NutritionV2TodayShellProps> = ({ view, todayRecording, conflicts, target }) => {
+export const NutritionV2TodayShell: React.FC<NutritionV2TodayShellProps> = ({
+  view,
+  todayRecording,
+  conflicts,
+  target,
+  profile,
+  profileIsEmptyState = false,
+  headerAction,
+}) => {
   const { t, i18n } = useTranslation();
   const language = i18n.language || "de";
 
@@ -151,6 +174,8 @@ export const NutritionV2TodayShell: React.FC<NutritionV2TodayShellProps> = ({ vi
           />
         );
       case "ineligible":
+        // Without an age, completing the profile is the way in; the section says why.
+        if (view.reason === "missingAge" && profile) return null;
         return (
           <Message
             title={t(`nutritionV2.today.ineligible.${view.reason}.title`)}
@@ -158,6 +183,7 @@ export const NutritionV2TodayShell: React.FC<NutritionV2TodayShellProps> = ({ vi
           />
         );
       case "notInitialized":
+        if (profileIsEmptyState) return null;
         return (
           <Message
             title={t("nutritionV2.today.notInitialized.title")}
@@ -165,6 +191,7 @@ export const NutritionV2TodayShell: React.FC<NutritionV2TodayShellProps> = ({ vi
           />
         );
       case "noActivePlan":
+        if (profileIsEmptyState) return null;
         return (
           <Message
             title={t("nutritionV2.today.noActivePlan.title")}
@@ -192,16 +219,28 @@ export const NutritionV2TodayShell: React.FC<NutritionV2TodayShellProps> = ({ vi
 
   return (
     <Card data-testid="nutrition-v2-today" data-view={view.status}>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2" role="heading" aria-level={2}>
-          <Apple className="h-5 w-5 text-primary" aria-hidden="true" />
+      <CardHeader className="flex-row items-center justify-between gap-2 space-y-0">
+        <CardTitle className="flex min-w-0 items-center gap-2" role="heading" aria-level={2}>
+          <Apple className="h-5 w-5 shrink-0 text-primary" aria-hidden="true" />
           {t("nutritionV2.today.title")}
         </CardTitle>
+        {headerAction}
       </CardHeader>
       <CardContent className="space-y-6">
         {conflicts}
-        {view.status !== "error" && view.status !== "ineligible" && target}
-        {body}
+        {view.status === "ineligible" ? (
+          // Why Nutrition is unavailable first, then the way to change the answers.
+          <>
+            {body}
+            {profile}
+          </>
+        ) : (
+          <>
+            {view.status !== "error" && profile}
+            {view.status !== "error" && target}
+            {body}
+          </>
+        )}
       </CardContent>
     </Card>
   );

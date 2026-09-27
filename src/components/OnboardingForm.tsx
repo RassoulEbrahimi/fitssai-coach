@@ -18,6 +18,7 @@ import {
   sessionMinutesSchema,
   type EquipmentType,
 } from "@/lib/coachingPreferences";
+import { profileAgeSchema, profileHeightSchema, profileWeightSchema } from "@/lib/profileMeasurements";
 import { useAuth } from "@/hooks/useAuth";
 import { useUpdateProfile } from "@/hooks/queries/useProfile";
 import { toast } from "sonner";
@@ -27,9 +28,9 @@ import { z } from "zod";
 
 const onboardingSchema = z.object({
   firstName: z.string().min(2).max(50),
-  age: z.number().int().min(13).max(120),
-  weight: z.number().int().min(30).max(300),
-  height: z.number().int().min(100).max(250),
+  age: profileAgeSchema,
+  weight: profileWeightSchema,
+  height: profileHeightSchema,
   goal: z.enum(["gainMuscle", "loseFat", "improveCardio", "maintain"]),
   diet: z.enum(["vegan", "vegetarian", "keto", "highProtein", "noPreference"]),
   experience: z.enum(["beginner", "intermediate", "advanced"]),
@@ -143,7 +144,7 @@ const OnboardingForm = ({ onComplete }: { onComplete: () => void }) => {
 
       toast.success(t('onboarding.saveSuccess'));
       onComplete();
-    } catch (error: any) {
+    } catch {
       toast.error(t('onboarding.saveError'));
     } finally {
       setLoading(false);
