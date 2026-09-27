@@ -1102,3 +1102,105 @@ describe("Nutrition V2 recorded entries (NUT-06)", () => {
     });
   });
 });
+
+/*
+  NUT-10: slot overrides. The `nutritionUpdateSlot` callable writes slot heads
+  and suggestion consumption through the Admin SDK; no client path writes
+  either. These pin that the rules stay as they were: the owner reads her slot
+  heads, nobody writes one from a client, and the server-only suggestion sets
+  are unreachable — read or write, owner or not.
+*/
+describe("Nutrition V2 slot overrides (NUT-10)", () => {
+  const V2 = NUTRITION_V2_COLLECTIONS;
+  const SUGGESTIONS = "_nutrition_v2_suggestions";
+  const HEAD_ID = "plan-1__2026-09-28__lunch";
+  const overrideUuid = "00000000-0000-4000-a000-000000000001";
+  const values = { kcal: 500, proteinG: 20, carbsG: 50, fatG: 15 };
+  /** A head as the callable writes it (timestamps as plain numbers here: no Admin SDK). */
+  const head = (revision = 1) => ({
+    schemaVersion: 2,
+    planId: "plan-1",
+    date: "2026-09-28",
+    slotId: "lunch",
+    revision,
+    selection: { kind: "override", overrideId: overrideUuid },
+    overrides: {
+      [overrideUuid]: {
+        overrideId: overrideUuid,
+        planId: "plan-1",
+        date: "2026-09-28",
+        slotId: "lunch",
+        baseMealId: "m-5-1",
+        previousOverrideId: null,
+        meal: { mealId: "00000000-0000-4000-a000-000000000002", slotId: "lunch", name: "Replacement", values },
+        source: { kind: "planMeal", sourceMealId: "m-2-1" },
+        createdAtRevision: 1,
+        createdAt: { seconds: 1, nanoseconds: 0 },
+      },
+    },
+    appliedRequestIds: ["00000000-0000-4000-8000-000000000001"],
+    updatedAt: { seconds: 1, nanoseconds: 0 },
+  });
+  const suggestionSet = {
+    schemaVersion: 2,
+    ownerUid: ALICE,
+    suggestionSetId: "set-1",
+    planId: "plan-1",
+    date: "2026-09-28",
+    slotId: "lunch",
+    candidates: [{ candidateId: "c-1", meal: { mealId: "s-1", slotId: "lunch", name: "Fixture", values }, consumedByRequestId: null }],
+    validation: { policy: { id: "test-fixture-replacement-accept", version: 1 }, outcome: "accepted" },
+    createdAt: { seconds: 1, nanoseconds: 0 },
+    expiresAt: { seconds: 2, nanoseconds: 0 },
+  };
+
+  beforeEach(async () => {
+    await seed(["users", ALICE], { ...PROFILE_FIELDS, age: 30 });
+  });
+
+  it("the owner reads her slot heads, by id and by the plan query", async () => {
+    await seed(["users", ALICE, V2.slots, HEAD_ID], head());
+    await assertSucceeds(getDoc(doc(alice(), "users", ALICE, V2.slots, HEAD_ID)));
+    const byPlan = await assertSucceeds(getDocs(query(collection(alice(), "users", ALICE, V2.slots), where("planId", "==", "plan-1"))));
+    expect(byPlan.docs.map((d) => d.id)).toEqual([HEAD_ID]);
+    await assertFails(getDoc(doc(bob(), "users", ALICE, V2.slots, HEAD_ID)));
+  });
+
+  it("an adult owner cannot create, replace, update or delete a slot head — not even a well-formed one", async () => {
+    await assertFails(setDoc(doc(alice(), "users", ALICE, V2.slots, HEAD_ID), head()));
+    await seed(["users", ALICE, V2.slots, HEAD_ID], head());
+    await assertFails(setDoc(doc(alice(), "users", ALICE, V2.slots, HEAD_ID), head(2)));
+    await assertFails(updateDoc(doc(alice(), "users", ALICE, V2.slots, HEAD_ID), { revision: 2, selection: { kind: "base" } }));
+    await assertFails(deleteDoc(doc(alice(), "users", ALICE, V2.slots, HEAD_ID)));
+    const db = alice();
+    await assertFails(
+      runTransaction(db, async (transaction) => {
+        const ref = doc(db, "users", ALICE, V2.slots, HEAD_ID);
+        await transaction.get(ref);
+        transaction.set(ref, head(2));
+      })
+    );
+  });
+
+  it("suggestion sets are server-only: no client reads, lists or writes them, the owner included", async () => {
+    await seed([SUGGESTIONS, `${ALICE}__set-1`], suggestionSet);
+    for (const db of [alice(), bob(), anon()]) {
+      await assertFails(getDoc(doc(db, SUGGESTIONS, `${ALICE}__set-1`)));
+      await assertFails(getDocs(collection(db, SUGGESTIONS)));
+      await assertFails(getDocs(query(collection(db, SUGGESTIONS), where("ownerUid", "==", ALICE))));
+      await assertFails(setDoc(doc(db, SUGGESTIONS, `${ALICE}__set-2`), suggestionSet));
+      await assertFails(updateDoc(doc(db, SUGGESTIONS, `${ALICE}__set-1`), { candidates: [] }));
+      await assertFails(deleteDoc(doc(db, SUGGESTIONS, `${ALICE}__set-1`)));
+    }
+    // A `nutrition_v2_*` name under the account is Nutrition's and closed to the client too.
+    // (The server reads suggestion sets only at the top level above — never under
+    // /users — so a same-named owner subcollection is ordinary owner data it never sees.)
+    await assertFails(setDoc(doc(alice(), "users", ALICE, "nutrition_v2_suggestions", "set-1"), suggestionSet));
+  });
+
+  it("entries keep their NUT-06 rules and Training keeps working", async () => {
+    await assertSucceeds(setDoc(doc(alice(), "users", ALICE, V2.entries, plannedMealDoc().entryId), plannedMealDoc()));
+    await assertFails(deleteDoc(doc(alice(), "users", ALICE, V2.entries, plannedMealDoc().entryId)));
+    await assertSucceeds(setDoc(doc(alice(), "users", ALICE, "workout_logs", "log1"), { completed: true }));
+  });
+});

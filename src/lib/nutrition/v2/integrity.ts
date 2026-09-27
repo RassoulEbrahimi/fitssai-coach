@@ -8,6 +8,7 @@ import {
   planOwnsDate,
   recordedEntrySchema,
   slotHeadId,
+  slotHeadMatchesPlan,
   slotHeadSchema,
   targetVersionSchema,
   type NutritionDate,
@@ -175,8 +176,9 @@ export const parseNutritionV2PlanForDate = (date: NutritionDate, docs: readonly 
 /**
  * Every slot head returned for `plan`. Each must be a valid head of that
  * plan, on one of its dates, for one of its configured slots, stored under
- * `slotHeadId(planId, date, slotId)`. A slot without a head is fine — it shows
- * the base meal — so no head is ever invented here.
+ * `slotHeadId(planId, date, slotId)`, and consistent with the plan's base
+ * meals. A slot without a head is fine — it shows the base meal at revision 0
+ * — so no head is ever invented here.
  */
 export const parseNutritionV2SlotHeads = (plan: NutritionPlan, docs: readonly NutritionV2RawDoc[]): SlotHead[] => {
   const planDates = new Set(plan.days.map((day) => day.date));
@@ -196,6 +198,11 @@ export const parseNutritionV2SlotHeads = (plan: NutritionPlan, docs: readonly Nu
     }
     if (id !== slotHeadId(head.planId, head.date, head.slotId)) {
       throw new NutritionV2IntegrityError("idMismatch", path, "id is not slotHeadId(planId, date, slotId)");
+    }
+    // NUT-10: every override replaces that date's base meal, and a planMeal
+    // override names another base meal of this plan and slot.
+    if (!slotHeadMatchesPlan(head, plan)) {
+      throw new NutritionV2IntegrityError("outOfScope", path, "an override does not match the plan's base meals");
     }
     return head;
   });

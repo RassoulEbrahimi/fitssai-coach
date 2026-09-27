@@ -10,6 +10,7 @@ import {
 } from "@/hooks/queries/useNutritionV2";
 import { useNutritionV2Recording } from "@/hooks/queries/useNutritionV2Recording";
 import { useNutritionV2EntryOverlay } from "@/hooks/queries/useNutritionV2EntryOverlay";
+import { useNutritionV2SlotOverride } from "@/hooks/queries/useNutritionV2SlotOverride";
 import { buildNutritionDayRecordings } from "@/lib/nutrition/v2/dayRecordings";
 import { deriveNutritionV2TodayView, selectNutritionV2TodayPlan } from "@/lib/nutrition/v2/todayView";
 import { NutritionV2TodayShell } from "./NutritionV2TodayShell";
@@ -36,6 +37,11 @@ import { NutritionV2TargetSection } from "./NutritionV2TargetSection";
  * offered — never a future date, and backfilling earlier days is not part of
  * this surface.
  *
+ * Today's slots can also be replaced with another base meal of the plan that
+ * owns today, or a replacement undone (NUT-10) — through that plan's own slot
+ * heads, never the state pointer's successor. It is online-only and
+ * confirmed by the server before anything shown changes.
+ *
  * The recorded entries shown are the strict committed read with this
  * account's own queued changes laid over it (`useNutritionV2EntryOverlay`).
  * Plans, slot heads and targets are shown exactly as read. The current
@@ -61,6 +67,7 @@ export const NutritionV2TodayContainer: React.FC = () => {
   const overlay = useNutritionV2EntryOverlay(committedEntries, shownPlan?.startDate, shownPlan?.endDate);
   const entries = overlay.entries;
   const recording = useNutritionV2Recording();
+  const slotOverride = useNutritionV2SlotOverride();
 
   const view = deriveNutritionV2TodayView({ access, state, plan, todayPlan, slots, entries, today });
   const todayDay = view?.status === "today" ? view.week.today : null;
@@ -78,7 +85,13 @@ export const NutritionV2TodayContainer: React.FC = () => {
       target={<NutritionV2TargetSection />}
       todayRecording={
         recordings ? (
-          <NutritionV2TodayRecording recordings={recordings} recording={recording} pending={overlay.pending} />
+          <NutritionV2TodayRecording
+            recordings={recordings}
+            recording={recording}
+            pending={overlay.pending}
+            // The plan that owns today — the one the recordings were resolved from.
+            replacement={shownPlan ? { plan: shownPlan, slotOverride } : undefined}
+          />
         ) : null
       }
     />

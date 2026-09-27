@@ -15,6 +15,7 @@ import { toNutritionHttpsError } from "./nutrition/errors";
 import { productionTargetPolicyRegistry } from "./nutrition/targetPolicy/registry";
 import { handleNutritionRepeatPlan } from "./nutrition/repeatPlan";
 import { productionPlanValidationPolicyRegistry } from "./nutrition/planValidation/registry";
+import { handleNutritionUpdateSlot } from "./nutrition/updateSlot";
 
 /**
  * FitssAI Coach backend entry point.
@@ -199,6 +200,39 @@ export const nutritionRepeatPlan = onCall(
       });
     } catch (error) {
       // Only our codes cross; see nutrition/errors.ts.
+      throw toNutritionHttpsError(error);
+    }
+  }
+);
+
+/**
+ * Nutrition V2: replace one slot's PLANNED meal on one date, or undo the
+ * selected replacement (NUT-10).
+ *
+ * The request names ids only — the slot, the revision the person saw, and a
+ * base meal of the plan or a server-held suggestion candidate. The profile,
+ * the plan that owns the date, the slot head, the slot's recorded entry and
+ * any suggestion set are read server-side under the verified uid, and the head
+ * (and a candidate's consumption) commit in one transaction. The base plan,
+ * the target and every recorded entry are never written.
+ *
+ * No secret, no provider, no quota and no log: nothing here is generated. No
+ * production code creates suggestion sets yet, so a suggestion commit finds
+ * none.
+ */
+export const nutritionUpdateSlot = onCall(
+  {
+    region: FUNCTIONS_REGION,
+    maxInstances: 5,
+    // A handful of reads and one small transaction.
+    timeoutSeconds: 30,
+    memory: "256MiB",
+  },
+  async (request) => {
+    try {
+      return await handleNutritionUpdateSlot(request, { firestore: db() });
+    } catch (error) {
+      // Only our codes cross, and a revision number at most; see nutrition/errors.ts.
       throw toNutritionHttpsError(error);
     }
   }

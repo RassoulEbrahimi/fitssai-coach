@@ -110,23 +110,90 @@ export const makeTarget = (targetVersionId = "target-1", overrides: Partial<Targ
   ...overrides,
 });
 
-export const aiOverride = (name = "Linsen-Curry", kcal = 900): MealOverride => ({
-  source: "aiSuggestion",
-  meal: { name, values: values(kcal, 30, 110, 25) },
+/** The meal an override puts in a slot: its name and planned values. */
+export interface OverrideMealSpec {
+  name: string;
+  values: NutritionValues;
+}
+
+export const aiOverride = (name = "Linsen-Curry", kcal = 900): OverrideMealSpec => ({
+  name,
+  values: values(kcal, 30, 110, 25),
 });
 
-export const makeSlotHead = (
+/** A fixture replacement-validation provenance. The policy is a test fixture, not a FitssAI rule. */
+export const FIXTURE_REPLACEMENT_VALIDATION = {
+  policy: { id: "test-fixture-replacement-accept", version: 1 },
+  outcome: "accepted",
+} as const;
+
+/** The override id `makeSlotHead` commits: a server-minted lower-case UUID. */
+export const FIXTURE_OVERRIDE_ID = "00000000-0000-4000-a000-000000000001";
+
+/**
+ * The fixture plan's base meal id for `slotId` on `date`. Fixture plans are
+ * weeks built by `makePlan`, whose day `i` carries `mealIdFor(i, slot)`; a plan
+ * starting a whole number of weeks after `PLAN_START` numbers its days the same.
+ */
+export const baseMealIdFor = (date: NutritionDate, slotId: NutritionSlotId): string => {
+  const days = Math.round((Date.parse(`${date}T00:00:00Z`) - Date.parse(`${PLAN_START}T00:00:00Z`)) / 86_400_000);
+  return mealIdFor(((days % 7) + 7) % 7, slotId);
+};
+
+/** A committed override as NUT-10 persists it, made of `meal` and committed at revision `createdAtRevision`. */
+export const makeOverride = (
   date: NutritionDate,
   slotId: NutritionSlotId,
-  override: MealOverride | null = aiOverride(),
-  planId = PLAN_ID
-): SlotHead => ({
-  schemaVersion: NUTRITION_SCHEMA_VERSION,
+  meal: OverrideMealSpec = aiOverride(),
+  {
+    planId = PLAN_ID,
+    overrideId = FIXTURE_OVERRIDE_ID,
+    previousOverrideId = null,
+    createdAtRevision = 1,
+  }: { planId?: string; overrideId?: string; previousOverrideId?: string | null; createdAtRevision?: number } = {}
+): MealOverride => ({
+  overrideId,
   planId,
   date,
   slotId,
-  selection: override ? { kind: "override", override } : { kind: "base" },
+  baseMealId: baseMealIdFor(date, slotId),
+  previousOverrideId,
+  meal: { mealId: `ov-${overrideId.slice(-4)}-${date}-${slotId.replace("_", "")}`, slotId, name: meal.name, values: { ...meal.values } },
+  source: {
+    kind: "aiSuggestion",
+    suggestionSetId: "fixture-set",
+    candidateId: "fixture-candidate",
+    validation: { policy: { ...FIXTURE_REPLACEMENT_VALIDATION.policy }, outcome: FIXTURE_REPLACEMENT_VALIDATION.outcome },
+  },
+  createdAtRevision,
+  createdAt: { seconds: 1_790_000_100, nanoseconds: 0 },
 });
+
+/**
+ * A persisted slot head as NUT-10 writes it. With `override`: that one
+ * override, committed and selected (revision 1). With `null`: an override
+ * that was committed and then undone, so the head selects the base meal
+ * (revision 2) and keeps the override in its history.
+ */
+export const makeSlotHead = (
+  date: NutritionDate,
+  slotId: NutritionSlotId,
+  override: OverrideMealSpec | null = aiOverride(),
+  planId = PLAN_ID
+): SlotHead => {
+  const committed = makeOverride(date, slotId, override ?? aiOverride("Undone override", 1), { planId });
+  return {
+    schemaVersion: NUTRITION_SCHEMA_VERSION,
+    planId,
+    date,
+    slotId,
+    revision: override ? 1 : 2,
+    selection: override ? { kind: "override", overrideId: committed.overrideId } : { kind: "base" },
+    overrides: { [committed.overrideId]: committed },
+    appliedRequestIds: override ? [intentUuid(501)] : [intentUuid(501), intentUuid(502)],
+    updatedAt: { seconds: 1_790_000_200, nanoseconds: 0 },
+  };
+};
 
 export const slotHeadDocId = (head: SlotHead) => slotHeadId(head.planId, head.date, head.slotId);
 

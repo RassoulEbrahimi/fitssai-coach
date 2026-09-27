@@ -85,8 +85,11 @@ describe("the production target seam carries no formula", () => {
       "src/nutrition/setTarget.ts",
       "src/nutrition/sha256.ts",
       "src/nutrition/stateLedger.ts",
+      // NUT-10: slot overrides; swept like every other production module.
+      "src/nutrition/suggestionStore.ts",
       "src/nutrition/targetPolicy/registry.ts",
       "src/nutrition/targetPolicy/types.ts",
+      "src/nutrition/updateSlot.ts",
     ]);
   });
 

@@ -93,6 +93,7 @@ import {
   customSlotEntry,
   extraEntry,
   makePlan,
+  makeSlotHead,
   makeState,
   plannedMealEntry,
   removedEntry,
@@ -457,13 +458,10 @@ describe("after next week was activated by a repeat (NUT-09)", () => {
     put(`users/alice/${C.plans}/${PLAN_ID}`, source);
     put(`users/alice/${C.plans}/plan-2`, repeat);
     // A head of the future plan: never read or shown for 28 Sep.
-    put(`users/alice/${C.slots}/plan-2__2026-09-30__lunch`, {
-      schemaVersion: 2,
-      planId: "plan-2",
-      date: "2026-09-30",
-      slotId: "lunch",
-      selection: { kind: "override", override: { source: "aiSuggestion", meal: { name: "Future override", values: { kcal: 1, proteinG: 1, carbsG: 1, fatG: 1 } } } },
-    });
+    put(
+      `users/alice/${C.slots}/plan-2__2026-09-30__lunch`,
+      makeSlotHead("2026-09-30", "lunch", { name: "Future override", values: { kcal: 1, proteinG: 1, carbsG: 1, fatG: 1 } }, "plan-2")
+    );
   });
 
   it("shows today on the source plan, not outside the plan", async () => {

@@ -2,7 +2,9 @@ import {
   isActiveRecordedEntry,
   planOwnedUntil,
   planOwnsDate,
+  selectedMealOverride,
   slotEntryId,
+  slotHeadRevision,
   type MealOverride,
   type NutritionDate,
   type NutritionPlan,
@@ -36,19 +38,29 @@ interface ResolvedNutritionMealBase {
   planId: string;
   date: NutritionDate;
   slotId: NutritionSlotId;
+  /**
+   * The meal's own id: the plan's base meal, or the selected override's
+   * server-stable meal. Never derived from a name.
+   */
+  mealId: string;
   /** The name shown for the slot. */
   name: string;
   /** Planned values, unrounded. */
   values: NutritionValues;
+  /**
+   * The slot head's revision (0 without a head): what a replacement or an
+   * undo of this slot names as its expected revision (NUT-10).
+   */
+  slotRevision: number;
 }
 
 /**
- * What one slot of one date proposes. `base` names the plan's own meal by its
- * `mealId`; `override` carries the override as persisted and has no V2 meal
- * id of its own.
+ * What one slot of one date proposes. `base` is the plan's own meal;
+ * `override` is the override the slot head selects, exactly as stored in the
+ * head's immutable history.
  */
 export type ResolvedNutritionMeal =
-  | (ResolvedNutritionMealBase & { source: "base"; mealId: string })
+  | (ResolvedNutritionMealBase & { source: "base" })
   | (ResolvedNutritionMealBase & { source: "override"; override: MealOverride });
 
 export type ResolvedNutritionMealSource = ResolvedNutritionMeal["source"];
@@ -101,21 +113,16 @@ const resolveDay = (
   if (!day) return null;
 
   const meals = plan.slotOrder.map((slotId): ResolvedNutritionMeal => {
-    const selection = heads.get(headKey(date, slotId))?.selection;
-    if (selection?.kind === "override") {
-      const { name, values } = selection.override.meal;
-      return {
-        source: "override",
-        planId: plan.planId,
-        date,
-        slotId,
-        name,
-        values: { ...values },
-        override: selection.override,
-      };
+    const head = heads.get(headKey(date, slotId)) ?? null;
+    const slotRevision = slotHeadRevision(head);
+    // Only the override the selection names; the rest of the history is history.
+    const override = selectedMealOverride(head);
+    if (override) {
+      const { mealId, name, values } = override.meal;
+      return { source: "override", planId: plan.planId, date, slotId, mealId, name, values: { ...values }, slotRevision, override };
     }
 
-    // No head, or an explicit `base` selection: the plan's own meal.
+    // No head, or a `base` selection: the plan's own meal.
     const base = day.meals.find((meal) => meal.slotId === slotId);
     if (!base) throw new Error(`plan ${plan.planId} has no meal for ${slotId} on ${date}`);
     return {
@@ -123,9 +130,10 @@ const resolveDay = (
       planId: plan.planId,
       date,
       slotId,
+      mealId: base.mealId,
       name: base.name,
       values: { ...base.values },
-      mealId: base.mealId,
+      slotRevision,
     };
   });
 

@@ -2,6 +2,7 @@ import { HttpsError, type FunctionsErrorCode } from "firebase-functions/v2/https
 import type {
   NutritionPlanErrorCode,
   NutritionSetTargetErrorCode,
+  NutritionSlotErrorCode,
   NutritionTargetProfileField,
 } from "../../../shared/nutrition";
 
@@ -60,6 +61,32 @@ export class NutritionPlanError extends Error {
 
 export const isNutritionPlanError = (value: unknown): value is NutritionPlanError => value instanceof NutritionPlanError;
 
+export interface NutritionSlotErrorDetails {
+  /** NOT_ELIGIBLE only: the NUT-03 reason code, never the age. */
+  reason?: "minor" | "missingAge";
+  /** STALE_REVISION only: the slot head's revision now (0: no head), for the client to refetch. */
+  currentRevision?: number;
+}
+
+/**
+ * A refusal or failure of `nutritionUpdateSlot` (NUT-10). Semantic conflicts —
+ * a stale revision, a recorded slot, a plan that no longer owns the date, a
+ * consumed candidate — each have their own code and never collapse into
+ * INTERNAL.
+ */
+export class NutritionSlotError extends Error {
+  constructor(
+    readonly code: Exclude<NutritionSlotErrorCode, "UNAUTHENTICATED">,
+    message: string,
+    readonly details: NutritionSlotErrorDetails = {}
+  ) {
+    super(message);
+    this.name = "NutritionSlotError";
+  }
+}
+
+export const isNutritionSlotError = (value: unknown): value is NutritionSlotError => value instanceof NutritionSlotError;
+
 const HTTPS_CODES: Readonly<Record<NutritionTargetError["code"], FunctionsErrorCode>> = {
   INVALID_REQUEST: "invalid-argument",
   NOT_ELIGIBLE: "permission-denied",
@@ -84,6 +111,25 @@ const PLAN_HTTPS_CODES: Readonly<Record<NutritionPlanError["code"], FunctionsErr
   INTERNAL: "internal",
 };
 
+const SLOT_HTTPS_CODES: Readonly<Record<NutritionSlotError["code"], FunctionsErrorCode>> = {
+  INVALID_REQUEST: "invalid-argument",
+  NOT_ELIGIBLE: "permission-denied",
+  DATE_FROZEN: "failed-precondition",
+  SLOT_NOT_CONFIGURED: "failed-precondition",
+  SLOT_HAS_RECORD: "failed-precondition",
+  NOTHING_TO_UNDO: "failed-precondition",
+  INVALID_SOURCE_MEAL: "failed-precondition",
+  SUGGESTION_NOT_FOUND: "not-found",
+  CANDIDATE_NOT_FOUND: "not-found",
+  SUGGESTION_EXPIRED: "failed-precondition",
+  // Another request changed the slot, the plan or the candidate first; the
+  // client refreshes and the person decides again.
+  PLAN_CHANGED_FOR_DATE: "aborted",
+  STALE_REVISION: "aborted",
+  SUGGESTION_ALREADY_CONSUMED: "aborted",
+  INTERNAL: "internal",
+};
+
 /**
  * The one mapping from a thrown value to what the callable answers. An
  * `HttpsError` the handler threw itself (unauthenticated) passes through;
@@ -98,6 +144,10 @@ export const toNutritionHttpsError = (error: unknown): HttpsError => {
   if (isNutritionPlanError(error)) {
     const details = Object.keys(error.details).length > 0 ? error.details : undefined;
     return new HttpsError(PLAN_HTTPS_CODES[error.code], error.code, details);
+  }
+  if (isNutritionSlotError(error)) {
+    const details = Object.keys(error.details).length > 0 ? error.details : undefined;
+    return new HttpsError(SLOT_HTTPS_CODES[error.code], error.code, details);
   }
   return new HttpsError("internal", "INTERNAL");
 };
