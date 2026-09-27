@@ -1,4 +1,6 @@
 import { describe, it, expect } from "vitest";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { HttpsError } from "firebase-functions/v2/https";
 import { Timestamp } from "firebase-admin/firestore";
 import {
@@ -190,6 +192,130 @@ describe("who may change a slot", () => {
 
   it("no profile at all is NOT_ELIGIBLE", async () => {
     await expectRefusal(setup({ profile: null }).commitPlanMeal(1), "NOT_ELIGIBLE");
+  });
+});
+
+/**
+ * Firestore's optimistic transaction, emulated over the serialised fake. Each
+ * attempt records every document it reads and buffers its writes. `interleave`
+ * runs once, after the first attempt has read everything and before it would
+ * commit — a concurrent write that lands first. If any document the attempt
+ * READ has changed by then, the attempt is discarded and the body runs again
+ * against the new state, as Firestore retries a contended transaction. A
+ * document the handler read outside the transaction is not in the read set,
+ * so a change to it would not stop the commit.
+ */
+const withOptimisticRetry = (firestore: ReturnType<typeof setup>["firestore"], interleave: () => void) => {
+  type Ref = { path?: string; where?: unknown };
+  type Tx = {
+    get: (ref: Ref) => Promise<unknown>;
+    create: (ref: Ref, value: Record<string, unknown>) => void;
+    set: (ref: Ref, value: Record<string, unknown>) => void;
+    update: (ref: Ref, value: Record<string, unknown>) => void;
+  };
+  const fake = firestore as unknown as FakeFirestore;
+  const serialised = fake.runTransaction.bind(fake) as unknown as <T>(body: (tx: Tx) => Promise<T>) => Promise<T>;
+  const readSets: string[][] = [];
+  let interleaved = false;
+  const current = (path: string) => JSON.stringify(firestore.docs.get(path) ?? null);
+
+  (fake as unknown as { runTransaction: unknown }).runTransaction = <T>(body: (tx: Tx) => Promise<T>) =>
+    serialised(async (tx: Tx) => {
+      for (;;) {
+        const seen = new Map<string, string>();
+        const writes: Array<() => void> = [];
+        const result = await body({
+          get: async (ref) => {
+            // Document reads join the read set; query reads are covered by the documents they return.
+            if (typeof ref.where !== "function" && ref.path) seen.set(ref.path, current(ref.path));
+            return tx.get(ref);
+          },
+          create: (ref, value) => writes.push(() => tx.create(ref, value)),
+          set: (ref, value) => writes.push(() => tx.set(ref, value)),
+          update: (ref, value) => writes.push(() => tx.update(ref, value)),
+        });
+        readSets.push([...seen.keys()]);
+        if (!interleaved) {
+          interleaved = true;
+          interleave();
+        }
+        if ([...seen].some(([path, value]) => current(path) !== value)) continue; // contended: retry
+        for (const write of writes) write();
+        return result;
+      }
+    });
+  return { readSets };
+};
+
+describe("eligibility is judged inside the slot transaction", () => {
+  const PROFILE_PATH = `users/${UID}`;
+  const untouched = (t: ReturnType<typeof setup>) =>
+    [...t.firestore.docs.entries()].filter(([path]) => path !== PROFILE_PATH).map(([path, data]) => [path, JSON.stringify(data)]);
+
+  it.each([
+    ["turns 17", { ...ADULT_PROFILE, age: 17 }, "minor"],
+    ["removes the age", { weight: 68.25, height: 172.5 }, "missingAge"],
+    ["stores an unusable age", { ...ADULT_PROFILE, age: "thirty" }, "missingAge"],
+  ])("a profile that %s while the commit is in flight wins: NOT_ELIGIBLE, nothing written", async (_label, profile, reason) => {
+    const t = setup();
+    const before = untouched(t);
+    const { readSets } = withOptimisticRetry(t.firestore, () => t.firestore.docs.set(PROFILE_PATH, profile));
+
+    const error = await refusal(t.commitPlanMeal(1));
+    expect([error.code, error.details]).toEqual(["NOT_ELIGIBLE", { reason }]);
+    // The first attempt read the profile inside the transaction, passed, and was
+    // retried because the profile it read changed; the retry refused.
+    expect(readSets).toHaveLength(1);
+    expect(readSets[0]).toContain(PROFILE_PATH);
+    expect(t.head()).toBeNull();
+    expect(untouched(t)).toEqual(before);
+  });
+
+  it("a suggestion commit refused this way consumes no candidate", async () => {
+    const t = setup();
+    await seedFixtureSuggestionSet(t.firestore, {
+      uid: UID,
+      planId: "plan-1",
+      date: TODAY,
+      slotId: "lunch",
+      createdAt: new Date("2026-09-28T09:00:00.000Z"),
+      expiresAt: new Date("2026-09-28T10:00:00.000Z"),
+    });
+    const before = untouched(t);
+    withOptimisticRetry(t.firestore, () => t.firestore.docs.set(PROFILE_PATH, { ...ADULT_PROFILE, age: 16 }));
+
+    await expectRefusal(t.commitSuggestion(1, "cand-1"), "NOT_ELIGIBLE");
+    expect(replacementSuggestionSetSchema.parse(t.firestore.docs.get(suggestionPath())).candidates.map((c) => c.consumedByRequestId)).toEqual([null, null]);
+    expect(untouched(t)).toEqual(before);
+  });
+
+  it("an undo refused this way leaves the head as it was", async () => {
+    const t = setup();
+    await t.commitPlanMeal(1);
+    const before = untouched(t);
+    withOptimisticRetry(t.firestore, () => t.firestore.docs.set(PROFILE_PATH, { ...ADULT_PROFILE, age: 15 }));
+
+    await expectRefusal(t.undo(2, { expectedRevision: 1 }), "NOT_ELIGIBLE");
+    expect(t.head()?.revision).toBe(1);
+    expect(untouched(t)).toEqual(before);
+  });
+
+  it("an uncontended adult commit reads the profile in the same transaction as the head and the entry", async () => {
+    const t = setup();
+    const { readSets } = withOptimisticRetry(t.firestore, () => undefined);
+    await t.commitPlanMeal(1);
+    expect(readSets).toEqual([[PROFILE_PATH, headPath(), entryPath()]]);
+    expect(t.head()?.revision).toBe(1);
+  });
+
+  it("the handler reads the profile nowhere but inside the transaction", () => {
+    const source = readFileSync(join(__dirname, "updateSlot.ts"), "utf-8")
+      .replace(/\/\*[\s\S]*?\*\//g, "")
+      .replace(/^\s*\/\/.*$/gm, "");
+    const transaction = source.slice(source.indexOf(".runTransaction("));
+    expect(source.slice(0, source.indexOf(".runTransaction("))).not.toMatch(/userRef\.get\(|getNutritionEligibility\(/);
+    expect([...source.matchAll(/getNutritionEligibility\(/g)]).toHaveLength(1);
+    expect(transaction).toMatch(/getNutritionEligibility\(\s*parseNutritionProfile\(\(\(await tx\.get\(userRef\)\)/);
   });
 });
 

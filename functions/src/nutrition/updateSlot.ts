@@ -43,12 +43,16 @@ import { suggestionSetRef } from "./suggestionStore";
  * Before the transaction, from the request and the server alone:
  *   1. the verified caller (never a uid from the request)
  *   2. the request: one of the strict shapes — ids only, never meal content
- *   3. NUT-03 adult eligibility, from the caller's own profile
- *   4. the date is today or later in Berlin, by the server clock (DATE_FROZEN)
- *   5. the override id, and a planMeal copy's meal id, minted once — so a
+ *   3. the date is today or later in Berlin, by the server clock (DATE_FROZEN)
+ *   4. the override id, and a planMeal copy's meal id, minted once — so a
  *      transaction retry writes what the first attempt would have
  *
  * Then ONE transaction, all reads before any write:
+ *   5. the caller's own profile, and NUT-03 adult eligibility from it
+ *      (NOT_ELIGIBLE). It is a transaction read, so an age change that commits
+ *      meanwhile makes Firestore retry the transaction, and the retry judges
+ *      the new profile: an account that stopped being eligible never has its
+ *      slots extended. There is no second, earlier eligibility check.
  *   6. the plan that OWNS the date, by the NUT-09 rule: the latest plan with
  *      `startDate <= date` that `planOwnsDate`. It must be the plan named —
  *      not necessarily `state.activePlanId`, which may be a successor that
@@ -267,27 +271,13 @@ export const handleNutritionUpdateSlot = async (
 
   const userRef = deps.firestore.collection("users").doc(uid);
 
-  // 3. Adults only, by the NUT-03 rule. The age itself is never reported.
-  let profileData: Record<string, unknown> | undefined;
-  try {
-    profileData = (await userRef.get()).data();
-  } catch {
-    throw internal("Failed to read the profile.");
-  }
-  const eligibility = getNutritionEligibility(parseNutritionProfile(profileData));
-  if (!eligibility.eligible) {
-    throw new NutritionSlotError("NOT_ELIGIBLE", "Nutrition is for adults with a known age.", {
-      reason: eligibility.reason,
-    });
-  }
-
-  // 4. Today or later, by the server's Berlin day. Yesterday is frozen.
+  // 3. Today or later, by the server's Berlin day. Yesterday is frozen.
   const at = (deps.now ?? (() => new Date()))();
   if (!(at instanceof Date) || Number.isNaN(at.getTime())) throw internal("The server instant is invalid.");
   if (request.date < nutritionDateAt(at)) throw refuse("DATE_FROZEN", "Past dates cannot be changed.");
   const now = { seconds: Timestamp.fromDate(at).seconds, nanoseconds: Timestamp.fromDate(at).nanoseconds };
 
-  // 5. Minted once, reused by every attempt of the transaction.
+  // 4. Minted once, reused by every attempt of the transaction.
   const newId = deps.newId ?? randomUUID;
   const overrideId = request.action === "commit" ? newId() : null;
   const planMealId =
@@ -310,6 +300,17 @@ export const handleNutritionUpdateSlot = async (
         runTransaction: <T>(body: (tx: SlotTransaction) => Promise<T>) => Promise<T>;
       }
     ).runTransaction(async (tx): Promise<NutritionUpdateSlotResult> => {
+      // 5. Adults only, by the NUT-03 rule, judged on the profile as this
+      //    attempt reads it. The age itself is never reported.
+      const eligibility = getNutritionEligibility(
+        parseNutritionProfile(((await tx.get(userRef)) as DocSnapshot).data())
+      );
+      if (!eligibility.eligible) {
+        throw new NutritionSlotError("NOT_ELIGIBLE", "Nutrition is for adults with a known age.", {
+          reason: eligibility.reason,
+        });
+      }
+
       // 6. The plan that owns the date now — never a stale or a later plan.
       const plan = parseOwningPlan((await tx.get(plansQuery)) as QuerySnapshot, request.date);
       if (plan === null || plan.planId !== request.planId) {
