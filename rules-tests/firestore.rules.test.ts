@@ -1204,3 +1204,82 @@ describe("Nutrition V2 slot overrides (NUT-10)", () => {
     await assertSucceeds(setDoc(doc(alice(), "users", ALICE, "workout_logs", "log1"), { completed: true }));
   });
 });
+
+describe("Nutrition V2 generation requests (NUT-11)", () => {
+  const V2 = NUTRITION_V2_COLLECTIONS;
+  const RID = "00000000-0000-4000-8000-000000000011";
+  /** A request as the callable writes it (timestamps as plain numbers here: no Admin SDK). */
+  const request = (status = "running") => ({
+    schemaVersion: 2,
+    requestId: RID,
+    idempotencyKey: `nutritionPlan:${RID}`,
+    kind: "regenerate",
+    basePlanId: "plan-1",
+    targetVersionId: "target-1",
+    payloadFingerprint: "c".repeat(64),
+    status,
+    resultPlanId: status === "succeeded" ? "plan-2" : null,
+    errorCode: null,
+    createdAt: { seconds: 1, nanoseconds: 0 },
+    finishedAt: status === "running" ? null : { seconds: 2, nanoseconds: 0 },
+    acknowledgedAt: null,
+  });
+  const OPERATION_ID = `nutritionPlan__${ALICE}__${RID}`;
+
+  beforeEach(async () => {
+    await seed(["users", ALICE], { ...PROFILE_FIELDS, age: 30 });
+  });
+
+  it("the owner reads her own request by id; bob and an unauthenticated client cannot", async () => {
+    await seed(["users", ALICE, V2.generations, RID], request());
+    await assertSucceeds(getDoc(doc(alice(), "users", ALICE, V2.generations, RID)));
+    await assertFails(getDoc(doc(bob(), "users", ALICE, V2.generations, RID)));
+    await assertFails(getDoc(doc(anon(), "users", ALICE, V2.generations, RID)));
+  });
+
+  it("an adult owner cannot create, update, finish, acknowledge or delete a request — not even a well-formed one", async () => {
+    await assertFails(setDoc(doc(alice(), "users", ALICE, V2.generations, RID), request()));
+    await seed(["users", ALICE, V2.generations, RID], request());
+    await assertFails(updateDoc(doc(alice(), "users", ALICE, V2.generations, RID), { status: "succeeded", resultPlanId: "plan-2" }));
+    await assertFails(updateDoc(doc(alice(), "users", ALICE, V2.generations, RID), { acknowledgedAt: { seconds: 3, nanoseconds: 0 } }));
+    await assertFails(setDoc(doc(alice(), "users", ALICE, V2.generations, RID), request("succeeded")));
+    await assertFails(deleteDoc(doc(alice(), "users", ALICE, V2.generations, RID)));
+    const db = alice();
+    await assertFails(
+      runTransaction(db, async (transaction) => {
+        const ref = doc(db, "users", ALICE, V2.generations, RID);
+        await transaction.get(ref);
+        transaction.set(ref, request("failed"));
+      })
+    );
+  });
+
+  it("the state stays read-only: no client names or clears an active generation", async () => {
+    const state = { schemaVersion: 2, revision: 4, activePlanId: "plan-1", currentTargetVersionId: "target-1", activeGenerationRequestId: null, recentRequests: [] };
+    await seed(["users", ALICE, V2.state, NUTRITION_V2_STATE_DOC_ID], state);
+    await assertSucceeds(getDoc(doc(alice(), "users", ALICE, V2.state, NUTRITION_V2_STATE_DOC_ID)));
+    await assertFails(updateDoc(doc(alice(), "users", ALICE, V2.state, NUTRITION_V2_STATE_DOC_ID), { activeGenerationRequestId: RID, revision: 5 }));
+    await assertFails(setDoc(doc(alice(), "users", ALICE, V2.state, NUTRITION_V2_STATE_DOC_ID), { ...state, activeGenerationRequestId: RID }));
+  });
+
+  it("plans stay read-only: no client writes a generated plan", async () => {
+    await assertFails(setDoc(doc(alice(), "users", ALICE, V2.plans, "plan-2"), { planId: "plan-2", source: "generated", generationRequestId: RID }));
+  });
+
+  it("the Nutrition operation record is server-only, like every _ai_operations record", async () => {
+    await seed(["_ai_operations", OPERATION_ID], { namespace: "nutritionPlan", uid: ALICE, status: "in_progress", planId: "plan-2" });
+    for (const db of [alice(), bob(), anon()]) {
+      await assertFails(getDoc(doc(db, "_ai_operations", OPERATION_ID)));
+      await assertFails(setDoc(doc(db, "_ai_operations", OPERATION_ID), { status: "completed" }));
+      await assertFails(deleteDoc(doc(db, "_ai_operations", OPERATION_ID)));
+    }
+  });
+
+  it("entries keep their NUT-06 rules, suggestions stay server-only and Training keeps working", async () => {
+    await assertSucceeds(setDoc(doc(alice(), "users", ALICE, V2.entries, plannedMealDoc().entryId), plannedMealDoc()));
+    await assertFails(deleteDoc(doc(alice(), "users", ALICE, V2.entries, plannedMealDoc().entryId)));
+    await assertFails(getDoc(doc(alice(), "_nutrition_v2_suggestions", `${ALICE}__set-1`)));
+    await assertSucceeds(setDoc(doc(alice(), "users", ALICE, "workout_plans", "plan1"), { content: {} }));
+    await assertSucceeds(setDoc(doc(alice(), "users", ALICE, "workout_logs", "log1"), { completed: true }));
+  });
+});

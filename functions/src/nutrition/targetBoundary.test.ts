@@ -36,6 +36,21 @@ const productionSources = walk(SRC).filter((file) => {
 
 const nutritionSources = productionSources.filter((file) => rel(file).startsWith("src/nutrition/"));
 
+/**
+ * NUT-11: the generation modules name the (unconfigured) provider seam by
+ * design, and `errors.ts` names its NOT_CONFIGURED code. Everything else in
+ * the sweep below still applies to them; generationBoundary.test.ts pins the
+ * rest of their boundary.
+ */
+const PROVIDER_SEAM_SOURCES = [
+  "src/nutrition/errors.ts",
+  "src/nutrition/generationCandidate.ts",
+  "src/nutrition/generationInput.ts",
+  "src/nutrition/generationLifecycle.ts",
+  "src/nutrition/generationProvider.ts",
+  "src/nutrition/requestPlan.ts",
+];
+
 describe("fixture target policies stay out of production", () => {
   it("are imported by no module the build compiles", () => {
     const importers = productionSources.filter((file) => /from\s+["'][^"']*testing\//.test(readFileSync(file, "utf-8")));
@@ -76,12 +91,18 @@ describe("the production target seam carries no formula", () => {
   it("sweeps the nutrition sources", () => {
     expect(nutritionSources.map(rel).sort()).toEqual([
       "src/nutrition/errors.ts",
+      // NUT-11: generation infrastructure (no production provider).
+      "src/nutrition/generationCandidate.ts",
+      "src/nutrition/generationInput.ts",
+      "src/nutrition/generationLifecycle.ts",
+      "src/nutrition/generationProvider.ts",
       // NUT-09: plan persistence.
       "src/nutrition/planActivation.ts",
       "src/nutrition/planValidation/decide.ts",
       "src/nutrition/planValidation/registry.ts",
       "src/nutrition/planValidation/types.ts",
       "src/nutrition/repeatPlan.ts",
+      "src/nutrition/requestPlan.ts",
       "src/nutrition/setTarget.ts",
       "src/nutrition/sha256.ts",
       "src/nutrition/stateLedger.ts",
@@ -102,7 +123,8 @@ describe("the production target seam carries no formula", () => {
   it.each(nutritionSources.map(rel))("%s uses no provider, quota, AI operation record or logging", (file) => {
     const source = code(join(FUNCTIONS_ROOT, file));
     expect(source).not.toMatch(/_ai_operations|OPERATION_COLLECTION|createFirestoreOperationStore/);
-    expect(source).not.toMatch(/quota|provider|gemini|AiLog|console\./i);
+    expect(source).not.toMatch(/quota|gemini|AiLog|console\./i);
+    if (!PROVIDER_SEAM_SOURCES.includes(file)) expect(source).not.toMatch(/provider/i);
   });
 
   it("writes the target with create, never set or merge", () => {

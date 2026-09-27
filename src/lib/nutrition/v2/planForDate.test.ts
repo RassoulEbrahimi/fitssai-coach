@@ -185,28 +185,31 @@ describe("Today after a future successor was activated", () => {
     expect(view?.status === "today" && view.week.planId).toBe("plan-2");
   });
 
-  it("after a regeneration from tomorrow, today stays on the old plan and shows only the dates it owns", () => {
+  it("after a regeneration from tomorrow, today stays on the old plan; the week keeps seven rows", () => {
     const old: NutritionPlan = {
       ...makePlan({ planId: "plan-1" }),
       lifecycle: { status: "superseded", effectiveUntil: TODAY, supersededByPlanId: "plan-2" },
     };
     const regenerated = makePlan({ planId: "plan-2", startDate: "2026-09-29" });
-    const view = deriveNutritionV2TodayView(inputs({ plan: ok(regenerated), todayPlan: ok(old) }));
+    const view = deriveNutritionV2TodayView(
+      inputs({ plan: ok(regenerated), todayPlan: ok(old), successorPlan: ok(regenerated), successorSlots: ok([]) })
+    );
 
     expect(view?.status).toBe("today");
     if (view?.status !== "today") return;
     expect(view.week.planId).toBe("plan-1");
     expect(view.week.today?.planId).toBe("plan-1");
-    // 29 Sep belongs to the successor, so the old week stops at today.
-    expect(view.week.days.map((day) => day.date)).toEqual([
-      "2026-09-23",
-      "2026-09-24",
-      "2026-09-25",
-      "2026-09-26",
-      "2026-09-27",
-      "2026-09-28",
+    // 29 Sep belongs to the successor, and is shown from it.
+    expect(view.week.days.map((day) => [day.date, day.planId])).toEqual([
+      ["2026-09-23", "plan-1"],
+      ["2026-09-24", "plan-1"],
+      ["2026-09-25", "plan-1"],
+      ["2026-09-26", "plan-1"],
+      ["2026-09-27", "plan-1"],
+      ["2026-09-28", "plan-1"],
+      ["2026-09-29", "plan-2"],
     ]);
-    expect(view.week.endDate).toBe(TODAY);
+    expect(view.week.endDate).toBe(PLAN_END);
   });
 
   it("shows the latest plan as outsidePlan only when no plan owns today", () => {
@@ -225,11 +228,12 @@ describe("Today after a future successor was activated", () => {
     expect(deriveNutritionV2TodayView(inputs({ plan: { status: "error", error: new Error("x") } }))).toEqual({ status: "error" });
   });
 
-  it("builds the source's week from its owned dates only, leaving an active plan's seven", () => {
+  it("keeps an active plan's seven, and never shortens a superseded plan's week", () => {
     expect(buildNutritionWeek({ plan: makePlan(), slotHeads: [], entries: [], today: TODAY }).days).toHaveLength(7);
+    // Next week's repeat leaves the source all seven of its dates: no successor is needed.
+    expect(buildNutritionWeek({ plan: SOURCE, slotHeads: [], entries: [], today: TODAY }).days).toHaveLength(7);
+    // A plan that handed dates on is refused without the plan that owns them.
     const cut: NutritionPlan = { ...SOURCE, lifecycle: { ...SOURCE.lifecycle, effectiveUntil: "2026-09-25" } as NutritionPlan["lifecycle"] };
-    const week = buildNutritionWeek({ plan: cut, slotHeads: [], entries: [], today: TODAY });
-    expect(week.days.map((day) => day.date)).toEqual(["2026-09-23", "2026-09-24", "2026-09-25"]);
-    expect(week.today).toBeNull();
+    expect(() => buildNutritionWeek({ plan: cut, slotHeads: [], entries: [], today: TODAY })).toThrow();
   });
 });

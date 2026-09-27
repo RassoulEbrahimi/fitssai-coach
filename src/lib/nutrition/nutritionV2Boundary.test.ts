@@ -31,6 +31,12 @@ import { NUTRITION_V2_ENABLED } from "@shared/nutrition/featureFlag";
   online-only and never queued, writes nothing to the cache before the server
   confirms, and touches the suggestions key only to drop it after a commit —
   it never reads suggestions.
+
+  NUT-11 adds generation plumbing: one more module calls one more function,
+  nutritionRequestPlan, through one hook that no UI uses yet. It is online
+  only, never queued, never optimistic and has no cancel. Generation requests
+  are read — strictly, by the id a pointer names, never listed — by the read
+  layer alone.
 */
 
 const root = resolve(__dirname, "../../..");
@@ -87,6 +93,9 @@ const v2Modules = [
   "src/lib/nutrition/v2/slotReplacement.ts",
   "src/hooks/queries/useNutritionV2SlotOverride.ts",
   "src/components/nutrition/v2/NutritionV2SlotReplaceSheet.tsx",
+  // NUT-11: generation plumbing (no UI).
+  "src/lib/nutrition/v2/generationCallable.ts",
+  "src/hooks/queries/useNutritionV2RequestPlan.ts",
 ];
 
 /** The one module that calls a function, and the one hook that reaches it (NUT-08). */
@@ -98,6 +107,15 @@ const repeatPlanHookModule = "src/hooks/queries/useNutritionV2RepeatPlan.ts";
 /** NUT-10: the one module that calls nutritionUpdateSlot, and the one hook that reaches it. */
 const slotCallableModule = "src/lib/nutrition/v2/slotCallable.ts";
 const slotHookModule = "src/hooks/queries/useNutritionV2SlotOverride.ts";
+/** NUT-11: the one module that calls nutritionRequestPlan, and the one hook that reaches it. */
+const generationCallableModule = "src/lib/nutrition/v2/generationCallable.ts";
+const requestPlanHookModule = "src/hooks/queries/useNutritionV2RequestPlan.ts";
+/** NUT-11: the read layer — the only modules that read a generation request. */
+const generationReaders = [
+  "src/lib/nutrition/v2/integrity.ts",
+  "src/lib/nutrition/v2/firestoreReads.ts",
+  "src/hooks/queries/useNutritionV2.ts",
+];
 
 /** The only module that writes Firestore, and the only modules that reach it. */
 const entryWriterModule = "src/lib/nutrition/v2/entryWriter.ts";
@@ -159,11 +177,14 @@ describe("Nutrition V2 module boundary", () => {
     }
   });
 
-  it("never reads server-only suggestions or generation requests", () => {
+  it("never reads server-only suggestions, and reads generation requests only in the read layer, by id", () => {
     for (const path of v2Modules) {
       const source = read(path);
       expect(source, path).not.toMatch(/NUTRITION_V2_SUGGESTIONS_COLLECTION|_nutrition_v2_suggestions/);
-      expect(source, path).not.toMatch(/\.generations\b|queryKeys\.nutrition\.generation/);
+      // NUT-11: the read layer reads a request by id; the request hook only refetches the generation keys.
+      if (!generationReaders.includes(path) && path !== requestPlanHookModule) {
+        expect(code(path), path).not.toMatch(/\.generations\b|"generations"|queryKeys\.nutrition\.generation/);
+      }
       // NUT-10: the slot hook drops the suggestions key after a commit; nothing reads it.
       const suggestionKeys = [...code(path).matchAll(/queryKeys\.nutrition\.suggestions\w*/g)];
       if (path !== slotHookModule) expect(suggestionKeys, path).toEqual([]);
@@ -191,8 +212,8 @@ describe("Nutrition V2 module boundary", () => {
 
   it("calls exactly one function, nutritionSetTarget, from one module reached only through the target hook", () => {
     const calling = v2Modules.filter((path) => /\b(httpsCallable|getFunctions)\b/.test(code(path)));
-    // NUT-09 and NUT-10 add exactly one more calling module each (below).
-    expect(calling.sort()).toEqual([planCallableModule, slotCallableModule, targetCallableModule].sort());
+    // NUT-09, NUT-10 and NUT-11 add exactly one more calling module each (below).
+    expect(calling.sort()).toEqual([generationCallableModule, planCallableModule, slotCallableModule, targetCallableModule].sort());
     expect(code(targetCallableModule)).toMatch(/httpsCallable<[^>]+>\(\s*getFunctions\(getApp\(\), FUNCTIONS_REGION\),\s*NUTRITION_SET_TARGET_CALLABLE\s*\)/);
     expect([...code(targetCallableModule).matchAll(/\bhttpsCallable\b/g)]).toHaveLength(2); // the import and the one call
 
@@ -272,12 +293,42 @@ describe("Nutrition V2 module boundary", () => {
     }
   });
 
+  it("calls nutritionRequestPlan from one module, reached only through the request hook, which no UI uses yet", () => {
+    const generation = code(generationCallableModule);
+    expect(generation).toMatch(/httpsCallable<[^>]+>\(\s*getFunctions\(getApp\(\), FUNCTIONS_REGION\),\s*NUTRITION_REQUEST_PLAN_CALLABLE\s*\)/);
+    expect([...generation.matchAll(/\bhttpsCallable\b/g)]).toHaveLength(2); // the import and the one call
+    expect(generation).toMatch(/const payload = nutritionRequestPlanRequestSchema\.parse\(request\);/);
+    for (const other of [targetCallableModule, planCallableModule, slotCallableModule]) {
+      expect(code(other), other).not.toMatch(/NUTRITION_REQUEST_PLAN_CALLABLE/);
+    }
+
+    const importers = productionSources.filter((path) => /from\s+["'][^"']*\/generationCallable["']/.test(read(path)));
+    expect(importers).toEqual([requestPlanHookModule]);
+    const hookImporters = productionSources.filter((path) => /useNutritionV2RequestPlan["']/.test(read(path)));
+    expect(hookImporters).toEqual([]);
+  });
+
+  it("requests a plan with { requestId } only: online, never queued, never optimistic, no cancel", () => {
+    const hook = code(requestPlanHookModule);
+    expect(hook).toMatch(/callNutritionRequestPlan\(\{ requestId \}\)/);
+    expect(hook).toMatch(/if \(!navigator\.onLine\) throw new NutritionV2RequestPlanUnavailableError\("offline"\);/);
+    expect(hook).not.toMatch(/\benqueue\(|offlineQueue|NUTRITION_ENTRY_WRITE|NUTRITION_GENERATION/);
+    expect(hook).not.toMatch(/setQueryData|setQueriesData|onMutate|optimistic/i);
+    expect(hook).not.toMatch(/cancel|abort|AbortController/i);
+    const touched = [...hook.matchAll(/queryKey:\s*queryKeys\.nutrition\.([\w.]+)\(/g)].map((match) => match[1]);
+    expect(touched.sort()).toEqual(["generation.all", "plans.all", "slots.all", "state"]);
+    expect(hook).not.toMatch(/nutrition\.(entries|targets|suggestions)|queryKeys\.(nutritionLegacy|workout|plans?|logs?)\b/);
+    for (const path of ["src/lib/offlineQueue.ts", "src/lib/offlineReplay.ts", "src/lib/offlineHandlers.ts"]) {
+      expect(read(path), path).not.toMatch(/nutritionRequestPlan|GENERATION|generation/);
+    }
+  });
+
   it("writes through one transaction in one module, reached only through the recording hook", () => {
     const transactional = v2Modules.filter((path) => /\brunTransaction\b/.test(code(path)));
     expect(transactional).toEqual([entryWriterModule]);
 
     const mutating = v2Modules.filter((path) => /\buseMutation\b/.test(code(path)));
-    expect(mutating.sort()).toEqual([recordingHookModule, targetHookModule, repeatPlanHookModule, slotHookModule].sort());
+    expect(mutating.sort()).toEqual([recordingHookModule, targetHookModule, repeatPlanHookModule, slotHookModule, requestPlanHookModule].sort());
 
     const writerImporters = productionSources.filter((path) => /from\s+["'][^"']*\/entryWriter["']/.test(read(path)));
     expect(writerImporters.sort()).toEqual([recordingHookModule, replayHandlerModule].sort());

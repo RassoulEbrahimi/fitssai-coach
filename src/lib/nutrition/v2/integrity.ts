@@ -2,6 +2,7 @@ import type { ZodIssue, ZodType } from "zod";
 import {
   NUTRITION_V2_COLLECTIONS,
   NUTRITION_V2_STATE_DOC_ID,
+  generationRequestSchema,
   isNutritionDate,
   nutritionPlanSchema,
   nutritionUserStateSchema,
@@ -11,6 +12,7 @@ import {
   slotHeadMatchesPlan,
   slotHeadSchema,
   targetVersionSchema,
+  type GenerationRequest,
   type NutritionDate,
   type NutritionPlan,
   type NutritionUserState,
@@ -138,6 +140,25 @@ export const parseNutritionV2Plan = (
     throw new NutritionV2IntegrityError("idMismatch", path, `document carries planId ${plan.planId}`);
   }
   return plan;
+};
+
+/**
+ * The generation request a pointer names — `state.activeGenerationRequestId`,
+ * or the id a request call answered with (NUT-11). Absent is an integrity
+ * failure, never "no generation": a request id is only ever named after its
+ * document was created. Its lifecycle combinations are the contract's; a
+ * status this build does not know (a `cancelled`, say) does not parse.
+ */
+export const parseNutritionV2GenerationRequest = (
+  requestId: string,
+  snapshot: { id: string; exists: boolean; data: unknown }
+): GenerationRequest => {
+  const { path, data } = requirePointed(NUTRITION_V2_COLLECTIONS.generations, requestId, snapshot);
+  const request = parseStrict(generationRequestSchema, data, path);
+  if (request.requestId !== snapshot.id) {
+    throw new NutritionV2IntegrityError("idMismatch", path, `document carries requestId ${request.requestId}`);
+  }
+  return request;
 };
 
 /**

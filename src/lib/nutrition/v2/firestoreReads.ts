@@ -3,6 +3,7 @@ import { db } from "@/lib/firebase";
 import {
   NUTRITION_V2_COLLECTIONS,
   NUTRITION_V2_STATE_DOC_ID,
+  type GenerationRequest,
   type NutritionDate,
   type NutritionPlan,
   type NutritionUserState,
@@ -13,6 +14,7 @@ import {
 import {
   assertNutritionV2DateSpan,
   parseNutritionV2Entries,
+  parseNutritionV2GenerationRequest,
   parseNutritionV2Plan,
   parseNutritionV2PlanForDate,
   parseNutritionV2SlotHeads,
@@ -27,8 +29,8 @@ import {
  * Every path is `users/{uid}/…` for the authenticated uid the caller passes,
  * every collection name comes from `NUTRITION_V2_COLLECTIONS`, and every
  * document goes through the strict parsers in `./integrity` before it is
- * returned. The generation and server-only suggestion collections are not
- * read here.
+ * returned. A generation request is read only by the id a pointer names
+ * (NUT-11), never listed; server-only suggestions are not read here.
  */
 
 const requireUid = (uid: string): string => {
@@ -62,6 +64,16 @@ export const readNutritionV2Target = async (uid: string, targetVersionId: string
 export const readNutritionV2Plan = async (uid: string, planId: string): Promise<NutritionPlan> => {
   const snap = await getDoc(v2Doc(uid, "plans", planId));
   return parseNutritionV2Plan(planId, { id: snap.id, exists: snap.exists(), data: snap.exists() ? snap.data() : undefined });
+};
+
+/** Exactly the generation request an id names: the state's active one, or one a call answered with. */
+export const readNutritionV2GenerationRequest = async (uid: string, requestId: string): Promise<GenerationRequest> => {
+  const snap = await getDoc(v2Doc(uid, "generations", requestId));
+  return parseNutritionV2GenerationRequest(requestId, {
+    id: snap.id,
+    exists: snap.exists(),
+    data: snap.exists() ? snap.data() : undefined,
+  });
 };
 
 /**

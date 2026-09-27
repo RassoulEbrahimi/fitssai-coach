@@ -462,3 +462,42 @@ describe("replay inside the transaction", () => {
     expect(await code(activate({ request: { requestId: requestId(1), operation: "repeatPlan" } }))).toBe("INVALID_REQUEST");
   });
 });
+
+/* ------------------------------------------------------------------ *
+ * NUT-11: the same core, completing a generation request
+ * ------------------------------------------------------------------ */
+
+describe("an activation that completes a generation request (NUT-11)", () => {
+  const GEN = "00000000-0000-4000-8000-000000000077";
+  const generated = { origin: { source: "generated" as const, generationRequestId: GEN }, completesGenerationRequestId: GEN };
+
+  it("clears the generation pointer in the same state write: one revision", async () => {
+    const { activate, doc } = setup({ state: storedState({ activeGenerationRequestId: GEN }) });
+    expect(await activate(generated)).toEqual({ kind: "activated", planId: "plan-2", supersededPlanId: "plan-1", revision: 5 });
+    expect(doc(STATE_PATH)).toMatchObject({ revision: 5, activePlanId: "plan-2", activeGenerationRequestId: null, recentRequests: [] });
+    expect(doc(planPath("plan-2"))).toMatchObject({ generationRequestId: GEN, source: "generated" });
+  });
+
+  it("refuses, writing nothing, when the state no longer names that generation", async () => {
+    for (const pointer of [null, "00000000-0000-4000-8000-000000000078"]) {
+      const { activate, docs } = setup({ state: storedState({ activeGenerationRequestId: pointer }) });
+      const before = docs();
+      expect(await code(activate(generated))).toBe("INTERNAL");
+      expect(docs()).toEqual(before);
+    }
+  });
+
+  it("refuses a completion by a plan the request did not produce", async () => {
+    const { activate, docs } = setup({ state: storedState({ activeGenerationRequestId: GEN }) });
+    const before = docs();
+    expect(await code(activate({ completesGenerationRequestId: GEN }))).toBe("INTERNAL");
+    expect(await code(activate({ origin: { source: "repeated", repeatedFromPlanId: "plan-1" }, completesGenerationRequestId: GEN }))).toBe("INTERNAL");
+    expect(docs()).toEqual(before);
+  });
+
+  it("leaves the pointer alone when the activation completes no generation (repeat's path)", async () => {
+    const { activate, doc } = setup({ state: storedState({ activeGenerationRequestId: GEN }) });
+    await activate();
+    expect(doc(STATE_PATH)).toMatchObject({ revision: 5, activeGenerationRequestId: GEN });
+  });
+});

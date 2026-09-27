@@ -7,7 +7,7 @@ import {
   type SlotHead,
 } from "@shared/nutrition";
 import type { NutritionV2Access, NutritionV2Read } from "./readStatus";
-import { buildNutritionWeek, type NutritionWeek } from "./resolvedPlan";
+import { buildNutritionWeek, nutritionWeekSuccessorId, type NutritionWeek, type NutritionWeekPlan } from "./resolvedPlan";
 
 /**
  * What the Nutrition V2 Today/week shell shows, derived from its reads. Pure.
@@ -37,6 +37,15 @@ export interface NutritionV2TodayInputs {
   slots: NutritionV2Read<SlotHead[]>;
   /** The entries of that plan's dates. */
   entries: NutritionV2Read<RecordedEntry[]>;
+  /**
+   * The plan that owns the rest of the chosen plan's week, read by the id the
+   * chosen plan names (`nutritionWeekSuccessorId`) — after a regeneration,
+   * the successor that starts tomorrow. `null` data or absent when no plan is
+   * needed.
+   */
+  successorPlan?: NutritionV2Read<NutritionPlan | null>;
+  /** That successor's own slot heads. */
+  successorSlots?: NutritionV2Read<SlotHead[]>;
   /** Today's Berlin calendar date. */
   today: NutritionDate;
 }
@@ -92,6 +101,8 @@ export const deriveNutritionV2TodayView = ({
   todayPlan,
   slots,
   entries,
+  successorPlan = { status: "disabled" },
+  successorSlots = { status: "disabled" },
   today,
 }: NutritionV2TodayInputs): NutritionV2TodayView | null => {
   switch (access.status) {
@@ -119,9 +130,21 @@ export const deriveNutritionV2TodayView = ({
   if (slots.status === "error" || entries.status === "error") return ERROR;
   if (slots.status !== "success" || entries.status !== "success") return LOADING;
 
+  // The week is always seven dates. Dates the chosen plan handed on are
+  // resolved from the plan that owns them, so that plan is needed too.
+  let successor: NutritionWeekPlan | null = null;
+  const successorId = nutritionWeekSuccessorId(shown.data);
+  if (successorId !== null) {
+    if (successorPlan.status === "error" || successorSlots.status === "error") return ERROR;
+    if (successorPlan.status !== "success" || successorSlots.status !== "success") return LOADING;
+    // The by-id read follows the chosen plan; until it does, there is nothing to show.
+    if (successorPlan.data === null || successorPlan.data.planId !== successorId) return LOADING;
+    successor = { plan: successorPlan.data, slotHeads: successorSlots.data };
+  }
+
   let week: NutritionWeek;
   try {
-    week = buildNutritionWeek({ plan: shown.data, slotHeads: slots.data, entries: entries.data, today });
+    week = buildNutritionWeek({ plan: shown.data, slotHeads: slots.data, successor, entries: entries.data, today });
   } catch {
     return ERROR;
   }

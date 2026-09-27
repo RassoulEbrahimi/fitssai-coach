@@ -1060,6 +1060,23 @@ export type NutritionStateRequest = z.infer<typeof nutritionStateRequestSchema>;
  *                   applied request, refusals and failed transactions never
  *                   change it. It is not the ledger's length: old records are
  *                   evicted, the revision keeps counting.
+ *
+ *                   The rule is per transaction: one that changes the state
+ *                   document moves it by exactly one, however many of its
+ *                   fields change; one that leaves the document as it was
+ *                   does not write it. For generation (NUT-11): claiming a
+ *                   request (+1, with any recovery of an ended pointer in the
+ *                   same transaction), activating its plan (+1, the pointer
+ *                   cleared with it), a failure or a stale discard that clears
+ *                   the pointer (+1), and a finish that finds the pointer
+ *                   already elsewhere, a takeover or a replay (unchanged).
+ *   activeGenerationRequestId
+ *                   the account's one live generation request
+ *                   (`nutrition_v2_generations/{id}`), or null. Set by the
+ *                   transaction that claims a request and cleared by the one
+ *                   that ends it; generation requests are not recorded in
+ *                   `recentRequests` — their own document and the operation
+ *                   record are their idempotency.
  *   recentRequests  the requests already applied, oldest first, at most
  *                   `NUTRITION_STATE_REQUEST_LEDGER_SIZE`, of every operation
  *                   together. A request whose id is listed here has already
@@ -1093,3 +1110,160 @@ export const nutritionUserStateSchema = z
   });
 
 export type NutritionUserState = z.infer<typeof nutritionUserStateSchema>;
+
+/* ------------------------------------------------------------------ *
+ * Plan generation request documents
+ * ------------------------------------------------------------------ */
+
+/**
+ * The operation namespace of Nutrition plan generation. A generation request's
+ * idempotency key is `nutritionPlan:{requestId}`, so the same UUID used for a
+ * Training operation is a different logical operation.
+ */
+export const NUTRITION_GENERATION_OPERATION_NAMESPACE = "nutritionPlan" as const;
+
+/** `nutritionPlan:{requestId}` — the one idempotency key of a generation request. */
+export const nutritionGenerationIdempotencyKey = (requestId: string): string =>
+  `${NUTRITION_GENERATION_OPERATION_NAMESPACE}:${requestId}`;
+
+/**
+ * Why a generation request `failed`. Stable codes, never provider prose:
+ *
+ *   PROVIDER_FAILED         the provider did not answer (first call or repair)
+ *   CANDIDATE_INVALID       the answer was not structurally valid plan content,
+ *                           after the one repair attempt
+ *   PLAN_VALIDATION_FAILED  the plan-validation policy did not accept it, after
+ *                           the one repair attempt
+ *   GENERATION_ABANDONED    its invocation stopped without finishing, and a
+ *                           newer request of the account ended it
+ *   INTERNAL                anything else; nothing internal is recorded
+ */
+export const NUTRITION_GENERATION_FAILURE_CODES = [
+  "PROVIDER_FAILED",
+  "CANDIDATE_INVALID",
+  "PLAN_VALIDATION_FAILED",
+  "GENERATION_ABANDONED",
+  "INTERNAL",
+] as const;
+
+export type NutritionGenerationFailureCode = (typeof NUTRITION_GENERATION_FAILURE_CODES)[number];
+
+/**
+ * Why a generation request was `discarded_stale`: it finished, but another
+ * plan or target became current while it ran, so its result was not used.
+ *
+ *   STALE_ACTIVE_PLAN  another plan was activated (a repeat, say)
+ *   STALE_TARGET       the current target changed
+ *   STALE_GENERATION   the account no longer names it as its active generation
+ *   INPUT_CHANGED      a retry rebuilt its generation input and it differed
+ *                      from what the request was created for
+ */
+export const NUTRITION_GENERATION_STALE_CODES = [
+  "STALE_ACTIVE_PLAN",
+  "STALE_TARGET",
+  "STALE_GENERATION",
+  "INPUT_CHANGED",
+] as const;
+
+export type NutritionGenerationStaleCode = (typeof NUTRITION_GENERATION_STALE_CODES)[number];
+
+export type NutritionGenerationErrorCode = NutritionGenerationFailureCode | NutritionGenerationStaleCode;
+
+/** Statuses a request never leaves. */
+export const TERMINAL_GENERATION_REQUEST_STATUSES = ["succeeded", "failed", "discarded_stale"] as const;
+
+export const isTerminalGenerationRequestStatus = (status: GenerationRequestStatus): boolean =>
+  (TERMINAL_GENERATION_REQUEST_STATUSES as readonly string[]).includes(status);
+
+/**
+ * One plan-generation request of an account, at
+ * `users/{uid}/nutrition_v2_generations/{requestId}`. Server-written; the owner
+ * reads it, and it is how a browser learns what became of a request whose
+ * response it never saw.
+ *
+ * Immutable once created — the request's identity and input snapshot:
+ *
+ *   requestId           the browser's lower-case UUID for one explicit action
+ *   idempotencyKey      `nutritionPlan:{requestId}`
+ *   kind                `initial` without an active plan, `regenerate` with
+ *                       one; decided by the server, never sent
+ *   basePlanId          the active plan when it was created (null: initial)
+ *   targetVersionId     the current target when it was created
+ *   payloadFingerprint  SHA-256 of the canonical generation input — never the
+ *                       input itself
+ *   createdAt           the server instant it was created
+ *
+ * Forward-only — its lifecycle, `queued → running → succeeded | failed |
+ * discarded_stale`, and nothing ever goes back:
+ *
+ *   resultPlanId    the plan it created and activated; only when succeeded
+ *   errorCode       a stable failure or stale code; only when failed or
+ *                   discarded_stale
+ *   finishedAt      when it became terminal; only then
+ *   acknowledgedAt  when the person saw the outcome; only once terminal
+ *
+ * There is no cancelled, paused or retrying status: leaving the screen is not
+ * cancellation, and a retry continues the same request. No prompt, provider
+ * payload or provider answer is kept, and `.strict()` refuses any field that
+ * would carry one.
+ */
+export const generationRequestSchema = z
+  .object({
+    schemaVersion: nutritionSchemaVersionSchema,
+    requestId: nutritionRequestIdSchema,
+    idempotencyKey: z.string(),
+    kind: generationRequestKindSchema,
+    basePlanId: nutritionDocIdSchema.nullable(),
+    targetVersionId: nutritionDocIdSchema,
+    payloadFingerprint: sha256HexSchema,
+    status: generationRequestStatusSchema,
+    resultPlanId: nutritionDocIdSchema.nullable(),
+    errorCode: z.string().nullable(),
+    createdAt: nutritionTimestampSchema,
+    finishedAt: nutritionTimestampSchema.nullable(),
+    acknowledgedAt: nutritionTimestampSchema.nullable(),
+  })
+  .strict()
+  .superRefine((request, ctx) => {
+    const issue = (path: string, message: string) => ctx.addIssue({ code: z.ZodIssueCode.custom, path: [path], message });
+
+    if (request.idempotencyKey !== nutritionGenerationIdempotencyKey(request.requestId)) {
+      issue("idempotencyKey", "the idempotency key is nutritionPlan:{requestId}");
+    }
+    if (request.kind === "initial" && request.basePlanId !== null) issue("basePlanId", "an initial request has no base plan");
+    if (request.kind === "regenerate" && request.basePlanId === null) issue("basePlanId", "a regeneration names its base plan");
+
+    const terminal = isTerminalGenerationRequestStatus(request.status);
+    if (!terminal) {
+      if (request.resultPlanId !== null) issue("resultPlanId", "only a succeeded request has a result plan");
+      if (request.errorCode !== null) issue("errorCode", "an unfinished request has no error");
+      if (request.finishedAt !== null) issue("finishedAt", "an unfinished request has not finished");
+      if (request.acknowledgedAt !== null) issue("acknowledgedAt", "an unfinished request cannot be acknowledged");
+      return;
+    }
+
+    if (request.finishedAt === null) {
+      issue("finishedAt", "a terminal request has finished");
+    } else {
+      if (timestampOrder(request.finishedAt, request.createdAt) < 0) issue("finishedAt", "finished before it was created");
+      if (request.acknowledgedAt !== null && timestampOrder(request.acknowledgedAt, request.finishedAt) < 0) {
+        issue("acknowledgedAt", "acknowledged before it finished");
+      }
+    }
+
+    if (request.status === "succeeded") {
+      if (request.resultPlanId === null) issue("resultPlanId", "a succeeded request names its result plan");
+      else if (request.resultPlanId === request.basePlanId) issue("resultPlanId", "the result is a new plan");
+      if (request.errorCode !== null) issue("errorCode", "a succeeded request has no error");
+      return;
+    }
+
+    if (request.resultPlanId !== null) issue("resultPlanId", "only a succeeded request has a result plan");
+    const codes: readonly string[] =
+      request.status === "failed" ? NUTRITION_GENERATION_FAILURE_CODES : NUTRITION_GENERATION_STALE_CODES;
+    if (request.errorCode === null || !codes.includes(request.errorCode)) {
+      issue("errorCode", `a ${request.status} request carries one of ${codes.join(", ")}`);
+    }
+  });
+
+export type GenerationRequest = z.infer<typeof generationRequestSchema>;

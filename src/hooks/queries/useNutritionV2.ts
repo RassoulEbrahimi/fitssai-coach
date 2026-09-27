@@ -6,6 +6,7 @@ import {
   getNutritionEligibility,
   isNutritionDate,
   parseNutritionProfile,
+  type GenerationRequest,
   type NutritionDate,
   type NutritionPlan,
   type NutritionUserState,
@@ -15,6 +16,7 @@ import {
 } from "@shared/nutrition";
 import {
   readNutritionV2Entries,
+  readNutritionV2GenerationRequest,
   readNutritionV2Plan,
   readNutritionV2PlanForDate,
   readNutritionV2SlotHeads,
@@ -37,7 +39,10 @@ import type { NutritionV2Access, NutritionV2Read } from "@/lib/nutrition/v2/read
  *   reading the same document again gives the same answer.
  * - There is no resolved-day read. A resolved day is derived from the plan,
  *   its slot heads and the entries (`@/lib/nutrition/v2/resolvedPlan`).
- * - Generation requests and server-only suggestions are not read here.
+ * - A generation request is read only by id — the state's active pointer or
+ *   an id a request call answered with — under `queryKeys.nutrition.generation`,
+ *   which the persisted cache never keeps (NUT-07). Server-only suggestions
+ *   are not read here.
  */
 
 /* ------------------------------------------------------------------ *
@@ -169,6 +174,28 @@ export const useNutritionV2PlanForDate = (date: NutritionDate | null | undefined
 };
 
 /**
+ * The plan stored under `planId`, read exactly by that id — for a plan another
+ * plan names, such as the successor that owns the rest of a superseded plan's
+ * week. `null` data when no id is asked for. Shares `plans.byId` with the
+ * active-plan read, so the same plan is one cache entry.
+ */
+export const useNutritionV2PlanById = (planId: string | null | undefined): NutritionV2Read<NutritionPlan | null> => {
+  const uid = useEligibleUid();
+  const enabled = !!uid && !!planId;
+
+  const query = useQuery({
+    queryKey: queryKeys.nutrition.plans.byId(uid, planId ?? undefined),
+    queryFn: () => readNutritionV2Plan(requireUid(uid), required(planId, "a plan id")),
+    enabled,
+    retry: retryUnlessIntegrity,
+  });
+
+  if (!uid) return { status: "disabled" };
+  if (!planId) return { status: "success", data: null };
+  return toRead(query, enabled);
+};
+
+/**
  * The target version `state.currentTargetVersionId` names, read exactly by
  * that id. `null` data when V2 is not initialised or no target is set. The
  * key carries the target version id, so a new pointer is a new read and never
@@ -190,6 +217,50 @@ export const useCurrentNutritionV2Target = (): NutritionV2Read<TargetVersion | n
   if (state.status !== "success") return state;
   if (targetVersionId === null) return { status: "success", data: null };
   return toRead(query, enabled);
+};
+
+/* ------------------------------------------------------------------ *
+ * Generation requests (NUT-11)
+ * ------------------------------------------------------------------ */
+
+/**
+ * `users/{uid}/nutrition_v2_generations/{requestId}`, read exactly by id and
+ * strictly: a missing or malformed request is an integrity error, never
+ * "none". The key carries the id; generation keys are ephemeral and never
+ * persisted. `null` data when no id is asked for.
+ */
+export const useNutritionV2GenerationRequest = (
+  requestId: string | null | undefined
+): NutritionV2Read<GenerationRequest | null> => {
+  const uid = useEligibleUid();
+  const enabled = !!uid && !!requestId;
+
+  const query = useQuery({
+    queryKey: queryKeys.nutrition.generation.byId(uid, requestId ?? undefined),
+    queryFn: () => readNutritionV2GenerationRequest(requireUid(uid), required(requestId, "a request id")),
+    enabled,
+    retry: retryUnlessIntegrity,
+  });
+
+  if (!uid) return { status: "disabled" };
+  if (!requestId) return { status: "success", data: null };
+  return toRead(query, enabled);
+};
+
+/**
+ * The account's active generation: the request `state.activeGenerationRequestId`
+ * names, read exactly by that id. `null` data when V2 is not initialised or
+ * no generation is active. A pointer to a request that does not exist or does
+ * not parse is an error.
+ */
+export const useActiveNutritionV2Generation = (): NutritionV2Read<GenerationRequest | null> => {
+  const state = useNutritionV2State();
+  const requestId = state.status === "success" ? (state.data?.activeGenerationRequestId ?? null) : null;
+  const request = useNutritionV2GenerationRequest(requestId);
+
+  if (state.status !== "success") return state;
+  if (requestId === null) return { status: "success", data: null };
+  return request;
 };
 
 /* ------------------------------------------------------------------ *

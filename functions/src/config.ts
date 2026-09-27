@@ -44,7 +44,11 @@ export interface BackendCapabilities {
    * `TARGET_POLICY_NOT_CONFIGURED`.
    */
   nutritionTargets: boolean;
-  /** Generating a Nutrition V2 plan. False: there is no such callable yet. */
+  /**
+   * Generating a Nutrition V2 plan. False: `nutritionRequestPlan` and its
+   * lifecycle exist (NUT-11), but no generator and no plan-validation policy
+   * is configured, so it can only answer `GENERATION_PROVIDER_NOT_CONFIGURED`.
+   */
   nutritionGeneration: boolean;
 }
 
@@ -61,6 +65,9 @@ export const BACKEND_CAPABILITIES: Readonly<BackendCapabilities> = Object.freeze
   // policy registry is empty, so no target can actually be set. It moves only
   // with a signed-off policy.
   nutritionTargets: false,
-  // False: Nutrition plan generation does not exist yet.
+  // False from NUT-11: the generation infrastructure is deployed, but the
+  // production generator and plan-validation registries are empty, so no plan
+  // can actually be generated. It moves only with a real generator and a
+  // signed-off policy.
   nutritionGeneration: false,
 });
