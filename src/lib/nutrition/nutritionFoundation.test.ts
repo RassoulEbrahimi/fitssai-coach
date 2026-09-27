@@ -7,8 +7,8 @@ import {
 } from "@shared/nutrition";
 
 describe("Nutrition V2 feature flag", () => {
-  it("is off", () => {
-    expect(NUTRITION_V2_ENABLED).toBe(false);
+  it("enables the product UI", () => {
+    expect(NUTRITION_V2_ENABLED).toBe(true);
   });
 });
 

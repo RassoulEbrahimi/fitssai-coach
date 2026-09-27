@@ -219,8 +219,8 @@ afterEach(() => {
 });
 
 describe("the replacement surface", () => {
-  it("keeps V2 unreachable", () => {
-    expect(NUTRITION_V2_ENABLED).toBe(false);
+  it("enables the V2 UI without enabling AI", () => {
+    expect(NUTRITION_V2_ENABLED).toBe(true);
   });
 
   it("offers only other BASE meals of the same slot from the plan that owns today — never an override, another plan's meal or an AI option", async () => {

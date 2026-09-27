@@ -74,7 +74,7 @@ const renderSection = () => {
     client,
     ...render(
       <QueryClientProvider client={client}>
-        <NutritionV2TargetSection />
+        <NutritionV2TargetSection allowSetup />
       </QueryClientProvider>
     ),
   };

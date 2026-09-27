@@ -430,8 +430,8 @@ describe("today's recording surface", () => {
     expect(screen.queryByTestId("nutrition-v2-today-recording")).toBeNull();
   });
 
-  it("keeps Nutrition V2 switched off", () => {
-    expect(NUTRITION_V2_ENABLED).toBe(false);
+  it("enables the Nutrition V2 product UI", () => {
+    expect(NUTRITION_V2_ENABLED).toBe(true);
   });
 });
 
@@ -711,7 +711,7 @@ describe("conflict visibility outside today's recording", () => {
     const notice = await screen.findByTestId("nutrition-v2-conflict");
     expect(notice).toHaveTextContent("Mittagessen wurde geändert");
     expect(screen.queryByTestId("nutrition-v2-today-recording")).toBeNull();
-    expect(screen.getAllByRole("button").map((button) => button.textContent)).toEqual(["Erneut anwenden", "Verwerfen"]);
+    expect(screen.getAllByRole("button").map((button) => button.textContent)).toEqual(["Aktualisieren", "Erneut anwenden", "Verwerfen"]);
   });
 
   it("is visible when today is outside the plan, and leaves the week rows exactly as they were", async () => {
