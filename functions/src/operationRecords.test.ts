@@ -6,6 +6,7 @@ import {
   OperationNamespaceConflictError,
   WORKOUT_PLAN_OPERATIONS,
   createOperationRecordStore,
+  operationLeaseExpiry,
   type OperationRecordTransaction,
 } from "./operationRecords";
 import { fakeFirestore } from "./testing/fakeFirestore";
@@ -108,11 +109,11 @@ describe("families never read each other's records", () => {
     const workoutPath = `${OPERATION_COLLECTION}/alice__${RID}`;
     const before = JSON.stringify(db.docs.get(workoutPath));
 
-    const nutrition = createOperationRecordStore({ firestore: db, namespace: NUTRITION_PLAN_OPERATIONS, leaseMs: 1000 });
+    const nutrition = createOperationRecordStore({ firestore: db, namespace: NUTRITION_PLAN_OPERATIONS });
     await tx(db)(async (t) => {
       const record = await nutrition.read(t, UID, RID, NOW);
       expect(record.exists).toBe(false);
-      nutrition.writeClaim(t, { uid: UID, requestId: RID, previous: record, at: NOW, claimToken: "n-1", planId: "plan-n" });
+      nutrition.writeClaim(t, { uid: UID, requestId: RID, previous: record, at: NOW, claimToken: "n-1", planId: "plan-n", leaseMs: 1000 });
     });
     await tx(db)(async (t) => nutrition.writeEnded(t, { uid: UID, requestId: RID, at: NOW, status: "discarded" }));
 
@@ -140,22 +141,30 @@ describe("families never read each other's records", () => {
 
     // And a Nutrition read of an untagged (Workout-shaped) record is refused too.
     db.docs.set(`${OPERATION_COLLECTION}/nutritionPlan__carol__${RID}`, { status: "completed", planId: "plan-w" });
-    const nutrition = createOperationRecordStore({ firestore: db, namespace: NUTRITION_PLAN_OPERATIONS, leaseMs: 1000 });
+    const nutrition = createOperationRecordStore({ firestore: db, namespace: NUTRITION_PLAN_OPERATIONS });
     await expect(tx(db)((t) => nutrition.read(t, "carol", RID, NOW))).rejects.toBeInstanceOf(OperationNamespaceConflictError);
   });
 });
 
 describe("the generic record", () => {
-  it("takes its lease from the family, and refuses a lease that is not a positive duration", async () => {
+  it("reads a record without any lease duration; only taking a claim needs the family's lease", async () => {
     const db = fakeFirestore();
+    const store = createOperationRecordStore({ firestore: db, namespace: NUTRITION_PLAN_OPERATIONS });
+    expect(operationLeaseExpiry(NOW, 5000).getTime() - NOW.getTime()).toBe(5000);
     for (const leaseMs of [0, -1, Number.NaN, Number.POSITIVE_INFINITY]) {
-      expect(() => createOperationRecordStore({ firestore: db, namespace: NUTRITION_PLAN_OPERATIONS, leaseMs })).toThrow();
+      expect(() => operationLeaseExpiry(NOW, leaseMs)).toThrow();
+      await expect(
+        tx(db)(async (t) => {
+          const record = await store.read(t, UID, RID, NOW);
+          store.writeClaim(t, { uid: UID, requestId: RID, previous: record, at: NOW, claimToken: "n-0", planId: "p", leaseMs });
+        })
+      ).rejects.toThrow();
     }
-    const store = createOperationRecordStore({ firestore: db, namespace: NUTRITION_PLAN_OPERATIONS, leaseMs: 5000 });
-    expect(store.leaseExpiry(NOW).getTime() - NOW.getTime()).toBe(5000);
+    expect(db.docs.get(`${OPERATION_COLLECTION}/nutritionPlan__alice__${RID}`)).toBeUndefined();
+
     await tx(db)(async (t) => {
       const record = await store.read(t, UID, RID, NOW);
-      store.writeClaim(t, { uid: UID, requestId: RID, previous: record, at: NOW, claimToken: "n-1", planId: "p" });
+      store.writeClaim(t, { uid: UID, requestId: RID, previous: record, at: NOW, claimToken: "n-1", planId: "p", leaseMs: 5000 });
     });
     await tx(db)(async (t) => {
       expect((await store.read(t, UID, RID, new Date(NOW.getTime() + 4999))).leaseLive).toBe(true);
@@ -165,10 +174,10 @@ describe("the generic record", () => {
 
   it("ends a request without a result — failed or discarded — without inventing one", async () => {
     const db = fakeFirestore();
-    const store = createOperationRecordStore({ firestore: db, namespace: NUTRITION_PLAN_OPERATIONS, leaseMs: 5000 });
+    const store = createOperationRecordStore({ firestore: db, namespace: NUTRITION_PLAN_OPERATIONS });
     await tx(db)(async (t) => {
       const record = await store.read(t, UID, RID, NOW);
-      store.writeClaim(t, { uid: UID, requestId: RID, previous: record, at: NOW, claimToken: "n-1", planId: "reserved" });
+      store.writeClaim(t, { uid: UID, requestId: RID, previous: record, at: NOW, claimToken: "n-1", planId: "reserved", leaseMs: 5000 });
     });
     await tx(db)(async (t) => store.writeEnded(t, { uid: UID, requestId: RID, at: NOW, status: "failed" }));
     const record = await tx(db)((t) => store.read(t, UID, RID, NOW));

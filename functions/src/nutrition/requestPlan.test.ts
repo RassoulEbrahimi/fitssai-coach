@@ -10,7 +10,7 @@ import {
 } from "../../../shared/nutrition";
 import { createFirestoreOperationStore } from "../idempotency";
 import { NUTRITION_PLAN_OPERATIONS, OPERATION_COLLECTION, WORKOUT_PLAN_OPERATIONS } from "../operationRecords";
-import { fakeFirestore } from "../testing/fakeFirestore";
+import { fakeFirestore, type FakeFirestore } from "../testing/fakeFirestore";
 import {
   FIXTURE_INITIAL_SLOTS,
   FIXTURE_OPERATION_LEASE_MS,
@@ -119,12 +119,25 @@ const setup = (options: Options = {}) => {
       : fixturePlanValidationPolicyRegistry(options.policies ?? [FIXTURE_ACCEPT_PLAN_VALIDATION_POLICY]);
   const provider = createFakeNutritionPlanProvider(options.script ?? { generate: "valid" });
 
-  const call = (data: unknown, { uid = UID as string | null, via = provider as FakeNutritionPlanProvider | "production" } = {}) =>
+  /**
+   * `via: "production"` swaps in the production generator registry only;
+   * `production: true` swaps in every production registry — generator, policy
+   * and first-plan slots — as a deployment that lost its configuration would.
+   */
+  const call = (
+    data: unknown,
+    {
+      uid = UID as string | null,
+      via = provider as FakeNutritionPlanProvider | "production",
+      production = false,
+    } = {}
+  ) =>
     handleNutritionRequestPlan(uid === null ? { data } : { auth: { uid }, data }, {
       firestore,
-      providers: via === "production" ? productionNutritionGenerationProviderRegistry : fixtureGenerationProviderRegistry(via),
-      policies,
-      initialSlots: options.initialSlots === "production" ? productionInitialSlotConfiguration : FIXTURE_INITIAL_SLOTS,
+      providers:
+        via === "production" || production ? productionNutritionGenerationProviderRegistry : fixtureGenerationProviderRegistry(via),
+      policies: production ? productionPlanValidationPolicyRegistry : policies,
+      initialSlots: options.initialSlots === "production" || production ? productionInitialSlotConfiguration : FIXTURE_INITIAL_SLOTS,
       now: clock,
       newPlanId: () => `gen-plan-${(minted += 1)}`,
       newClaimToken: () => `claim-${(tokens += 1)}`,
@@ -202,7 +215,7 @@ describe("the deployed boundary: nothing is configured to generate", () => {
     expect(mapped.details).toBeUndefined();
   });
 
-  it("answers the same for a first plan: the provider check comes before any state read", async () => {
+  it("answers the same for a new first plan: nothing is configured to start one", async () => {
     const h = setup({ state: INITIAL_STATE, plans: {} });
     const before = h.snapshot();
     expect(await code(h.call({ requestId: RID }, { via: "production" }))).toBe("GENERATION_PROVIDER_NOT_CONFIGURED");
@@ -970,5 +983,294 @@ describe("what is persisted", () => {
   it("the seeded base plan is a valid plan the whole time", () => {
     expect(nutritionPlanSchema.safeParse(storedPlan("plan-1")).success).toBe(true);
     expect(SOURCE_START).toBe("2026-09-23");
+  });
+});
+
+/* ------------------------------------------------------------------ *
+ * Eligibility is judged inside the transactions (review fix)
+ * ------------------------------------------------------------------ */
+
+/**
+ * Firestore's optimistic transaction, emulated over the serialised fake (as in
+ * updateSlot.test.ts). Each attempt records every document it reads and
+ * buffers its writes. `interleave` runs once, after the first attempt has read
+ * everything and before it would commit — a concurrent write that lands first.
+ * If any document the attempt READ has changed by then, the attempt is
+ * discarded and the body runs again against the new state. A document read
+ * outside the transaction is not in the read set, so a change to it would not
+ * stop the commit.
+ */
+const withOptimisticRetry = (firestore: ReturnType<typeof setup>["firestore"], interleave: () => void) => {
+  type Ref = { path?: string; where?: unknown };
+  type Tx = {
+    get: (ref: Ref) => Promise<unknown>;
+    create: (ref: Ref, value: Record<string, unknown>) => void;
+    set: (ref: Ref, value: Record<string, unknown>, options?: { merge?: boolean }) => void;
+    update: (ref: Ref, value: Record<string, unknown>) => void;
+  };
+  const fake = firestore as unknown as FakeFirestore;
+  const serialised = fake.runTransaction.bind(fake) as unknown as <T>(body: (tx: Tx) => Promise<T>) => Promise<T>;
+  const readSets: string[][] = [];
+  let interleaved = false;
+  const current = (path: string) => JSON.stringify(firestore.docs.get(path) ?? null);
+
+  (fake as unknown as { runTransaction: unknown }).runTransaction = <T>(body: (tx: Tx) => Promise<T>) =>
+    serialised(async (tx: Tx) => {
+      for (;;) {
+        const seen = new Map<string, string>();
+        const writes: Array<() => void> = [];
+        const result = await body({
+          get: async (ref) => {
+            if (typeof ref.where !== "function" && ref.path) seen.set(ref.path, current(ref.path));
+            return tx.get(ref);
+          },
+          create: (ref, value) => writes.push(() => tx.create(ref, value)),
+          set: (ref, value, options) => writes.push(() => tx.set(ref, value, options)),
+          update: (ref, value) => writes.push(() => tx.update(ref, value)),
+        });
+        readSets.push([...seen.keys()]);
+        if (!interleaved) {
+          interleaved = true;
+          interleave();
+        }
+        if ([...seen].some(([path, value]) => current(path) !== value)) continue; // contended: retry
+        for (const write of writes) write();
+        return result;
+      }
+    });
+  return { readSets };
+};
+
+const PROFILE_PATH = `users/${UID}`;
+const INELIGIBLE: Array<[string, Record<string, unknown>, "minor" | "missingAge"]> = [
+  ["turns 17", { ...PROFILE, age: 17 }, "minor"],
+  ["loses its age", { ...PROFILE, age: undefined }, "missingAge"],
+  ["stores an unusable age", { ...PROFILE, age: "thirty" }, "missingAge"],
+];
+
+describe("eligibility is judged inside the claim transaction", () => {
+  it.each(INELIGIBLE)(
+    "a profile that %s while the claim is in flight wins: NOT_ELIGIBLE, nothing written, no provider call",
+    async (_label, profile, reason) => {
+      const h = setup();
+      const before = h.snapshot();
+      const { readSets } = withOptimisticRetry(h.firestore, () => h.firestore.docs.set(PROFILE_PATH, profile));
+
+      const error = (await refusal(h.call({ requestId: RID }))) as NutritionGenerationError;
+      expect([error.code, error.details]).toEqual(["NOT_ELIGIBLE", { reason }]);
+      // The first attempt read the adult profile inside the claim, passed, and
+      // was retried because that profile changed; the retry refused.
+      expect(readSets).toHaveLength(1);
+      expect(readSets[0]).toContain(PROFILE_PATH);
+      expect(h.provider.calls.generate).toEqual([]);
+      expect(h.requests()).toEqual([]);
+      expect(h.operation(RID)).toBeUndefined();
+      expect(h.state()).toMatchObject({ revision: 4, activeGenerationRequestId: null });
+      // Everything but the profile is exactly as it was.
+      const withoutProfile = (text: string) => JSON.parse(text).filter(([path]: [string]) => path !== PROFILE_PATH);
+      expect(withoutProfile(h.snapshot())).toEqual(withoutProfile(before));
+    }
+  );
+
+  it("an uncontended claim reads the profile in the same transaction as the request, its record and the state", async () => {
+    const h = setup({ script: { generate: "pending" } });
+    const { readSets } = withOptimisticRetry(h.firestore, () => undefined);
+    const running = h.call({ requestId: RID });
+    await h.provider.whenPending();
+    expect(readSets[0].slice(0, 4)).toEqual([PROFILE_PATH, generationPath(RID), operationPath(RID), STATE_PATH]);
+    h.provider.release();
+    await running;
+  });
+
+  it.each(INELIGIBLE)("a takeover of a request whose profile %s ends it ELIGIBILITY_CHANGED without calling the provider", async (_label, profile) => {
+    const h = setup({ script: { generate: "pending" } });
+    const stalled = h.call({ requestId: RID });
+    await h.provider.whenPending();
+    const planBefore = h.rawPlan("plan-1");
+    h.advance(LEASE + 1);
+    h.firestore.docs.set(PROFILE_PATH, profile);
+
+    const retry = createFakeNutritionPlanProvider({ generate: "valid" });
+    expect(await h.call({ requestId: RID }, { via: retry })).toEqual({
+      ok: true,
+      requestId: RID,
+      status: "discarded_stale",
+      resultPlanId: null,
+      errorCode: "ELIGIBILITY_CHANGED",
+      replay: false,
+    });
+    expect(retry.calls.generate).toEqual([]);
+    expect(h.planIds()).toEqual(["plan-1"]);
+    expect(h.rawPlan("plan-1")).toEqual(planBefore);
+    expect(h.operation(RID)).toMatchObject({ status: "discarded", claimToken: null, leaseExpiresAt: null });
+    expect(h.state()).toMatchObject({ revision: 6, activePlanId: "plan-1", activeGenerationRequestId: null });
+
+    // The stalled invocation wakes up: it may not commit anything.
+    h.provider.release();
+    expect(await stalled).toMatchObject({ status: "discarded_stale", errorCode: "ELIGIBILITY_CHANGED" });
+    expect(h.planIds()).toEqual(["plan-1"]);
+  });
+});
+
+describe("eligibility is judged inside the finalisation transaction", () => {
+  it.each(INELIGIBLE)(
+    "a profile that %s while the provider runs: discarded_stale ELIGIBILITY_CHANGED, nothing extended",
+    async (_label, profile) => {
+      const h = setup({
+        script: { generate: "pending" },
+        extra: { [SLOT_HEAD_PATH]: { marker: "head" }, [ENTRY_PATH]: { marker: "entry" } },
+      });
+      const generating = h.call({ requestId: RID });
+      await h.provider.whenPending();
+      expect(h.state()).toMatchObject({ revision: 5, activeGenerationRequestId: RID });
+      const planBefore = h.rawPlan("plan-1");
+      const targetBefore = h.firestore.docs.get(targetPath("target-1"));
+
+      h.firestore.docs.set(PROFILE_PATH, profile);
+      h.provider.release();
+
+      expect(await generating).toEqual({
+        ok: true,
+        requestId: RID,
+        status: "discarded_stale",
+        resultPlanId: null,
+        errorCode: "ELIGIBILITY_CHANGED",
+        replay: false,
+      });
+      expect(h.request(RID)).toMatchObject({ status: "discarded_stale", errorCode: "ELIGIBILITY_CHANGED", finishedAt: seconds(NOW) });
+      expect(h.planIds()).toEqual(["plan-1"]);
+      expect(h.rawPlan("plan-1")).toEqual(planBefore);
+      expect(h.firestore.docs.get(targetPath("target-1"))).toEqual(targetBefore);
+      expect(h.firestore.docs.get(SLOT_HEAD_PATH)).toEqual({ marker: "head" });
+      expect(h.firestore.docs.get(ENTRY_PATH)).toEqual({ marker: "entry" });
+      expect(h.operation(RID)).toMatchObject({ status: "discarded", claimToken: null, leaseExpiresAt: null });
+      // One terminal state write: the pointer cleared, +1.
+      expect(h.state()).toMatchObject({ revision: 6, activePlanId: "plan-1", currentTargetVersionId: "target-1", activeGenerationRequestId: null });
+      // No age or profile value is recorded anywhere.
+      expect(JSON.stringify(h.firestore.docs.get(generationPath(RID)))).not.toMatch(/minor|missingAge|"17"|:17\b|thirty/);
+    }
+  );
+
+  it("the finalisation reads the profile inside its own transaction", async () => {
+    const h = setup({ script: { generate: "pending" } });
+    const generating = h.call({ requestId: RID });
+    await h.provider.whenPending();
+    // Wrap now: the next transaction is the finalisation. The profile turns 17 just before it commits.
+    const { readSets } = withOptimisticRetry(h.firestore, () => h.firestore.docs.set(PROFILE_PATH, { ...PROFILE, age: 17 }));
+    h.provider.release();
+
+    expect(await generating).toMatchObject({ status: "discarded_stale", errorCode: "ELIGIBILITY_CHANGED" });
+    expect(readSets[0]).toContain(PROFILE_PATH);
+    expect(readSets).toHaveLength(2);
+    expect(h.planIds()).toEqual(["plan-1"]);
+  });
+});
+
+/* ------------------------------------------------------------------ *
+ * A stored request is answered whatever is configured now (review fix)
+ * ------------------------------------------------------------------ */
+
+describe("replay does not depend on the configuration", () => {
+  it("SUCCEEDED: the same request replays its plan with every production registry unconfigured, writing nothing", async () => {
+    const h = setup();
+    const first = await h.call({ requestId: RID });
+    const before = h.snapshot();
+
+    expect(await h.call({ requestId: RID }, { production: true })).toEqual({ ...first, replay: true, resultPlanId: "gen-plan-1" });
+    expect(h.provider.calls.generate).toHaveLength(1);
+    expect(h.snapshot()).toBe(before);
+  });
+
+  it("FAILED: the same request replays as failed and is not restarted", async () => {
+    const h = setup({ script: { generate: "throws" } });
+    await h.call({ requestId: RID });
+    const before = h.snapshot();
+
+    expect(await h.call({ requestId: RID }, { production: true })).toMatchObject({ status: "failed", errorCode: "PROVIDER_FAILED", replay: true });
+    expect(h.provider.calls.generate).toHaveLength(1);
+    expect(h.snapshot()).toBe(before);
+  });
+
+  it("DISCARDED_STALE: the same request replays as discarded", async () => {
+    const h = setup({ script: { generate: "pending" } });
+    const generating = h.call({ requestId: RID });
+    await h.provider.whenPending();
+    await h.repeat(OTHER);
+    h.provider.release();
+    await generating;
+    const before = h.snapshot();
+
+    expect(await h.call({ requestId: RID }, { production: true })).toMatchObject({
+      status: "discarded_stale",
+      errorCode: "STALE_ACTIVE_PLAN",
+      replay: true,
+    });
+    expect(h.snapshot()).toBe(before);
+  });
+
+  it("LIVE, SAME REQUEST: answered as running, with no second provider call and no write", async () => {
+    const h = setup({ script: { generate: "pending" } });
+    const generating = h.call({ requestId: RID });
+    await h.provider.whenPending();
+    const before = h.snapshot();
+
+    expect(await h.call({ requestId: RID }, { production: true })).toEqual({
+      ok: true,
+      requestId: RID,
+      status: "running",
+      resultPlanId: null,
+      errorCode: null,
+      replay: false,
+    });
+    expect(h.provider.calls.generate).toHaveLength(1);
+    expect(h.snapshot()).toBe(before);
+    h.provider.release();
+    await generating;
+  });
+
+  it("LIVE, OTHER REQUEST: the account's live request is answered and nothing is created for the new id", async () => {
+    const h = setup({ script: { generate: "pending" } });
+    const generating = h.call({ requestId: RID });
+    await h.provider.whenPending();
+    const before = h.snapshot();
+
+    expect(await h.call({ requestId: OTHER }, { production: true })).toMatchObject({ requestId: RID, status: "running" });
+    expect(h.request(OTHER)).toBeUndefined();
+    expect(h.operation(OTHER)).toBeUndefined();
+    expect(h.snapshot()).toBe(before);
+    h.provider.release();
+    await generating;
+  });
+
+  it("NEW REQUEST: with nothing live, production answers GENERATION_PROVIDER_NOT_CONFIGURED and writes nothing", async () => {
+    const h = setup();
+    const before = h.snapshot();
+    expect(await code(h.call({ requestId: RID }, { production: true }))).toBe("GENERATION_PROVIDER_NOT_CONFIGURED");
+    expect(h.snapshot()).toBe(before);
+  });
+
+  it("TAKEOVER: an expired request is not continued without a generator — refused, nothing written, still running", async () => {
+    const h = setup({ script: { generate: "pending" } });
+    const stalled = h.call({ requestId: RID });
+    await h.provider.whenPending();
+    h.advance(LEASE + 1);
+    const before = h.snapshot();
+
+    expect(await code(h.call({ requestId: RID }, { production: true }))).toBe("GENERATION_PROVIDER_NOT_CONFIGURED");
+    expect(h.snapshot()).toBe(before);
+    expect(h.request(RID)?.status).toBe("running");
+    h.provider.release();
+    await stalled;
+  });
+
+  it("a stored outcome is answered after the account stops being eligible: existing data stays, nothing is extended", async () => {
+    const h = setup();
+    await h.call({ requestId: RID });
+    h.firestore.docs.set(PROFILE_PATH, { ...PROFILE, age: 17 });
+    const before = h.snapshot();
+
+    expect(await h.call({ requestId: RID })).toMatchObject({ status: "succeeded", resultPlanId: "gen-plan-1", replay: true });
+    expect(await code(h.call({ requestId: OTHER }))).toBe("NOT_ELIGIBLE");
+    expect(h.snapshot()).toBe(before);
   });
 });

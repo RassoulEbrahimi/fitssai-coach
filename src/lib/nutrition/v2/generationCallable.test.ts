@@ -60,6 +60,7 @@ describe("callNutritionRequestPlan", () => {
     ["succeeded", { status: "succeeded", resultPlanId: "plan-2" }],
     ["failed", { status: "failed", errorCode: "PROVIDER_FAILED" }],
     ["discarded", { status: "discarded_stale", errorCode: "STALE_ACTIVE_PLAN", replay: true }],
+    ["discarded after an eligibility change", { status: "discarded_stale", errorCode: "ELIGIBILITY_CHANGED" }],
     ["another request running", { requestId: "00000000-0000-4000-8000-000000000012" }],
   ])("returns a %s answer as it is", async (_label, overrides) => {
     functions.invoke.mockResolvedValue({ data: answer(overrides) });

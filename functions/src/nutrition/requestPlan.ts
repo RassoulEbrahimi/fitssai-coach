@@ -1,10 +1,8 @@
 import { randomUUID } from "node:crypto";
 import type { Firestore } from "firebase-admin/firestore";
 import {
-  getNutritionEligibility,
   nutritionRequestPlanRequestSchema,
   nutritionRequestPlanResultSchema,
-  parseNutritionProfile,
   type GenerationRequest,
   type NutritionRequestPlanResult,
 } from "../../../shared/nutrition";
@@ -30,24 +28,28 @@ import { nodeSha256Hex } from "./sha256";
  * `nutritionRequestPlan`: generate and activate a Nutrition V2 plan for the
  * signed-in account (NUT-11).
  *
- * Refusals come first and write nothing:
- *
  *   1. the verified caller (never a uid from the request)
  *   2. the request: exactly `{ requestId }`
- *   3. the caller's own profile, and NUT-03 adult eligibility
- *   4. a configured generator (GENERATION_PROVIDER_NOT_CONFIGURED) — in
- *      production there is none, so a deployed call ends here: no request, no
- *      state pointer, no plan, no operation record, no quota
- *   5. a plan-validation policy in force (PLAN_VALIDATION_POLICY_NOT_CONFIGURED)
  *
  * Then the lifecycle (`./generationLifecycle`):
  *
- *   6. ONE claim transaction: the request document (running), its
- *      `nutritionPlan` operation record with a reserved plan id, and the
- *      state's `activeGenerationRequestId`. Kind, base plan, target, dates
- *      and slots are the server's: `initial` from today without an active
- *      plan, `regenerate` from tomorrow with one. A live request is answered
- *      instead; a finished one is answered as it ended.
+ *   3. ONE claim transaction, which reads the caller's profile, the request,
+ *      its record and the state together. An existing request is answered
+ *      from what is stored — a finished one as it ended, a live one (this or
+ *      another of the account) as running — whatever is configured now.
+ *   4. Only new work goes further, and is refused before anything is written
+ *      unless: the profile read in THAT transaction is an eligible adult
+ *      (NOT_ELIGIBLE); a generator is configured
+ *      (GENERATION_PROVIDER_NOT_CONFIGURED — in production there is none, so a
+ *      new deployed request ends here: no request, no state pointer, no plan,
+ *      no operation record, no quota); a plan-validation policy is in force
+ *      (PLAN_VALIDATION_POLICY_NOT_CONFIGURED); and the account's own
+ *      preconditions hold.
+ *   5. The claim writes the request document (running), its `nutritionPlan`
+ *      operation record with a reserved plan id, and the state's
+ *      `activeGenerationRequestId`. Kind, base plan, target, dates and slots
+ *      are the server's: `initial` from today without an active plan,
+ *      `regenerate` from tomorrow with one.
  *   7. the generator, with the minimized input only, then structure, the
  *      requested dates and slots, and the policy — at most one repair
  *   8. ONE finalisation transaction — the plan activated through the NUT-09
@@ -123,48 +125,26 @@ export const handleNutritionRequestPlan = async (
   if (!parsedRequest.success) throw new NutritionGenerationError("INVALID_REQUEST", "Expected { requestId }.");
   const { requestId } = parsedRequest.data;
 
-  // 3. Adults only, by the NUT-03 rule. The age itself is never reported.
-  const profileData = await guard(async () => (await deps.firestore.collection("users").doc(uid).get()).data());
-  const profile = parseNutritionProfile(profileData);
-  const eligibility = getNutritionEligibility(profile);
-  if (!eligibility.eligible) {
-    throw new NutritionGenerationError("NOT_ELIGIBLE", "Nutrition is for adults with a known age.", {
-      reason: eligibility.reason,
-    });
-  }
-
-  // 4–5. The deployed boundary: nothing is read or written without both.
-  const setup = deps.providers.current();
-  if (!setup) {
-    throw new NutritionGenerationError("GENERATION_PROVIDER_NOT_CONFIGURED", "No Nutrition generation provider is configured.");
-  }
-  const policy = deps.policies.current();
-  if (!policy) {
-    throw new NutritionGenerationError("PLAN_VALIDATION_POLICY_NOT_CONFIGURED", "No plan-validation policy is in force.");
-  }
-
-  const ctx: NutritionGenerationContext = await guard(async () => ({
+  const ctx: NutritionGenerationContext = {
     firestore: deps.firestore,
     uid,
-    records: createOperationRecordStore({
-      firestore: deps.firestore,
-      namespace: NUTRITION_PLAN_OPERATIONS,
-      leaseMs: setup.operationLeaseMs,
-    }),
+    records: createOperationRecordStore({ firestore: deps.firestore, namespace: NUTRITION_PLAN_OPERATIONS }),
     policies: deps.policies,
-    profile,
     initialSlots: deps.initialSlots,
     sha256Hex: nodeSha256Hex,
-  }));
+  };
 
-  // 6. One claim. Ids are minted before the transaction, so a retried
-  //    transaction writes what its first attempt would have.
+  // 3–6. One claim transaction: the profile, the request, its record and the
+  //      state, read together. Eligibility and the configuration are judged
+  //      there, and only for new work. Ids are minted before the transaction,
+  //      so a retried transaction writes what its first attempt would have.
   const claim = await guard(() =>
     claimNutritionGeneration(ctx, {
       requestId,
       at: now(),
       newPlanId: (deps.newPlanId ?? randomUUID)(),
       claimToken: (deps.newClaimToken ?? randomUUID)(),
+      setup: deps.providers.current(),
     })
   );
   if (claim.kind === "inProgress") return answer(claim.request, false);
@@ -172,9 +152,9 @@ export const handleNutritionRequestPlan = async (
 
   // 7. The generator: the minimized input only. Nothing it says is kept.
   const outcome = await generateNutritionPlanCandidate({
-    provider: setup.provider,
+    provider: claim.setup.provider,
     input: claim.input,
-    policy,
+    policy: claim.policy,
     target: claim.target,
   });
 

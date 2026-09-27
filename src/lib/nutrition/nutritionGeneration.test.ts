@@ -110,7 +110,17 @@ describe("the GenerationRequest contract", () => {
   });
 
   it("a discarded request carries a stale code and no result plan", () => {
+    expect([...NUTRITION_GENERATION_STALE_CODES]).toEqual([
+      "STALE_ACTIVE_PLAN",
+      "STALE_TARGET",
+      "STALE_GENERATION",
+      "INPUT_CHANGED",
+      "ELIGIBILITY_CHANGED",
+    ]);
     for (const code of NUTRITION_GENERATION_STALE_CODES) expect(parses(discarded({ errorCode: code })), code).toBe(true);
+    // An eligibility change is a stale precondition, never a provider or validation failure.
+    expect(parses(failed({ errorCode: "ELIGIBILITY_CHANGED" }))).toBe(false);
+    expect((NUTRITION_GENERATION_FAILURE_CODES as readonly string[]).includes("ELIGIBILITY_CHANGED")).toBe(false);
     expect(parses(discarded({ errorCode: "PROVIDER_FAILED" }))).toBe(false);
     expect(parses(discarded({ resultPlanId: "plan-2" }))).toBe(false);
   });
@@ -219,6 +229,8 @@ describe("the nutritionRequestPlan callable contract", () => {
     expect(valid({ ...base, status: "failed", errorCode: "PLAN_VALIDATION_FAILED" })).toBe(true);
     expect(valid({ ...base, status: "failed" })).toBe(false);
     expect(valid({ ...base, status: "discarded_stale", errorCode: "STALE_TARGET" })).toBe(true);
+    expect(valid({ ...base, status: "discarded_stale", errorCode: "ELIGIBILITY_CHANGED" })).toBe(true);
+    expect(valid({ ...base, status: "failed", errorCode: "ELIGIBILITY_CHANGED" })).toBe(false);
     expect(valid({ ...base, status: "running", errorCode: "STALE_TARGET" })).toBe(false);
     expect(valid({ ...base, status: "running", prompt: "x" })).toBe(false);
   });

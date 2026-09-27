@@ -67,6 +67,16 @@ export const nutritionRequestPlanResultSchema = z
     if (errored !== (result.errorCode !== null)) {
       ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["errorCode"], message: "an error code exactly when failed or discarded" });
     }
+    // A failure code for a failure, a stale code for a discard — as the request document holds them.
+    const codes: readonly string[] | null =
+      result.status === "failed"
+        ? NUTRITION_GENERATION_FAILURE_CODES
+        : result.status === "discarded_stale"
+          ? NUTRITION_GENERATION_STALE_CODES
+          : null;
+    if (codes && result.errorCode !== null && !codes.includes(result.errorCode)) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["errorCode"], message: `a ${result.status} answer carries one of ${codes.join(", ")}` });
+    }
   });
 
 export type NutritionRequestPlanResult = z.infer<typeof nutritionRequestPlanResultSchema>;

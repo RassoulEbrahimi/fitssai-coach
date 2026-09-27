@@ -19,8 +19,11 @@ import type { Firestore } from "firebase-admin/firestore";
  *   Nutrition plan generation `./nutrition/generationLifecycle` — every
  *                             outcome is final, and nothing is charged
  *
- * The lease duration is the family's operational setting, passed in; nothing
- * here chooses one.
+ * The lease duration is the family's operational setting, passed to the one
+ * write that takes a claim; nothing here chooses one. Reading a record — its
+ * status, owner and whether its stored lease is still running — needs no
+ * lease duration at all, so a family can answer for an existing request
+ * without being able to start one.
  */
 
 export const OPERATION_COLLECTION = "_ai_operations";
@@ -115,21 +118,29 @@ const STATUSES: readonly OperationRecordStatus[] = ["in_progress", "completed", 
 export interface OperationRecordStoreOptions {
   firestore: Firestore;
   namespace: OperationNamespace;
-  /** How long a claim stays its invocation's business. The family's operational setting. */
-  leaseMs: number;
 }
+
+const requireLease = (leaseMs: number): number => {
+  if (!Number.isFinite(leaseMs) || leaseMs <= 0) throw new Error("An operation lease must be a positive duration.");
+  return leaseMs;
+};
+
+/** When a claim taken at `at` stops being its invocation's business. Throws on a lease that is not a positive duration. */
+export const operationLeaseExpiry = (at: Date, leaseMs: number): Date => new Date(at.getTime() + requireLease(leaseMs));
 
 export interface OperationRecordStore {
   readonly namespace: OperationNamespace;
   /** The record's document reference. */
   ref(uid: string, requestId: string): unknown;
-  /** The record as it is inside `tx`, judged at `at`. A record of another family throws. */
-  read(tx: OperationRecordTransaction, uid: string, requestId: string, at: Date): Promise<OperationRecord>;
-  /** The lease a claim written at `at` holds. */
-  leaseExpiry(at: Date): Date;
   /**
-   * Claim the request: a new token, one more attempt, the reserved result id
-   * kept (or the one given), the original start kept. `fields` are the
+   * The record as it is inside `tx`, judged at `at` against the lease it
+   * stored. Needs no lease duration. A record of another family throws.
+   */
+  read(tx: OperationRecordTransaction, uid: string, requestId: string, at: Date): Promise<OperationRecord>;
+  /**
+   * Claim the request for `leaseMs` — the family's configured lease, required
+   * here and nowhere else: a new token, one more attempt, the reserved result
+   * id kept (or the one given), the original start kept. `fields` are the
    * family's own additions.
    */
   writeClaim(
@@ -141,6 +152,7 @@ export interface OperationRecordStore {
       at: Date;
       claimToken: string;
       planId: string;
+      leaseMs: number;
       fields?: Record<string, unknown>;
     }
   ): void;
@@ -156,13 +168,7 @@ export interface OperationRecordStore {
   ): void;
 }
 
-export const createOperationRecordStore = ({
-  firestore,
-  namespace,
-  leaseMs,
-}: OperationRecordStoreOptions): OperationRecordStore => {
-  if (!Number.isFinite(leaseMs) || leaseMs <= 0) throw new Error("An operation lease must be a positive duration.");
-
+export const createOperationRecordStore = ({ firestore, namespace }: OperationRecordStoreOptions): OperationRecordStore => {
   const ref = (uid: string, requestId: string) =>
     firestore.collection(OPERATION_COLLECTION).doc(namespace.docId(uid, requestId));
   const tag = namespace.recordTag === undefined ? {} : { namespace: namespace.recordTag };
@@ -188,9 +194,8 @@ export const createOperationRecordStore = ({
       };
     },
 
-    leaseExpiry: (at) => new Date(at.getTime() + leaseMs),
-
-    writeClaim: (tx, { uid, requestId, previous, at, claimToken, planId, fields }) => {
+    writeClaim: (tx, { uid, requestId, previous, at, claimToken, planId, leaseMs, fields }) => {
+      const leaseExpiresAt = operationLeaseExpiry(at, leaseMs);
       tx.set(
         ref(uid, requestId),
         {
@@ -203,7 +208,7 @@ export const createOperationRecordStore = ({
           attempts: previous.attempts + 1,
           startedAt: previous.startedAt ?? at.toISOString(),
           claimedAt: at.toISOString(),
-          leaseExpiresAt: new Date(at.getTime() + leaseMs).toISOString(),
+          leaseExpiresAt: leaseExpiresAt.toISOString(),
         },
         { merge: true }
       );

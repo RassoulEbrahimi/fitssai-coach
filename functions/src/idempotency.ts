@@ -5,6 +5,7 @@ import {
   WORKOUT_PLAN_OPERATIONS,
   createOperationRecordStore,
   newClaimToken,
+  operationLeaseExpiry,
 } from "./operationRecords";
 
 /**
@@ -177,11 +178,7 @@ export const createFirestoreOperationStore = (
   firestore: Firestore,
   now: () => Date = () => new Date()
 ): OperationStore => {
-  const records = createOperationRecordStore({
-    firestore,
-    namespace: WORKOUT_PLAN_OPERATIONS,
-    leaseMs: CLAIM_LEASE_MS,
-  });
+  const records = createOperationRecordStore({ firestore, namespace: WORKOUT_PLAN_OPERATIONS });
 
   const inTransaction = <T>(body: (transaction: OperationTransaction) => Promise<T>): Promise<T> =>
     (
@@ -208,7 +205,7 @@ export const createFirestoreOperationStore = (
           the reservation and the reserved plan id carry over rather than being
           taken again, so a crash cannot cost a user two of their three plans.
         */
-        const leaseExpiresAt = records.leaseExpiry(at);
+        const leaseExpiresAt = operationLeaseExpiry(at, CLAIM_LEASE_MS);
         if (!(await reserveQuota(transaction, leaseExpiresAt))) {
           return { kind: "quota_exceeded" };
         }
@@ -223,6 +220,7 @@ export const createFirestoreOperationStore = (
           at,
           claimToken,
           planId,
+          leaseMs: CLAIM_LEASE_MS,
           // Descriptive, for anyone reading a record in the console. The
           // allowance itself is the quota document's business, not this
           // one's: two documents that both decide cost would eventually

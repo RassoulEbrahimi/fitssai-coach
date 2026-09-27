@@ -1149,20 +1149,26 @@ export const NUTRITION_GENERATION_FAILURE_CODES = [
 export type NutritionGenerationFailureCode = (typeof NUTRITION_GENERATION_FAILURE_CODES)[number];
 
 /**
- * Why a generation request was `discarded_stale`: it finished, but another
- * plan or target became current while it ran, so its result was not used.
+ * Why a generation request was `discarded_stale`: it was valid when it
+ * started, but a precondition it was started under no longer held when it
+ * could have finished, so its result was not used. Never a provider or
+ * validation failure — those are `failed`.
  *
- *   STALE_ACTIVE_PLAN  another plan was activated (a repeat, say)
- *   STALE_TARGET       the current target changed
- *   STALE_GENERATION   the account no longer names it as its active generation
- *   INPUT_CHANGED      a retry rebuilt its generation input and it differed
- *                      from what the request was created for
+ *   STALE_ACTIVE_PLAN     another plan was activated (a repeat, say)
+ *   STALE_TARGET          the current target changed
+ *   STALE_GENERATION      the account no longer names it as its active generation
+ *   INPUT_CHANGED         a retry rebuilt its generation input and it differed
+ *                         from what the request was created for
+ *   ELIGIBILITY_CHANGED   the account is no longer eligible for Nutrition
+ *                         (NUT-03); existing data stays, nothing is extended.
+ *                         The reason is not recorded — never an age.
  */
 export const NUTRITION_GENERATION_STALE_CODES = [
   "STALE_ACTIVE_PLAN",
   "STALE_TARGET",
   "STALE_GENERATION",
   "INPUT_CHANGED",
+  "ELIGIBILITY_CHANGED",
 ] as const;
 
 export type NutritionGenerationStaleCode = (typeof NUTRITION_GENERATION_STALE_CODES)[number];

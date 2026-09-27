@@ -640,9 +640,13 @@ read by `supersededByPlanId`, with the successor's own slot heads (NUT-11).
 is complete; **nothing is configured to generate**. The production generator
 registry (`functions/src/nutrition/generationProvider.ts`), plan-validation
 registry and first-plan slot configuration (`generationInput.ts`) are all
-empty, so after the auth, request and adult checks the deployed callable
-answers `GENERATION_PROVIDER_NOT_CONFIGURED` and writes nothing — no request,
-no state pointer, no plan, no operation record, no quota. There is no model,
+empty, so a new request by an eligible adult is answered
+`GENERATION_PROVIDER_NOT_CONFIGURED` and writes nothing — no request, no state
+pointer, no plan, no operation record, no quota. An existing request is
+answered from what is stored — a finished one replays, a live one is reported
+as running — without needing any configuration; only new work (a new request,
+or a takeover that would call the generator) needs a generator, a policy and
+the generator's operation lease. There is no model,
 prompt, secret, quota value or AI log for Nutrition. A deterministic test
 generator lives in `functions/src/testing/`, which the build excludes.
 
@@ -662,7 +666,11 @@ server-minted plan id, and `state.activeGenerationRequestId`; one active
 generation per account (a live one is answered, a finished pointer is
 replaced, an abandoned one is ended `GENERATION_ABANDONED`). The generator
 sees only the minimized input — start date, TARGET values, slots, dietary
-preference — and the request keeps only its SHA-256 fingerprint. A candidate
+preference — and the request keeps only its SHA-256 fingerprint. Adult
+eligibility is judged from the profile each transaction reads itself: a claim
+by an ineligible account is `NOT_ELIGIBLE` with nothing written, and a
+takeover or finalisation that finds the account no longer eligible ends the
+request `discarded_stale` `ELIGIBILITY_CHANGED` without a plan. A candidate
 is checked by the shared plan-content schema, the requested dates and slots,
 and the policy, with at most one repair. Success activates through the NUT-09
 core inside the finalisation's own transaction and clears the pointer;

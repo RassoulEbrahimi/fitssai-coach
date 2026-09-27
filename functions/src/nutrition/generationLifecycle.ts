@@ -7,10 +7,12 @@ import {
   answeredValue,
   assertGenerationRequestTransition,
   generationRequestSchema,
+  getNutritionEligibility,
   isTerminalGenerationRequestStatus,
   nutritionDateAt,
   nutritionGenerationIdempotencyKey,
   nutritionUserStateSchema,
+  parseNutritionProfile,
   type GenerationRequest,
   type NutritionGenerationFailureCode,
   type NutritionGenerationStaleCode,
@@ -28,6 +30,7 @@ import {
   type NutritionGenerationInput,
   type NutritionInitialSlotConfiguration,
 } from "./generationInput";
+import type { NutritionGenerationSetup } from "./generationProvider";
 import {
   activateNutritionPlanInTransaction,
   parseNutritionStateSnapshot,
@@ -36,7 +39,7 @@ import {
   type ActivationTransaction,
   type PreparedNutritionPlanActivation,
 } from "./planActivation";
-import type { PlanValidationPolicyRegistry } from "./planValidation/types";
+import type { PlanValidationPolicy, PlanValidationPolicyRegistry } from "./planValidation/types";
 
 /**
  * The transactions of one Nutrition generation request (NUT-11). Each reads
@@ -79,6 +82,21 @@ import type { PlanValidationPolicyRegistry } from "./planValidation/types";
  *                   and must hash to it, or the request ends discarded_stale
  *                   INPUT_CHANGED; a changed plan or target ends it as stale too
  *
+ * Eligibility (NUT-03) is decided by the profile each transaction reads
+ * itself, never by a copy taken earlier: a claim for an account that is not an
+ * eligible adult is refused (NOT_ELIGIBLE, nothing written); a takeover or a
+ * finalisation that finds it no longer eligible ends the request
+ * discarded_stale ELIGIBILITY_CHANGED without a plan. Existing data stays;
+ * nothing is extended.
+ *
+ * Answering for an existing request needs nothing configured: a finished
+ * request replays, and a live one — this request or another — is answered,
+ * whatever the generator or the policy registry says now. Only new work — a
+ * new request, or a takeover that would call the generator — needs a
+ * configured generator (GENERATION_PROVIDER_NOT_CONFIGURED), a policy in force
+ * (PLAN_VALIDATION_POLICY_NOT_CONFIGURED) and the generator's operation lease,
+ * and it is refused before anything is written.
+ *
  * State revision: a transaction that changes the state document moves
  * `revision` by exactly one (claim, activation, a failure or discard that
  * clears the pointer); one that does not change it does not write it.
@@ -89,11 +107,9 @@ type Snapshot = { exists: boolean; data(): Record<string, unknown> | undefined }
 export interface NutritionGenerationContext {
   firestore: Firestore;
   uid: string;
-  /** The `nutritionPlan` operation records, with the configured lease. */
+  /** The `nutritionPlan` operation records. Reading them needs no lease. */
   records: OperationRecordStore;
   policies: PlanValidationPolicyRegistry;
-  /** The caller's NUT-03 profile view, read once by the handler. */
-  profile: NutritionProfile;
   initialSlots: NutritionInitialSlotConfiguration;
   sha256Hex: Sha256Hex;
 }
@@ -110,6 +126,7 @@ const runTransaction = <T>(firestore: Firestore, body: (tx: ActivationTransactio
 const refsFor = (firestore: Firestore, uid: string) => {
   const userRef = firestore.collection("users").doc(uid);
   return {
+    user: userRef,
     state: userRef.collection(NUTRITION_V2_COLLECTIONS.state).doc(NUTRITION_V2_STATE_DOC_ID),
     plan: (planId: string) => userRef.collection(NUTRITION_V2_COLLECTIONS.plans).doc(planId),
     target: (targetVersionId: string) => userRef.collection(NUTRITION_V2_COLLECTIONS.targets).doc(targetVersionId),
@@ -131,6 +148,27 @@ const parseGenerationRequest = (snapshot: Snapshot, requestId: string): Generati
   return parsed.data;
 };
 
+/** The account's NUT-03 profile view, read inside `tx`: the one eligibility answer that counts. */
+const readProfile = async (ctx: NutritionGenerationContext, tx: ActivationTransaction): Promise<NutritionProfile> =>
+  parseNutritionProfile((await tx.get(refsFor(ctx.firestore, ctx.uid).user)).data());
+
+/**
+ * What new work needs: a configured generator with its operation lease and a
+ * policy in force. Throws before anything is written when any is missing.
+ */
+const requireWork = (
+  ctx: NutritionGenerationContext,
+  setup: NutritionGenerationSetup | null
+): { setup: NutritionGenerationSetup; policy: PlanValidationPolicy } => {
+  if (!setup) throw new NutritionGenerationError("GENERATION_PROVIDER_NOT_CONFIGURED", "No Nutrition generation provider is configured.");
+  const policy = ctx.policies.current();
+  if (!policy) throw new NutritionGenerationError("PLAN_VALIDATION_POLICY_NOT_CONFIGURED", "No plan-validation policy is in force.");
+  if (!Number.isFinite(setup.operationLeaseMs) || setup.operationLeaseMs <= 0) {
+    throw internal("The generation provider is configured without an operation lease.");
+  }
+  return { setup, policy };
+};
+
 /* ------------------------------------------------------------------ *
  * Input
  * ------------------------------------------------------------------ */
@@ -150,6 +188,7 @@ type DerivedInput =
  */
 const deriveInput = async (
   ctx: NutritionGenerationContext,
+  profile: NutritionProfile,
   basePlan: NutritionPlan | null,
   target: TargetVersion,
   at: Date
@@ -162,14 +201,14 @@ const deriveInput = async (
     startDate = addNutritionDays(today, 1);
     slotOrder = basePlan.slotOrder;
   } else {
-    const slots = ctx.initialSlots.slotsFor(answeredValue(ctx.profile.mealsPerDay));
+    const slots = ctx.initialSlots.slotsFor(answeredValue(profile.mealsPerDay));
     if (!slots) return { ok: false, code: "GENERATION_SLOTS_NOT_CONFIGURED" };
     startDate = today;
     slotOrder = [...slots];
   }
   let input: NutritionGenerationInput;
   try {
-    input = buildNutritionGenerationInput({ startDate, target, slotOrder, profile: ctx.profile });
+    input = buildNutritionGenerationInput({ startDate, target, slotOrder, profile });
   } catch {
     throw internal("The generation input could not be built.");
   }
@@ -182,10 +221,15 @@ const deriveInput = async (
 
 /**
  * Why a running request can no longer produce the account's plan, or null
- * while it still can.
+ * while it still can. `profile` is the one the calling transaction read.
  */
-const staleCodeFor = (state: NutritionUserState | null, request: GenerationRequest): NutritionGenerationStaleCode | null => {
+const staleCodeFor = (
+  state: NutritionUserState | null,
+  request: GenerationRequest,
+  profile: NutritionProfile
+): NutritionGenerationStaleCode | null => {
   if (!state || state.activeGenerationRequestId !== request.requestId) return "STALE_GENERATION";
+  if (!getNutritionEligibility(profile).eligible) return "ELIGIBILITY_CHANGED";
   if (state.activePlanId !== request.basePlanId) return "STALE_ACTIVE_PLAN";
   if (state.currentTargetVersionId !== request.targetVersionId) return "STALE_TARGET";
   return null;
@@ -251,6 +295,9 @@ export type NutritionGenerationClaim =
       /** The plan id reserved for this request at its first claim. */
       planId: string;
       takeover: boolean;
+      /** What this work runs with, as it was when it was claimed. */
+      setup: NutritionGenerationSetup;
+      policy: PlanValidationPolicy;
     }
   /** A live request — this one elsewhere, or another of the account. Nothing was written. */
   | { kind: "inProgress"; request: GenerationRequest }
@@ -264,32 +311,31 @@ export interface NutritionGenerationClaimInput {
   newPlanId: string;
   /** Minted before the transaction; this claim's proof of ownership. */
   claimToken: string;
+  /** The generator in force, if any. Needed only for new work. */
+  setup: NutritionGenerationSetup | null;
 }
 
 export const claimNutritionGeneration = (
   ctx: NutritionGenerationContext,
-  { requestId, at, newPlanId, claimToken }: NutritionGenerationClaimInput
+  { requestId, at, newPlanId, claimToken, setup }: NutritionGenerationClaimInput
 ): Promise<NutritionGenerationClaim> =>
   runTransaction(ctx.firestore, async (tx): Promise<NutritionGenerationClaim> => {
     const refs = refsFor(ctx.firestore, ctx.uid);
+    // The profile joins this transaction's read set: a change to it before the
+    // commit makes the transaction run again against the new answer.
+    const profile = await readProfile(ctx, tx);
     const request = parseGenerationRequest(await tx.get(refs.generation(requestId)), requestId);
     const record = await ctx.records.read(tx, ctx.uid, requestId, at);
     const state = parseNutritionStateSnapshot(await tx.get(refs.state));
 
-    if (request) return continueRequest(ctx, tx, { request, record, state, at, claimToken });
+    if (request) return continueRequest(ctx, tx, { request, record, state, profile, at, claimToken, setup });
 
     // A new request. Its record cannot exist without it: they are created together.
     if (record.exists) throw internal("An operation record exists without its generation request.");
-    if (!state || state.currentTargetVersionId === null) {
-      throw new NutritionGenerationError("NO_CURRENT_TARGET", "No target is set.");
-    }
-    if (state.recentRequests.some((applied) => applied.requestId === requestId)) {
-      throw new NutritionGenerationError("INVALID_REQUEST", "The request id was used for another operation.");
-    }
 
-    // One active generation per account.
+    // One active generation per account: a live one is answered, whatever is configured.
     let abandoned: GenerationRequest | null = null;
-    const activeId = state.activeGenerationRequestId;
+    const activeId = state?.activeGenerationRequestId ?? null;
     if (activeId !== null) {
       const active = parseGenerationRequest(await tx.get(refs.generation(activeId)), activeId);
       if (!active) throw internal("The active generation request does not exist.");
@@ -303,6 +349,19 @@ export const claimNutritionGeneration = (
       // A finished request's pointer is simply replaced below.
     }
 
+    // New work from here: an eligible adult by the profile read above, and a configured generator.
+    const eligibility = getNutritionEligibility(profile);
+    if (!eligibility.eligible) {
+      throw new NutritionGenerationError("NOT_ELIGIBLE", "Nutrition is for adults with a known age.", { reason: eligibility.reason });
+    }
+    const work = requireWork(ctx, setup);
+    if (!state || state.currentTargetVersionId === null) {
+      throw new NutritionGenerationError("NO_CURRENT_TARGET", "No target is set.");
+    }
+    if (state.recentRequests.some((applied) => applied.requestId === requestId)) {
+      throw new NutritionGenerationError("INVALID_REQUEST", "The request id was used for another operation.");
+    }
+
     // The snapshot this request is for: the current target and base, as the server reads them.
     const targetVersionId = state.currentTargetVersionId;
     const target = requireStoredTarget(await tx.get(refs.target(targetVersionId)), targetVersionId);
@@ -313,7 +372,7 @@ export const claimNutritionGeneration = (
         throw new NutritionGenerationError("PLAN_NOT_ACTIVE", "The state points to a plan that is not active.");
       }
     }
-    const derived = await deriveInput(ctx, basePlan, target, at);
+    const derived = await deriveInput(ctx, profile, basePlan, target, at);
     if (!derived.ok) throw new NutritionGenerationError(derived.code, "The generation cannot be configured.");
 
     // Every read is done; everything below is written together.
@@ -336,7 +395,15 @@ export const claimNutritionGeneration = (
     };
     if (!generationRequestSchema.safeParse(created).success) throw internal("The new request is not a valid GenerationRequest.");
 
-    ctx.records.writeClaim(tx, { uid: ctx.uid, requestId, previous: record, at, claimToken, planId: newPlanId });
+    ctx.records.writeClaim(tx, {
+      uid: ctx.uid,
+      requestId,
+      previous: record,
+      at,
+      claimToken,
+      planId: newPlanId,
+      leaseMs: work.setup.operationLeaseMs,
+    });
     tx.create(refs.generation(requestId), { ...created, createdAt: Timestamp.fromDate(at) });
     writeState(ctx, tx, { ...state, revision: state.revision + 1, activeGenerationRequestId: requestId });
 
@@ -348,6 +415,7 @@ export const claimNutritionGeneration = (
       claimToken,
       planId: newPlanId,
       takeover: false,
+      ...work,
     };
   });
 
@@ -359,22 +427,34 @@ const continueRequest = async (
     request,
     record,
     state,
+    profile,
     at,
     claimToken,
-  }: { request: GenerationRequest; record: OperationRecord; state: NutritionUserState | null; at: Date; claimToken: string }
+    setup,
+  }: {
+    request: GenerationRequest;
+    record: OperationRecord;
+    state: NutritionUserState | null;
+    profile: NutritionProfile;
+    at: Date;
+    claimToken: string;
+    setup: NutritionGenerationSetup | null;
+  }
 ): Promise<NutritionGenerationClaim> => {
   if (isTerminalGenerationRequestStatus(request.status)) return { kind: "finished", request, replay: true };
   if (record.status !== "in_progress" || !record.planId) throw internal("A running request has no live record.");
   if (record.leaseLive) return { kind: "inProgress", request };
 
-  // The invocation that owned it is gone. Continue the same request, or end it.
-  const stale = staleCodeFor(state, request);
+  // The invocation that owned it is gone. Continue the same request, or end it
+  // — ending it needs no generator; continuing does.
+  const stale = staleCodeFor(state, request, profile);
   if (stale) {
     const ended = writeRequestEnd(ctx, tx, request, { status: "discarded_stale", code: stale }, at);
     clearPointerIfNamed(ctx, tx, state, request.requestId);
     return { kind: "finished", request: ended, replay: false };
   }
 
+  const work = requireWork(ctx, setup);
   const refs = refsFor(ctx.firestore, ctx.uid);
   const target = requireStoredTarget(await tx.get(refs.target(request.targetVersionId)), request.targetVersionId);
   const basePlan =
@@ -382,7 +462,8 @@ const continueRequest = async (
   if (basePlan && basePlan.lifecycle.status !== "active") throw internal("The base plan of a running request is not active.");
 
   // The same logical request must generate from the same input — never from a changed one under its id.
-  const derived = await deriveInput(ctx, basePlan, target, at);
+  // Rebuilt from the profile this transaction read, not one taken earlier.
+  const derived = await deriveInput(ctx, profile, basePlan, target, at);
   if (!derived.ok || derived.fingerprint !== request.payloadFingerprint) {
     const ended = writeRequestEnd(ctx, tx, request, { status: "discarded_stale", code: "INPUT_CHANGED" }, at);
     clearPointerIfNamed(ctx, tx, state, request.requestId);
@@ -397,6 +478,7 @@ const continueRequest = async (
     at,
     claimToken,
     planId: record.planId,
+    leaseMs: work.setup.operationLeaseMs,
   });
   return {
     kind: "claimed",
@@ -406,6 +488,7 @@ const continueRequest = async (
     claimToken,
     planId: record.planId,
     takeover: true,
+    ...work,
   };
 };
 
@@ -440,7 +523,8 @@ const readOwned = async (
  * request, its base plan is still active and its target still current, the
  * NUT-09 activation core creates the plan, supersedes the base and moves the
  * state (clearing the pointer in the same write), and the request and its
- * record complete with it. If the account moved on, the request is
+ * record complete with it. If the account moved on — or, by the profile this
+ * transaction reads, is no longer an eligible adult — the request is
  * discarded_stale and no plan, slot head, entry or target is touched.
  *
  * An activation refusal (a policy that changed and now rejects) throws and
@@ -459,7 +543,8 @@ export const finalizeNutritionGeneration = (
     }
 
     const state = parseNutritionStateSnapshot(await tx.get(refsFor(ctx.firestore, ctx.uid).state));
-    const stale = staleCodeFor(state, request);
+    const profile = await readProfile(ctx, tx);
+    const stale = staleCodeFor(state, request, profile);
     if (stale) {
       const ended = writeRequestEnd(ctx, tx, request, { status: "discarded_stale", code: stale }, at);
       clearPointerIfNamed(ctx, tx, state, requestId);
