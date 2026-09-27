@@ -329,7 +329,8 @@ describe("NutritionV2TodayContainer", () => {
 
   it.each([
     ["under 18", 17, "Ernährung ist ab 18 Jahren verfügbar"],
-    ["missing age", null, "Ernährung ist ohne Altersangabe nicht verfügbar"],
+    // NUT-12D.1: without an age, the profile completion says why and offers the way in.
+    ["missing age", null, /Ernährung richtet sich an Erwachsene und braucht dafür dein Alter/],
   ])("shows the %s state and starts no V2 read", async (_label, age, text) => {
     seedWeek();
     session.profile = { status: "success", data: { id: "alice", age } };
@@ -350,17 +351,19 @@ describe("NutritionV2TodayContainer", () => {
     expect(firestore.getDoc).not.toHaveBeenCalled();
   });
 
-  it("shows not initialised when the state document is absent", async () => {
+  it("shows the profile section as the one empty state when the state document is absent", async () => {
     renderContainer();
-    expect(await screen.findByText("Ernährung ist noch nicht eingerichtet")).toBeInTheDocument();
+    expect(await screen.findByRole("region", { name: "Ernährungsprofil vervollständigen" })).toBeInTheDocument();
+    expect(screen.queryByText("Ernährung ist noch nicht eingerichtet")).toBeNull();
   });
 
-  it("offers setting a target without state, and rendering creates neither state nor target (NUT-08)", async () => {
+  it("shows no empty target section without state, and rendering creates neither state nor target (NUT-08)", async () => {
     renderContainer();
 
-    const target = await screen.findByRole("region", { name: "Ziel" });
-    expect(target).toHaveTextContent("Du hast noch kein Ernährungsziel festgelegt.");
-    expect(within(target).queryByRole("button", { name: "Ziel festlegen" })).not.toBeInTheDocument();
+    await screen.findByRole("region", { name: "Ernährungsprofil vervollständigen" });
+    expect(screen.queryByRole("region", { name: "Ziel" })).toBeNull();
+    expect(screen.queryByText("Du hast noch kein Ernährungsziel festgelegt.")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Ziel festlegen" })).toBeNull();
     expect([...store.docs.keys()]).toEqual([]);
   });
 

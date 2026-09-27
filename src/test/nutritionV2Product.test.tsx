@@ -122,8 +122,12 @@ afterEach(async () => {
 it('ships the real V2 empty state independently of legacy and workout query states', async () => {
   expect(NUTRITION_V2_ENABLED).toBe(true);
   mount();
-  expect(await screen.findByText('Ernährung ist noch nicht eingerichtet')).toBeInTheDocument();
-  expect(screen.getByText(/Neue Ziele und KI-Ernährungspläne sind/)).toBeInTheDocument();
+  // NUT-12D.1: one empty-state journey — the profile completion — and nothing repeated beneath it.
+  expect(await screen.findByRole('region', { name: 'Ernährungsprofil vervollständigen' })).toBeInTheDocument();
+  expect(screen.queryByText('Ernährung ist noch nicht eingerichtet')).toBeNull();
+  expect(screen.queryByText('Du hast noch kein Ernährungsziel festgelegt.')).toBeNull();
+  expect(screen.queryByRole('region', { name: 'Planstatus' })).toBeNull();
+  expect(screen.getByTestId('nutrition-v2-today')).not.toHaveTextContent(/in dieser Version|nicht freigeschaltet/);
   expect(screen.queryByTestId('legacy-nutrition-plan')).toBeNull();
   expect(screen.queryByText('LEGACY FOOD')).toBeNull();
   expect(screen.queryByRole('button', { name: 'Ziel festlegen' })).toBeNull();
@@ -162,7 +166,7 @@ it('shows corrupt V2 data as error and recovers through scoped refresh', async (
   const invalidate = vi.spyOn(client, 'invalidateQueries');
   store.docs.clear();
   fireEvent.click(screen.getByRole('button', { name: 'Aktualisieren' }));
-  expect(await screen.findByText('Ernährung ist noch nicht eingerichtet')).toBeInTheDocument();
+  expect(await screen.findByRole('region', { name: 'Ernährungsprofil vervollständigen' })).toBeInTheDocument();
   expect(invalidate).toHaveBeenCalledWith({ queryKey: ['nutrition-v2', 'alice'] });
 });
 
@@ -174,7 +178,7 @@ it('does not show the previous account plan after an account switch', async () =
   session.profile = { status: 'success', data: { id: 'bob', age: 30 } };
   view.rerender(view.tree());
   expect(screen.queryByText('lunch 3')).toBeNull();
-  expect(await screen.findByText('Ernährung ist noch nicht eingerichtet')).toBeInTheDocument();
+  expect(await screen.findByRole('region', { name: 'Ernährungsprofil vervollständigen' })).toBeInTheDocument();
 });
 
 it('reads an existing generation status and refreshes it without starting a request', async () => {
@@ -191,7 +195,9 @@ it('reads an existing generation status and refreshes it without starting a requ
   put(C.generations, requestId, { broken: true });
   fireEvent.click(screen.getByRole('button', { name: 'Aktualisieren' }));
   expect(await screen.findByText(/Der Planstatus konnte nicht geladen werden/)).toBeInTheDocument();
-  expect(screen.getByText('Kein aktiver Ernährungsplan')).toBeInTheDocument();
+  // Neither a target nor a plan: the profile section is the empty state, beside the request's status.
+  expect(screen.getByRole('region', { name: 'Ernährungsprofil vervollständigen' })).toBeInTheDocument();
+  expect(screen.queryByText('Kein aktiver Ernährungsplan')).toBeNull();
   expect(store.docs.size).toBe(2);
 });
 

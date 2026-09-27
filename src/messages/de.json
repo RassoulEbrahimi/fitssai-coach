@@ -480,9 +480,7 @@
       "refresh": "Aktualisieren",
       "refreshing": "Wird aktualisiert …",
       "generationTitle": "Planstatus",
-      "availability": "Neue Ziele und KI-Ernährungspläne sind in dieser Version noch nicht freigeschaltet. Vorhandene Ziele, Pläne und Einträge bleiben sichtbar.",
       "generation": {
-        "none": "Keine aktive Plananfrage.",
         "pending": "Planstatus wird geladen …",
         "error": "Der Planstatus konnte nicht geladen werden. Bitte aktualisiere die Ansicht.",
         "queued": "Deine Plananfrage wartet auf Bearbeitung.",
@@ -737,6 +735,58 @@
         "unavailable": "Ersetzen ist gerade nicht möglich.",
         "failed": "Das hat nicht geklappt. Bitte versuche es später noch einmal."
       }
+    },
+    "profile": {
+      "incomplete": {
+        "title": "Ernährungsprofil vervollständigen",
+        "description": "Ergänze deine Angaben, damit FitssAI dein Ernährungsziel und deinen Plan später passend erstellen kann.",
+        "descriptionMissingAge": "Ernährung richtet sich an Erwachsene und braucht dafür dein Alter. Ergänze deine Angaben, damit FitssAI dein Ernährungsziel und deinen Plan später passend erstellen kann.",
+        "openFields": "Noch offen: {{fields}}",
+        "action": "Angaben ergänzen"
+      },
+      "complete": {
+        "title": "Dein Ernährungsprofil ist vollständig.",
+        "description": "Dein Ernährungsziel und deinen Plan kannst du hier erstellen, sobald diese Funktion verfügbar ist."
+      },
+      "edit": "Angaben ändern",
+      "sheetTitle": "Ernährungsprofil",
+      "sheetDescription": "Deine Angaben werden in deinem Profil gespeichert. Vorhandene Angaben kannst du hier prüfen und ändern.",
+      "section": {
+        "body": "Körperdaten",
+        "goal": "Ziel und Ernährungsform",
+        "nutrition": "Für deine Ernährung"
+      },
+      "field": {
+        "age": "Alter",
+        "height": "Größe (cm)",
+        "weight": "Gewicht (kg)",
+        "fitnessGoal": "Fitnessziel",
+        "dietaryPreference": "Ernährungsform",
+        "biologicalSex": "Biologisches Geschlecht",
+        "activityLevel": "Aktivität im Alltag",
+        "mealsPerDay": "Mahlzeiten pro Tag"
+      },
+      "fieldName": {
+        "age": "Alter",
+        "height": "Größe",
+        "weight": "Gewicht",
+        "fitnessGoal": "Fitnessziel",
+        "dietaryPreference": "Ernährungsform",
+        "biologicalSex": "Biologisches Geschlecht",
+        "activityLevel": "Aktivität im Alltag",
+        "mealsPerDay": "Mahlzeiten pro Tag"
+      },
+      "mealsOption": "{{count}}",
+      "open": "Noch offen",
+      "reselect": "Bitte neu wählen",
+      "choiceRequired": "Bitte wähle eine Angabe.",
+      "dietNote": "Deine Ernährungsform ist eine Vorliebe – keine Garantie, dass Mahlzeiten frei von Allergenen sind.",
+      "sexNote": "Nur für die spätere Berechnung deines Ernährungsziels. „Keine Angabe“ ist ebenfalls möglich.",
+      "save": "Speichern",
+      "saving": "Wird gespeichert …",
+      "cancel": "Abbrechen",
+      "saved": "Dein Ernährungsprofil wurde gespeichert.",
+      "saveFailed": "Deine Angaben konnten nicht gespeichert werden. Bitte versuche es erneut."
     }
   }
 }

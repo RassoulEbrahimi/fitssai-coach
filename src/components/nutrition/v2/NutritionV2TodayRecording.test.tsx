@@ -419,7 +419,8 @@ describe("today's recording surface", () => {
 
     expect(await screen.findByText("Ernährung ist ab 18 Jahren verfügbar")).toBeInTheDocument();
     expect(screen.queryByTestId("nutrition-v2-today-recording")).toBeNull();
-    expect(screen.queryAllByRole("button")).toEqual([]);
+    // Only the profile completion (NUT-12D.1), which reads and writes the profile alone.
+    expect(screen.queryAllByRole("button").map((button) => button.textContent)).toEqual(["Angaben ergänzen"]);
   });
 
   it("offers no recording surface when today is outside the plan", async () => {
@@ -711,7 +712,13 @@ describe("conflict visibility outside today's recording", () => {
     const notice = await screen.findByTestId("nutrition-v2-conflict");
     expect(notice).toHaveTextContent("Mittagessen wurde geändert");
     expect(screen.queryByTestId("nutrition-v2-today-recording")).toBeNull();
-    expect(screen.getAllByRole("button").map((button) => button.textContent)).toEqual(["Aktualisieren", "Erneut anwenden", "Verwerfen"]);
+    expect(screen.getAllByRole("button").map((button) => button.getAttribute("aria-label") ?? button.textContent)).toEqual([
+      "Aktualisieren",
+      "Erneut anwenden",
+      "Verwerfen",
+      // NUT-12D.1: the profile completion prompt, not a recording control.
+      "Angaben ergänzen",
+    ]);
   });
 
   it("is visible when today is outside the plan, and leaves the week rows exactly as they were", async () => {

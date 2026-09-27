@@ -1,12 +1,15 @@
 import React, { useMemo, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
+import { RefreshCw } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { queryKeys } from "@/lib/queryKeys";
 import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 import { useBerlinToday } from "@/hooks/useBerlinToday";
 import {
   useActiveNutritionV2Plan,
+  useCurrentNutritionV2Target,
   useNutritionV2Access,
   useNutritionV2EntriesRange,
   useNutritionV2PlanById,
@@ -25,6 +28,7 @@ import { NutritionV2TodayRecording } from "./NutritionV2TodayRecording";
 import { NutritionV2Conflicts } from "./NutritionV2Conflicts";
 import { NutritionV2TargetSection } from "./NutritionV2TargetSection";
 import { NutritionV2GenerationStatus } from "./NutritionV2GenerationStatus";
+import { NutritionV2ProfileSection } from "./NutritionV2ProfileCompletion";
 
 /**
  * Nutrition V2 Today/week data container.
@@ -64,6 +68,12 @@ import { NutritionV2GenerationStatus } from "./NutritionV2GenerationStatus";
  * Mounted by the V2 product view (NUT-12D). The rollout flag chooses the
  * whole tab; this container never falls back to legacy data. Target setup
  * and new AI requests remain unavailable in this rollout.
+ *
+ * The Nutrition PROFILE section (NUT-12D.1) is offered to every signed-in
+ * account whose profile could be read — eligible or not — because an account
+ * without an age can only become eligible by answering it. It reads and saves
+ * the profile only. Without a target or a plan it is the whole empty state:
+ * a completion prompt, or once complete, one "ready" message.
  */
 export const NutritionV2TodayContainer: React.FC = () => {
   const { t } = useTranslation();
@@ -89,6 +99,9 @@ export const NutritionV2TodayContainer: React.FC = () => {
   const recording = useNutritionV2Recording();
   const slotOverride = useNutritionV2SlotOverride();
 
+  // The same query the target section reads; here only to tell an empty account apart.
+  const target = useCurrentNutritionV2Target();
+
   const view = deriveNutritionV2TodayView({ access, state, plan, todayPlan, slots, entries, successorPlan, successorSlots, today });
   const todayDay = view?.status === "today" ? view.week.today : null;
   const entryList = entries.status === "success" ? entries.data : null;
@@ -98,29 +111,52 @@ export const NutritionV2TodayContainer: React.FC = () => {
   );
 
   if (!view) return null;
+
+  // Neither a target nor a plan: the profile section is the one empty state.
+  const empty =
+    (view.status === "notInitialized" || view.status === "noActivePlan") &&
+    target.status === "success" &&
+    target.data === null;
+  const profileReason = access.status === "eligible" ? "eligible" : access.status === "ineligible" ? access.reason : null;
+
+  // Only this account's V2 reads — or its profile, when that could not be read.
+  const refresh = async () => {
+    if (!user) return;
+    setRefreshing(true);
+    try {
+      await queryClient.invalidateQueries({
+        queryKey: access.status === "error" ? queryKeys.profile.me(user.uid) : queryKeys.nutrition.all(user.uid),
+      });
+    } finally {
+      setRefreshing(false);
+    }
+  };
+  const refreshLabel = t(refreshing ? "nutritionV2.product.refreshing" : "nutritionV2.product.refresh");
+
   return (
     <div className="space-y-4">
-      {(access.status === "eligible" || access.status === "error") && (
-        <div className="flex justify-end">
-          <Button type="button" variant="outline" className="min-h-11" disabled={refreshing} onClick={async () => {
-            if (!user) return;
-            setRefreshing(true);
-            try {
-              await queryClient.invalidateQueries({
-                queryKey: access.status === "error" ? queryKeys.profile.me(user.uid) : queryKeys.nutrition.all(user.uid),
-              });
-            } finally {
-              setRefreshing(false);
-            }
-          }}>
-            {t(refreshing ? "nutritionV2.product.refreshing" : "nutritionV2.product.refresh")}
-          </Button>
-        </div>
-      )}
       <NutritionV2TodayShell
         view={view}
+        headerAction={
+          access.status === "eligible" || access.status === "error" ? (
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="-my-2.5 -mr-2.5 h-11 w-11 shrink-0 text-muted-foreground"
+              aria-label={refreshLabel}
+              title={refreshLabel}
+              disabled={refreshing}
+              onClick={refresh}
+            >
+              <RefreshCw className={cn("h-5 w-5", refreshing && "animate-spin")} aria-hidden="true" />
+            </Button>
+          ) : undefined
+        }
+        profile={profileReason ? <NutritionV2ProfileSection reason={profileReason} showReady={empty} /> : null}
+        profileIsEmptyState={empty}
         conflicts={<NutritionV2Conflicts conflicts={overlay.conflicts} today={today} recording={recording} />}
-        target={<><NutritionV2TargetSection /><NutritionV2GenerationStatus /></>}
+        target={<>{!empty && <NutritionV2TargetSection />}<NutritionV2GenerationStatus /></>}
         todayRecording={
           recordings ? (
             <NutritionV2TodayRecording

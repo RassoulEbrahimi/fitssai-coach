@@ -31,6 +31,28 @@ configuration is needed to render the UI.
 - Legacy Home/Profile references remain explicitly legacy and unchanged.
   The V2 view accepts no legacy props and imports no legacy model.
 
+## NUT-12D.1 — profile completion and empty state
+
+- A Nutrition profile card completes or changes the Nutrition answers of the
+  existing profile document: age, height, weight, fitness goal, dietary
+  preference (shared with onboarding), biological sex, activity level and
+  meals per day. It reads and saves only through `useProfile` /
+  `useUpdateProfile`, prefills every recognised answer and writes only the
+  answers that changed. Numbers use onboarding's bounds
+  (`src/lib/profileMeasurements.ts`); choices use the NUT-03 vocabularies.
+  Emptying an answered field is refused; nothing is defaulted or inferred.
+- Completeness (`src/lib/nutrition/v2/profileCompletion.ts`) covers exactly
+  those eight answers; the target mode and a manual kcal target are not part
+  of it. Missing and unrecognised stored values are reported separately.
+- The card is offered to eligible and ineligible accounts. Without an age it
+  replaces the ineligibility message; saving an adult age updates the profile
+  cache, and only then do Nutrition V2 reads start. A minor keeps the
+  ineligibility message and can still correct the answers; no V2 read runs.
+- Without a target or plan the card is the whole empty state; the separate
+  “not set up”/“no plan”, empty-target and availability messages are gone.
+  Planstatus renders only when the state names a generation request.
+  Refresh is a compact icon in the Nutrition card header, same scope as before.
+
 ## Production gates and remaining work
 
 Unchanged: `NUTRITION_AI_PRODUCTION_ENABLED = false`, backend
@@ -76,9 +98,11 @@ This PR is not merged or deployed by its authoring task.
    identifier matches the new deployment. If the installed PWA still shows
    the old build, close/reopen it and reload after the worker update. Avoid
    clearing site data while offline writes are pending.
-5. For a fresh account, expect the target empty state, Planstatus availability
-   notice, and “Ernährung ist noch nicht eingerichtet”; no legacy plan and no
-   generation/setup button. For an approved existing V2 account, check target,
+5. For a fresh account, expect one empty state: “Ernährungsprofil
+   vervollständigen” with “Angaben ergänzen” while answers are missing, or
+   “Dein Ernährungsprofil ist vollständig.” once they are all given (NUT-12D.1).
+   No empty target section, no Planstatus without a request, no legacy plan
+   and no generation/target button. For an approved existing V2 account, check target,
    Today meals, recorded state and the seven-date week. Confirm refresh works.
 6. Check minor/missing-age messaging and switching accounts. Test a recorded
    meal, offline reconciliation and replacement only on an approved test
