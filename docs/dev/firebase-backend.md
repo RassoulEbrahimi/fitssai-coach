@@ -702,8 +702,9 @@ and the Vertex project, location and data-processing terms are not signed off.
 | Authentication | Runtime IAM / Application Default Credentials. **No Nutrition API key**, no Nutrition secret, nothing `VITE_*`; an API key in the environment is not used for the Vertex client |
 | Backend gate | `NUTRITION_AI_PRODUCTION_ENABLED = false` (`functions/src/nutrition/aiGate.ts`) — a reviewed constant, not a client flag, not derived from any environment; the deployed callable passes it, and tests inject `generationEnabled: true` explicitly |
 | Vertex project / location | **Not configured.** `PRODUCTION_NUTRITION_VERTEX_DEPLOYMENT = null`; the adapter requires both explicitly and has no default (no `global`, no `us-central1`, no `europe-*`) |
-| Operational values | Temperature, output cap, thinking level, per-attempt timeout, transport attempts (ceiling 3) and the claim lease are required configuration with **no production value chosen**; the Function timeout is unchanged |
-| Model capability limits | Validated as configuration, before any client is built (a setting outside them is `GENERATION_PROVIDER_NOT_CONFIGURED`, never a paid call that fails): thinking level `LOW`, `MEDIUM`, `HIGH` or none (`null`, model default) — `gemini-3.8-flash` has no `MINIMAL`; `maxOutputTokens` 1 … 65,536 (`NUTRITION_GEMINI_MAX_OUTPUT_TOKENS`); temperature in (0, 2], as `@google/genai` 2.19.0 documents it. Ceilings only — not the production values |
+| Operational values | Output cap, thinking level, per-attempt timeout, transport attempts (ceiling 3) and the claim lease are required configuration with **no production value chosen**; the Function timeout is unchanged |
+| Model capability limits | Validated as configuration, before any client is built (a setting outside them is `GENERATION_PROVIDER_NOT_CONFIGURED`, never a paid call that fails): thinking level `LOW`, `MEDIUM`, `HIGH` or none (`null`: no `thinkingConfig` is sent and the model default, `MEDIUM`, applies) — `gemini-3.8-flash` has no `MINIMAL`; `maxOutputTokens` 1 … 65,536 (`NUTRITION_GEMINI_MAX_OUTPUT_TOKENS`). Ceilings only — not the production values |
+| API compatibility (NUT-12B.1) | `gemini-3.8-flash` takes reasoning control through `thinkingLevel` only. The Nutrition request sends **no** custom `temperature`, no `topP`/`topK`, no `candidateCount` (one response is the API's normal behaviour) and no frequency/presence penalties; none of them is a Nutrition setting, and the strict configuration schema refuses a stale deployment that still carries one (`GENERATION_PROVIDER_NOT_CONFIGURED`, before any client is built). The request config is exactly `systemInstruction`, `maxOutputTokens`, `thinkingConfig` (only when a level is configured), `responseMimeType`, `responseJsonSchema` and `abortSignal`; structured JSON output is still used. A future model that supports custom sampling reintroduces it explicitly, with the migration. **Nutrition only:** Training's `gemini-3.7-flash` config (`GENERATION_CONFIG`, above) is unchanged |
 | TargetPolicy | Unconfigured — `PRODUCTION_TARGET_POLICIES = []` |
 | PlanValidationPolicy | Unconfigured — `PRODUCTION_PLAN_VALIDATION_POLICIES = []` |
 | First-plan slots | Unconfigured — `productionInitialSlotConfiguration` maps nothing |
@@ -758,8 +759,10 @@ work.
 
 Still pending (NUT-12C and later): the Vertex project and location, data
 processing and the legal basis, consent and privacy copy, the operational
-values above, the target and plan-validation policies, first-plan slots,
-quota, AI logging, exclusions and replacement suggestions.
+values (`maxOutputTokens`, `thinkingLevel`, the provider timeout, transport
+attempts, the operation lease and the Function timeout), the target and
+plan-validation policies, first-plan slots, quota, AI logging, exclusions and
+replacement suggestions.
 
 
 

@@ -126,12 +126,11 @@ describe("production stays unconfigured behind the gate", () => {
     }
   });
 
-  it("chooses no temperature, output cap, thinking level, timeout, attempt count or lease for production", () => {
+  it("chooses no output cap, thinking level, timeout, attempt count or lease for production", () => {
     const vertex = code("src/nutrition/providers/vertexGemini.ts");
     const registry = code("src/nutrition/providers/productionRegistry.ts");
     // Settings come only from the configuration: no `?? <number>` fallback, no default object.
-    expect(vertex).not.toMatch(/\?\?\s*\d|=\s*\{\s*temperature|DEFAULT_/);
-    expect(vertex).toMatch(/temperature: config\.temperature,/);
+    expect(vertex).not.toMatch(/\?\?\s*\d|=\s*\{\s*maxOutputTokens|DEFAULT_/);
     expect(vertex).toMatch(/maxOutputTokens: config\.maxOutputTokens,/);
     expect(vertex).toMatch(/config\.timeoutMs/);
     expect(vertex).toMatch(/maxAttempts: config\.maxTransportAttempts/);
@@ -150,6 +149,47 @@ describe("production stays unconfigured behind the gate", () => {
     const wiring = index.slice(start, index.indexOf("export const", start + 1));
     expect(wiring).toMatch(/timeoutSeconds: 30,/);
     expect(wiring).not.toMatch(/secrets|GEMINI_API_KEY|apiKey/);
+  });
+});
+
+/**
+ * NUT-12B.1: request fields `gemini-3.8-flash` does not take. Nutrition-only —
+ * Training's `gemini-3.7-flash` config keeps its own sampling and candidate
+ * count on purpose, so this is no repository-wide ban.
+ */
+const GEMINI_38_UNSUPPORTED_FIELDS = ["temperature", "topP", "topK", "candidateCount", "candidate_count", "frequencyPenalty", "presencePenalty"];
+
+/** The object literal passed as `config:` to the adapter's `generateContent` call, braces balanced. */
+const generateContentConfig = (source: string): string => {
+  const call = source.indexOf(".generateContent(");
+  expect(call, "the adapter calls generateContent").toBeGreaterThan(-1);
+  const open = source.indexOf("{", source.indexOf("config:", call));
+  let depth = 0;
+  for (let index = open; index < source.length; index += 1) {
+    if (source[index] === "{") depth += 1;
+    if (source[index] === "}" && (depth -= 1) === 0) return source.slice(open, index + 1);
+  }
+  throw new Error("unbalanced generateContent config");
+};
+
+describe("the Nutrition request stays within what gemini-3.8-flash takes (NUT-12B.1)", () => {
+  it("the adapter calls generateContent exactly once in source, with exactly the supported config fields", () => {
+    const vertex = code("src/nutrition/providers/vertexGemini.ts");
+    expect([...vertex.matchAll(/\.generateContent\(/g)]).toHaveLength(1);
+    const config = generateContentConfig(vertex);
+    expect(config).toMatch(/systemInstruction: NUTRITION_PLAN_SYSTEM_INSTRUCTION,/);
+    expect(config).toMatch(/maxOutputTokens: config\.maxOutputTokens,/);
+    expect(config).toMatch(/config\.thinkingLevel === null \? \{\} : \{ thinkingConfig: \{ thinkingLevel: config\.thinkingLevel \} \}/);
+    expect(config).toMatch(/responseMimeType: "application\/json",/);
+    expect(config).toMatch(/responseJsonSchema,/);
+    expect(config).toMatch(/abortSignal: signal,/);
+    for (const field of GEMINI_38_UNSUPPORTED_FIELDS) expect(config, field).not.toMatch(new RegExp(`\\b${field}\\s*:`));
+  });
+
+  it.each(PROVIDER_MODULES.filter((file) => file.startsWith("src/nutrition/")))("%s names no sampling, candidate-count or penalty setting", (file) => {
+    const source = readFileSync(join(FUNCTIONS_ROOT, file), "utf-8");
+    for (const field of GEMINI_38_UNSUPPORTED_FIELDS) expect(source, field).not.toMatch(new RegExp(`\\b${field}\\b`));
+    expect(source).not.toMatch(/TEMPERATURE/);
   });
 });
 
