@@ -3,6 +3,12 @@ import {
   GENERATION_REQUEST_KINDS,
   GENERATION_REQUEST_STATUSES,
   NUTRITION_PLAN_DAY_COUNT,
+  NUTRITION_PLAN_LIFECYCLE_STATUSES,
+  NUTRITION_PLAN_SOURCES,
+  NUTRITION_STATE_OPERATIONS,
+  nutritionPlanContentSchema,
+  planValidationPolicyRefSchema,
+  targetPolicyRefSchema,
   NUTRITION_SCHEMA_VERSION,
   NUTRITION_STATE_REQUEST_LEDGER_SIZE,
   addNutritionDays,
@@ -57,6 +63,14 @@ const plan = {
   endDate: "2026-10-31",
   slotOrder: ["breakfast", "lunch", "snack_1"],
   days: Array.from({ length: 7 }, (_, index) => planDay(addNutritionDays(START, index), index)),
+  targetVersionId: "tv-1",
+  source: "generated",
+  repeatedFromPlanId: null,
+  generationRequestId: null,
+  validation: { policy: { id: "test-fixture-accept", version: 1 }, outcome: "accepted" },
+  createdAt: { seconds: 1_790_000_000, nanoseconds: 0 },
+  activatedAt: { seconds: 1_790_000_000, nanoseconds: 0 },
+  lifecycle: { status: "active", effectiveUntil: null, supersededByPlanId: null },
 };
 
 const withDays = (days: unknown[]) => ({ ...plan, days });
@@ -538,6 +552,102 @@ describe("RecordedEntry identity", () => {
   });
 });
 
+describe("NutritionPlan persistence metadata (NUT-09)", () => {
+  const superseded = { status: "superseded", effectiveUntil: "2026-10-28", supersededByPlanId: "plan-2" };
+  const repeated = { ...plan, planId: "plan-2", source: "repeated", repeatedFromPlanId: "plan-1" };
+
+  it.each([
+    "targetVersionId",
+    "source",
+    "repeatedFromPlanId",
+    "generationRequestId",
+    "validation",
+    "createdAt",
+    "activatedAt",
+    "lifecycle",
+  ])("requires %s: an unreleased V2 plan without it is malformed, never defaulted", (field) => {
+    const { [field as keyof typeof plan]: _omit, ...without } = plan;
+    expect(nutritionPlanSchema.safeParse(without).success).toBe(false);
+  });
+
+  it("knows exactly the generated and repeated sources", () => {
+    expect(NUTRITION_PLAN_SOURCES).toEqual(["generated", "repeated"]);
+    expect(nutritionPlanSchema.safeParse(repeated).success).toBe(true);
+    for (const source of ["ai", "manual", "copied", null]) {
+      expect(nutritionPlanSchema.safeParse({ ...plan, source }).success).toBe(false);
+    }
+  });
+
+  it("names the repeated plan only for a repeat, and never itself", () => {
+    expect(nutritionPlanSchema.safeParse({ ...repeated, repeatedFromPlanId: null }).success).toBe(false);
+    expect(nutritionPlanSchema.safeParse({ ...repeated, repeatedFromPlanId: "plan-2" }).success).toBe(false);
+    expect(nutritionPlanSchema.safeParse({ ...plan, repeatedFromPlanId: "plan-0" }).success).toBe(false);
+  });
+
+  it("lets only a generated plan carry a generation request id", () => {
+    expect(nutritionPlanSchema.safeParse({ ...plan, generationRequestId: "gen-1" }).success).toBe(true);
+    expect(nutritionPlanSchema.safeParse({ ...repeated, generationRequestId: "gen-1" }).success).toBe(false);
+    expect(nutritionPlanSchema.safeParse({ ...plan, generationRequestId: "gen__1" }).success).toBe(false);
+  });
+
+  it("records a plan-validation policy reference and an accepted outcome, nothing else", () => {
+    const withValidation = (validation: unknown) => nutritionPlanSchema.safeParse({ ...plan, validation }).success;
+    expect(withValidation({ policy: { id: "p", version: 3 }, outcome: "accepted" })).toBe(true);
+    expect(withValidation({ policy: { id: "p", version: 3 }, outcome: "rejected" })).toBe(false);
+    expect(withValidation({ policy: { id: "p", version: 0 }, outcome: "accepted" })).toBe(false);
+    expect(withValidation({ policy: { id: "Policy P", version: 1 }, outcome: "accepted" })).toBe(false);
+    // No threshold detail can ride along with the provenance.
+    expect(withValidation({ policy: { id: "p", version: 1 }, outcome: "accepted", maxKcalDeviation: 0.1 })).toBe(false);
+    expect(withValidation({ policy: { id: "p", version: 1, tolerance: 5 }, outcome: "accepted" })).toBe(false);
+  });
+
+  it("keeps the plan-validation reference distinct from the target-policy reference", () => {
+    expect(planValidationPolicyRefSchema).not.toBe(targetPolicyRefSchema);
+    expect(planValidationPolicyRefSchema.parse({ id: "p", version: 1 })).toEqual({ id: "p", version: 1 });
+  });
+
+  it("is never activated before it was created", () => {
+    const at = (seconds: number, nanoseconds = 0) => ({ seconds, nanoseconds });
+    expect(nutritionPlanSchema.safeParse({ ...plan, createdAt: at(10, 5), activatedAt: at(10, 5) }).success).toBe(true);
+    expect(nutritionPlanSchema.safeParse({ ...plan, createdAt: at(10, 5), activatedAt: at(11) }).success).toBe(true);
+    expect(nutritionPlanSchema.safeParse({ ...plan, createdAt: at(10, 5), activatedAt: at(10, 4) }).success).toBe(false);
+    expect(nutritionPlanSchema.safeParse({ ...plan, createdAt: at(10), activatedAt: at(9) }).success).toBe(false);
+    expect(nutritionPlanSchema.safeParse({ ...plan, createdAt: "2026-10-24T08:00:00Z" }).success).toBe(false);
+  });
+
+  it("has exactly two lifecycles, and no impossible combination parses", () => {
+    expect(NUTRITION_PLAN_LIFECYCLE_STATUSES).toEqual(["active", "superseded"]);
+    const withLifecycle = (lifecycle: unknown) => nutritionPlanSchema.safeParse({ ...plan, lifecycle }).success;
+    expect(withLifecycle(superseded)).toBe(true);
+    expect(withLifecycle({ status: "active", effectiveUntil: "2026-10-28", supersededByPlanId: null })).toBe(false);
+    expect(withLifecycle({ status: "active", effectiveUntil: null, supersededByPlanId: "plan-2" })).toBe(false);
+    expect(withLifecycle({ ...superseded, effectiveUntil: null })).toBe(false);
+    expect(withLifecycle({ ...superseded, supersededByPlanId: null })).toBe(false);
+    expect(withLifecycle({ status: "active" })).toBe(false);
+    for (const status of ["draft", "pending", "deleted", "archived"]) {
+      expect(withLifecycle({ status, effectiveUntil: null, supersededByPlanId: null })).toBe(false);
+    }
+  });
+
+  it("keeps a superseded plan's effectiveUntil inside its own dates, and never itself as successor", () => {
+    const withLifecycle = (lifecycle: unknown) => nutritionPlanSchema.safeParse({ ...plan, lifecycle }).success;
+    expect(withLifecycle({ ...superseded, effectiveUntil: START })).toBe(true);
+    expect(withLifecycle({ ...superseded, effectiveUntil: "2026-10-31" })).toBe(true);
+    expect(withLifecycle({ ...superseded, effectiveUntil: "2026-10-24" })).toBe(false);
+    expect(withLifecycle({ ...superseded, effectiveUntil: "2026-11-01" })).toBe(false);
+    expect(withLifecycle({ ...superseded, effectiveUntil: "2026-02-30" })).toBe(false);
+    expect(withLifecycle({ ...superseded, supersededByPlanId: "plan-1" })).toBe(false);
+  });
+
+  it("checks base content alone by the same structural rules", () => {
+    const { startDate, endDate, slotOrder, days } = plan;
+    const content = { startDate, endDate, slotOrder, days };
+    expect(nutritionPlanContentSchema.safeParse(content).success).toBe(true);
+    expect(nutritionPlanContentSchema.safeParse({ ...content, days: days.slice(0, 6) }).success).toBe(false);
+    expect(nutritionPlanContentSchema.safeParse({ ...content, planId: "plan-1" }).success).toBe(false);
+  });
+});
+
 describe("plan generation requests", () => {
   it("have the canonical kinds and statuses", () => {
     expect(GENERATION_REQUEST_KINDS).toEqual(["initial", "regenerate"]);
@@ -695,6 +805,37 @@ describe("NutritionUserState (NUT-08)", () => {
       }).success
     ).toBe(false);
     expect(nutritionUserStateSchema.safeParse({ ...state, recentRequests: [{ ...request(1), extra: 1 }] }).success).toBe(false);
+  });
+
+  it("records setTarget and repeatPlan (NUT-09) in one ledger, each with its own result", () => {
+    expect(NUTRITION_STATE_OPERATIONS).toEqual(["setTarget", "repeatPlan"]);
+    const repeat = (n: number) => ({
+      requestId: `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`,
+      operation: "repeatPlan",
+      resultPlanId: `plan-${n}`,
+    });
+    const mixed = [request(1), repeat(2), request(3), repeat(4)];
+    expect(nutritionUserStateSchema.safeParse({ ...state, revision: 9, recentRequests: mixed }).success).toBe(true);
+
+    // Each operation names its own result, and only it.
+    const crossed = [
+      { ...repeat(2), resultTargetVersionId: "tv-2" },
+      { requestId: repeat(2).requestId, operation: "repeatPlan", resultTargetVersionId: "tv-2" },
+      { requestId: request(1).requestId, operation: "setTarget", resultPlanId: "plan-1" },
+      { ...repeat(2), resultPlanId: "plan__2" },
+    ];
+    for (const entry of crossed) {
+      expect(nutritionUserStateSchema.safeParse({ ...state, recentRequests: [entry] }).success, JSON.stringify(entry)).toBe(false);
+    }
+    // One request id is one request, whatever the operation.
+    const clash = [request(1), { ...repeat(2), requestId: request(1).requestId }];
+    expect(nutritionUserStateSchema.safeParse({ ...state, revision: 5, recentRequests: clash }).success).toBe(false);
+  });
+
+  it("counts revisions beyond the ledger: evicted records leave the revision as it is", () => {
+    const full = Array.from({ length: NUTRITION_STATE_REQUEST_LEDGER_SIZE }, (_, index) => request(index + 1));
+    expect(nutritionUserStateSchema.safeParse({ ...state, revision: 500, recentRequests: full }).success).toBe(true);
+    expect(nutritionUserStateSchema.safeParse({ ...state, revision: 7, recentRequests: [] }).success).toBe(true);
   });
 
   it("is an infrastructure bound, the same size as the entry intent ring", () => {

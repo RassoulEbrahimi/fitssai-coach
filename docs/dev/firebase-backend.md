@@ -579,6 +579,44 @@ Stable error codes: `NOT_ELIGIBLE`, `TARGET_POLICY_NOT_CONFIGURED`,
 `PROFILE_INCOMPLETE` (field names only), `INVALID_REQUEST`, `INTERNAL`.
 No secret, provider, quota, `_ai_operations` record or log is involved.
 
+## Nutrition V2 plan persistence
+
+A base `NutritionPlan` (NUT-09) is PLANNED intake, never eaten or recorded:
+seven contiguous Berlin dates, one meal per configured slot per date, plus
+server metadata — `targetVersionId`, `source` (`generated` or `repeated`,
+with `repeatedFromPlanId`), `generationRequestId`, the plan-validation policy
+that accepted it (`validation`), `createdAt`, `activatedAt` and `lifecycle`.
+Once persisted it is immutable except for one transition, `active` →
+`superseded` (`effectiveUntil`, `supersededByPlanId`), enforced by
+`assertPlanTransition` in `shared/nutrition/plan.ts`. A date belongs to a base
+plan by its dates and lifecycle alone (`planOwnsDate`); overrides never
+change which plan owns a date.
+
+`activateNutritionPlan` (`functions/src/nutrition/planActivation.ts`) is the
+one activation transaction: it re-reads the state, refuses a stale active
+plan or target pointer (`STALE_ACTIVE_PLAN`, `STALE_TARGET` — never
+last-write-wins), reads the target and the old plan strictly, validates,
+`create`s the new plan, writes the old plan's lifecycle field only
+(`min(old.endDate, new.startDate - 1)`), and moves `activePlanId` with
+`revision` +1 — all or nothing.
+
+`nutritionRepeatPlan` takes exactly `{ requestId }` and repeats the active
+plan's BASE content one week later (`endDate + 1` onwards, meal ids kept; no
+slot head, override, entry or generation state is read or copied). It needs
+the source plan to be made for the current target (`TARGET_CHANGED`
+otherwise) and refuses a week that would start before today in Berlin
+(`PLAN_NOT_REPEATABLE`). The request ledger in the state records
+`repeatPlan` next to `setTarget`; a repeated request id returns the plan it
+created and writes nothing. It is online only.
+
+**The production plan-validation registry is empty**
+(`functions/src/nutrition/planValidation/registry.ts`). No plan tolerance has
+been signed off, so the deployed callable answers
+`PLAN_VALIDATION_POLICY_NOT_CONFIGURED` once its preconditions hold and
+writes nothing. Structural validity is not approval. Test-only fixture
+policies live in `functions/src/testing/`, which the build excludes.
+`nutritionGeneration` stays `false`: there is no plan generation.
+
 
 
 ## Data minimisation

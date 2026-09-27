@@ -324,6 +324,59 @@ describe("useActiveNutritionV2Plan", () => {
     expect(integrityError(result.current).code).toBe("malformed");
   });
 
+  it.each([
+    "targetVersionId",
+    "source",
+    "repeatedFromPlanId",
+    "generationRequestId",
+    "validation",
+    "createdAt",
+    "activatedAt",
+    "lifecycle",
+  ])("errors on a plan without its NUT-09 %s, never defaulting it", async (field) => {
+    put(statePath("alice"), makeState());
+    const { [field as keyof ReturnType<typeof makePlan>]: _omit, ...without } = makePlan();
+    put(`users/alice/${C.plans}/${PLAN_ID}`, without);
+    const { result } = mount(() => useActiveNutritionV2Plan());
+    await settled(() => result.current);
+
+    expect(integrityError(result.current).code).toBe("malformed");
+  });
+
+  it.each([
+    ["an impossible lifecycle", { lifecycle: { status: "active", effectiveUntil: PLAN_END, supersededByPlanId: null } }],
+    ["a draft lifecycle", { lifecycle: { status: "draft", effectiveUntil: null, supersededByPlanId: null } }],
+    ["a repeat without its source", { source: "repeated", repeatedFromPlanId: null }],
+    ["a validation carrying a threshold", { validation: { policy: { id: "p", version: 1 }, outcome: "accepted", maxDeviation: 0.1 } }],
+    ["a createdAt that is not an instant", { createdAt: "2026-09-22T08:00:00Z" }],
+  ])("errors on a plan with %s", async (_name, patch) => {
+    put(statePath("alice"), makeState());
+    put(`users/alice/${C.plans}/${PLAN_ID}`, { ...makePlan(), ...patch });
+    const { result } = mount(() => useActiveNutritionV2Plan());
+    await settled(() => result.current);
+
+    expect(integrityError(result.current).code).toBe("malformed");
+  });
+
+  it("reads the plan's persistence metadata as stored, with a client SDK timestamp as a plain instant", async () => {
+    class ClientTimestamp {
+      constructor(
+        readonly seconds: number,
+        readonly nanoseconds: number
+      ) {}
+    }
+    put(statePath("alice"), makeState());
+    put(`users/alice/${C.plans}/${PLAN_ID}`, {
+      ...makePlan(),
+      createdAt: new ClientTimestamp(1_790_000_000, 0),
+      activatedAt: new ClientTimestamp(1_790_000_000, 0),
+    });
+    const { result } = mount(() => useActiveNutritionV2Plan());
+    await settled(() => result.current);
+
+    expect(result.current).toEqual({ status: "success", data: makePlan() });
+  });
+
   it("errors when the Firestore id is not the plan's planId", async () => {
     put(statePath("alice"), makeState());
     put(`users/alice/${C.plans}/${PLAN_ID}`, makePlan({ planId: "plan-2" }));

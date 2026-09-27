@@ -148,6 +148,7 @@ export class FakeFirestore {
         options?: { merge?: boolean }
       ) => void;
       create: (ref: { path: string }, value: Record<string, unknown>) => void;
+      update: (ref: { path: string }, value: Record<string, unknown>) => void;
     }) => Promise<T>
   ): Promise<T> {
     /*
@@ -166,6 +167,12 @@ export class FakeFirestore {
           buffered.push(() => {
             if (this.docs.has(ref.path)) throw new Error("already exists");
             this.writeAt(ref.path, value, false);
+          }),
+        // Top-level fields only, as the Admin SDK's `update` with plain keys.
+        update: (ref, value) =>
+          buffered.push(() => {
+            if (!this.docs.has(ref.path)) throw new Error("not found");
+            this.writeAt(ref.path, value, true);
           }),
       });
       const before = new Map(this.docs);

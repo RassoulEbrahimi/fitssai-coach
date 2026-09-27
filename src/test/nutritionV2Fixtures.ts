@@ -45,11 +45,18 @@ const BASE_VALUES: Record<NutritionSlotId, NutritionValues> = {
 
 export const mealIdFor = (dayIndex: number, slotId: NutritionSlotId) => `m-${dayIndex}-${slotId.replace("_", "")}`;
 
+/** A fixture validation provenance. The policy is a test fixture, not a FitssAI rule. */
+export const FIXTURE_PLAN_VALIDATION = {
+  policy: { id: "test-fixture-accept", version: 1 },
+  outcome: "accepted",
+} as const;
+
 export const makePlan = ({
   planId = PLAN_ID,
   startDate = PLAN_START,
   slotOrder = ["breakfast", "lunch", "dinner"],
-}: { planId?: string; startDate?: NutritionDate; slotOrder?: NutritionSlotId[] } = {}): NutritionPlan => ({
+  targetVersionId = "target-1",
+}: { planId?: string; startDate?: NutritionDate; slotOrder?: NutritionSlotId[]; targetVersionId?: string } = {}): NutritionPlan => ({
   schemaVersion: NUTRITION_SCHEMA_VERSION,
   planId,
   startDate,
@@ -65,6 +72,15 @@ export const makePlan = ({
       values: { ...BASE_VALUES[slotId], kcal: BASE_VALUES[slotId].kcal + dayIndex },
     })),
   })),
+  // NUT-09 persistence metadata of an active, generated plan.
+  targetVersionId,
+  source: "generated",
+  repeatedFromPlanId: null,
+  generationRequestId: null,
+  validation: { policy: { ...FIXTURE_PLAN_VALIDATION.policy }, outcome: FIXTURE_PLAN_VALIDATION.outcome },
+  createdAt: { seconds: 1_790_000_000, nanoseconds: 0 },
+  activatedAt: { seconds: 1_790_000_000, nanoseconds: 0 },
+  lifecycle: { status: "active", effectiveUntil: null, supersededByPlanId: null },
 });
 
 export const makeState = (overrides: Partial<NutritionUserState> = {}): NutritionUserState => ({

@@ -80,6 +80,8 @@ export const queryKeys = {
         ['nutrition-v2', userId, 'plans', 'byId', planId] as const,
     },
     slots: {
+      /** Every slot-head key of the account: the prefix of `byPlan(...)`. */
+      all: (userId: string | undefined) => ['nutrition-v2', userId, 'slots'] as const,
       byPlan: (userId: string | undefined, planId: string | undefined) =>
         ['nutrition-v2', userId, 'slots', planId] as const,
     },

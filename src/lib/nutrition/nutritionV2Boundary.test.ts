@@ -20,6 +20,11 @@ import { NUTRITION_V2_ENABLED } from "@shared/nutrition/featureFlag";
   NUT-08 adds the target plumbing: one module calls one function,
   nutritionSetTarget, through one hook, and nothing on the client writes a
   target or the state — the server does.
+
+  NUT-09 adds plan persistence the same way: one more module calls one more
+  function, nutritionRepeatPlan, through one hook that no UI uses yet. Nothing
+  on the client writes a plan, a slot head or the state, and no plan operation
+  is ever queued offline.
 */
 
 const root = resolve(__dirname, "../../..");
@@ -68,11 +73,17 @@ const v2Modules = [
   "src/components/nutrition/v2/NutritionV2TargetCard.tsx",
   "src/components/nutrition/v2/NutritionV2TargetSetup.tsx",
   "src/components/nutrition/v2/NutritionV2TargetSection.tsx",
+  // NUT-09: plan persistence plumbing (no UI).
+  "src/lib/nutrition/v2/planCallable.ts",
+  "src/hooks/queries/useNutritionV2RepeatPlan.ts",
 ];
 
 /** The one module that calls a function, and the one hook that reaches it (NUT-08). */
 const targetCallableModule = "src/lib/nutrition/v2/targetCallable.ts";
 const targetHookModule = "src/hooks/queries/useNutritionV2Target.ts";
+/** NUT-09: the one module that calls nutritionRepeatPlan, and the one hook that reaches it. */
+const planCallableModule = "src/lib/nutrition/v2/planCallable.ts";
+const repeatPlanHookModule = "src/hooks/queries/useNutritionV2RepeatPlan.ts";
 
 /** The only module that writes Firestore, and the only modules that reach it. */
 const entryWriterModule = "src/lib/nutrition/v2/entryWriter.ts";
@@ -157,7 +168,8 @@ describe("Nutrition V2 module boundary", () => {
 
   it("calls exactly one function, nutritionSetTarget, from one module reached only through the target hook", () => {
     const calling = v2Modules.filter((path) => /\b(httpsCallable|getFunctions)\b/.test(code(path)));
-    expect(calling).toEqual([targetCallableModule]);
+    // NUT-09 adds exactly one more calling module (next test).
+    expect(calling.sort()).toEqual([planCallableModule, targetCallableModule].sort());
     expect(code(targetCallableModule)).toMatch(/httpsCallable<[^>]+>\(\s*getFunctions\(getApp\(\), FUNCTIONS_REGION\),\s*NUTRITION_SET_TARGET_CALLABLE\s*\)/);
     expect([...code(targetCallableModule).matchAll(/\bhttpsCallable\b/g)]).toHaveLength(2); // the import and the one call
 
@@ -176,12 +188,34 @@ describe("Nutrition V2 module boundary", () => {
     expect(hook).not.toMatch(/queryKeys\.(nutritionLegacy|workout|plans?|logs?)\b/);
   });
 
+  it("calls nutritionRepeatPlan from one module, reached only through the repeat hook, which no UI uses yet", () => {
+    const plan = code(planCallableModule);
+    expect(plan).toMatch(/httpsCallable<[^>]+>\(\s*getFunctions\(getApp\(\), FUNCTIONS_REGION\),\s*NUTRITION_REPEAT_PLAN_CALLABLE\s*\)/);
+    expect([...plan.matchAll(/\bhttpsCallable\b/g)]).toHaveLength(2); // the import and the one call
+    expect(plan).not.toMatch(/NUTRITION_SET_TARGET_CALLABLE/);
+    expect(code(targetCallableModule)).not.toMatch(/NUTRITION_REPEAT_PLAN_CALLABLE/);
+
+    const importers = productionSources.filter((path) => /from\s+["'][^"']*\/planCallable["']/.test(read(path)));
+    expect(importers).toEqual([repeatPlanHookModule]);
+    const hookImporters = productionSources.filter((path) => /useNutritionV2RepeatPlan["']/.test(read(path)));
+    expect(hookImporters).toEqual([]);
+  });
+
+  it("sends only { requestId } and refetches only the state, plans and slot heads after a repeat", () => {
+    const hook = code(repeatPlanHookModule);
+    expect(hook).toMatch(/callNutritionRepeatPlan\(\{ requestId \}\)/);
+    const invalidated = [...hook.matchAll(/queryKey:\s*queryKeys\.nutrition\.([\w.]+)\(/g)].map((match) => match[1]);
+    expect(invalidated.sort()).toEqual(["plans.all", "slots.all", "state"]);
+    expect(hook).not.toMatch(/\benqueue\(|offlineQueue|NUTRITION_ENTRY_WRITE/);
+    expect(hook).not.toMatch(/queryKeys\.(nutritionLegacy|workout|plans?|logs?)\b|nutrition\.(entries|targets)\b/);
+  });
+
   it("writes through one transaction in one module, reached only through the recording hook", () => {
     const transactional = v2Modules.filter((path) => /\brunTransaction\b/.test(code(path)));
     expect(transactional).toEqual([entryWriterModule]);
 
     const mutating = v2Modules.filter((path) => /\buseMutation\b/.test(code(path)));
-    expect(mutating.sort()).toEqual([recordingHookModule, targetHookModule].sort());
+    expect(mutating.sort()).toEqual([recordingHookModule, targetHookModule, repeatPlanHookModule].sort());
 
     const writerImporters = productionSources.filter((path) => /from\s+["'][^"']*\/entryWriter["']/.test(read(path)));
     expect(writerImporters.sort()).toEqual([recordingHookModule, replayHandlerModule].sort());

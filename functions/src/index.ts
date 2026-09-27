@@ -13,6 +13,8 @@ import { db } from "./firebase";
 import { handleNutritionSetTarget } from "./nutrition/setTarget";
 import { toNutritionHttpsError } from "./nutrition/errors";
 import { productionTargetPolicyRegistry } from "./nutrition/targetPolicy/registry";
+import { handleNutritionRepeatPlan } from "./nutrition/repeatPlan";
+import { productionPlanValidationPolicyRegistry } from "./nutrition/planValidation/registry";
 
 /**
  * FitssAI Coach backend entry point.
@@ -162,6 +164,41 @@ export const nutritionSetTarget = onCall(
       });
     } catch (error) {
       // Only our codes cross, and field names at most; see nutrition/errors.ts.
+      throw toNutritionHttpsError(error);
+    }
+  }
+);
+
+/**
+ * Nutrition V2: activate next week as a repeat of the active plan's base
+ * content.
+ *
+ * The request is only `{ requestId }`. The profile, the state, the active
+ * plan and the target are read server-side under the verified uid, and the
+ * new plan, the superseded old plan and the account state commit in one
+ * transaction. The production plan-validation registry is empty — no plan
+ * tolerance is signed off — so today this answers
+ * `PLAN_VALIDATION_POLICY_NOT_CONFIGURED` once its preconditions hold, and
+ * writes nothing.
+ *
+ * No secret, no provider, no quota and no log: nothing here is generated.
+ */
+export const nutritionRepeatPlan = onCall(
+  {
+    region: FUNCTIONS_REGION,
+    maxInstances: 5,
+    // A handful of reads and one small transaction.
+    timeoutSeconds: 30,
+    memory: "256MiB",
+  },
+  async (request) => {
+    try {
+      return await handleNutritionRepeatPlan(request, {
+        firestore: db(),
+        policies: productionPlanValidationPolicyRegistry,
+      });
+    } catch (error) {
+      // Only our codes cross; see nutrition/errors.ts.
       throw toNutritionHttpsError(error);
     }
   }

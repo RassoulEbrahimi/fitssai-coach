@@ -115,6 +115,10 @@ export const nutritionTimestampSchema = z.object({
 
 export type NutritionTimestamp = z.infer<typeof nutritionTimestampSchema>;
 
+/** A server policy's stable identifier, and its version (which starts at 1). */
+const policyIdSchema = z.string().regex(/^[a-z0-9][a-z0-9._-]*$/, "policy id must be a lower-case identifier");
+const policyVersionSchema = z.number().int("policy version must be a whole number").positive("policy version starts at 1");
+
 /**
  * Which target policy produced a target, and which version of it. A policy
  * is the versioned, signed-off rule that turns profile answers into target
@@ -122,8 +126,8 @@ export type NutritionTimestamp = z.infer<typeof nutritionTimestampSchema>;
  */
 export const targetPolicyRefSchema = z
   .object({
-    id: z.string().regex(/^[a-z0-9][a-z0-9._-]*$/, "policy id must be a lower-case identifier"),
-    version: z.number().int("policy version must be a whole number").positive("policy version starts at 1"),
+    id: policyIdSchema,
+    version: policyVersionSchema,
   })
   .strict();
 
@@ -231,76 +235,229 @@ export const nutritionPlanDaySchema = z
 
 export type NutritionPlanDay = z.infer<typeof nutritionPlanDaySchema>;
 
+/** A plan's base content: its dates, its configured slots and its planned meals. */
+const nutritionPlanContentObject = z.object({
+  startDate: nutritionDateSchema,
+  endDate: nutritionDateSchema,
+  slotOrder: z.array(nutritionSlotIdSchema).min(1, "a plan configures at least one slot"),
+  days: z.array(nutritionPlanDaySchema),
+});
+
 /**
- * A base plan: Plan → dated Day → Meal Slot → Meal.
+ * The structural hard rules of a plan's content: exactly
+ * `NUTRITION_PLAN_DAY_COUNT` contiguous dates from `startDate` to `endDate`,
+ * unique configured slots, exactly one meal per configured slot per date and
+ * nothing outside them, and meal ids unique within the plan.
+ */
+const refineNutritionPlanContent = (plan: z.infer<typeof nutritionPlanContentObject>, ctx: z.RefinementCtx) => {
+  const issue = (path: (string | number)[], message: string) =>
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path, message });
+
+  const configured = new Set<string>();
+  plan.slotOrder.forEach((slotId, index) => {
+    if (configured.has(slotId)) issue(["slotOrder", index], `slot ${slotId} is configured more than once`);
+    configured.add(slotId);
+  });
+
+  // A malformed date is already reported by its own field; zod still runs
+  // this refinement, so date arithmetic below must not see it.
+  if (!isNutritionDate(plan.startDate)) return;
+
+  if (plan.endDate !== addNutritionDays(plan.startDate, NUTRITION_PLAN_DAY_COUNT - 1)) {
+    issue(["endDate"], `endDate must be ${NUTRITION_PLAN_DAY_COUNT - 1} days after startDate`);
+  }
+  if (plan.days.length !== NUTRITION_PLAN_DAY_COUNT) {
+    issue(["days"], `a plan has exactly ${NUTRITION_PLAN_DAY_COUNT} days`);
+  }
+
+  const dates = new Set<string>();
+  const mealIds = new Set<string>();
+  plan.days.forEach((day, dayIndex) => {
+    if (dates.has(day.date)) {
+      issue(["days", dayIndex, "date"], `date ${day.date} appears more than once`);
+    } else if (day.date !== addNutritionDays(plan.startDate, dayIndex)) {
+      issue(["days", dayIndex, "date"], "days must be the contiguous dates from startDate, in order");
+    }
+    dates.add(day.date);
+
+    const slots = new Set<string>();
+    day.meals.forEach((meal, mealIndex) => {
+      const path = ["days", dayIndex, "meals", mealIndex];
+      if (!configured.has(meal.slotId)) issue([...path, "slotId"], `slot ${meal.slotId} is not configured`);
+      if (slots.has(meal.slotId)) issue([...path, "slotId"], `slot ${meal.slotId} is planned twice on ${day.date}`);
+      slots.add(meal.slotId);
+      if (mealIds.has(meal.mealId)) issue([...path, "mealId"], `mealId ${meal.mealId} is not unique in the plan`);
+      mealIds.add(meal.mealId);
+    });
+    for (const slotId of configured) {
+      if (!slots.has(slotId)) issue(["days", dayIndex, "meals"], `slot ${slotId} has no meal on ${day.date}`);
+    }
+  });
+};
+
+/**
+ * A plan's base content alone — what a generator proposes or a repeat
+ * copies — checked by the same structural rules as a persisted plan. Structure
+ * only: content that passes is not thereby acceptable for any target.
+ */
+export const nutritionPlanContentSchema = nutritionPlanContentObject.strict().superRefine(refineNutritionPlanContent);
+
+/**
+ * Which plan-validation policy accepted a plan, and which version of it.
+ *
+ * The same shape as a `TargetPolicyRef`, and deliberately a different schema:
+ * a plan-validation policy decides whether a plan may be persisted for a
+ * target, a target policy computes the target, and one is never recorded in
+ * place of the other. The policies themselves live on the server.
+ */
+export const planValidationPolicyRefSchema = z
+  .object({
+    id: policyIdSchema,
+    version: policyVersionSchema,
+  })
+  .strict();
+
+export type PlanValidationPolicyRef = z.infer<typeof planValidationPolicyRefSchema>;
+
+/**
+ * Why a persisted plan was allowed to be persisted: the policy that accepted
+ * it. Only accepted plans are ever persisted, so the outcome is always
+ * `accepted`; a policy's reasoning and any limits it applied are not recorded.
+ * Accepted means "passed that policy version", never "healthy" or "balanced".
+ */
+export const planValidationProvenanceSchema = z
+  .object({
+    policy: planValidationPolicyRefSchema,
+    outcome: z.literal("accepted"),
+  })
+  .strict();
+
+export type PlanValidationProvenance = z.infer<typeof planValidationProvenanceSchema>;
+
+/**
+ * Where a base plan came from: generated for the person, or a repeat of an
+ * earlier plan's base content.
+ */
+export const NUTRITION_PLAN_SOURCES = ["generated", "repeated"] as const;
+
+export const nutritionPlanSourceSchema = z.enum(NUTRITION_PLAN_SOURCES);
+
+export type NutritionPlanSource = z.infer<typeof nutritionPlanSourceSchema>;
+
+/**
+ * A persisted plan's lifecycle. There is no draft, pending or deleted plan: a
+ * plan is persisted only when it is activated, and an activated plan is only
+ * ever superseded — once — by its successor.
+ *
+ *   active      the account's current base plan (`state.activePlanId`)
+ *   superseded  replaced by `supersededByPlanId`; it still owns its dates up to
+ *               and including `effectiveUntil`
+ */
+export const NUTRITION_PLAN_LIFECYCLE_STATUSES = ["active", "superseded"] as const;
+
+export const nutritionPlanLifecycleSchema = z.discriminatedUnion("status", [
+  z
+    .object({
+      status: z.literal("active"),
+      effectiveUntil: z.null(),
+      supersededByPlanId: z.null(),
+    })
+    .strict(),
+  z
+    .object({
+      status: z.literal("superseded"),
+      effectiveUntil: nutritionDateSchema,
+      supersededByPlanId: nutritionDocIdSchema,
+    })
+    .strict(),
+]);
+
+export type NutritionPlanLifecycle = z.infer<typeof nutritionPlanLifecycleSchema>;
+
+/**
+ * A base plan: Plan → dated Day → Meal Slot → Meal, with the server's
+ * persistence metadata.
  *
  * Exactly `NUTRITION_PLAN_DAY_COUNT` days, one per calendar date from
  * `startDate` to `endDate`, in order. Every day carries its own ISO date; no
  * day is identified by a weekday. `slotOrder` is the plan's configured slots;
  * every day plans exactly one meal for each of them and nothing outside them.
- * Once the plan is active its content is immutable — a day's change is a
- * date- and slot-scoped `MealOverride`, never an edit here.
  *
- * Structure only. Whether a plan is nutritionally acceptable (totals near the
- * target, sensible meals) is plan-validation policy, not this contract.
+ * Persistence metadata:
+ *
+ *   targetVersionId      the TARGET version the plan was made and validated for
+ *   source               `generated`, or `repeated` from `repeatedFromPlanId`
+ *   repeatedFromPlanId   the repeated plan's id; null for a generated plan
+ *   generationRequestId  the generation request that produced it, if known;
+ *                        always null for a repeated plan
+ *   validation           the plan-validation policy version that accepted it
+ *   createdAt            the server instant the document was created
+ *   activatedAt          the server instant it became the active plan
+ *   lifecycle            active, or superseded (see `nutritionPlanLifecycleSchema`)
+ *
+ * Once persisted the plan is immutable except for its one lifecycle
+ * transition, active → superseded (`assertPlanTransition` in `./plan`). A
+ * day's change is a date- and slot-scoped `MealOverride`, never an edit here,
+ * and a new target or a recording never rewrites the plan.
+ *
+ * Structure only. Whether a plan is nutritionally acceptable for its target is
+ * plan-validation policy, which lives on the server; a structurally valid plan
+ * is not thereby approved.
  */
 export const nutritionPlanSchema = z
   .object({
     schemaVersion: nutritionSchemaVersionSchema,
     planId: nutritionDocIdSchema,
-    startDate: nutritionDateSchema,
-    endDate: nutritionDateSchema,
-    slotOrder: z.array(nutritionSlotIdSchema).min(1, "a plan configures at least one slot"),
-    days: z.array(nutritionPlanDaySchema),
+    ...nutritionPlanContentObject.shape,
+    targetVersionId: nutritionDocIdSchema,
+    source: nutritionPlanSourceSchema,
+    repeatedFromPlanId: nutritionDocIdSchema.nullable(),
+    generationRequestId: nutritionDocIdSchema.nullable(),
+    validation: planValidationProvenanceSchema,
+    createdAt: nutritionTimestampSchema,
+    activatedAt: nutritionTimestampSchema,
+    lifecycle: nutritionPlanLifecycleSchema,
   })
   .strict()
   .superRefine((plan, ctx) => {
     const issue = (path: (string | number)[], message: string) =>
       ctx.addIssue({ code: z.ZodIssueCode.custom, path, message });
 
-    const configured = new Set<string>();
-    plan.slotOrder.forEach((slotId, index) => {
-      if (configured.has(slotId)) issue(["slotOrder", index], `slot ${slotId} is configured more than once`);
-      configured.add(slotId);
-    });
-
-    // A malformed date is already reported by its own field; zod still runs
-    // this refinement, so date arithmetic below must not see it.
-    if (!isNutritionDate(plan.startDate)) return;
-
-    if (plan.endDate !== addNutritionDays(plan.startDate, NUTRITION_PLAN_DAY_COUNT - 1)) {
-      issue(["endDate"], `endDate must be ${NUTRITION_PLAN_DAY_COUNT - 1} days after startDate`);
-    }
-    if (plan.days.length !== NUTRITION_PLAN_DAY_COUNT) {
-      issue(["days"], `a plan has exactly ${NUTRITION_PLAN_DAY_COUNT} days`);
+    if (plan.source === "repeated") {
+      if (plan.repeatedFromPlanId === null) issue(["repeatedFromPlanId"], "a repeated plan names the plan it repeats");
+      if (plan.repeatedFromPlanId === plan.planId) issue(["repeatedFromPlanId"], "a plan cannot repeat itself");
+      if (plan.generationRequestId !== null) issue(["generationRequestId"], "a repeated plan was not generated");
+    } else if (plan.repeatedFromPlanId !== null) {
+      issue(["repeatedFromPlanId"], "only a repeated plan names a plan it repeats");
     }
 
-    const dates = new Set<string>();
-    const mealIds = new Set<string>();
-    plan.days.forEach((day, dayIndex) => {
-      if (dates.has(day.date)) {
-        issue(["days", dayIndex, "date"], `date ${day.date} appears more than once`);
-      } else if (day.date !== addNutritionDays(plan.startDate, dayIndex)) {
-        issue(["days", dayIndex, "date"], "days must be the contiguous dates from startDate, in order");
-      }
-      dates.add(day.date);
+    const { activatedAt, createdAt } = plan;
+    if (
+      activatedAt.seconds < createdAt.seconds ||
+      (activatedAt.seconds === createdAt.seconds && activatedAt.nanoseconds < createdAt.nanoseconds)
+    ) {
+      issue(["activatedAt"], "a plan cannot be activated before it was created");
+    }
 
-      const slots = new Set<string>();
-      day.meals.forEach((meal, mealIndex) => {
-        const path = ["days", dayIndex, "meals", mealIndex];
-        if (!configured.has(meal.slotId)) issue([...path, "slotId"], `slot ${meal.slotId} is not configured`);
-        if (slots.has(meal.slotId)) issue([...path, "slotId"], `slot ${meal.slotId} is planned twice on ${day.date}`);
-        slots.add(meal.slotId);
-        if (mealIds.has(meal.mealId)) issue([...path, "mealId"], `mealId ${meal.mealId} is not unique in the plan`);
-        mealIds.add(meal.mealId);
-      });
-      for (const slotId of configured) {
-        if (!slots.has(slotId)) issue(["days", dayIndex, "meals"], `slot ${slotId} has no meal on ${day.date}`);
+    if (plan.lifecycle.status === "superseded") {
+      if (plan.lifecycle.supersededByPlanId === plan.planId) {
+        issue(["lifecycle", "supersededByPlanId"], "a plan cannot supersede itself");
       }
-    });
+      // Dates are YYYY-MM-DD, so string order is calendar order. A superseded
+      // plan owns a non-empty prefix of its own dates, never more.
+      const until = plan.lifecycle.effectiveUntil;
+      if (isNutritionDate(until) && (until < plan.startDate || until > plan.endDate)) {
+        issue(["lifecycle", "effectiveUntil"], "effectiveUntil must be one of the plan's own dates");
+      }
+    }
+
+    refineNutritionPlanContent(plan, ctx);
   });
 
 export type NutritionPlan = z.infer<typeof nutritionPlanSchema>;
+
+/** A plan's base content — its dates, slots and planned meals — without identity or metadata. */
+export type NutritionPlanContent = Pick<NutritionPlan, "startDate" | "endDate" | "slotOrder" | "days">;
 
 /* ------------------------------------------------------------------ *
  * Slot selection and overrides
@@ -617,17 +774,29 @@ export const nutritionRequestIdSchema = z
   .refine((value) => isUuid(value) && value === value.toLowerCase(), { message: "request id must be a lower-case UUID" });
 
 /** The state-changing operations that are recorded in the request ledger. */
-export const NUTRITION_STATE_OPERATIONS = ["setTarget"] as const;
+export const NUTRITION_STATE_OPERATIONS = ["setTarget", "repeatPlan"] as const;
 
 export type NutritionStateOperation = (typeof NUTRITION_STATE_OPERATIONS)[number];
 
-/** One applied request and what it produced. */
+/**
+ * One applied request and what it produced:
+ *
+ *   setTarget   the target version it created (NUT-08)
+ *   repeatPlan  the plan it created and activated (NUT-09)
+ */
 export const nutritionStateRequestSchema = z.discriminatedUnion("operation", [
   z
     .object({
       requestId: nutritionRequestIdSchema,
       operation: z.literal("setTarget"),
       resultTargetVersionId: nutritionDocIdSchema,
+    })
+    .strict(),
+  z
+    .object({
+      requestId: nutritionRequestIdSchema,
+      operation: z.literal("repeatPlan"),
+      resultPlanId: nutritionDocIdSchema,
     })
     .strict(),
 ]);
@@ -638,13 +807,17 @@ export type NutritionStateRequest = z.infer<typeof nutritionStateRequestSchema>;
  * The account's Nutrition V2 state: pointers to its current records, and the
  * account's concurrency anchor.
  *
- *   revision        1 once the state exists (it is created by its first
- *                   applied request); every applied state-changing request is
- *                   exactly +1. Reads never change it.
+ *   revision        the monotonic concurrency revision of this document. 1
+ *                   once the state exists (it is created by its first applied
+ *                   request); every applied state change — a new target, an
+ *                   activated plan — is exactly +1. Reads, replays of an
+ *                   applied request, refusals and failed transactions never
+ *                   change it. It is not the ledger's length: old records are
+ *                   evicted, the revision keeps counting.
  *   recentRequests  the requests already applied, oldest first, at most
- *                   `NUTRITION_STATE_REQUEST_LEDGER_SIZE`. A request whose id is
- *                   listed here has already happened; replaying it returns
- *                   what it produced.
+ *                   `NUTRITION_STATE_REQUEST_LEDGER_SIZE`, of every operation
+ *                   together. A request whose id is listed here has already
+ *                   happened; replaying it returns what it produced.
  */
 export const nutritionUserStateSchema = z
   .object({
