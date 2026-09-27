@@ -15,7 +15,7 @@ vi.mock('@/contexts/TrainingSessionContext', () => ({ useTrainingSession: () => 
 vi.mock('@/components/OfflineBanner', () => ({ OfflineBanner: () => null }));
 vi.mock('@/views/HomeView', () => ({ default: () => <h1>Home fixture</h1> }));
 vi.mock('@/views/WorkoutView', () => ({ default: () => <h1>Workout fixture</h1> }));
-vi.mock('@/views/NutritionView', () => ({ default: () => <h1>Nutrition fixture</h1> }));
+vi.mock('@/views/NutritionV2View', () => ({ default: () => <h1>Nutrition fixture</h1> }));
 vi.mock('@/views/ProfileView', () => ({ default: () => <h1>Profile fixture</h1> }));
 
 import Dashboard from '@/components/Dashboard';

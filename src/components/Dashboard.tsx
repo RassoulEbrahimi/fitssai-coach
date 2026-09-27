@@ -44,6 +44,7 @@ import { useWorkoutPlan } from "@/hooks/queries/useWorkoutPlan";
 import { useWorkoutLogs } from "@/hooks/queries/useWorkoutLogs";
 import { useProfile } from "@/hooks/queries/useProfile";
 import { useLegacyNutritionPlan } from "@/hooks/queries/useLegacyNutritionPlan";
+import { NUTRITION_V2_ENABLED } from "@shared/nutrition/featureFlag";
 import { useQueryClient } from "@tanstack/react-query";
 import { useWeeklyActivity } from "@/hooks/useWeeklyActivity";
 import { isCalendarDayComplete, readCompletedDayDates } from "@/lib/workoutCompletion";
@@ -52,6 +53,7 @@ import { isCalendarDayComplete, readCompletedDayDates } from "@/lib/workoutCompl
 const HomeView = React.lazy(() => import('@/views/HomeView'));
 const WorkoutView = React.lazy(() => import('@/views/WorkoutView'));
 const NutritionView = React.lazy(() => import('@/views/NutritionView'));
+const NutritionV2View = React.lazy(() => import('@/views/NutritionV2View'));
 const ProfileView = React.lazy(() => import('@/views/ProfileView'));
 
 /**
@@ -68,7 +70,7 @@ const useIntersectionPrefetch = () => {
     try {
       await Promise.all([
         import('@/views/WorkoutView'),
-        import('@/views/NutritionView')
+        NUTRITION_V2_ENABLED ? import('@/views/NutritionV2View') : import('@/views/NutritionView')
       ]);
     } catch (error) {
       console.warn('Failed to prefetch views on intersection:', error);
@@ -630,12 +632,12 @@ const Dashboard = () => {
                     <div className="space-y-6">
                       <Suspense fallback={<NutritionSkeleton />}>
                         <div ref={(el) => setViewRef('nutrition', el)}>
-                          <NutritionView
+                          {NUTRITION_V2_ENABLED ? <NutritionV2View /> : <NutritionView
                             legacyNutritionPlan={legacyNutritionPlan ?? null}
                             isLoading={isLoadingLegacyNutritionPlan}
                             isError={isLegacyNutritionPlanError}
                             onRetry={retryLegacyNutritionPlan}
-                          />
+                          />}
                         </div>
                       </Suspense>
                     </div>

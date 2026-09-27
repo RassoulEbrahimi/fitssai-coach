@@ -5,10 +5,9 @@ import { NUTRITION_V2_ENABLED } from "@shared/nutrition/featureFlag";
 
 /*
   NUT-05/NUT-06/NUT-07 boundary guard, on source. The Nutrition V2 read layer,
-  Today shell, online recording and offline convergence exist, but while
-  NUTRITION_V2_ENABLED is false nothing the app mounts may reach their UI: the
-  nutrition tab stays on the legacy path. V2 modules never import legacy
-  Nutrition and never read the server-only or generation collections. The one
+  Today shell, online recording and offline convergence are mounted through
+  the dedicated V2 view (NUT-12D). The rollout flag selects the entire tab.
+  V2 modules never import legacy Nutrition or read server-only suggestions. The one
   write is the recorded-entry transaction, in exactly one module, reached
   through the recording hook and the offline replay handler only.
 
@@ -77,6 +76,7 @@ const v2Modules = [
   "src/components/nutrition/v2/NutritionV2ConflictNotice.tsx",
   "src/components/nutrition/v2/NutritionV2Conflicts.tsx",
   "src/components/nutrition/v2/recordingFormat.ts",
+  "src/components/nutrition/v2/NutritionV2GenerationStatus.tsx",
   // NUT-08: target plumbing.
   "src/lib/nutrition/v2/targetCallable.ts",
   "src/lib/nutrition/v2/targetSetup.ts",
@@ -134,8 +134,8 @@ const IMPORTS_V2_MODULE =
   /from\s+["'](@\/hooks\/queries\/useNutritionV2|@\/lib\/nutrition\/v2\/[^"']+|@\/components\/nutrition\/v2\/[^"']+|\.{1,2}\/[^"']*nutrition\/v2[^"']*)["']/;
 
 describe("Nutrition V2 reachability", () => {
-  it("keeps the feature flag off", () => {
-    expect(NUTRITION_V2_ENABLED).toBe(false);
+  it("enables only the V2 UI rollout", () => {
+    expect(NUTRITION_V2_ENABLED).toBe(true);
   });
 
   it("lists only V2 modules that exist, and every V2 client module is listed", () => {
@@ -147,9 +147,9 @@ describe("Nutrition V2 reachability", () => {
     expect(found.sort()).toEqual([...v2Modules].sort());
   });
 
-  it("is not imported by any production module outside the V2 modules, except the replay registry", () => {
+  it("is imported only by the V2 view and replay registry outside V2", () => {
     const importers = productionSources.filter((path) => !v2Modules.includes(path) && IMPORTS_V2_MODULE.test(read(path)));
-    expect(importers).toEqual([replayRegistryModule]);
+    expect(importers.sort()).toEqual([replayRegistryModule, "src/views/NutritionV2View.tsx"].sort());
 
     // And that registry imports the replay handler only.
     const imported = [...read(replayRegistryModule).matchAll(new RegExp(IMPORTS_V2_MODULE.source, "g"))].map(
@@ -158,11 +158,12 @@ describe("Nutrition V2 reachability", () => {
     expect(imported).toEqual(["@/lib/nutrition/v2/entryReplay"]);
   });
 
-  it("leaves the Dashboard nutrition tab on the legacy path", () => {
+  it("switches the entire Dashboard nutrition tab at the rollout boundary", () => {
     const dashboard = read("src/components/Dashboard.tsx");
     expect(dashboard).toMatch(/useLegacyNutritionPlan\(\)/);
     expect(dashboard).toMatch(/import\('@\/views\/NutritionView'\)/);
-    expect(dashboard).not.toMatch(/NutritionV2|nutrition\/v2|useNutritionV2|NUTRITION_V2_ENABLED/);
+    expect(dashboard).toMatch(/NUTRITION_V2_ENABLED \? <NutritionV2View \/> : <NutritionView/);
+    expect(dashboard).not.toMatch(/useNutritionV2/);
 
     expect(read("src/views/NutritionView.tsx")).toMatch(/<LegacyNutritionPlanView\b/);
   });

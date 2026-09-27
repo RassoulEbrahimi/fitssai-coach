@@ -360,7 +360,7 @@ describe("NutritionV2TodayContainer", () => {
 
     const target = await screen.findByRole("region", { name: "Ziel" });
     expect(target).toHaveTextContent("Du hast noch kein Ernährungsziel festgelegt.");
-    expect(within(target).getByRole("button", { name: "Ziel festlegen" })).toBeInTheDocument();
+    expect(within(target).queryByRole("button", { name: "Ziel festlegen" })).not.toBeInTheDocument();
     expect([...store.docs.keys()]).toEqual([]);
   });
 
@@ -392,7 +392,7 @@ describe("NutritionV2TodayContainer", () => {
 });
 
 describe("feature flag", () => {
-  it("keeps Nutrition V2 switched off", () => {
-    expect(NUTRITION_V2_ENABLED).toBe(false);
+  it("enables the Nutrition V2 product UI", () => {
+    expect(NUTRITION_V2_ENABLED).toBe(true);
   });
 });

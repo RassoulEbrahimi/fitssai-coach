@@ -14,7 +14,7 @@ import { NutritionV2TargetSetupSheet } from "./NutritionV2TargetSetup";
  * state or a target. Only a confirmed setup does. V2-only: unreachable while
  * `NUTRITION_V2_ENABLED` is false.
  */
-export const NutritionV2TargetSection: React.FC = () => {
+export const NutritionV2TargetSection: React.FC<{ allowSetup?: boolean }> = ({ allowSetup = false }) => {
   const target = useCurrentNutritionV2Target();
   const current = target.status === "success" ? target.data : null;
   const freshness = useNutritionV2TargetFreshness(current);
@@ -23,18 +23,19 @@ export const NutritionV2TargetSection: React.FC = () => {
   const updateProfile = useUpdateProfile();
   const [open, setOpen] = useState(false);
 
-  const canSetUp = mutation.availability.status === "available";
+  // Product rollout is read-only until target policies receive production sign-off.
+  const canSetUp = allowSetup && mutation.availability.status === "available";
 
   return (
     <>
       <NutritionV2TargetCard target={target} freshness={freshness} onSetUp={canSetUp ? () => setOpen(true) : undefined} />
-      <NutritionV2TargetSetupSheet
+      {canSetUp && <NutritionV2TargetSetupSheet
         open={open}
         onClose={() => setOpen(false)}
         profile={profile.data}
         mutation={mutation}
         saveProfile={updateProfile.mutateAsync}
-      />
+      />}
     </>
   );
 };

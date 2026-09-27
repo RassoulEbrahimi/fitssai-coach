@@ -1,8 +1,8 @@
 /**
- * Whether Nutrition V2 is switched on.
+ * Whether the Nutrition tab shows the V2 product UI.
  *
- * Off. While it is, no V2 route or screen is reachable and legacy Nutrition is
- * what people see. It moves only when the V2 experience behind it ships — the
- * same rule `BACKEND_CAPABILITIES` follows for the backend.
+ * UI rollout only (NUT-12D). This grants no backend capability and does not
+ * enable target policies or AI generation. False restores the legacy tab;
+ * V2 loading, errors and empty data never fall back to legacy content.
  */
-export const NUTRITION_V2_ENABLED: boolean = false;
+export const NUTRITION_V2_ENABLED: boolean = true;

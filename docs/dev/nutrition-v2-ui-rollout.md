@@ -1,0 +1,102 @@
+# NUT-12D — Nutrition V2 product UI rollout
+
+Base: `main` at `1a508b1` (PR #122). One reviewable slice is sufficient:
+mount the existing V2 experience, expose read-only generation status and
+refresh, and test the real Dashboard boundary. No backend policy or provider
+configuration is needed to render the UI.
+
+## What ships
+
+- `NUTRITION_V2_ENABLED = true` selects a separate lazy V2 view in Dashboard.
+  False restores the legacy tab for rollback. Loading, errors, ineligibility
+  and empty V2 data never select legacy as a fallback.
+- Signed-in adults see the current target, Today meals, recorded state and
+  the owning plan's seven dates when valid V2 documents exist. Berlin dates,
+  predecessor/successor ownership, planned/target/recorded distinctions,
+  immutable snapshots, strict reads and offline entry reconciliation retain
+  their existing implementations.
+- No state document shows “Ernährung ist noch nicht eingerichtet”. A state
+  without an active plan shows “Kein aktiver Ernährungsplan”. Neither creates
+  a state, target or plan. Missing age and minors retain eligibility messages
+  and issue no V2 reads. Account changes remount the V2 root.
+- “Aktualisieren” retries only this account's V2 queries (or its profile when
+  eligibility could not be read). It never invokes generation or target setup.
+- The active generation pointer is read using the existing strict, ephemeral
+  request query. Queued/running/succeeded/failed/discarded, loading, missing
+  and error states are distinct. Refresh or normal query focus/remount refetch
+  updates status; there is no background polling or new request action.
+- Target setup is hidden in the product root, including for stale targets.
+  Its existing component remains available to explicit controlled tests.
+  Existing plan recording and base-meal replacement/undo remain available.
+- Legacy Home/Profile references remain explicitly legacy and unchanged.
+  The V2 view accepts no legacy props and imports no legacy model.
+
+## Production gates and remaining work
+
+Unchanged: `NUTRITION_AI_PRODUCTION_ENABLED = false`, backend
+`nutritionGeneration = false`, `nutritionTargets = false`, unsigned target
+and validation policies, and the unconfigured production Vertex deployment.
+No provider timeout/retry/lease settings, Firebase rules, schema, quota or
+server write paths change in this PR.
+
+A fresh account can see the real empty V2 UI after deployment. It cannot get
+its first target or AI meal plan from this release. Existing legacy plans
+are not V2 plans and are not migrated or substituted. Do not seed test
+fixtures into production to make the page look populated.
+
+Remaining sequence:
+
+1. NUT-12C: sign off policies and production configuration, including the
+   timeout/retry/lease relationship. This is not required for read-only UI.
+2. NUT-13: authenticated browser/phone E2E against an approved environment,
+   including recording and replacement with real server responses.
+3. NUT-14: separately reviewed production enablement and explicit setup/
+   generation actions. UI rollout does not authorize enabling these gates.
+
+## One-time deployment and phone check (after review/merge)
+
+This PR is not merged or deployed by its authoring task.
+
+1. From the reviewed merged checkout, ensure current rules are deployed:
+   `firebase deploy --only firestore:rules --project fitssai-coach`.
+   GitHub Pages does **not** deploy rules or Functions. If the production rules
+   already match this checkout, no rules change is necessary. Outdated rules
+   may show an explicit read error even for an empty account.
+2. If existing V2 users will use base-meal replacement/undo and its callable
+   is not yet deployed, build Functions and deploy only that callable:
+   `npm --prefix functions ci`, `npm run build:functions`, then
+   `firebase deploy --only functions:nutritionUpdateSlot --project fitssai-coach`.
+   Viewing the UI and recording entries do not require a new AI Function
+   deployment. Do not enable AI or target policies for this UI rollout.
+3. Merge the reviewed PR, then wait for **Deploy to GitHub Pages** on `main`:
+   client build, backend tests and rules tests must pass before deploy. PR
+   checks build artifacts but do not publish a phone preview.
+4. Open `https://rassoulebrahimi.github.io/fitssai-coach/#/nutrition` on the
+   phone while online, with an existing adult account. Check the app's build
+   identifier matches the new deployment. If the installed PWA still shows
+   the old build, close/reopen it and reload after the worker update. Avoid
+   clearing site data while offline writes are pending.
+5. For a fresh account, expect the target empty state, Planstatus availability
+   notice, and “Ernährung ist noch nicht eingerichtet”; no legacy plan and no
+   generation/setup button. For an approved existing V2 account, check target,
+   Today meals, recorded state and the seven-date week. Confirm refresh works.
+6. Check minor/missing-age messaging and switching accounts. Test a recorded
+   meal, offline reconciliation and replacement only on an approved test
+   account with a valid V2 plan. A future-only plan shows its week and no
+   recording controls for today, as before.
+
+Rollback: set only `NUTRITION_V2_ENABLED` to false and redeploy the frontend.
+Do not remove V2 documents, queued entry intents or deployed rules.
+
+## Validation
+
+- Real Dashboard integration tests use the actual V2 view/container, strict
+  reads and derived models with synthetic Firestore responses. Cover empty,
+  populated target/meals/week/recording, profile loading, ineligibility,
+  corrupt-data retry, account change and generation status refresh.
+- Legacy rollback tests explicitly set the rollout flag false. Existing V2
+  ownership, recording, replacement, queue, integrity and server-gate tests
+  stay in place; only assertions requiring the UI to be unreachable change.
+- Local browser checks use synthetic data, no production Firebase, at 390px
+  and 320px widths: target, Today/week, recording dialog, empty, error and
+  ineligible states. This is visual QA, not authenticated production E2E.

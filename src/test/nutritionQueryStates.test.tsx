@@ -32,6 +32,7 @@ vi.mock('@/hooks/queries/useWorkoutPlan', () => ({ useWorkoutPlan: () => workout
 vi.mock('@/hooks/queries/useWorkoutLogs', () => ({ useWorkoutLogs: () => ({ data: [], isToggling: false, toggleDay: vi.fn() }) }));
 vi.mock('@/hooks/queries/useLegacyNutritionPlan', () => ({ useLegacyNutritionPlan: () => nutritionQuery }));
 // NUT-05: Nutrition V2 reads exist but are unreachable while NUTRITION_V2_ENABLED is false.
+vi.mock('@shared/nutrition/featureFlag', () => ({ NUTRITION_V2_ENABLED: false }));
 const v2Hook = vi.hoisted(() => vi.fn());
 vi.mock('@/hooks/queries/useNutritionV2', () => {
   const hook = (name: string) => () => { v2Hook(name); return { status: 'disabled' }; };

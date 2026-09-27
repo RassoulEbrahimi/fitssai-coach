@@ -476,6 +476,22 @@
     "preview": "Vorschau"
   },
   "nutritionV2": {
+    "product": {
+      "refresh": "Aktualisieren",
+      "refreshing": "Wird aktualisiert …",
+      "generationTitle": "Planstatus",
+      "availability": "Neue Ziele und KI-Ernährungspläne sind in dieser Version noch nicht freigeschaltet. Vorhandene Ziele, Pläne und Einträge bleiben sichtbar.",
+      "generation": {
+        "none": "Keine aktive Plananfrage.",
+        "pending": "Planstatus wird geladen …",
+        "error": "Der Planstatus konnte nicht geladen werden. Bitte aktualisiere die Ansicht.",
+        "queued": "Deine Plananfrage wartet auf Bearbeitung.",
+        "running": "Deine Plananfrage wird bearbeitet.",
+        "succeeded": "Die Plananfrage wurde abgeschlossen.",
+        "failed": "Die Plananfrage ist fehlgeschlagen. Dein bisheriger Plan bleibt erhalten.",
+        "discarded_stale": "Die Plananfrage wurde wegen geänderter Angaben verworfen. Dein bisheriger Plan bleibt erhalten."
+      }
+    },
     "today": {
       "title": "Ernährung",
       "todayLabel": "Heute",

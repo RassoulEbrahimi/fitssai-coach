@@ -137,10 +137,10 @@ describe("production stays unconfigured behind the gate", () => {
     expect(registry).toMatch(/PRODUCTION_NUTRITION_VERTEX_DEPLOYMENT: NutritionVertexDeployment \| null = null;/);
   });
 
-  it("does not claim the capability, and the V2 flag stays off", () => {
+  it("keeps production capabilities off while the V2 UI is enabled", () => {
     expect(BACKEND_CAPABILITIES.nutritionTargets).toBe(false);
     expect(BACKEND_CAPABILITIES.nutritionGeneration).toBe(false);
-    expect(NUTRITION_V2_ENABLED).toBe(false);
+    expect(NUTRITION_V2_ENABLED).toBe(true);
   });
 
   it("changes no Function operational setting: nutritionRequestPlan keeps its timeout and has no secret", () => {

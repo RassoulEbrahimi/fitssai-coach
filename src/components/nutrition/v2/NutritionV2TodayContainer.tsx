@@ -1,4 +1,9 @@
-import React, { useMemo } from "react";
+import React, { useMemo, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
+import { useTranslation } from "react-i18next";
+import { useAuth } from "@/hooks/useAuth";
+import { queryKeys } from "@/lib/queryKeys";
+import { Button } from "@/components/ui/button";
 import { useBerlinToday } from "@/hooks/useBerlinToday";
 import {
   useActiveNutritionV2Plan,
@@ -19,6 +24,7 @@ import { NutritionV2TodayShell } from "./NutritionV2TodayShell";
 import { NutritionV2TodayRecording } from "./NutritionV2TodayRecording";
 import { NutritionV2Conflicts } from "./NutritionV2Conflicts";
 import { NutritionV2TargetSection } from "./NutritionV2TargetSection";
+import { NutritionV2GenerationStatus } from "./NutritionV2GenerationStatus";
 
 /**
  * Nutrition V2 Today/week data container.
@@ -55,10 +61,15 @@ import { NutritionV2TargetSection } from "./NutritionV2TargetSection";
  * change is shown as a conflict — whatever the view: without a plan, outside
  * it, or for another date — until the person applies it again or discards it.
  *
- * Not mounted anywhere while `NUTRITION_V2_ENABLED` is false: the app still
- * shows legacy Nutrition, and this container never falls back to it.
+ * Mounted by the V2 product view (NUT-12D). The rollout flag chooses the
+ * whole tab; this container never falls back to legacy data. Target setup
+ * and new AI requests remain unavailable in this rollout.
  */
 export const NutritionV2TodayContainer: React.FC = () => {
+  const { t } = useTranslation();
+  const { user } = useAuth();
+  const queryClient = useQueryClient();
+  const [refreshing, setRefreshing] = useState(false);
   const access = useNutritionV2Access();
   const state = useNutritionV2State();
   const today = useBerlinToday();
@@ -88,22 +99,41 @@ export const NutritionV2TodayContainer: React.FC = () => {
 
   if (!view) return null;
   return (
-    <NutritionV2TodayShell
-      view={view}
-      conflicts={<NutritionV2Conflicts conflicts={overlay.conflicts} today={today} recording={recording} />}
-      target={<NutritionV2TargetSection />}
-      todayRecording={
-        recordings ? (
-          <NutritionV2TodayRecording
-            recordings={recordings}
-            recording={recording}
-            pending={overlay.pending}
-            // The plan that owns today — the one the recordings were resolved from.
-            replacement={shownPlan ? { plan: shownPlan, slotOverride } : undefined}
-          />
-        ) : null
-      }
-    />
+    <div className="space-y-4">
+      {(access.status === "eligible" || access.status === "error") && (
+        <div className="flex justify-end">
+          <Button type="button" variant="outline" className="min-h-11" disabled={refreshing} onClick={async () => {
+            if (!user) return;
+            setRefreshing(true);
+            try {
+              await queryClient.invalidateQueries({
+                queryKey: access.status === "error" ? queryKeys.profile.me(user.uid) : queryKeys.nutrition.all(user.uid),
+              });
+            } finally {
+              setRefreshing(false);
+            }
+          }}>
+            {t(refreshing ? "nutritionV2.product.refreshing" : "nutritionV2.product.refresh")}
+          </Button>
+        </div>
+      )}
+      <NutritionV2TodayShell
+        view={view}
+        conflicts={<NutritionV2Conflicts conflicts={overlay.conflicts} today={today} recording={recording} />}
+        target={<><NutritionV2TargetSection /><NutritionV2GenerationStatus /></>}
+        todayRecording={
+          recordings ? (
+            <NutritionV2TodayRecording
+              recordings={recordings}
+              recording={recording}
+              pending={overlay.pending}
+              // The plan that owns today — the one the recordings were resolved from.
+              replacement={shownPlan ? { plan: shownPlan, slotOverride } : undefined}
+            />
+          ) : null
+        }
+      />
+    </div>
   );
 };
 
