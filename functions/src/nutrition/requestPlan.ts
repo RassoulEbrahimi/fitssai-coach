@@ -38,13 +38,14 @@ import { nodeSha256Hex } from "./sha256";
  *      from what is stored — a finished one as it ended, a live one (this or
  *      another of the account) as running — whatever is configured now.
  *   4. Only new work goes further, and is refused before anything is written
- *      unless: the profile read in THAT transaction is an eligible adult
- *      (NOT_ELIGIBLE); a generator is configured
- *      (GENERATION_PROVIDER_NOT_CONFIGURED — in production there is none, so a
- *      new deployed request ends here: no request, no state pointer, no plan,
- *      no operation record, no quota); a plan-validation policy is in force
- *      (PLAN_VALIDATION_POLICY_NOT_CONFIGURED); and the account's own
- *      preconditions hold.
+ *      unless: the backend AI gate is on (NUTRITION_AI_DISABLED — in
+ *      production it is off, so a new deployed request ends here: no request,
+ *      no state pointer, no plan, no operation record, no quota, and the
+ *      generator registry is not even asked); the profile read in THAT
+ *      transaction is an eligible adult (NOT_ELIGIBLE); a generator is
+ *      configured (GENERATION_PROVIDER_NOT_CONFIGURED); a plan-validation
+ *      policy is in force (PLAN_VALIDATION_POLICY_NOT_CONFIGURED); and the
+ *      account's own preconditions hold.
  *   5. The claim writes the request document (running), its `nutritionPlan`
  *      operation record with a reserved plan id, and the state's
  *      `activeGenerationRequestId`. Kind, base plan, target, dates and slots
@@ -63,7 +64,13 @@ import { nodeSha256Hex } from "./sha256";
 
 export interface NutritionRequestPlanDeps {
   firestore: Firestore;
-  /** The generator in force. Production: none. */
+  /**
+   * The backend AI gate (NUT-12B). Required and explicit: production passes
+   * `NUTRITION_AI_PRODUCTION_ENABLED` (false); a test that exercises the
+   * lifecycle passes `true` itself. Nothing derives it from the environment.
+   */
+  generationEnabled: boolean;
+  /** The generator registry. Asked only for new work with the gate on. Production: the lazy Vertex registry, unconfigured. */
   providers: NutritionGenerationProviderRegistry;
   /** The plan-validation policy in force. Production: none. */
   policies: PlanValidationPolicyRegistry;
@@ -144,7 +151,8 @@ export const handleNutritionRequestPlan = async (
       at: now(),
       newPlanId: (deps.newPlanId ?? randomUUID)(),
       claimToken: (deps.newClaimToken ?? randomUUID)(),
-      setup: deps.providers.current(),
+      generationEnabled: deps.generationEnabled,
+      providers: deps.providers,
     })
   );
   if (claim.kind === "inProgress") return answer(claim.request, false);

@@ -7,8 +7,8 @@ import { callNutritionRequestPlan } from "@/lib/nutrition/v2/generationCallable"
 
 /**
  * Requesting a generated Nutrition V2 plan for the signed-in account (NUT-11).
- * No UI uses it yet, and the deployed backend has no generator: every call is
- * answered `GENERATION_PROVIDER_NOT_CONFIGURED`.
+ * No UI uses it yet, and the deployed backend's Nutrition AI gate is off
+ * (NUT-12B): every new request is answered `NUTRITION_AI_DISABLED`.
  *
  * - happens only through `submit`, called from one explicit action; mounting
  *   or rendering calls nothing;

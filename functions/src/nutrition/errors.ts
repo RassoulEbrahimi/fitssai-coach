@@ -158,6 +158,7 @@ const SLOT_HTTPS_CODES: Readonly<Record<NutritionSlotError["code"], FunctionsErr
 const GENERATION_HTTPS_CODES: Readonly<Record<NutritionGenerationError["code"], FunctionsErrorCode>> = {
   INVALID_REQUEST: "invalid-argument",
   NOT_ELIGIBLE: "permission-denied",
+  NUTRITION_AI_DISABLED: "failed-precondition",
   GENERATION_PROVIDER_NOT_CONFIGURED: "failed-precondition",
   PLAN_VALIDATION_POLICY_NOT_CONFIGURED: "failed-precondition",
   NO_CURRENT_TARGET: "failed-precondition",

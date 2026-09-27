@@ -35,18 +35,28 @@ const REPO_ROOT = join(__dirname, "..", "..");
  */
 export const toPosix = (value: string): string => value.split(/[\\/]/).join("/");
 
-/** The one directory a provider SDK may be imported from. */
-export const PROVIDER_DIRECTORY = "functions/src/coaching/providers/";
+/**
+ * The directories that may name a model vendor (NUT-12B): the server-wide
+ * transport, which alone imports the SDK, and each product's own adapters.
+ */
+export const PROVIDER_DIRECTORIES = [
+  "functions/src/ai/",
+  "functions/src/coaching/providers/",
+  "functions/src/nutrition/providers/",
+] as const;
+
+/** The one module that imports the provider SDK: the server-wide Google GenAI transport. */
+export const SDK_TRANSPORT_MODULE = "functions/src/ai/googleGenai.ts";
 
 /**
  * Whether a repository-relative path is a provider implementation.
  *
- * A directory rule rather than a filename list: the second provider should be
- * a new file in `providers/`, and adding it should not mean editing this test.
- * Takes any separator so callers cannot forget to normalise.
+ * A directory rule rather than a filename list: another adapter should be a
+ * new file in a product's `providers/`, and adding it should not mean editing
+ * this test. Takes any separator so callers cannot forget to normalise.
  */
 export const isProviderImplementation = (path: string): boolean =>
-  toPosix(path).startsWith(PROVIDER_DIRECTORY);
+  PROVIDER_DIRECTORIES.some((directory) => toPosix(path).startsWith(directory));
 
 const walk = (dir: string): string[] =>
   readdirSync(dir).flatMap((entry) => {
@@ -99,6 +109,13 @@ describe("path normalisation", () => {
     expect(isProviderImplementation("functions\\src\\coaching\\generatePlan.ts")).toBe(false);
   });
 
+  it("recognises every provider directory, and nothing beside it", () => {
+    expect(isProviderImplementation("functions/src/ai/googleGenai.ts")).toBe(true);
+    expect(isProviderImplementation("functions\\src\\nutrition\\providers\\vertexGemini.ts")).toBe(true);
+    expect(isProviderImplementation("functions/src/nutrition/generationProvider.ts")).toBe(false);
+    expect(isProviderImplementation("functions/src/aim/other.ts")).toBe(false);
+  });
+
   it.each([
     "functions/src/coaching/generatePlan.ts",
     "functions/src/index.ts",
@@ -138,25 +155,54 @@ describe("the vendor stays behind the provider seam", () => {
     expect(swept.length).toBeGreaterThan(5);
     expect(swept).toContain("functions/src/coaching/generatePlan.ts");
     expect(swept).toContain("functions/src/index.ts");
+    expect(swept).toContain("functions/src/nutrition/requestPlan.ts");
     expect(swept).not.toContain("functions/src/coaching/providers/gemini.ts");
+    expect(swept).not.toContain(SDK_TRANSPORT_MODULE);
+    expect(swept).not.toContain("functions/src/nutrition/providers/vertexGemini.ts");
   });
 
-  it("keeps every provider SDK import inside providers/", () => {
+  it("keeps every provider SDK import in the one server-wide transport (NUT-12B)", () => {
+    // @google/genai → ai/googleGenai.ts → Training's and Nutrition's adapters.
+    // Moving the import anywhere else — a product adapter included — fails here.
     const importers = backendSources
-      .filter((file) => /from\s+["']@google\/genai["']/.test(readFileSync(file, "utf-8")))
+      .filter((file) => /from\s+["']@google\/genai["']|require\(\s*["']@google\/genai["']\s*\)/.test(readFileSync(file, "utf-8")))
       .map(rel);
 
-    expect(importers).not.toEqual([]);
+    expect(importers).toEqual([SDK_TRANSPORT_MODULE]);
     expect(importers.every(isProviderImplementation)).toBe(true);
-    expect(importers).toEqual(["functions/src/coaching/providers/gemini.ts"]);
+  });
+
+  it("lets only the product adapters use the transport", () => {
+    const users = backendSources
+      .filter((file) => /from\s+["'][^"']*ai\/googleGenai["']/.test(readFileSync(file, "utf-8")))
+      .map(rel)
+      .sort();
+
+    expect(users).toEqual([
+      "functions/src/coaching/providers/gemini.ts",
+      "functions/src/nutrition/providers/vertexGemini.ts",
+      // A type import only: the scripted client tests inject, never built.
+      "functions/src/testing/fakeGoogleGenAiClient.ts",
+    ]);
   });
 
   it("resolves the importer list identically from Windows-shaped paths", () => {
     // The same list as it would arrive from `path.relative` on Windows.
-    const windowsShaped = ["functions\\src\\coaching\\providers\\gemini.ts"];
+    const windowsShaped = ["functions\\src\\ai\\googleGenai.ts", "functions\\src\\nutrition\\providers\\vertexGemini.ts"];
 
-    expect(windowsShaped.map(toPosix)).toEqual(["functions/src/coaching/providers/gemini.ts"]);
+    expect(windowsShaped.map(toPosix)).toEqual([SDK_TRANSPORT_MODULE, "functions/src/nutrition/providers/vertexGemini.ts"]);
     expect(windowsShaped.every(isProviderImplementation)).toBe(true);
+  });
+
+  it("keeps the Nutrition adapter's vendor out of every other Nutrition module", () => {
+    const outside = backendSources
+      .map(rel)
+      .filter((file) => file.startsWith("functions/src/nutrition/") && !isProviderImplementation(file));
+
+    expect(outside.length).toBeGreaterThan(5);
+    for (const file of outside) {
+      expect(stripComments(readFileSync(join(REPO_ROOT, file), "utf-8")), file).not.toMatch(/gemini|vertex|googleGenai|NUTRITION_GEMINI_MODEL_ID/i);
+    }
   });
 
   it("declares exactly one provider package, and not the legacy SDK", () => {

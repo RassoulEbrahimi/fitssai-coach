@@ -6,7 +6,7 @@ import { parseNutritionProfile } from "../../../shared/nutrition";
 import { BACKEND_CAPABILITIES } from "../config";
 import { DEFAULT_QUOTA_LIMITS, QUOTA_ACTIONS } from "../quota";
 import { productionInitialSlotConfiguration } from "./generationInput";
-import { productionNutritionGenerationProviderRegistry } from "./generationProvider";
+import { productionNutritionGenerationProviderRegistry } from "./providers/productionRegistry";
 import { PRODUCTION_PLAN_VALIDATION_POLICIES, productionPlanValidationPolicyRegistry } from "./planValidation/registry";
 import { PRODUCTION_TARGET_POLICIES } from "./targetPolicy/registry";
 
@@ -69,7 +69,7 @@ describe("the test generator stays out of production", () => {
     const emitted = walk(lib, /\.js$/);
     expect(emitted.map(rel).filter((file) => /fakeNutrition|\/testing\//i.test(file))).toEqual([]);
     for (const file of emitted) {
-      expect(readFileSync(file, "utf-8"), rel(file)).not.toMatch(/test-fixture-generator|createFakeNutritionPlanProvider|FIXTURE_INITIAL_SLOTS/);
+      expect(readFileSync(file, "utf-8"), rel(file)).not.toMatch(/test-fixture-generator|createFakeNutritionPlanProvider|FIXTURE_INITIAL_SLOTS|createFakeGoogleGenAiClient|FIXTURE_VERTEX|fixture-project|fixture-location/);
     }
   });
 
@@ -101,6 +101,8 @@ describe("production is unconfigured", () => {
     const start = index.indexOf("export const nutritionRequestPlan");
     const wiring = index.slice(start, index.indexOf("export const", start + 1));
     expect(wiring).toContain("handleNutritionRequestPlan(request");
+    // NUT-12B: the closed backend gate, before the (lazy, unconfigured) registry.
+    expect(wiring).toContain("generationEnabled: NUTRITION_AI_PRODUCTION_ENABLED");
     expect(wiring).toContain("providers: productionNutritionGenerationProviderRegistry");
     expect(wiring).toContain("policies: productionPlanValidationPolicyRegistry");
     expect(wiring).toContain("initialSlots: productionInitialSlotConfiguration");
