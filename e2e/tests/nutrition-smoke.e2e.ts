@@ -3,6 +3,7 @@ import path from "node:path";
 import { expect, test } from "@playwright/test";
 import { requireLocalEmulatorEnv } from "../support/emulatorEnv";
 import { callEmulatorCallable, emulatorIdToken, getEmulatorDocument, listEmulatorDocumentIds } from "../support/emulatorRest";
+import { runNutritionSeed } from "../support/globalSetup";
 import { E2E_LOCAL_DIR } from "../support/processEnv";
 import {
   e2ePassword,
@@ -29,6 +30,9 @@ const adult = summary.users.adult;
 const adultNutrition = adult.nutrition!;
 const SCREENSHOTS = path.join(E2E_LOCAL_DIR, "screenshots");
 mkdirSync(SCREENSHOTS, { recursive: true });
+
+// A clean seed for this file, whatever ran before it (the NUT-13B files mutate the accounts).
+test.beforeAll(() => runNutritionSeed({ quiet: true }));
 
 const SLOT_LABELS = { breakfast: "Frühstück", lunch: "Mittagessen", dinner: "Abendessen" } as const;
 

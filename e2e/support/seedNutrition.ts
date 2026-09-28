@@ -1,7 +1,3 @@
-import { createRequire } from "node:module";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
-import type { App } from "../../functions/node_modules/firebase-admin/lib/app/index";
 import type { Firestore } from "../../functions/node_modules/firebase-admin/lib/firestore/index";
 import {
   NUTRITION_V2_COLLECTIONS,
@@ -20,6 +16,7 @@ import {
   TARGET_ALIGNMENT_POLICY_ID,
   TARGET_ALIGNMENT_POLICY_VERSION,
 } from "../../functions/src/nutrition/planValidation/v1";
+import { adminFirestoreModule, deleteEmulatorAdmin, initEmulatorAdmin } from "./emulatorAdmin";
 import { requireLocalEmulatorEnv, type LocalEmulatorEnv } from "./emulatorEnv";
 import { callEmulatorCallable, createEmulatorAccount, emulatorIdToken, resetEmulators } from "./emulatorRest";
 import { E2E_USERS, buildE2EPlanContent, e2ePlanStartDate, type E2EUser, type E2EUserKey } from "./nutritionFixture";
@@ -68,29 +65,8 @@ export interface NutritionSeedSummary {
   users: Record<E2EUserKey, SeededNutritionUser>;
 }
 
-const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
-
-/** The Functions workspace's own firebase-admin: the copy the activation core imports. */
-const requireFromFunctions = createRequire(path.join(repoRoot, "functions", "package.json"));
-
-const initAdmin = (env: LocalEmulatorEnv): { app: App; db: Firestore } => {
-  // The Admin SDK reads these; they point it at the emulators and nowhere else.
-  process.env.FIRESTORE_EMULATOR_HOST = env.firestoreHost;
-  process.env.FIREBASE_AUTH_EMULATOR_HOST = env.authHost;
-  process.env.GCLOUD_PROJECT = env.projectId;
-  // No credentials of any kind: the emulators need none, and production would refuse none.
-  delete process.env.GOOGLE_APPLICATION_CREDENTIALS;
-
-  const { initializeApp, getApps } = requireFromFunctions("firebase-admin/app") as typeof import("../../functions/node_modules/firebase-admin/lib/app/index");
-  const { getFirestore } = requireFromFunctions("firebase-admin/firestore") as typeof import("../../functions/node_modules/firebase-admin/lib/firestore/index");
-  const name = "fitssai-nutrition-e2e-seed";
-  const app = getApps().find((candidate) => candidate.name === name) ?? initializeApp({ projectId: env.projectId }, name);
-  if (app.options.projectId !== env.projectId) throw new Error("Admin app is not the demo project");
-  return { app, db: getFirestore(app) };
-};
-
 const seedProfile = async (db: Firestore, user: E2EUser) => {
-  const { Timestamp } = requireFromFunctions("firebase-admin/firestore") as typeof import("../../functions/node_modules/firebase-admin/lib/firestore/index");
+  const { Timestamp } = adminFirestoreModule();
   const now = Timestamp.now();
   await db.collection("users").doc(user.uid).set({ ...user.profile, createdAt: now, updatedAt: now });
 };
@@ -188,7 +164,7 @@ export const seedNutritionE2E = async ({
   if (typeof password !== "string" || password.length < 8) throw new Error("E2E_NUTRITION_PASSWORD must have at least 8 characters");
 
   await resetEmulators(env);
-  const { app, db } = initAdmin(env);
+  const { app, db } = initEmulatorAdmin(env, "fitssai-nutrition-e2e-seed");
   const today = nutritionDateAt(now);
   try {
     const users = {} as Record<E2EUserKey, SeededNutritionUser>;
@@ -199,7 +175,6 @@ export const seedNutritionE2E = async ({
     }
     return { projectId: env.projectId, today, users };
   } finally {
-    const { deleteApp } = requireFromFunctions("firebase-admin/app") as typeof import("../../functions/node_modules/firebase-admin/lib/app/index");
-    await deleteApp(app);
+    await deleteEmulatorAdmin(app);
   }
 };

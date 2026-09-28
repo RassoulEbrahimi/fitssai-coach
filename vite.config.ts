@@ -31,6 +31,9 @@ export default defineConfig(({ mode }) => ({
   server: {
     host: "::",
     port: 8080,
+    // The E2E harness writes Playwright traces (HTML) under e2e/results.local;
+    // watching them would reload the page under test mid-scenario.
+    ...(mode === "e2e" ? { watch: { ignored: ["**/e2e/results.local/**"] } } : {}),
   },
   plugins: [
     refuseEmulatorBuild(),
