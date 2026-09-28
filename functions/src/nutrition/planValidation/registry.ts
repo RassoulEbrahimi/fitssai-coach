@@ -1,16 +1,18 @@
 import type { PlanValidationPolicy, PlanValidationPolicyRegistry } from "./types";
+import { TARGET_ALIGNMENT_POLICY_V1 } from "./v1";
 
 /**
- * The production plan-validation policies.
+ * The production plan-validation policy: exactly one, signed off.
  *
- * EMPTY, deliberately. No plan tolerance — how far a plan may be from its
- * target, what a meal or a day may contain — has been signed off, so no plan
- * can be validated and every activation that needs a policy answers
- * `PLAN_VALIDATION_POLICY_NOT_CONFIGURED`. A policy is added here only together
- * with its sign-off — never a guessed default, and never a test fixture (those
- * live in `src/testing/`, which is not built or deployed).
+ *   `target-alignment` v1 — a plan's days and its seven-day average against
+ *   its captured target (see `./v1`)
+ *
+ * A policy is added or replaced here only together with its sign-off — never
+ * a guessed default, and never a test fixture (those live in `src/testing/`,
+ * which is not built or deployed). A changed rule is a new version, so a
+ * stored acceptance is reused only under the version that made it.
  */
-export const PRODUCTION_PLAN_VALIDATION_POLICIES: readonly PlanValidationPolicy[] = Object.freeze([]);
+export const PRODUCTION_PLAN_VALIDATION_POLICIES: readonly PlanValidationPolicy[] = Object.freeze([TARGET_ALIGNMENT_POLICY_V1]);
 
 /**
  * A registry over `policies`: at most one policy is in force at a time. Throws
@@ -24,7 +26,7 @@ export const createPlanValidationPolicyRegistry = (
   return { current: () => policy };
 };
 
-/** The registry the deployed callables use. Resolves nothing today. */
+/** The registry the deployed callables use. */
 export const productionPlanValidationPolicyRegistry: PlanValidationPolicyRegistry = createPlanValidationPolicyRegistry(
   PRODUCTION_PLAN_VALIDATION_POLICIES
 );

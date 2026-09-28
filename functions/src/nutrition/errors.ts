@@ -117,6 +117,7 @@ const HTTPS_CODES: Readonly<Record<NutritionTargetError["code"], FunctionsErrorC
   NOT_ELIGIBLE: "permission-denied",
   TARGET_POLICY_NOT_CONFIGURED: "failed-precondition",
   PROFILE_INCOMPLETE: "failed-precondition",
+  TARGET_INFEASIBLE: "failed-precondition",
   INTERNAL: "internal",
 };
 

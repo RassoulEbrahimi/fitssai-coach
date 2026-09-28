@@ -68,6 +68,17 @@ describe("callNutritionSetTarget", () => {
     expect(error).toBeInstanceOf(NutritionTargetCallError);
     expect(error.code).toBe("TARGET_POLICY_NOT_CONFIGURED");
   });
+
+  it("maps TARGET_INFEASIBLE to its code, with no details", async () => {
+    functions.invoke.mockRejectedValue(
+      Object.assign(new Error("TARGET_INFEASIBLE"), { code: "functions/failed-precondition" })
+    );
+    const error = await refusal(callNutritionSetTarget({ mode: "manual", requestId: REQUEST_ID }));
+    expect(error).toBeInstanceOf(NutritionTargetCallError);
+    expect(error.code).toBe("TARGET_INFEASIBLE");
+    expect(error.missingFields).toEqual([]);
+    expect(error.invalidFields).toEqual([]);
+  });
 });
 
 describe("toNutritionTargetCallError", () => {

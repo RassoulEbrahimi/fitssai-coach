@@ -39,9 +39,10 @@ export interface BackendCapabilities {
    */
   weeklySummaryAI: boolean;
   /**
-   * Setting a Nutrition V2 target. False: `nutritionSetTarget` exists, but no
-   * target policy is signed off, so it can only answer
-   * `TARGET_POLICY_NOT_CONFIGURED`.
+   * Setting a Nutrition V2 target. `nutritionSetTarget` exists and, since
+   * NUT-12C.1, runs the signed TargetPolicy v1 for both modes. The flag is
+   * still false: it moves only with an explicit enablement decision, not as a
+   * side effect of installing policies.
    */
   nutritionTargets: boolean;
   /**
@@ -64,14 +65,14 @@ export const BACKEND_CAPABILITIES: Readonly<BackendCapabilities> = Object.freeze
   // that remains so — and a false here would still leave the review working,
   // because the wording falls back to the app's own.
   weeklySummaryAI: true,
-  // False from NUT-08: the target plumbing is deployed, but the production
-  // policy registry is empty, so no target can actually be set. It moves only
-  // with a signed-off policy.
+  // False from NUT-08. NUT-12C.1 registers the signed target policies, but
+  // deliberately leaves this flag alone: it moves only in its own reviewed
+  // enablement change.
   nutritionTargets: false,
   // False from NUT-11: the generation infrastructure is deployed, but the
-  // production generator and plan-validation registries are empty, so no plan
-  // can actually be generated. It moves only with a real generator and a
-  // signed-off policy. NUT-12B adds the generator code behind a closed backend
-  // gate, which changes none of that.
+  // production generator registry is empty, so no plan can actually be
+  // generated. NUT-12B adds the generator code behind a closed backend gate,
+  // and NUT-12C.1 signs the plan-validation policy and first-plan slots;
+  // neither changes that. It moves only with a real, enabled generator.
   nutritionGeneration: false,
 });

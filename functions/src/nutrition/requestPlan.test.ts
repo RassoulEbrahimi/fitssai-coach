@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { HttpsError } from "firebase-functions/v2/https";
 import {
   addNutritionDays,
@@ -48,7 +48,7 @@ import {
 } from "../testing/nutritionPlanFixtures";
 import { NUTRITION_AI_PRODUCTION_ENABLED } from "./aiGate";
 import { NutritionGenerationError, toNutritionHttpsError } from "./errors";
-import { productionInitialSlotConfiguration } from "./generationInput";
+import { productionInitialSlotConfiguration, type NutritionInitialSlotConfiguration } from "./generationInput";
 import type { NutritionGenerationProviderRegistry } from "./generationProvider";
 import {
   createNutritionVertexProviderRegistry,
@@ -63,10 +63,10 @@ import { handleNutritionSetTarget } from "./setTarget";
 /*
   NUT-11: `nutritionRequestPlan`, end to end against the in-memory Firestore.
 
-  Production has no generator, no plan-validation policy and no first-plan
-  slot mapping, so the deployed handler answers
+  Production has no generator, so the deployed handler answers
   GENERATION_PROVIDER_NOT_CONFIGURED and writes nothing; that is pinned
-  first. Everything else runs on TEST FIXTURES from src/testing/: a scripted
+  first. (NUT-12C.1 signed the plan-validation policy and the first-plan slot
+  mapping; neither configures a generator.) Everything else runs on TEST FIXTURES from src/testing/: a scripted
   generator with no network, prompt or model, validation policies that accept
   or reject by fiat, and a fixed breakfast/lunch/dinner slot list.
 
@@ -109,10 +109,13 @@ interface Options {
   targets?: string[];
   script?: FakeProviderScript;
   policies?: readonly PlanValidationPolicy[] | "production";
-  initialSlots?: "production";
+  /** `none`: a configuration with no mapping at all. */
+  initialSlots?: "production" | "none" | NutritionInitialSlotConfiguration;
   failWrites?: (path: string) => boolean;
   extra?: Record<string, Record<string, unknown>>;
 }
+
+const NO_INITIAL_SLOTS: NutritionInitialSlotConfiguration = Object.freeze({ slotsFor: () => null });
 
 const setup = (options: Options = {}) => {
   const firestore = fakeFirestore({ failWrites: options.failWrites });
@@ -157,7 +160,12 @@ const setup = (options: Options = {}) => {
         registry ??
         (via === "production" || production ? productionNutritionGenerationProviderRegistry : fixtureGenerationProviderRegistry(via)),
       policies: production ? productionPlanValidationPolicyRegistry : policies,
-      initialSlots: options.initialSlots === "production" || production ? productionInitialSlotConfiguration : FIXTURE_INITIAL_SLOTS,
+      initialSlots:
+        options.initialSlots === "production" || production
+          ? productionInitialSlotConfiguration
+          : options.initialSlots === "none"
+            ? NO_INITIAL_SLOTS
+            : (options.initialSlots ?? FIXTURE_INITIAL_SLOTS),
       now: clock,
       newPlanId: () => `gen-plan-${(minted += 1)}`,
       newClaimToken: () => `claim-${(tokens += 1)}`,
@@ -242,21 +250,63 @@ describe("the deployed boundary: nothing is configured to generate", () => {
     expect(h.snapshot()).toBe(before);
   });
 
-  it("with a generator but the production (empty) validation registry: PLAN_VALIDATION_POLICY_NOT_CONFIGURED, nothing written", async () => {
-    const h = setup({ policies: "production" });
+  it("with a generator but no plan-validation policy in force: PLAN_VALIDATION_POLICY_NOT_CONFIGURED, nothing written", async () => {
+    const h = setup({ policies: [] });
     const before = h.snapshot();
-    expect(productionPlanValidationPolicyRegistry.current()).toBeNull();
     expect(await code(h.call({ requestId: RID }))).toBe("PLAN_VALIDATION_POLICY_NOT_CONFIGURED");
     expect(h.snapshot()).toBe(before);
     expect(h.provider.calls.generate).toEqual([]);
   });
 
-  it("a first plan with the production (empty) slot configuration: GENERATION_SLOTS_NOT_CONFIGURED, nothing written", async () => {
-    const h = setup({ state: INITIAL_STATE, plans: {}, initialSlots: "production" });
+  it("a first plan with no slot mapping: GENERATION_SLOTS_NOT_CONFIGURED, nothing written", async () => {
+    const h = setup({ state: INITIAL_STATE, plans: {}, initialSlots: "none" });
     const before = h.snapshot();
     expect(await code(h.call({ requestId: RID }))).toBe("GENERATION_SLOTS_NOT_CONFIGURED");
     expect(h.snapshot()).toBe(before);
     expect(h.provider.calls.generate).toEqual([]);
+  });
+});
+
+/* ------------------------------------------------------------------ *
+ * NUT-12C.1: the signed first-plan slots through the lifecycle
+ * ------------------------------------------------------------------ */
+
+describe("initial slot mapping v1 in the lifecycle", () => {
+  it.each([
+    [1, ["dinner"]],
+    [2, ["breakfast", "dinner"]],
+    [3, ["breakfast", "lunch", "dinner"]],
+    [4, ["breakfast", "lunch", "snack_1", "dinner"]],
+    [5, ["breakfast", "lunch", "snack_1", "dinner", "snack_2"]],
+  ] as const)("a first plan for %s meal(s) a day asks the generator for %j", async (mealsPerDay, slots) => {
+    const h = setup({ state: INITIAL_STATE, plans: {}, initialSlots: "production", profile: { ...PROFILE, mealsPerDay } });
+    await h.call({ requestId: RID });
+    expect(h.provider.calls.generate.map((input) => input.slotOrder)).toEqual([slots]);
+  });
+
+  it.each([
+    ["not answered", undefined],
+    ["out of range", 6],
+    ["not a whole number", 2.5],
+    ["not a number", "3"],
+  ])("a first plan with meals per day %s: GENERATION_SLOTS_NOT_CONFIGURED — three meals are not assumed", async (_label, mealsPerDay) => {
+    const { mealsPerDay: _dropped, ...rest } = PROFILE;
+    const profile = mealsPerDay === undefined ? rest : { ...rest, mealsPerDay };
+    const h = setup({ state: INITIAL_STATE, plans: {}, initialSlots: "production", profile });
+    const before = h.snapshot();
+    expect(await code(h.call({ requestId: RID }))).toBe("GENERATION_SLOTS_NOT_CONFIGURED");
+    expect(h.snapshot()).toBe(before);
+    expect(h.provider.calls.generate).toEqual([]);
+  });
+
+  it("a regeneration keeps the base plan's slots exactly and never asks the mapping", async () => {
+    const slotsFor = vi.fn(productionInitialSlotConfiguration.slotsFor);
+    // Five meals a day would map to five slots; the base plan has three.
+    const h = setup({ profile: { ...PROFILE, mealsPerDay: 5 }, initialSlots: { slotsFor } });
+    await h.call({ requestId: RID });
+
+    expect(h.provider.calls.generate.map((input) => input.slotOrder)).toEqual([["breakfast", "lunch", "dinner"]]);
+    expect(slotsFor).not.toHaveBeenCalled();
   });
 });
 

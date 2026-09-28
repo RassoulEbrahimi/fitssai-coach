@@ -86,14 +86,17 @@ describe("the test generator stays out of production", () => {
   });
 });
 
-describe("production is unconfigured", () => {
-  it("resolves no generator, no plan-validation policy and no first-plan slots, and has no target policy", () => {
+describe("production has no generator", () => {
+  it("resolves no generator; the signed deterministic policies and first-plan slots are configured (NUT-12C.1)", () => {
     expect(productionNutritionGenerationProviderRegistry.current()).toBeNull();
     expect(Object.isFrozen(productionNutritionGenerationProviderRegistry)).toBe(true);
-    expect(productionPlanValidationPolicyRegistry.current()).toBeNull();
-    expect(PRODUCTION_PLAN_VALIDATION_POLICIES).toEqual([]);
-    expect(PRODUCTION_TARGET_POLICIES).toEqual([]);
-    expect(productionInitialSlotConfiguration.slotsFor(3)).toBeNull();
+    expect(productionPlanValidationPolicyRegistry.current()).toMatchObject({ id: "target-alignment", version: 1 });
+    expect(PRODUCTION_PLAN_VALIDATION_POLICIES.map(({ id, version }) => [id, version])).toEqual([["target-alignment", 1]]);
+    expect(PRODUCTION_TARGET_POLICIES.map(({ id, version, mode }) => [id, version, mode])).toEqual([
+      ["calculated-target", 1, "calculated"],
+      ["manual-target", 1, "manual"],
+    ]);
+    expect(productionInitialSlotConfiguration.slotsFor(3)).toEqual(["breakfast", "lunch", "dinner"]);
   });
 
   it("wires the deployed callable to the production registries only, with no secret, quota, operations store or log", () => {

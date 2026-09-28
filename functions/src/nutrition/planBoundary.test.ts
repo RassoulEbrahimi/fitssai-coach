@@ -38,6 +38,12 @@ const builtFiles = (): string[] => {
   return ts.parseJsonConfigFileContent(config, ts.sys, FUNCTIONS_ROOT).fileNames.map((file) => posix(file));
 };
 
+/**
+ * NUT-12C.1: the one module that holds the signed plan tolerances. It is not
+ * in PLAN_MODULES, whose sweep proves every other plan module carries none.
+ */
+const SIGNED_PLAN_POLICY_MODULE = "src/nutrition/planValidation/v1.ts";
+
 const PLAN_MODULES = [
   "src/nutrition/planActivation.ts",
   "src/nutrition/repeatPlan.ts",
@@ -86,10 +92,19 @@ describe("fixture plan-validation policies stay out of production", () => {
 });
 
 describe("the production plan-validation seam", () => {
-  it("contains zero policies and resolves none", () => {
-    expect(PRODUCTION_PLAN_VALIDATION_POLICIES).toEqual([]);
+  it("holds exactly the signed target-alignment v1 policy (NUT-12C.1)", () => {
+    expect(PRODUCTION_PLAN_VALIDATION_POLICIES.map(({ id, version }) => ({ id, version }))).toEqual([
+      { id: "target-alignment", version: 1 },
+    ]);
     expect(Object.isFrozen(PRODUCTION_PLAN_VALIDATION_POLICIES)).toBe(true);
-    expect(productionPlanValidationPolicyRegistry.current()).toBeNull();
+    expect(productionPlanValidationPolicyRegistry.current()).toBe(PRODUCTION_PLAN_VALIDATION_POLICIES[0]);
+  });
+
+  it("keeps every tolerance in the signed policy module, which is pure", () => {
+    const policy = code(SIGNED_PLAN_POLICY_MODULE);
+    expect(policy).not.toMatch(/firebase-admin|firestore|requireAuth|new Date|Date\.now|Math\.random|console\.|provider|quota|gemini/i);
+    // It certifies target alignment only: no meal share, sugar, fibre, allergen or medical rule.
+    expect(policy).not.toMatch(/sugar|fib(er|re)|allerg|micronutrient|medical|keto|vegan|slotId/i);
   });
 
   it.each(PLAN_MODULES)("%s names no nutrition threshold, tolerance or ratio", (file) => {

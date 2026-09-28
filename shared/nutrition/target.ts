@@ -53,6 +53,9 @@ export type NutritionSetTargetResult = z.infer<typeof nutritionSetTargetResultSc
  *   TARGET_POLICY_NOT_CONFIGURED  no signed-off policy exists for the mode
  *   PROFILE_INCOMPLETE            the policy's profile fields are not all
  *                                 answered; details name the fields only
+ *   TARGET_INFEASIBLE             the answers are complete and valid, but the
+ *                                 policy supports no target for them; no
+ *                                 detail, value or bound is exposed
  *   INTERNAL                      anything else; nothing internal is exposed
  */
 export const NUTRITION_SET_TARGET_ERROR_CODES = [
@@ -61,6 +64,7 @@ export const NUTRITION_SET_TARGET_ERROR_CODES = [
   "NOT_ELIGIBLE",
   "TARGET_POLICY_NOT_CONFIGURED",
   "PROFILE_INCOMPLETE",
+  "TARGET_INFEASIBLE",
   "INTERNAL",
 ] as const;
 

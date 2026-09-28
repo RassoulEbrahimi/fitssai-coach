@@ -37,6 +37,7 @@ type Outcome =
   | { kind: "notConfigured"; profileSaved: boolean }
   | { kind: "incomplete"; missingFields: NutritionTargetProfileField[]; invalidFields: NutritionTargetProfileField[]; profileSaved: boolean }
   | { kind: "ineligible" }
+  | { kind: "infeasible"; profileSaved: boolean }
   | { kind: "offline" }
   | { kind: "unavailable" }
   | { kind: "profileFailed" }
@@ -122,6 +123,8 @@ const SetupForm: React.FC<SetupFormProps> = ({ profile, mutation, saveProfile, o
         setOutcome({ kind: "incomplete", missingFields: error.missingFields, invalidFields: error.invalidFields, profileSaved });
       } else if (isNutritionTargetCallError(error) && error.code === "NOT_ELIGIBLE") {
         setOutcome({ kind: "ineligible" });
+      } else if (isNutritionTargetCallError(error) && error.code === "TARGET_INFEASIBLE") {
+        setOutcome({ kind: "infeasible", profileSaved });
       } else {
         setOutcome({ kind: "failed", profileSaved });
       }
@@ -205,6 +208,8 @@ const SetupForm: React.FC<SetupFormProps> = ({ profile, mutation, saveProfile, o
       }
       case "ineligible":
         return { tone: "neutral", text: t("nutritionV2.target.setup.result.ineligible") };
+      case "infeasible":
+        return { tone: "neutral", text: t("nutritionV2.target.setup.result.infeasible") + saved };
       case "offline":
         return { tone: "neutral", text: t("nutritionV2.target.setup.offline") };
       case "unavailable":

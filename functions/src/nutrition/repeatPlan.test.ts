@@ -39,10 +39,11 @@ import { handleNutritionSetTarget } from "./setTarget";
 /*
   NUT-09: `nutritionRepeatPlan`, end to end against the in-memory Firestore.
 
-  Production has no plan-validation policy, so the deployed handler can only
-  answer PLAN_VALIDATION_POLICY_NOT_CONFIGURED once its preconditions hold;
-  that path is pinned first. Everything else runs on TEST FIXTURE policies
-  from src/testing/, which accept or reject by fiat and mean nothing.
+  NUT-12C.1: production runs the signed target-alignment v1 policy, pinned
+  first; its rule is pinned in planValidation/v1.test.ts. With no policy in
+  force the handler answers PLAN_VALIDATION_POLICY_NOT_CONFIGURED. Everything
+  else runs on TEST FIXTURE policies from src/testing/, which accept or
+  reject by fiat and mean nothing.
 
   Meal ids: a repeated plan keeps its source's meal ids. A meal id is unique
   within its plan, and every reference to a meal carries its plan id, so the
@@ -113,8 +114,27 @@ const repeatOnce = { requestId: requestId(1) };
  * ------------------------------------------------------------------ */
 
 describe("the production registry", () => {
-  it("answers PLAN_VALIDATION_POLICY_NOT_CONFIGURED once every precondition holds, and writes nothing", async () => {
+  it("runs target-alignment v1: the fixture week, far from its target, is PLAN_VALIDATION_FAILED and nothing is written", async () => {
     const { call, nutritionDocs } = setup({ policies: "production" });
+    const before = nutritionDocs();
+
+    expect(await code(call(repeatOnce))).toBe("PLAN_VALIDATION_FAILED");
+    expect(nutritionDocs()).toEqual(before);
+  });
+
+  it("does not reuse a source acceptance made under another policy", async () => {
+    // plan-1 was accepted by the fixture policy; v1 runs afresh and refuses.
+    const { call } = setup({ policies: "production" });
+    const error = toNutritionHttpsError(await refusal(call(repeatOnce)));
+    expect(error.code).toBe("failed-precondition");
+    expect(error.message).toBe("PLAN_VALIDATION_FAILED");
+    expect(error.details).toBeUndefined();
+  });
+});
+
+describe("no policy in force", () => {
+  it("answers PLAN_VALIDATION_POLICY_NOT_CONFIGURED once every precondition holds, and writes nothing", async () => {
+    const { call, nutritionDocs } = setup({ policies: [] });
     const before = nutritionDocs();
 
     expect(await code(call(repeatOnce))).toBe("PLAN_VALIDATION_POLICY_NOT_CONFIGURED");
@@ -122,7 +142,7 @@ describe("the production registry", () => {
   });
 
   it("maps the refusal to a neutral failed-precondition with the code as its only message", async () => {
-    const { call } = setup({ policies: "production" });
+    const { call } = setup({ policies: [] });
     const error = toNutritionHttpsError(await refusal(call(repeatOnce)));
 
     expect(error.code).toBe("failed-precondition");

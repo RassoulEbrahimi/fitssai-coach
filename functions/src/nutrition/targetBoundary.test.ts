@@ -7,8 +7,9 @@ import { nodeSha256Hex } from "./sha256";
 
 /*
   NUT-08 boundaries on source: fixture target policies can never reach the
-  deployed backend, the production policy seam carries no formula, and the
-  target callable stays free of providers, quota, `_ai_operations` and logs.
+  deployed backend, the signed formula (NUT-12C.1) lives in its policy
+  module alone, and the target callable stays free of providers, quota,
+  `_ai_operations` and logs.
 */
 
 const FUNCTIONS_ROOT = join(__dirname, "..", "..");
@@ -35,6 +36,12 @@ const productionSources = walk(SRC).filter((file) => {
 });
 
 const nutritionSources = productionSources.filter((file) => rel(file).startsWith("src/nutrition/"));
+
+/**
+ * NUT-12C.1: the one module that holds the signed target formula and its
+ * constants. Every other Nutrition module is still swept for them.
+ */
+const SIGNED_TARGET_POLICY_MODULE = "src/nutrition/targetPolicy/v1.ts";
 
 /** NUT-12B: the one directory whose modules may name the Nutrition model vendor. */
 const NUTRITION_PROVIDER_DIRECTORY = "src/nutrition/providers/";
@@ -111,6 +118,8 @@ describe("the production target seam carries no formula", () => {
       "src/nutrition/planValidation/decide.ts",
       "src/nutrition/planValidation/registry.ts",
       "src/nutrition/planValidation/types.ts",
+      // NUT-12C.1: the signed target-alignment v1 plan-validation policy.
+      "src/nutrition/planValidation/v1.ts",
       // NUT-12B: the Vertex AI adapter behind the closed gate.
       "src/nutrition/providers/productionRegistry.ts",
       "src/nutrition/providers/prompt.ts",
@@ -125,11 +134,27 @@ describe("the production target seam carries no formula", () => {
       "src/nutrition/suggestionStore.ts",
       "src/nutrition/targetPolicy/registry.ts",
       "src/nutrition/targetPolicy/types.ts",
+      // NUT-12C.1: the signed calculated-target and manual-target v1 policies.
+      "src/nutrition/targetPolicy/v1.ts",
       "src/nutrition/updateSlot.ts",
     ]);
   });
 
-  it.each(nutritionSources.map(rel))("%s names no energy equation or target constant", (file) => {
+  it("holds the signed target rule in its policy module alone", () => {
+    const signed = code(join(FUNCTIONS_ROOT, SIGNED_TARGET_POLICY_MODULE));
+    // Mifflin–St Jeor coefficients, the activity factors and the feasible range.
+    for (const constant of ["6.25", "161", "1.375", "1.55", "1.725", "1.9", "-0.15", "1.8", "1.6", "1200", "6000"]) {
+      expect(signed, constant).toContain(constant);
+    }
+    const others = nutritionSources.map(rel).filter((file) => file !== SIGNED_TARGET_POLICY_MODULE);
+    for (const file of others) {
+      expect(code(join(FUNCTIONS_ROOT, file)), file).not.toMatch(/\b6\.25\b|\b161\b|\b1\.375\b|\b1\.725\b|\b1200\b|\b6000\b/);
+    }
+  });
+
+  const unsignedSources = nutritionSources.map(rel).filter((file) => file !== SIGNED_TARGET_POLICY_MODULE);
+
+  it.each(unsignedSources)("%s names no energy equation or target constant", (file) => {
     const source = code(join(FUNCTIONS_ROOT, file));
     expect(source).not.toMatch(/mifflin|st\.? ?jeor|harris|benedict|katch|\bbmr\b|\btdee\b|\bpal\b|multiplier|deficit|surplus/i);
     expect(source).not.toMatch(/per ?kg|perKg|\bkcalPer|proteinPer|fatPer|carbRemainder/i);
