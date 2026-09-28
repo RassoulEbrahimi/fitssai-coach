@@ -113,3 +113,40 @@ export const getEmulatorDocument = async (
   if (!response.ok) throw new Error(`Get ${documentPath} failed with HTTP ${response.status}`);
   return ((await response.json()) as { fields?: Record<string, unknown> }).fields ?? {};
 };
+
+/** A plain JSON value in the Firestore REST encoding (integers stay integers). */
+export const toFirestoreValue = (value: unknown): Record<string, unknown> => {
+  if (value === null) return { nullValue: null };
+  if (typeof value === "string") return { stringValue: value };
+  if (typeof value === "boolean") return { booleanValue: value };
+  if (typeof value === "number") return Number.isInteger(value) ? { integerValue: String(value) } : { doubleValue: value };
+  if (Array.isArray(value)) return { arrayValue: { values: value.map(toFirestoreValue) } };
+  if (typeof value === "object") {
+    return { mapValue: { fields: Object.fromEntries(Object.entries(value).map(([key, item]) => [key, toFirestoreValue(item)])) } };
+  }
+  throw new Error(`cannot encode ${typeof value}`);
+};
+
+/**
+ * Create a document as the account whose ID token is given — the security
+ * rules decide, exactly as for the web SDK. Answers the HTTP status and body.
+ */
+export const createEmulatorDocumentAs = async (
+  env: LocalEmulatorEnv,
+  idToken: string,
+  collectionPath: string,
+  documentId: string,
+  data: Record<string, unknown>
+): Promise<{ status: number; body: Record<string, unknown> }> => {
+  const url = emulatorUrl(
+    env,
+    `${env.firestoreUrl}/v1/projects/${env.projectId}/databases/(default)/documents/${collectionPath}?documentId=${encodeURIComponent(documentId)}`
+  );
+  const response = await fetch(url, {
+    method: "POST",
+    headers: { authorization: `Bearer ${idToken}`, "content-type": "application/json" },
+    body: JSON.stringify({ fields: (toFirestoreValue(data).mapValue as { fields: unknown }).fields }),
+  });
+  const text = await response.text();
+  return { status: response.status, body: text === "" ? {} : (JSON.parse(text) as Record<string, unknown>) };
+};
