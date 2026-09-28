@@ -267,3 +267,253 @@ describe("edges", () => {
     for (const answer of answers) expect(Object.keys(answer as object)).toEqual(["outcome"]);
   });
 });
+
+/* ------------------------------------------------------------------ *
+ * Roundoff: exact boundaries of decimal values
+ * ------------------------------------------------------------------ */
+
+/*
+  Regression: `actual·100 >= percent·reference` in plain doubles rejected an
+  exact inclusive boundary. 1235.315625 · 90 % is exactly 1111.7840625, yet
+  1111.7840625 · 100 evaluates to 111178.40624999999 while 90 · 1235.315625
+  is 111178.40625.
+
+  The boundaries below are computed in exact decimal arithmetic (BigInt) and
+  only then turned into the nearest double, as a stored value would be. So
+  "at the boundary" means the exact decimal boundary, never a product that
+  already carries float error.
+*/
+
+interface Decimal {
+  digits: bigint;
+  scale: number;
+}
+
+const dec = (text: string): Decimal => {
+  const [whole, fraction = ""] = text.split(".");
+  return { digits: BigInt(whole + fraction), scale: fraction.length };
+};
+
+const rescale = (value: Decimal, scale: number): bigint => value.digits * 10n ** BigInt(scale - value.scale);
+
+const plus = (...values: Decimal[]): Decimal => {
+  const scale = Math.max(...values.map((value) => value.scale));
+  return { digits: values.reduce((sum, value) => sum + rescale(value, scale), 0n), scale };
+};
+
+/** `value · numerator / 10^exponent`, exactly. */
+const times = (value: Decimal, numerator: number, exponent = 0): Decimal => ({
+  digits: value.digits * BigInt(numerator),
+  scale: value.scale + exponent,
+});
+
+const percentOf = (value: Decimal, percent: number) => times(value, percent, 2);
+
+/** The double nearest the exact decimal. */
+const num = (value: Decimal): number => {
+  const text = value.digits.toString().padStart(value.scale + 1, "0");
+  return Number(value.scale === 0 ? text : `${text.slice(0, -value.scale)}.${text.slice(-value.scale)}`);
+};
+
+type DecimalValues = Record<keyof NutritionValues, Decimal>;
+
+const toValues = (values: DecimalValues): NutritionValues => ({
+  kcal: num(values.kcal),
+  proteinG: num(values.proteinG),
+  carbsG: num(values.carbsG),
+  fatG: num(values.fatG),
+});
+
+const macroEnergyOf = (values: DecimalValues) => plus(times(values.proteinG, 4), times(values.carbsG, 4), times(values.fatG, 9));
+
+/** The old comparison, kept only to show which boundaries it got wrong. */
+const plainWithin = (actual: number, reference: number, min: number, max: number) =>
+  actual * 100 >= min * reference && actual * 100 <= max * reference;
+
+/** A decimal TARGET whose macro energy (1235.3143) is within 0.0002 % of its kcal. */
+const DECIMAL_TARGET: DecimalValues = {
+  kcal: dec("1235.315625"),
+  proteinG: dec("77.2071"),
+  carbsG: dec("154.4143"),
+  fatG: dec("34.3143"),
+};
+const DECIMAL_TARGET_VALUES = toValues(DECIMAL_TARGET);
+
+/** DECIMAL_TARGET with each nutrient at the given whole percent (100 when not named). */
+const atPercent = (percents: Partial<Record<keyof NutritionValues, number>>): DecimalValues => ({
+  kcal: percentOf(DECIMAL_TARGET.kcal, percents.kcal ?? 100),
+  proteinG: percentOf(DECIMAL_TARGET.proteinG, percents.proteinG ?? 100),
+  carbsG: percentOf(DECIMAL_TARGET.carbsG, percents.carbsG ?? 100),
+  fatG: percentOf(DECIMAL_TARGET.fatG, percents.fatG ?? 100),
+});
+
+const decimalWeek = (first: NutritionValues, rest: NutritionValues = DECIMAL_TARGET_VALUES) => [
+  first,
+  ...Array.from({ length: 6 }, () => ({ ...rest })),
+];
+
+/** One part in a million: the smallest real change the existing tests use. */
+const MEANINGFUL = 1e-6;
+/** Far below any real change, yet about seventy times the comparison slack. */
+const TINY = 1e-12;
+
+const nudge = (values: NutritionValues, nutrient: keyof NutritionValues, relative: number): NutritionValues => ({
+  ...values,
+  [nutrient]: values[nutrient] * (1 + relative),
+});
+
+describe("exact inclusive boundaries survive floating-point roundoff", () => {
+  it("accepts the reported day at exactly 90 % of a 1235.315625 kcal target, which plain doubles rejected", () => {
+    expect(1111.7840625 * 100 >= 90 * 1235.315625).toBe(false);
+    expect(num(percentOf(DECIMAL_TARGET.kcal, 90))).toBe(1111.7840625);
+
+    const day = toValues(atPercent({ kcal: 90, proteinG: 90, carbsG: 90, fatG: 90 }));
+    expect(day.kcal).toBe(1111.7840625);
+    expect(verdict(decimalWeek(day), DECIMAL_TARGET_VALUES)).toBe("accepted");
+  });
+
+  const dailyCases = [
+    // [label, the edge day in whole percent of the decimal TARGET, the nutrient at its edge, which way is outside]
+    ["kcal at 90 %", { kcal: 90, proteinG: 90, carbsG: 90, fatG: 90 }, "kcal", -1],
+    ["kcal at 110 %", { kcal: 110, proteinG: 110, carbsG: 110, fatG: 110 }, "kcal", +1],
+    ["protein at 90 %", { proteinG: 90 }, "proteinG", -1],
+    ["protein at 120 %", { proteinG: 120 }, "proteinG", +1],
+    ["fat at 80 %", { fatG: 80 }, "fatG", -1],
+    ["fat at 120 %", { fatG: 120 }, "fatG", +1],
+    // Lower carbs lower the macro energy; 95 % kcal keeps the day within 10 % of it.
+    ["carbs at 80 %", { kcal: 95, carbsG: 80 }, "carbsG", -1],
+    ["carbs at 120 %", { carbsG: 120 }, "carbsG", +1],
+  ] as const;
+
+  it.each(dailyCases)("accepts a decimal day exactly at %s", (_label, percents) => {
+    expect(verdict(decimalWeek(toValues(atPercent(percents))), DECIMAL_TARGET_VALUES)).toBe("accepted");
+  });
+
+  it.each(dailyCases)("still rejects a decimal day a meaningful step outside %s", (_label, percents, nutrient, outward) => {
+    const edge = toValues(atPercent(percents));
+    expect(verdict(decimalWeek(nudge(edge, nutrient, outward * MEANINGFUL)), DECIMAL_TARGET_VALUES)).toBe("rejected");
+  });
+
+  it.each(dailyCases)("rejects a decimal day even 1e-12 outside %s: the slack is machine-sized", (_label, percents, nutrient, outward) => {
+    const edge = toValues(atPercent(percents));
+    expect(verdict(decimalWeek(nudge(edge, nutrient, outward * TINY)), DECIMAL_TARGET_VALUES)).toBe("rejected");
+  });
+
+  const weeklyCases = [
+    ["kcal at 95 %", { kcal: 95 }, "kcal", -1],
+    ["kcal at 105 %", { kcal: 105 }, "kcal", +1],
+    ["protein at 95 %", { proteinG: 95 }, "proteinG", -1],
+    ["protein at 110 %", { proteinG: 110 }, "proteinG", +1],
+    ["fat at 90 %", { fatG: 90 }, "fatG", -1],
+    ["fat at 110 %", { fatG: 110 }, "fatG", +1],
+    ["carbs at 90 %", { carbsG: 90 }, "carbsG", -1],
+    ["carbs at 110 %", { carbsG: 110 }, "carbsG", +1],
+  ] as const;
+
+  it.each(weeklyCases)("accepts a decimal seven-day average exactly at %s", (_label, percents) => {
+    expect(verdict(everyDay(toValues(atPercent(percents))), DECIMAL_TARGET_VALUES)).toBe("accepted");
+  });
+
+  it.each(weeklyCases)("still rejects a decimal seven-day average a meaningful step outside %s", (_label, percents, nutrient, outward) => {
+    const day = toValues(atPercent(percents));
+    expect(verdict(everyDay(nudge(day, nutrient, outward * MEANINGFUL)), DECIMAL_TARGET_VALUES)).toBe("rejected");
+  });
+
+  it.each(weeklyCases)("rejects a decimal seven-day average even 1e-12 outside %s", (_label, percents, nutrient, outward) => {
+    const day = toValues(atPercent(percents));
+    expect(verdict(everyDay(nudge(day, nutrient, outward * TINY)), DECIMAL_TARGET_VALUES)).toBe("rejected");
+  });
+
+  it("accepts an exact decimal seven-day average made of unequal days", () => {
+    // 3 × 110 % + 3 × 100 % + 105 % = 735 % over seven days: exactly 105 %, the upper bound.
+    // Each day's macros scale with its kcal, so only the weekly kcal average is at an edge.
+    const days = [110, 110, 110, 100, 100, 100, 105].map((percent) =>
+      toValues(atPercent({ kcal: percent, proteinG: percent, carbsG: percent, fatG: percent }))
+    );
+    expect(verdict(days, DECIMAL_TARGET_VALUES)).toBe("accepted");
+    days[6] = nudge(days[6], "kcal", MEANINGFUL * 7);
+    expect(verdict(days, DECIMAL_TARGET_VALUES)).toBe("rejected");
+  });
+
+  describe("a day's kcal against its own decimal macro energy", () => {
+    // The day's macros are the decimal TARGET's; their exact energy E is 1235.3143.
+    const energy = macroEnergyOf(DECIMAL_TARGET);
+    const macros = { proteinG: DECIMAL_TARGET.proteinG, carbsG: DECIMAL_TARGET.carbsG, fatG: DECIMAL_TARGET.fatG };
+    // The TARGET kcal sits 5 % toward the edge, so the day's kcal is well inside
+    // its daily TARGET range and only the macro-energy bound is at its edge.
+    const cases = [
+      ["110 %", 110, 105, +1],
+      ["90 %", 90, 95, -1],
+    ] as const;
+
+    it("has the energy it claims", () => {
+      expect(num(energy)).toBe(1235.3143);
+    });
+
+    it.each(cases)("accepts kcal exactly at %s of E", (_label, percent, targetPercent) => {
+      const target = toValues({ ...macros, kcal: percentOf(energy, targetPercent) });
+      const day = toValues({ ...macros, kcal: percentOf(energy, percent) });
+      expect(verdict(decimalWeek(day, target), target)).toBe("accepted");
+    });
+
+    it.each(cases)("still rejects kcal a meaningful step outside %s of E", (_label, percent, targetPercent, outward) => {
+      const target = toValues({ ...macros, kcal: percentOf(energy, targetPercent) });
+      const day = nudge(toValues({ ...macros, kcal: percentOf(energy, percent) }), "kcal", outward * MEANINGFUL);
+      expect(verdict(decimalWeek(day, target), target)).toBe("rejected");
+    });
+
+    it.each(cases)("rejects kcal even 1e-12 outside %s of E", (_label, percent, targetPercent, outward) => {
+      const target = toValues({ ...macros, kcal: percentOf(energy, targetPercent) });
+      const day = nudge(toValues({ ...macros, kcal: percentOf(energy, percent) }), "kcal", outward * TINY);
+      expect(verdict(decimalWeek(day, target), target)).toBe("rejected");
+    });
+  });
+
+  it("accepts every exact boundary across a sweep of decimal targets, where plain doubles failed", () => {
+    let plainFailures = 0;
+    for (let index = 0; index < 250; index += 1) {
+      // A decimal kcal in the supported range, and macros that carry exactly its
+      // energy: protein 25 %, carbs 52.5 %, fat 22.5 % of the kcal.
+      const kcal = dec(`${1200 + index * 19}.${String((index * 7919 + 13) % 1_000_000).padStart(6, "0")}`);
+      const decimalTarget: DecimalValues = {
+        kcal,
+        proteinG: times(kcal, 625, 4),
+        carbsG: times(kcal, 13125, 5),
+        fatG: times(kcal, 25, 3),
+      };
+      const targetValues = toValues(decimalTarget);
+      const scaled = (percent: number): NutritionValues =>
+        toValues({
+          kcal: percentOf(decimalTarget.kcal, percent),
+          proteinG: percentOf(decimalTarget.proteinG, percent),
+          carbsG: percentOf(decimalTarget.carbsG, percent),
+          fatG: percentOf(decimalTarget.fatG, percent),
+        });
+
+      for (const percent of [90, 110]) {
+        const day = scaled(percent);
+        if (!plainWithin(day.kcal, targetValues.kcal, 90, 110)) plainFailures += 1;
+        expect(verdict(decimalWeek(day, targetValues), targetValues), `${num(kcal)} at ${percent} %`).toBe("accepted");
+      }
+      for (const percent of [95, 105]) {
+        expect(verdict(everyDay(scaled(percent)), targetValues), `${num(kcal)} averaging ${percent} %`).toBe("accepted");
+      }
+    }
+    // The sweep is only evidence if the old comparison failed somewhere in it.
+    expect(plainFailures).toBeGreaterThan(0);
+  });
+});
+
+describe("a zero TARGET nutrient is decided exactly, with no slack", () => {
+  // A manual-target v1 target can carry 0 g carbs when protein and fat use all the energy.
+  const zeroCarbs = { kcal: 1200, proteinG: 225, carbsG: 0, fatG: 300 / 9 };
+
+  it("accepts exactly zero", () => {
+    expect(verdict(everyDay(zeroCarbs), zeroCarbs)).toBe("accepted");
+  });
+
+  it.each([Number.MIN_VALUE, 1e-300, 1e-12, 1e-6, 0.1])("rejects %s g against a zero target, daily and on average", (carbsG) => {
+    expect(verdict(week({ ...zeroCarbs, carbsG }), zeroCarbs)).toBe("rejected");
+    expect(verdict(everyDay({ ...zeroCarbs, carbsG }), zeroCarbs)).toBe("rejected");
+  });
+});

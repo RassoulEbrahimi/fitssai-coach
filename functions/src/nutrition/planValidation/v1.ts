@@ -22,9 +22,15 @@ import type { PlanValidationInput, PlanValidationPolicy } from "./types";
  *
  * Checks are multiplications, never divisions: `actual·100` against
  * `percent·reference`, and the week's average as `total·100` against
- * `percent·reference·days`. So a reference of zero admits exactly zero, and a
- * boundary value that is exact in binary (a whole-number target) is not moved
- * by rounding.
+ * `percent·reference·days`. A reference of exactly zero admits exactly zero
+ * and nothing else.
+ *
+ * Every bound is inclusive in exact arithmetic, but the numbers compared are
+ * IEEE-754 doubles: a decimal such as 1235.315625 · 90 % lands a few units in
+ * the last place either side of the exact product. So each comparison allows
+ * `ROUNDOFF_SLACK` — a relative slack of machine size, scaled to the two sides
+ * being compared — and nothing more. It widens no range in any meaningful
+ * sense, and no value is ever rounded.
  *
  * Only the verdict leaves the policy. No ratio, reason or failing check is
  * returned, and so none is ever persisted.
@@ -64,9 +70,34 @@ const KCAL_PER_G_FAT = 9;
 
 const NUTRIENTS: readonly Nutrient[] = ["kcal", "proteinG", "carbsG", "fatG"];
 
-/** `actual` lies within `range` percent of `reference`, inclusive. */
-const within = (actual: number, reference: number, range: PercentRange) =>
-  actual * 100 >= range.min * reference && actual * 100 <= range.max * reference;
+/**
+ * The relative slack of one comparison: 64 · `Number.EPSILON` ≈ 1.4e-14.
+ *
+ * A side of a comparison is a sum of at most 35 non-negative values (five
+ * meals a day for seven days), or three macro products, times one or two
+ * factors. Each value is already a rounded decimal, and each addition or
+ * multiplication adds at most half an epsilon of relative error. That is
+ * under 40 half-epsilons a side, and the slack is 128. It is eight orders of
+ * magnitude below one part in a million, so it absorbs representation error
+ * only and changes no signed range.
+ */
+export const ROUNDOFF_SLACK = 64 * Number.EPSILON;
+
+/** `a ≥ b`, allowing only the roundoff of the larger magnitude. */
+const atLeast = (a: number, b: number) => a >= b - ROUNDOFF_SLACK * Math.max(Math.abs(a), Math.abs(b));
+
+/** `a ≤ b`, allowing only the roundoff of the larger magnitude. */
+const atMost = (a: number, b: number) => a <= b + ROUNDOFF_SLACK * Math.max(Math.abs(a), Math.abs(b));
+
+/**
+ * `actual` lies within `range` percent of `reference`, inclusive. A zero
+ * reference is decided exactly: only zero lies within any percent of it, and
+ * no slack is applied, so a positive value never passes against zero.
+ */
+const within = (actual: number, reference: number, range: PercentRange) => {
+  if (reference === 0) return actual === 0;
+  return atLeast(actual * 100, range.min * reference) && atMost(actual * 100, range.max * reference);
+};
 
 const macroEnergy = (values: NutritionValues) =>
   values.proteinG * KCAL_PER_G_PROTEIN + values.carbsG * KCAL_PER_G_CARBS + values.fatG * KCAL_PER_G_FAT;
