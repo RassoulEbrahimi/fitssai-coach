@@ -99,7 +99,9 @@ Remaining sequence:
    configuration, including the timeout/retry/lease relationship (done in
    NUT-12C.2). This is not required for read-only UI.
 2. NUT-13: authenticated browser/phone E2E against an approved environment,
-   including recording and replacement with real server responses. Next.
+   including recording and replacement with real server responses. NUT-13A
+   (harness), NUT-13B-FIX-01 and NUT-13B (automated validation) are done.
+   Still open: the physical phone check and the 320 px label polish.
 3. NUT-14: separately reviewed production enablement and explicit setup/
    generation actions — the only slice that may turn on the gate and the
    capability flags, after the IAM prerequisite and the privacy/legal sign-off.
@@ -156,6 +158,15 @@ Do not remove V2 documents, queued entry intents or deployed rules.
   ineligible states. This is visual QA, not authenticated production E2E.
 - NUT-13A adds a local authenticated E2E harness: the real app against the
   Auth, Firestore and Functions emulators of the demo project, with seeded
-  populated V2 accounts ([nutrition-e2e.md](nutrition-e2e.md)). NUT-13 is not
-  complete: recording, persistence, replacement, offline reconciliation,
-  account isolation and narrow layouts are validated in NUT-13B on it.
+  populated V2 accounts ([nutrition-e2e.md](nutrition-e2e.md)).
+- NUT-13B validates the product on that harness: recording, persistence,
+  replacement and undo, the recording/replacement lock, offline replay,
+  one-browser account switching, eligibility and 320/375/390 px layouts.
+  - The defect it found is fixed. A reload right after a change used to
+    restore the stale persisted read, and a recording after a replacement
+    could store the base meal. NUT-13B-FIX-01 (PR #128) is merged.
+  - The automated validation passes headless, headed and LAN-routed.
+  - Known, non-functional: the "Ausgelassen" label is clipped at 320 px. It
+    is tracked by an expected-failure diagnostic.
+  - The physical phone check is still pending. It needs a secure-context
+    origin; see nutrition-e2e.md. **NUT-13 is not passed.**
