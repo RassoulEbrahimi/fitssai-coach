@@ -66,10 +66,19 @@ its first target or AI meal plan from this release. Existing legacy plans
 are not V2 plans and are not migrated or substituted. Do not seed test
 fixtures into production to make the page look populated.
 
+Update (NUT-12C.1): the deterministic TargetPolicy v1 (`calculated-target`,
+`manual-target`), PlanValidationPolicy v1 (`target-alignment`) and initial
+slot mapping v1 are now signed and configured server-side, so a fresh adult
+account can set its first TARGET. The target setup shows the new
+`TARGET_INFEASIBLE` refusal neutrally. Production AI is still off:
+`NUTRITION_AI_PRODUCTION_ENABLED = false`, no Vertex deployment, no Nutrition
+quota, and both capability flags remain `false`.
+
 Remaining sequence:
 
-1. NUT-12C: sign off policies and production configuration, including the
-   timeout/retry/lease relationship. This is not required for read-only UI.
+1. NUT-12C: sign off policies (done in NUT-12C.1) and production
+   configuration, including the timeout/retry/lease relationship (NUT-12C.2).
+   This is not required for read-only UI.
 2. NUT-13: authenticated browser/phone E2E against an approved environment,
    including recording and replacement with real server responses.
 3. NUT-14: separately reviewed production enablement and explicit setup/

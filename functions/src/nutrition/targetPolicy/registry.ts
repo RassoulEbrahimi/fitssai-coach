@@ -1,17 +1,22 @@
 import type { NutritionTargetMode } from "../../../../shared/nutrition";
 import type { TargetPolicy, TargetPolicyRegistry } from "./types";
+import { CALCULATED_TARGET_POLICY_V1, MANUAL_TARGET_POLICY_V1 } from "./v1";
 
 /**
- * The production target policies.
+ * The production target policies: exactly one per mode, each signed off.
  *
- * EMPTY, deliberately. No target formula (calculated) and no manual target
- * bound (manual) has been signed off, so neither mode has a policy and the
- * deployed callable answers `TARGET_POLICY_NOT_CONFIGURED` for both. A policy
- * is added here only together with its sign-off — never a guessed default,
- * and never a test fixture (those live in `src/testing/`, which is not built
- * or deployed).
+ *   calculated  `calculated-target` v1
+ *   manual      `manual-target` v1
+ *
+ * A policy is added or replaced here only together with its sign-off — never
+ * a guessed default, and never a test fixture (those live in `src/testing/`,
+ * which is not built or deployed). A changed rule is a new version, so every
+ * stored target keeps naming the rule that computed it.
  */
-export const PRODUCTION_TARGET_POLICIES: readonly TargetPolicy[] = Object.freeze([]);
+export const PRODUCTION_TARGET_POLICIES: readonly TargetPolicy[] = Object.freeze([
+  CALCULATED_TARGET_POLICY_V1,
+  MANUAL_TARGET_POLICY_V1,
+]);
 
 /**
  * A registry over `policies`, one per mode. Throws on a second policy for the
@@ -26,5 +31,5 @@ export const createTargetPolicyRegistry = (policies: readonly TargetPolicy[]): T
   return { get: (mode) => byMode.get(mode) ?? null };
 };
 
-/** The registry the deployed callable uses. Resolves nothing today. */
+/** The registry the deployed callable uses. */
 export const productionTargetPolicyRegistry: TargetPolicyRegistry = createTargetPolicyRegistry(PRODUCTION_TARGET_POLICIES);

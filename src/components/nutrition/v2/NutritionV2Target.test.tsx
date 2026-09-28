@@ -9,8 +9,9 @@ import "@/lib/i18n";
 
   Target values are labelled as the target and nothing else. Rendering and
   opening the setup call nothing and create nothing. Confirming saves the
-  changed profile answers first and only then asks the server — whose real
-  production answer today is TARGET_POLICY_NOT_CONFIGURED, shown neutrally.
+  changed profile answers first and only then asks the server. Its refusals
+  (TARGET_POLICY_NOT_CONFIGURED, and since NUT-12C.1 TARGET_INFEASIBLE) are
+  shown neutrally.
 */
 
 const store = vi.hoisted(() => ({ docs: new Map<string, unknown>() }));
@@ -320,6 +321,25 @@ describe("the target section", () => {
     expect(message).toHaveTextContent("Für dieses Ziel fehlen noch Angaben: Größe.");
     expect(message).toHaveTextContent("Bitte prüfe diese Angaben: Aktivitätslevel.");
     expect(message).not.toHaveTextContent(/172|68|female|moderatelyActive/);
+  });
+
+  it("says TARGET_INFEASIBLE neutrally, keeps the saved profile and stays open", async () => {
+    // NUT-12C.1: valid, complete answers the signed policy supports no target for.
+    callable.callNutritionSetTarget.mockRejectedValue(new NutritionTargetCallError("TARGET_INFEASIBLE"));
+    renderSection();
+    const dialog = await openSetup();
+    fireEvent.change(within(dialog).getByLabelText("Gewicht (kg)"), { target: { value: "70" } });
+    submitSetup(dialog);
+
+    const message = await within(dialog).findByTestId("nutrition-v2-target-setup-message");
+    expect(message).toHaveAttribute("data-outcome", "infeasible");
+    expect(message).toHaveAttribute("role", "status");
+    expect(message).toHaveTextContent("Mit diesen Angaben lässt sich kein unterstütztes Tagesziel festlegen.");
+    expect(message).toHaveTextContent("Deine Profilangaben wurden gespeichert.");
+    expect(message).not.toHaveTextContent(/1200|6000|1\.200|6\.000|Fehler|fehlgeschlagen/);
+    expect(message.className).not.toMatch(/destructive/);
+    expect(screen.getByRole("dialog", { name: "Ziel festlegen" })).toBeInTheDocument();
+    expect([...store.docs.keys()]).toEqual([]);
   });
 
   it("refuses invalid answers locally and saves nothing", async () => {

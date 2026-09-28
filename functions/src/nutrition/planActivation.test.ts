@@ -211,10 +211,18 @@ describe("a successor", () => {
  * ------------------------------------------------------------------ */
 
 describe("validation", () => {
-  it("answers PLAN_VALIDATION_POLICY_NOT_CONFIGURED with the production registry, and writes nothing", async () => {
-    const { activate, docs } = setup({}, { policies: "production" });
+  it("answers PLAN_VALIDATION_POLICY_NOT_CONFIGURED with no policy in force, and writes nothing", async () => {
+    const { activate, docs } = setup({}, { policies: [] });
     const before = docs();
     expect(await code(activate())).toBe("PLAN_VALIDATION_POLICY_NOT_CONFIGURED");
+    expect(docs()).toEqual(before);
+  });
+
+  it("runs target-alignment v1 with the production registry: a week far from its target is PLAN_VALIDATION_FAILED, nothing written", async () => {
+    // The fixture week plans about 300 kcal a day against a 1234.5 kcal target.
+    const { activate, docs } = setup({}, { policies: "production" });
+    const before = docs();
+    expect(await code(activate())).toBe("PLAN_VALIDATION_FAILED");
     expect(docs()).toEqual(before);
   });
 

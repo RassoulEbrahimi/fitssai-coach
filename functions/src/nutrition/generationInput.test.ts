@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { parseNutritionProfile, type NutritionSlotId } from "../../../shared/nutrition";
+import { NUTRITION_SLOT_IDS, parseNutritionProfile, type NutritionSlotId } from "../../../shared/nutrition";
 import {
   buildNutritionGenerationInput,
   computeNutritionGenerationFingerprint,
@@ -176,9 +176,45 @@ describe("the payload fingerprint", () => {
   });
 });
 
-describe("first-plan slots", () => {
-  it("have no production mapping: which snack two, three or four meals mean is not signed off", () => {
-    for (const meals of [null, 1, 2, 3, 4, 5]) expect(productionInitialSlotConfiguration.slotsFor(meals)).toBeNull();
+describe("first-plan slots (initial slot mapping v1)", () => {
+  it.each([
+    [1, ["dinner"]],
+    [2, ["breakfast", "dinner"]],
+    [3, ["breakfast", "lunch", "dinner"]],
+    [4, ["breakfast", "lunch", "snack_1", "dinner"]],
+    [5, ["breakfast", "lunch", "snack_1", "dinner", "snack_2"]],
+  ] as const)("maps %s meal(s) a day to exactly %j", (meals, slots) => {
+    const mapped = productionInitialSlotConfiguration.slotsFor(meals);
+    expect(mapped).toEqual(slots);
+    expect(Object.isFrozen(mapped)).toBe(true);
+    // In canonical day order, from the unchanged canonical vocabulary.
+    expect(NUTRITION_SLOT_IDS.filter((slotId) => mapped?.includes(slotId))).toEqual(slots);
+  });
+
+  it.each([null, undefined, 0, -1, 6, 7, 2.5, 3.0000001, Number.NaN, Number.POSITIVE_INFINITY, "3", "three", [3], {}])(
+    "has no mapping for %p — no count is assumed",
+    (meals) => {
+      expect(productionInitialSlotConfiguration.slotsFor(meals as number | null)).toBeNull();
+    }
+  );
+
+  it("does not answer for inherited keys", () => {
+    for (const key of ["constructor", "toString", "__proto__"]) {
+      expect(productionInitialSlotConfiguration.slotsFor(key as unknown as number)).toBeNull();
+    }
+  });
+
+  it("is frozen, and a caller cannot change the mapping through a result", () => {
     expect(Object.isFrozen(productionInitialSlotConfiguration)).toBe(true);
+    const three = productionInitialSlotConfiguration.slotsFor(3) as NutritionSlotId[];
+    expect(() => three.push("snack_2")).toThrow();
+    expect(productionInitialSlotConfiguration.slotsFor(3)).toEqual(["breakfast", "lunch", "dinner"]);
+  });
+
+  it("builds a valid generation input from each mapping", () => {
+    for (const meals of [1, 2, 3, 4, 5]) {
+      const slotOrder = productionInitialSlotConfiguration.slotsFor(meals) ?? [];
+      expect(build({ slotOrder }).slotOrder).toEqual(slotOrder);
+    }
   });
 });

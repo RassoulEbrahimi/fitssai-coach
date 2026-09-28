@@ -19,8 +19,8 @@ import { PRODUCTION_TARGET_POLICIES, productionTargetPolicyRegistry } from "./ta
   nothing can use it. The backend gate is a reviewed `false` that no client,
   environment or registry can move; the deployed callable passes exactly it;
   there is no Nutrition key, secret, quota, log, exclusion vocabulary or
-  replacement generator; every policy registry and the first-plan slots stay
-  empty; the model id and the SDK stay on the server; and no provider payload
+  replacement generator; the signed deterministic policies and first-plan
+  slots (NUT-12C.1) configure no generator; the model id and the SDK stay on the server; and no provider payload
   is persisted.
 */
 
@@ -109,13 +109,18 @@ describe("production stays unconfigured behind the gate", () => {
     expect(productionNutritionGenerationProviderRegistry.current()).toBeNull();
   });
 
-  it("keeps both policy registries and the first-plan slots empty", () => {
-    expect(PRODUCTION_TARGET_POLICIES).toEqual([]);
-    expect(productionTargetPolicyRegistry.get("manual")).toBeNull();
-    expect(productionTargetPolicyRegistry.get("calculated")).toBeNull();
-    expect(PRODUCTION_PLAN_VALIDATION_POLICIES).toEqual([]);
-    expect(productionPlanValidationPolicyRegistry.current()).toBeNull();
-    for (const mealsPerDay of [null, 1, 2, 3, 4, 5, 6]) expect(productionInitialSlotConfiguration.slotsFor(mealsPerDay)).toBeNull();
+  it("configures only the signed deterministic policies and first-plan slots (NUT-12C.1), not the provider", () => {
+    expect(PRODUCTION_TARGET_POLICIES).toHaveLength(2);
+    expect(productionTargetPolicyRegistry.get("manual")).toMatchObject({ id: "manual-target", version: 1 });
+    expect(productionTargetPolicyRegistry.get("calculated")).toMatchObject({ id: "calculated-target", version: 1 });
+    expect(PRODUCTION_PLAN_VALIDATION_POLICIES).toHaveLength(1);
+    expect(productionPlanValidationPolicyRegistry.current()).toMatchObject({ id: "target-alignment", version: 1 });
+    for (const mealsPerDay of [1, 2, 3, 4, 5]) expect(productionInitialSlotConfiguration.slotsFor(mealsPerDay)).toHaveLength(mealsPerDay);
+    for (const mealsPerDay of [null, 0, 6]) expect(productionInitialSlotConfiguration.slotsFor(mealsPerDay)).toBeNull();
+    // None of that configures generation: no deployment, so no generator.
+    expect(PRODUCTION_NUTRITION_VERTEX_DEPLOYMENT).toBeNull();
+    expect(productionNutritionGenerationProviderRegistry.current()).toBeNull();
+    expect(NUTRITION_AI_PRODUCTION_ENABLED).toBe(false);
   });
 
   it("chooses no Vertex location or project anywhere in code — no region default", () => {

@@ -195,9 +195,10 @@ signed-in client → callable → verified auth context → response
 
 The capability flags live in code, not in a comment. Each flipped when the
 capability behind it shipped, not before — `planGeneration` in PR55 and
-`weeklySummaryAI` in PR58. `nutritionTargets` stays false while no target
-policy is signed off (see "Nutrition V2 targets"), and `nutritionGeneration`
-while there is no Nutrition generation.
+`weeklySummaryAI` in PR58. `nutritionTargets` stays false even though the
+signed target policies are registered (NUT-12C.1, see "Nutrition V2
+targets"): it moves only in its own reviewed enablement change.
+`nutritionGeneration` stays false while there is no Nutrition generation.
 
 ## Shared workout-plan schema
 
@@ -556,8 +557,8 @@ the browser bundle and readable by every visitor. Tests fail if one appears.
 |---|---|
 | Four-week workout-plan generation | **Live** (PR55) |
 | Weekly review + coaching recommendation | **Live** (PR58, hardened in PR59) — metrics and the recommendation category are deterministic; the model only rephrases them, on an explicit click |
-| Nutrition targets | Plumbing only (NUT-08) — `nutritionSetTarget` is deployed, but no target policy is signed off, so it answers `TARGET_POLICY_NOT_CONFIGURED`; the V2 UI is unreachable |
-| Nutrition generation | Off (NUT-11 infrastructure, NUT-12B provider code) — `nutritionRequestPlan` and its lifecycle are deployed and a Vertex AI adapter exists, but the backend gate `NUTRITION_AI_PRODUCTION_ENABLED` is `false`, so a new request answers `NUTRITION_AI_DISABLED` and writes nothing; behind the gate there is still no deployment configuration, plan-validation policy or first-plan slot mapping |
+| Nutrition targets | Deterministic, no AI (NUT-08 plumbing, NUT-12C.1 policies) — `nutritionSetTarget` runs the signed TargetPolicy v1 (`calculated-target` v1, `manual-target` v1); the capability flag `nutritionTargets` is still `false` |
+| Nutrition generation | Off (NUT-11 infrastructure, NUT-12B provider code) — `nutritionRequestPlan` and its lifecycle are deployed and a Vertex AI adapter exists, but the backend gate `NUTRITION_AI_PRODUCTION_ENABLED` is `false`, so a new request answers `NUTRITION_AI_DISABLED` and writes nothing; behind the gate there is still no deployment configuration. The signed plan-validation policy and first-plan slot mapping (NUT-12C.1) are configured, but they enable no generation |
 | Exercise suggestions in Add Workout | Not implemented — that tab offers exercises for one day, which a four-week generator is not |
 | AI usage statistics in Profile | Not available — the authoritative log is server-only by design |
 
@@ -572,14 +573,34 @@ refused. The handler (`functions/src/nutrition/setTarget.ts`) reads
 policy for the mode, checks the policy's required profile fields and
 validates the policy's result as canonical `NutritionValues`.
 
-**The production policy registry is empty**
-(`functions/src/nutrition/targetPolicy/registry.ts`). No target formula and no
-manual target bound has been signed off, so the deployed callable answers
-`TARGET_POLICY_NOT_CONFIGURED` for both modes and writes nothing. Test-only
-fixture policies live in `functions/src/testing/`, which the build excludes;
-a boundary test proves no production module imports them.
+**TargetPolicy v1 is configured (NUT-12C.1).** The production registry
+(`functions/src/nutrition/targetPolicy/registry.ts`) holds exactly one signed
+policy per mode; every constant lives server-side in
+`functions/src/nutrition/targetPolicy/v1.ts`, and the browser neither computes
+nor checks a target.
 
-With a policy, one transaction creates the immutable
+| | `calculated-target` v1 | `manual-target` v1 |
+|---|---|---|
+| Required profile fields | `age`, `height`, `weight`, `biologicalSex`, `activityLevel`, `fitnessGoal` | `manualTargetKcal`, `weight`, `fitnessGoal` |
+| TARGET kcal | Mifflin–St Jeor RMR (male `+5`, female `−161`) × activity (1.20 / 1.375 / 1.55 / 1.725 / 1.90) × goal (loseFat −15 %, gainMuscle +10 %, maintain and improveCardio ±0 %) | the answered `manualTargetKcal` |
+| Protein | 1.8 g/kg for gainMuscle and loseFat; 1.6 g/kg for maintain and improveCardio | same |
+| Fat | 25 % of the TARGET kcal at 9 kcal/g | same |
+| Carbohydrate | the remaining energy at 4 kcal/g (protein 4 kcal/g) | same |
+
+Feasibility is refused, never clamped: the TARGET kcal must be 1200–6000
+inclusive, carbohydrate energy must not be negative, and `biologicalSex =
+notSpecified` has no calculated equation (no neutral formula, no stand-in —
+a manual target needs no sex or activity). Each is the stable refusal
+`TARGET_INFEASIBLE` (`failed-precondition`, no details), raised only from the
+policy's typed `TargetInfeasibleError`; any other policy exception stays
+`INTERNAL`. Values are stored exactly as computed — no rounding or
+truncation. Age eligibility stays the global NUT-03 adult rule. An empty
+registry still answers `TARGET_POLICY_NOT_CONFIGURED`. Test-only fixture
+policies live in `functions/src/testing/`, which the build excludes; a
+boundary test proves no production module imports them, and another that
+the formula's constants appear in the v1 module alone.
+
+One transaction creates the immutable
 `users/{uid}/nutrition_v2_targets/{id}` document (`create`, never an
 overwrite) and creates or updates `users/{uid}/nutrition_v2_state/current`:
 the target pointer, `revision` +1 (the new target's `effectiveOrder`) and a
@@ -591,7 +612,8 @@ values — which the client compares to show a stale target. Nothing is ever
 recalculated automatically.
 
 Stable error codes: `NOT_ELIGIBLE`, `TARGET_POLICY_NOT_CONFIGURED`,
-`PROFILE_INCOMPLETE` (field names only), `INVALID_REQUEST`, `INTERNAL`.
+`PROFILE_INCOMPLETE` (field names only), `TARGET_INFEASIBLE`,
+`INVALID_REQUEST`, `INTERNAL`.
 No secret, provider, quota, `_ai_operations` record or log is involved.
 
 ## Nutrition V2 plan persistence
@@ -624,13 +646,27 @@ otherwise) and refuses a week that would start before today in Berlin
 `repeatPlan` next to `setTarget`; a repeated request id returns the plan it
 created and writes nothing. It is online only.
 
-**The production plan-validation registry is empty**
-(`functions/src/nutrition/planValidation/registry.ts`). No plan tolerance has
-been signed off, so the deployed callable answers
-`PLAN_VALIDATION_POLICY_NOT_CONFIGURED` once its preconditions hold and
-writes nothing. Structural validity is not approval. Test-only fixture
-policies live in `functions/src/testing/`, which the build excludes.
-`nutritionGeneration` stays `false`.
+**PlanValidationPolicy v1 is configured (NUT-12C.1).** The production
+registry (`functions/src/nutrition/planValidation/registry.ts`) holds exactly
+`target-alignment` v1 (`functions/src/nutrition/planValidation/v1.ts`). It
+sees only structurally valid content and its captured target; a day's values
+are the sums over its meals, and every range is inclusive:
+
+| Check | kcal | protein | fat | carbs |
+|---|---|---|---|---|
+| Each day against the TARGET | 90–110 % | 90–120 % | 80–120 % | 80–120 % |
+| Seven-day average against the TARGET | 95–105 % | 95–110 % | 90–110 % | 90–110 % |
+| Each day's kcal against its macro energy (`protein·4 + carbs·4 + fat·9`) | 90–110 % | | | |
+
+Any failed check is the existing rejected verdict (`PLAN_VALIDATION_FAILED`);
+only the existing provenance `{ policy: { id, version }, outcome }` is
+persisted — no ratio, reason or detail. It certifies TARGET ALIGNMENT only:
+no per-meal distribution, sugar, fibre, micronutrient, food-quality,
+medical, allergen or diet-correctness rule. Structural validity alone is
+still not approval, and with no policy in force the handler answers
+`PLAN_VALIDATION_POLICY_NOT_CONFIGURED`. Test-only fixture policies live in
+`functions/src/testing/`, which the build excludes. `nutritionGeneration`
+stays `false`.
 
 `state.activePlanId` is the latest activated plan, which may start later than
 today. The client shows a date from the plan that OWNS it — one query for the
@@ -648,8 +684,15 @@ AI gate (`NUTRITION_AI_PRODUCTION_ENABLED = false`, NUT-12B, see below) with
 `NUTRITION_AI_DISABLED`, before the generator registry is even asked. Behind
 the gate, the production generator registry
 (`functions/src/nutrition/providers/productionRegistry.ts`) has no deployment
-(`GENERATION_PROVIDER_NOT_CONFIGURED`), and the plan-validation registry and
-first-plan slot configuration (`generationInput.ts`) are empty. A refused new
+(`GENERATION_PROVIDER_NOT_CONFIGURED`). The signed plan-validation policy and
+the v1 first-plan slot mapping (`generationInput.ts`, NUT-12C.1) are
+configured, but configure no generator. The mapping gives a FIRST plan its
+slots from the answered meals per day — 1 `dinner`; 2 `breakfast`, `dinner`;
+3 `breakfast`, `lunch`, `dinner`; 4 adds `snack_1` before `dinner`; 5 adds
+`snack_2` after it — and anything else (missing, not a whole number, out of
+range) has no mapping (`GENERATION_SLOTS_NOT_CONFIGURED`; three meals are
+never assumed). A regeneration keeps its base plan's `slotOrder` exactly and
+never consults the mapping. A refused new
 request writes nothing — no request, no state pointer, no plan, no operation
 record, no quota. An existing request is answered from what is stored — a
 finished one replays, a live one is reported as running — without needing the
@@ -705,9 +748,9 @@ and the Vertex project, location and data-processing terms are not signed off.
 | Operational values | Output cap, thinking level, per-attempt timeout, transport attempts (ceiling 3) and the claim lease are required configuration with **no production value chosen**; the Function timeout is unchanged |
 | Model capability limits | Validated as configuration, before any client is built (a setting outside them is `GENERATION_PROVIDER_NOT_CONFIGURED`, never a paid call that fails): thinking level `LOW`, `MEDIUM`, `HIGH` or none (`null`: no `thinkingConfig` is sent and the model default, `MEDIUM`, applies) — `gemini-3.8-flash` has no `MINIMAL`; `maxOutputTokens` 1 … 65,536 (`NUTRITION_GEMINI_MAX_OUTPUT_TOKENS`). Ceilings only — not the production values |
 | API compatibility (NUT-12B.1) | `gemini-3.8-flash` takes reasoning control through `thinkingLevel` only. The Nutrition request sends **no** custom `temperature`, no `topP`/`topK`, no `candidateCount` (one response is the API's normal behaviour) and no frequency/presence penalties; none of them is a Nutrition setting, and the strict configuration schema refuses a stale deployment that still carries one (`GENERATION_PROVIDER_NOT_CONFIGURED`, before any client is built). The request config is exactly `systemInstruction`, `maxOutputTokens`, `thinkingConfig` (only when a level is configured), `responseMimeType`, `responseJsonSchema` and `abortSignal`; structured JSON output is still used. A future model that supports custom sampling reintroduces it explicitly, with the migration. **Nutrition only:** Training's `gemini-3.7-flash` config (`GENERATION_CONFIG`, above) is unchanged |
-| TargetPolicy | Unconfigured — `PRODUCTION_TARGET_POLICIES = []` |
-| PlanValidationPolicy | Unconfigured — `PRODUCTION_PLAN_VALIDATION_POLICIES = []` |
-| First-plan slots | Unconfigured — `productionInitialSlotConfiguration` maps nothing |
+| TargetPolicy | Configured (NUT-12C.1) — `calculated-target` v1 and `manual-target` v1; deterministic, no AI |
+| PlanValidationPolicy | Configured (NUT-12C.1) — `target-alignment` v1; deterministic, no AI |
+| First-plan slots | Configured (NUT-12C.1) — initial slot mapping v1 for 1–5 meals a day |
 | Quota / logs | No Nutrition quota action or value; no Nutrition `_ai_logs` |
 | Production AI calls | **None possible**: the gate is off, and behind it there is no deployment |
 
@@ -760,9 +803,10 @@ work.
 Still pending (NUT-12C and later): the Vertex project and location, data
 processing and the legal basis, consent and privacy copy, the operational
 values (`maxOutputTokens`, `thinkingLevel`, the provider timeout, transport
-attempts, the operation lease and the Function timeout), the target and
-plan-validation policies, first-plan slots, quota, AI logging, exclusions and
-replacement suggestions.
+attempts, the operation lease and the Function timeout; NUT-12C.2), quota, AI
+logging, exclusions and replacement suggestions. The deterministic target and
+plan-validation policies and the first-plan slots were signed in NUT-12C.1;
+they do not enable production AI.
 
 
 

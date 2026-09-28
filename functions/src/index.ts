@@ -152,9 +152,9 @@ export const generateWeeklyReview = onCall(
  * `NUTRITION_AI_PRODUCTION_ENABLED` is off, so a new request answers
  * `NUTRITION_AI_DISABLED` before the generator registry is even asked, and
  * writes nothing — no request, no state pointer, no plan, no operation record.
- * Behind the gate, the generator's deployment configuration, the
- * plan-validation registry and the first-plan slot configuration are all still
- * empty.
+ * Behind the gate, the generator's deployment configuration is still empty;
+ * the signed `target-alignment` v1 policy and the v1 first-plan slot mapping
+ * are configured (NUT-12C.1), but configure no generator.
  *
  * No secret (Vertex AI authenticates as the runtime's own identity), no quota
  * and no log: nothing here is paid for.
@@ -189,9 +189,9 @@ export const nutritionRequestPlan = onCall(
  *
  * The request is only `{ mode, requestId }`. The profile is read server-side
  * under the verified uid, and the target and the account state commit in one
- * transaction. The production policy registry is empty — no target formula
- * and no manual bound is signed off — so today this answers
- * `TARGET_POLICY_NOT_CONFIGURED` for both modes and writes nothing.
+ * transaction. The production registry holds the signed TargetPolicy v1
+ * (NUT-12C.1): `calculated-target` v1 and `manual-target` v1. Answers the
+ * policy supports no target for are refused as `TARGET_INFEASIBLE`.
  *
  * No secret, no provider, no quota and no log: nothing here is paid for, and
  * no profile value is recorded anywhere.
@@ -224,10 +224,9 @@ export const nutritionSetTarget = onCall(
  * The request is only `{ requestId }`. The profile, the state, the active
  * plan and the target are read server-side under the verified uid, and the
  * new plan, the superseded old plan and the account state commit in one
- * transaction. The production plan-validation registry is empty — no plan
- * tolerance is signed off — so today this answers
- * `PLAN_VALIDATION_POLICY_NOT_CONFIGURED` once its preconditions hold, and
- * writes nothing.
+ * transaction. The repeated week is validated by the signed
+ * `target-alignment` v1 policy (NUT-12C.1) against the current target, unless
+ * its source was accepted under that same policy version.
  *
  * No secret, no provider, no quota and no log: nothing here is generated.
  */

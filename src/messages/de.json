@@ -698,6 +698,7 @@
           "missing": "Für dieses Ziel fehlen noch Angaben: {{fields}}.",
           "invalid": "Bitte prüfe diese Angaben: {{fields}}.",
           "ineligible": "Ernährungsziele sind nur für Erwachsene mit Altersangabe verfügbar.",
+          "infeasible": "Mit diesen Angaben lässt sich kein unterstütztes Tagesziel festlegen. Prüfe deine Angaben oder wähle den anderen Modus.",
           "failed": "Das Ziel konnte gerade nicht festgelegt werden. Bitte versuche es später noch einmal."
         }
       }

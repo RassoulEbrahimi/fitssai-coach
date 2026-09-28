@@ -148,16 +148,34 @@ export const computeNutritionGenerationFingerprint = async (
 
 /**
  * Which slots a FIRST plan configures. A regeneration keeps its base plan's
- * slots; a first plan has none to keep, and which slots two, three or four
- * meals a day mean — which snack is which — is not signed off. So the mapping
- * is injected, and production has none.
+ * slots exactly and never asks this; a first plan has none to keep. The
+ * mapping is injected, so tests can run with their own.
  */
 export interface NutritionInitialSlotConfiguration {
   /** The slots for the person's answered meals per day (null: not answered), or null when there is no mapping for it. */
   slotsFor(mealsPerDay: number | null): readonly NutritionSlotId[] | null;
 }
 
-/** The deployed configuration: no mapping is signed off, so no first plan can be configured. */
+/**
+ * Initial slot mapping v1 (NUT-12C.1), signed off. The canonical slot
+ * vocabulary is unchanged; each list is in canonical day order.
+ */
+export const INITIAL_SLOT_MAPPING_V1: Readonly<Record<number, readonly NutritionSlotId[]>> = Object.freeze({
+  1: Object.freeze(["dinner"] as const),
+  2: Object.freeze(["breakfast", "dinner"] as const),
+  3: Object.freeze(["breakfast", "lunch", "dinner"] as const),
+  4: Object.freeze(["breakfast", "lunch", "snack_1", "dinner"] as const),
+  5: Object.freeze(["breakfast", "lunch", "snack_1", "dinner", "snack_2"] as const),
+});
+
+/**
+ * The deployed configuration: v1 for exactly 1–5 meals a day. Anything else —
+ * not answered, not a whole number, out of range — has no mapping, and no
+ * count is assumed in its place.
+ */
 export const productionInitialSlotConfiguration: NutritionInitialSlotConfiguration = Object.freeze({
-  slotsFor: () => null,
+  slotsFor: (mealsPerDay: number | null) =>
+    typeof mealsPerDay === "number" && Number.isInteger(mealsPerDay) && Object.hasOwn(INITIAL_SLOT_MAPPING_V1, mealsPerDay)
+      ? INITIAL_SLOT_MAPPING_V1[mealsPerDay]
+      : null,
 });

@@ -30,7 +30,7 @@ import { requireAuth, type AuthContextLike } from "../auth";
 import { NutritionTargetError } from "./errors";
 import { appendNutritionStateRequest } from "./stateLedger";
 import { nodeSha256Hex } from "./sha256";
-import type { TargetPolicyRegistry } from "./targetPolicy/types";
+import { TargetInfeasibleError, type TargetPolicyRegistry } from "./targetPolicy/types";
 
 /**
  * `nutritionSetTarget`: create the caller's next TARGET version.
@@ -45,7 +45,8 @@ import type { TargetPolicyRegistry } from "./targetPolicy/types";
  *   5. an already-applied request id answers with what it created
  *   6. the policy for the mode; none → TARGET_POLICY_NOT_CONFIGURED
  *   7. the policy's required profile fields; unanswered → PROFILE_INCOMPLETE
- *   8. the policy's result, validated as canonical NutritionValues
+ *   8. the policy's result, validated as canonical NutritionValues; the
+ *      policy's deliberate refusal of the answers → TARGET_INFEASIBLE
  *   9. the profile fingerprint (hash and field names; no raw values)
  *  10. one transaction: the new immutable TargetVersion and the account state
  *      (pointer, revision, request ledger) commit together or not at all
@@ -246,7 +247,7 @@ export const handleNutritionSetTarget = async (
     throw internal("Failed to read the Nutrition state.");
   }
 
-  // 6. The signed-off policy for the mode. None is configured in production.
+  // 6. The signed-off policy for the mode.
   const policy = deps.policies.get(mode);
   if (!policy) throw new NutritionTargetError("TARGET_POLICY_NOT_CONFIGURED", `No target policy for ${mode}.`);
   const policyRef = targetPolicyRefSchema.safeParse({ id: policy.id, version: policy.version });
@@ -267,7 +268,11 @@ export const handleNutritionSetTarget = async (
   let output: unknown;
   try {
     output = policy.compute(Object.freeze({ mode, profile: Object.freeze({ ...inputs.values }) }));
-  } catch {
+  } catch (error) {
+    // Only the policy's typed refusal is about the answers; anything else is ours.
+    if (error instanceof TargetInfeasibleError) {
+      throw new NutritionTargetError("TARGET_INFEASIBLE", "The answers do not give a supported target.");
+    }
     throw internal("The target policy failed.");
   }
   const values = nutritionValuesSchema.safeParse(output);

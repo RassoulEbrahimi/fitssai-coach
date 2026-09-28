@@ -18,15 +18,18 @@ import { appendNutritionStateRequest, handleNutritionSetTarget, planSetTargetTra
 import { NutritionTargetError, toNutritionHttpsError } from "./errors";
 import { nodeSha256Hex } from "./sha256";
 import { PRODUCTION_TARGET_POLICIES, productionTargetPolicyRegistry } from "./targetPolicy/registry";
-import type { TargetPolicy } from "./targetPolicy/types";
+import { TargetInfeasibleError, type TargetPolicy } from "./targetPolicy/types";
+import { CALCULATED_TARGET_POLICY_V1, MANUAL_TARGET_POLICY_V1 } from "./targetPolicy/v1";
 
 /*
   NUT-08: `nutritionSetTarget`, end to end against the in-memory Firestore.
 
-  Production has no target policy, so the deployed handler can only answer
-  TARGET_POLICY_NOT_CONFIGURED; that path is pinned first. Everything else is
-  exercised with the TEST FIXTURE policies from src/testing/, whose numbers
-  mean nothing.
+  NUT-12C.1: production now holds the signed v1 policies; their wiring
+  through the handler, and the TARGET_INFEASIBLE refusal, are pinned first.
+  The policies' own arithmetic is pinned in targetPolicy/v1.test.ts. An
+  empty registry still answers TARGET_POLICY_NOT_CONFIGURED. Everything else
+  is exercised with the TEST FIXTURE policies from src/testing/, whose
+  numbers mean nothing.
 */
 
 const UID = "alice";
@@ -98,15 +101,76 @@ afterEach(() => vi.restoreAllMocks());
  * ------------------------------------------------------------------ */
 
 describe("the production registry", () => {
-  it("contains zero policies and resolves neither mode", () => {
-    expect(PRODUCTION_TARGET_POLICIES).toEqual([]);
+  it("holds exactly the signed v1 policies, one per mode", () => {
+    expect(PRODUCTION_TARGET_POLICIES).toEqual([CALCULATED_TARGET_POLICY_V1, MANUAL_TARGET_POLICY_V1]);
     expect(Object.isFrozen(PRODUCTION_TARGET_POLICIES)).toBe(true);
-    expect(productionTargetPolicyRegistry.get("calculated")).toBeNull();
-    expect(productionTargetPolicyRegistry.get("manual")).toBeNull();
+    expect(productionTargetPolicyRegistry.get("calculated")).toBe(CALCULATED_TARGET_POLICY_V1);
+    expect(productionTargetPolicyRegistry.get("manual")).toBe(MANUAL_TARGET_POLICY_V1);
+    expect(PRODUCTION_TARGET_POLICIES.map(({ id, version, mode }) => ({ id, version, mode }))).toEqual([
+      { id: "calculated-target", version: 1, mode: "calculated" },
+      { id: "manual-target", version: 1, mode: "manual" },
+    ]);
   });
 
+  it("creates a calculated target with calculated-target v1 provenance, unrounded", async () => {
+    // Female, 34 y, 172.5 cm, 68.25 kg, moderately active, lose fat:
+    // RMR 1429.625 → × 1.55 × 0.85 = 1883.5309375 kcal; protein 68.25 × 1.8;
+    // fat 25 % of the kcal at 9 kcal/g; carbs the rest at 4 kcal/g.
+    const { call, target } = setup(ADULT_PROFILE, { policies: "production" });
+    expect(await call({ mode: "calculated", requestId: requestId(1) })).toEqual({ ok: true, targetVersionId: "target-1", replay: false });
+
+    const stored = targetVersionSchema.parse({ ...target("target-1"), createdAt: { seconds: 0, nanoseconds: 0 } });
+    expect(stored.policy).toEqual({ id: "calculated-target", version: 1 });
+    expect(stored.mode).toBe("calculated");
+    expect(stored.values.kcal).toBeCloseTo(1883.5309375, 9);
+    expect(stored.values.proteinG).toBeCloseTo(122.85, 9);
+    expect(stored.values.fatG).toBeCloseTo(470.882734375 / 9, 9);
+    expect(stored.values.carbsG).toBeCloseTo(230.31205078125, 9);
+    expect(stored.profileFingerprint.fields).toEqual(["activityLevel", "age", "biologicalSex", "fitnessGoal", "height", "weight"]);
+  });
+
+  it("creates a manual target with manual-target v1 provenance, the kcal exactly as answered", async () => {
+    const { call, target } = setup({ ...ADULT_PROFILE, nutritionTargetMode: "manual" }, { policies: "production" });
+    await call({ mode: "manual", requestId: requestId(1) });
+
+    const stored = targetVersionSchema.parse({ ...target("target-1"), createdAt: { seconds: 0, nanoseconds: 0 } });
+    expect(stored.policy).toEqual({ id: "manual-target", version: 1 });
+    expect(stored.values.kcal).toBe(1950.5);
+    expect(stored.values.proteinG).toBeCloseTo(122.85, 9);
+    expect(stored.profileFingerprint.fields).toEqual(["fitnessGoal", "manualTargetKcal", "weight"]);
+  });
+
+  it("asks only for the fields the signed policy reads", async () => {
+    const { call } = setup({ age: 40 }, { policies: "production" });
+    const calculated = (await refusal(call({ mode: "calculated", requestId: requestId(1) }))) as NutritionTargetError;
+    expect(calculated.code).toBe("PROFILE_INCOMPLETE");
+    expect(calculated.details.missingFields).toEqual(["activityLevel", "biologicalSex", "fitnessGoal", "height", "weight"]);
+
+    const manual = (await refusal(call({ mode: "manual", requestId: requestId(2) }))) as NutritionTargetError;
+    expect(manual.details.missingFields).toEqual(["fitnessGoal", "manualTargetKcal", "weight"]);
+  });
+
+  it.each([
+    ["a manual kcal below 1200", { nutritionTargetMode: "manual", manualTargetKcal: 1199.5 }, "manual"],
+    ["a manual kcal above 6000", { nutritionTargetMode: "manual", manualTargetKcal: 6000.5 }, "manual"],
+    ["a calculated target with biological sex not specified", { biologicalSex: "notSpecified" }, "calculated"],
+    ["protein and fat above the target", { manualTargetKcal: 1200, weight: 130 }, "manual"],
+  ] as const)("answers TARGET_INFEASIBLE for %s, and writes nothing", async (_label, change, mode) => {
+    const { call, nutritionDocs } = setup({ ...ADULT_PROFILE, ...change }, { policies: "production" });
+    const error = await refusal(call({ mode, requestId: requestId(1) }));
+
+    expect((error as NutritionTargetError).code).toBe("TARGET_INFEASIBLE");
+    expect(nutritionDocs()).toEqual([]);
+    const mapped = toNutritionHttpsError(error);
+    expect(mapped.code).toBe("failed-precondition");
+    expect(mapped.message).toBe("TARGET_INFEASIBLE");
+    expect(mapped.details).toBeUndefined();
+  });
+});
+
+describe("an empty registry", () => {
   it.each(["calculated", "manual"] as const)("answers TARGET_POLICY_NOT_CONFIGURED for an adult asking for %s", async (mode) => {
-    const { call, nutritionDocs } = setup(ADULT_PROFILE, { policies: "production" });
+    const { call, nutritionDocs } = setup(ADULT_PROFILE, { policies: [] });
 
     expect(await code(call({ mode, requestId: requestId(1) }))).toBe("TARGET_POLICY_NOT_CONFIGURED");
     // No state, no target: nothing is created for a refusal.
@@ -114,7 +178,7 @@ describe("the production registry", () => {
   });
 
   it("maps the refusal to a neutral failed-precondition with the code as its only message", async () => {
-    const { call } = setup(ADULT_PROFILE, { policies: "production" });
+    const { call } = setup(ADULT_PROFILE, { policies: [] });
     const error = toNutritionHttpsError(await refusal(call({ mode: "manual", requestId: requestId(1) })));
 
     expect(error.code).toBe("failed-precondition");
@@ -122,10 +186,10 @@ describe("the production registry", () => {
     expect(error.details).toBeUndefined();
   });
 
-  it("does not invent required fields for an unsigned formula", async () => {
+  it("does not invent required fields without a policy", async () => {
     // Nothing at all in the profile but an adult age: still NOT_CONFIGURED,
     // never a PROFILE_INCOMPLETE list derived from a guessed formula.
-    const { call } = setup({ age: 40 }, { policies: "production" });
+    const { call } = setup({ age: 40 }, { policies: [] });
     expect(await code(call({ mode: "calculated", requestId: requestId(1) }))).toBe("TARGET_POLICY_NOT_CONFIGURED");
   });
 });
@@ -330,6 +394,29 @@ describe("a new target", () => {
     expect(error.message).toBe("INTERNAL");
     expect(JSON.stringify(error.toJSON())).not.toMatch(/secret|1950/);
     expect(nutritionDocs()).toEqual([]);
+  });
+
+  it("reports only the typed refusal as TARGET_INFEASIBLE; any other throw stays INTERNAL", async () => {
+    const throwing = (thrown: () => unknown): TargetPolicy => ({
+      ...FIXTURE_MANUAL_POLICY,
+      compute: () => {
+        throw thrown();
+      },
+    });
+    const outcome = async (policy: TargetPolicy) => {
+      const { call, nutritionDocs } = setup(ADULT_PROFILE, { policies: [policy] });
+      const result = await code(call({ mode: "manual", requestId: requestId(1) }));
+      expect(nutritionDocs()).toEqual([]);
+      return result;
+    };
+
+    expect(await outcome(throwing(() => new TargetInfeasibleError()))).toBe("TARGET_INFEASIBLE");
+    // Look-alikes are not the refusal: only the class the seam defines counts.
+    const lookAlike = Object.assign(new Error("The answers do not give a supported target."), { name: "TargetInfeasibleError" });
+    expect(await outcome(throwing(() => lookAlike))).toBe("INTERNAL");
+    expect(await outcome(throwing(() => new NutritionTargetError("TARGET_INFEASIBLE", "forged")))).toBe("INTERNAL");
+    expect(await outcome(throwing(() => new RangeError("boom")))).toBe("INTERNAL");
+    expect(await outcome(throwing(() => "TARGET_INFEASIBLE"))).toBe("INTERNAL");
   });
 
   it("gives a policy only its required fields, frozen", async () => {
@@ -652,6 +739,7 @@ describe("toNutritionHttpsError", () => {
     ["NOT_ELIGIBLE", "permission-denied"],
     ["TARGET_POLICY_NOT_CONFIGURED", "failed-precondition"],
     ["PROFILE_INCOMPLETE", "failed-precondition"],
+    ["TARGET_INFEASIBLE", "failed-precondition"],
     ["INTERNAL", "internal"],
   ] as const)("maps %s to %s with the code as message", (errorCode, httpsCode) => {
     const error = toNutritionHttpsError(new NutritionTargetError(errorCode, "internal description"));

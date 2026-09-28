@@ -15,8 +15,8 @@ import type { NutritionPlanContent, TargetVersion } from "../../../../shared/nut
  * persisted; a policy that throws or answers something else is an internal
  * failure, and its message never reaches a client.
  *
- * No policy is registered in production (`./registry`): no plan tolerance has
- * been signed off.
+ * The signed-off policy (NUT-12C.1, `target-alignment` v1) lives in `./v1`
+ * and is registered in `./registry`.
  */
 
 export interface PlanValidationInput {
