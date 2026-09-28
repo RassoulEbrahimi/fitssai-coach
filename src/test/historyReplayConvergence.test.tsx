@@ -218,12 +218,17 @@ describe('History after a queued set write replays', () => {
     render(<QueryProvider><Screen /></QueryProvider>);
     reconnect();
     expect(await meta('20 Min · 1 Satz abgehakt')).toBeInTheDocument();
-    // Served from the restored cache, not read again.
-    expect(firestore.getDocsFromServer).not.toHaveBeenCalled();
+    // Shown from the restored cache at once, but a restored read is not the
+    // authority (NUT-13B-FIX-01): it is read again from the server, which
+    // still has one set while the replay's commit is held.
+    await waitFor(() => expect(firestore.getDocsFromServer).toHaveBeenCalled());
+    expect(await meta('20 Min · 1 Satz abgehakt')).toBeInTheDocument();
+    const readsBeforeCommit = vi.mocked(firestore.getDocsFromServer).mock.calls.length;
 
     releaseCommit();
     expect(await meta('20 Min · 2 Sätze abgehakt')).toBeInTheDocument();
-    expect(firestore.getDocsFromServer).toHaveBeenCalled();
+    // The replay's own invalidation read it again.
+    expect(vi.mocked(firestore.getDocsFromServer).mock.calls.length).toBeGreaterThan(readsBeforeCommit);
     expect(loadQueue()).toEqual([]);
   });
 });

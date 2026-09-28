@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { expect, type BrowserContext, type Page } from "@playwright/test";
-import { E2E_EMULATOR_PORTS, isLocalHostname } from "./emulatorEnv";
+import { E2E_EMULATOR_PORTS, PRODUCTION_PROJECT_ID, isLocalHostname } from "./emulatorEnv";
 import { SEED_SUMMARY_FILE } from "./globalSetup";
 import type { NutritionSeedSummary } from "./seedNutrition";
 
@@ -66,15 +66,51 @@ export const expectEmulatorOnlyTraffic = (log: NetworkLog, { functions }: { func
   if (functions) expect(count(E2E_EMULATOR_PORTS.functions), `Functions emulator requests to ${EMULATOR_HOST}`).toBeGreaterThan(0);
 };
 
+/**
+ * Nothing left the local boundary, and no request to an emulator named the
+ * production project. Checked after every NUT-13B test (`e2e/support/fixtures.ts`).
+ */
+export const expectNoProductionTraffic = (log: NetworkLog) => {
+  expect(log.blocked, "requests to non-local hosts").toEqual([]);
+  const emulatorPorts = new Set(Object.values(E2E_EMULATOR_PORTS).map(String));
+  const naming = [...log.local.entries()]
+    .filter(([hostPort]) => emulatorPorts.has(hostPort.split(":").pop() ?? ""))
+    .flatMap(([, urls]) => urls)
+    .filter((url) => decodeURIComponent(url).includes(PRODUCTION_PROJECT_ID));
+  expect(naming, "emulator requests naming the production project").toEqual([]);
+};
+
 /** Sign in through the app's own login form, against the Auth emulator. */
 export const signIn = async (page: Page, email: string, password: string) => {
   await page.goto("auth/sign-in");
   // The emulator bootstrap marks the document; without it this is not an E2E build.
   await expect(page.locator("html")).toHaveAttribute("data-firebase-emulators", /.+/);
+  await submitSignIn(page, email, password);
+};
+
+const isDashboardUrl = (url: string) => /\/fitssai-coach\/dashboard$/.test(url);
+
+/**
+ * Fill and submit the sign-in form the page is showing, and wait until the
+ * sign-in flow has finished navigating.
+ *
+ * The flow navigates to `/dashboard` twice: once when the auth state arrives,
+ * and again from its success animation's 1.5 s timer. A test that moved on to
+ * `#/nutrition` in between would have that second navigation strip the hash
+ * while the view stays, so a later reload would land on the dashboard. Wait
+ * for the second one (bounded, in case the flow ever navigates only once).
+ */
+export const submitSignIn = async (page: Page, email: string, password: string) => {
   await page.locator("#auth-email").fill(email);
   await page.locator("#auth-password").fill(password);
+  const toDashboard = (timeout: number) =>
+    page.waitForEvent("framenavigated", { predicate: (frame) => frame === page.mainFrame() && isDashboardUrl(frame.url()), timeout });
+  const settled = toDashboard(15_000)
+    .then(() => toDashboard(3_000))
+    .catch(() => undefined);
   await page.locator("form button[type=submit]").click();
   await page.waitForURL(/\/fitssai-coach\/dashboard/);
+  await settled;
 };
 
 /** Open the Nutrition tab of the dashboard. */

@@ -175,6 +175,30 @@ Every browser test aborts and records any request to a non-local host (the
 web font excepted), fails if there is one, and asserts the page reached the
 Auth and Firestore emulators (and Functions where used).
 
+## Reload consistency (NUT-13B-FIX-01)
+
+The account's query cache is persisted to localStorage so the app renders at
+once and offline. It is an acceleration, never the authority:
+
+- **Saves are flushed.** Saves stay throttled to one a second. The waiting
+  snapshot is written synchronously on `pagehide` and when the page becomes
+  hidden, so a reload never restores a snapshot older than memory
+  (`createAccountPersister` in `src/lib/queryPersistence.ts`).
+- **Restored reads are refetched.** Right after restoring, before any query
+  subscribes, every restored read is marked stale without fetching or
+  removing it (`invalidateRestoredQueries`). Online, a mounted query shows
+  the restored data and refetches it. Offline, the fetch waits for the
+  network and the restored data stays.
+
+`e2e/tests/nutrition-reload-cache.e2e.ts` covers reloads right after a
+recording (at commit time and once shown), a replacement (and a recording
+made after it, which must store the replacement), and a profile save. It
+also covers a change made on another device while this device's stored read
+is seconds old. Each test first checks that the stored read is still the old
+one, so the reload really races the save. These tests use the per-test
+reseed and network-guard fixture in `e2e/support/fixtures.ts` and strict
+emulator reads (`e2e/support/nutritionState.ts`).
+
 ## NUT-13A vs NUT-13B
 
 **NUT-13A (this slice):** emulator config, the fail-closed browser and Node
