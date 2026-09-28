@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { HttpsError } from "firebase-functions/v2/https";
 import {
+  NUTRITION_DIETARY_PREFERENCES,
   addNutritionDays,
   generationRequestSchema,
   nutritionPlanSchema,
@@ -33,7 +34,10 @@ import {
   createFakeGoogleGenAiClient,
   fixtureMealIds,
   fixtureVertexReply,
+  type FakeGenAiStep,
 } from "../testing/fakeGoogleGenAiClient";
+import { DEFAULT_QUOTA_LIMITS } from "../quota";
+import { createFirestoreQuotaStore } from "../quota/firestoreQuotaStore";
 import {
   ADULT_PROFILE,
   SOURCE_START,
@@ -49,8 +53,10 @@ import {
 import { NUTRITION_AI_PRODUCTION_ENABLED } from "./aiGate";
 import { NutritionGenerationError, toNutritionHttpsError } from "./errors";
 import { productionInitialSlotConfiguration, type NutritionInitialSlotConfiguration } from "./generationInput";
+import { NUTRITION_GENERATION_QUOTA_ACTION } from "./generationLifecycle";
 import type { NutritionGenerationProviderRegistry } from "./generationProvider";
 import {
+  PRODUCTION_NUTRITION_VERTEX_DEPLOYMENT,
   createNutritionVertexProviderRegistry,
   productionNutritionGenerationProviderRegistry,
 } from "./providers/productionRegistry";
@@ -63,10 +69,12 @@ import { handleNutritionSetTarget } from "./setTarget";
 /*
   NUT-11: `nutritionRequestPlan`, end to end against the in-memory Firestore.
 
-  Production has no generator, so the deployed handler answers
-  GENERATION_PROVIDER_NOT_CONFIGURED and writes nothing; that is pinned
-  first. (NUT-12C.1 signed the plan-validation policy and the first-plan slot
-  mapping; neither configures a generator.) Everything else runs on TEST FIXTURES from src/testing/: a scripted
+  Production is configured behind the closed backend gate (NUT-12C.1 signed
+  the plan-validation policy and the first-plan slot mapping; NUT-12C.2 the
+  Vertex deployment and the quota), so the deployed handler answers
+  NUTRITION_AI_DISABLED and writes nothing. A registry with no deployment
+  still answers GENERATION_PROVIDER_NOT_CONFIGURED; the production deployment
+  itself only ever runs here over a scripted SDK client. Everything else runs on TEST FIXTURES from src/testing/: a scripted
   generator with no network, prompt or model, validation policies that accept
   or reject by fiat, and a fixed breakfast/lunch/dinner slot list.
 
@@ -113,7 +121,14 @@ interface Options {
   initialSlots?: "production" | "none" | NutritionInitialSlotConfiguration;
   failWrites?: (path: string) => boolean;
   extra?: Record<string, Record<string, unknown>>;
+  /** The scripted SDK client behind the PRODUCTION deployment, when a test opens the gate on it. */
+  vertexSteps?: FakeGenAiStep[];
+  /** The clock's start; NOW by default. */
+  start?: Date;
 }
+
+/** A registry with no deployment: the "no generator" answer, now that production has one. */
+const UNCONFIGURED = createNutritionVertexProviderRegistry(null);
 
 const NO_INITIAL_SLOTS: NutritionInitialSlotConfiguration = Object.freeze({ slotsFor: () => null });
 
@@ -125,10 +140,22 @@ const setup = (options: Options = {}) => {
   for (const id of options.targets ?? ["target-1"]) firestore.docs.set(targetPath(id), storedTarget(id));
   for (const [path, data] of Object.entries(options.extra ?? {})) firestore.docs.set(path, data);
 
-  let at = NOW.getTime();
+  let at = (options.start ?? NOW).getTime();
   let minted = 0;
   let tokens = 0;
   const clock = () => new Date(at);
+  const quota = createFirestoreQuotaStore({ firestore, now: clock });
+  /*
+    The production deployment, over a scripted SDK client: never the network.
+    The real production registry object is only ever handed over with the gate
+    off, where it is never asked.
+  */
+  const vertex = createFakeGoogleGenAiClient(options.vertexSteps ?? [{ reply: fixtureVertexReply(["breakfast", "lunch", "dinner"]) }]);
+  const productionDeploymentRegistry = createNutritionVertexProviderRegistry(PRODUCTION_NUTRITION_VERTEX_DEPLOYMENT, {
+    createClient: () => vertex,
+    newMealId: fixtureMealIds(),
+    sleep: async () => undefined,
+  });
   const policies =
     options.policies === "production"
       ? productionPlanValidationPolicyRegistry
@@ -158,7 +185,11 @@ const setup = (options: Options = {}) => {
       generationEnabled: enabled,
       providers:
         registry ??
-        (via === "production" || production ? productionNutritionGenerationProviderRegistry : fixtureGenerationProviderRegistry(via)),
+        (via === "production" || production
+          ? enabled === true
+            ? productionDeploymentRegistry
+            : productionNutritionGenerationProviderRegistry
+          : fixtureGenerationProviderRegistry(via)),
       policies: production ? productionPlanValidationPolicyRegistry : policies,
       initialSlots:
         options.initialSlots === "production" || production
@@ -169,6 +200,7 @@ const setup = (options: Options = {}) => {
       now: clock,
       newPlanId: () => `gen-plan-${(minted += 1)}`,
       newClaimToken: () => `claim-${(tokens += 1)}`,
+      quota,
     });
 
   const repeat = (id: string) =>
@@ -177,6 +209,9 @@ const setup = (options: Options = {}) => {
   return {
     firestore,
     provider,
+    vertex,
+    quota,
+    clock,
     call,
     repeat,
     advance: (ms: number) => {
@@ -218,11 +253,11 @@ const seconds = (date: Date) => ({ seconds: Math.floor(date.getTime() / 1000), n
  * The deployed boundary
  * ------------------------------------------------------------------ */
 
-describe("the deployed boundary: nothing is configured to generate", () => {
+describe("no generator configured: a registry without a deployment", () => {
   it("answers GENERATION_PROVIDER_NOT_CONFIGURED and writes nothing — no request, pointer, plan, record or quota", async () => {
     const h = setup();
     const before = h.snapshot();
-    const error = await refusal(h.call({ requestId: RID }, { via: "production" }));
+    const error = await refusal(h.call({ requestId: RID }, { registry: UNCONFIGURED }));
 
     expect(error).toBeInstanceOf(NutritionGenerationError);
     expect((error as NutritionGenerationError).code).toBe("GENERATION_PROVIDER_NOT_CONFIGURED");
@@ -236,7 +271,7 @@ describe("the deployed boundary: nothing is configured to generate", () => {
 
   it("maps that refusal to a failed-precondition carrying only the code", async () => {
     const h = setup();
-    const mapped = toNutritionHttpsError(await refusal(h.call({ requestId: RID }, { via: "production" })));
+    const mapped = toNutritionHttpsError(await refusal(h.call({ requestId: RID }, { registry: UNCONFIGURED })));
     expect(mapped).toBeInstanceOf(HttpsError);
     expect(mapped.code).toBe("failed-precondition");
     expect(mapped.message).toBe("GENERATION_PROVIDER_NOT_CONFIGURED");
@@ -246,7 +281,7 @@ describe("the deployed boundary: nothing is configured to generate", () => {
   it("answers the same for a new first plan: nothing is configured to start one", async () => {
     const h = setup({ state: INITIAL_STATE, plans: {} });
     const before = h.snapshot();
-    expect(await code(h.call({ requestId: RID }, { via: "production" }))).toBe("GENERATION_PROVIDER_NOT_CONFIGURED");
+    expect(await code(h.call({ requestId: RID }, { registry: UNCONFIGURED }))).toBe("GENERATION_PROVIDER_NOT_CONFIGURED");
     expect(h.snapshot()).toBe(before);
   });
 
@@ -412,7 +447,15 @@ describe("the claim", () => {
       attempts: 1,
     });
     expect(h.operation(RID)).not.toHaveProperty("quotaCharged");
-    expect(h.firestore.under("_ai_quota")).toEqual([]);
+    // NUT-12C.2: one Nutrition unit held for this request, until the claim's lease runs out.
+    expect(h.firestore.docs.get(`_ai_quota/${UID}__nutrition_plan_generation__2026-09`)).toMatchObject({
+      uid: UID,
+      action: "nutrition_plan_generation",
+      period: "2026-09",
+      count: 1,
+      reservations: [{ requestId: RID, expiresAt: new Date(NOW.getTime() + LEASE).toISOString() }],
+    });
+    expect(h.firestore.docs.get(`_ai_quota/${UID}__plan_generation__2026-09`)).toBeUndefined();
 
     h.provider.release();
     await running;
@@ -1042,10 +1085,20 @@ describe("what is persisted", () => {
     expect(JSON.stringify(input)).not.toMatch(/alice|Alice|example|\b34\b|68\.25|172\.5|female|loseWeight|moderately|1777|shellfish|users\/|nutrition_v2_|plan-1|target-1/);
   });
 
-  it("uses no quota and writes no AI log", async () => {
+  it("charges one Nutrition quota unit — never Training's — and writes no AI log", async () => {
     const h = setup();
     await h.call({ requestId: RID });
-    expect(h.firestore.under("_ai_quota")).toEqual([]);
+    expect(h.firestore.under("_ai_quota").map(([path]) => path)).toEqual([`_ai_quota/${UID}__nutrition_plan_generation__2026-09`]);
+    expect(h.firestore.docs.get(`_ai_quota/${UID}__nutrition_plan_generation__2026-09`)).toMatchObject({ count: 1, reservations: [] });
+    // Only bookkeeping: no prompt, input, reply or plan content in the quota document.
+    expect(Object.keys(h.firestore.docs.get(`_ai_quota/${UID}__nutrition_plan_generation__2026-09`) ?? {}).sort()).toEqual([
+      "action",
+      "count",
+      "period",
+      "reservations",
+      "uid",
+      "updatedAt",
+    ]);
     expect(h.firestore.under("_ai_logs")).toEqual([]);
     expect(h.firestore.under(`users/${UID}/ai_logs`)).toEqual([]);
   });
@@ -1312,10 +1365,10 @@ describe("replay does not depend on the configuration", () => {
     await generating;
   });
 
-  it("NEW REQUEST: with nothing live, production answers GENERATION_PROVIDER_NOT_CONFIGURED and writes nothing", async () => {
+  it("NEW REQUEST: with nothing live and no generator, GENERATION_PROVIDER_NOT_CONFIGURED and nothing written", async () => {
     const h = setup();
     const before = h.snapshot();
-    expect(await code(h.call({ requestId: RID }, { production: true }))).toBe("GENERATION_PROVIDER_NOT_CONFIGURED");
+    expect(await code(h.call({ requestId: RID }, { registry: UNCONFIGURED }))).toBe("GENERATION_PROVIDER_NOT_CONFIGURED");
     expect(h.snapshot()).toBe(before);
   });
 
@@ -1326,7 +1379,7 @@ describe("replay does not depend on the configuration", () => {
     h.advance(LEASE + 1);
     const before = h.snapshot();
 
-    expect(await code(h.call({ requestId: RID }, { production: true }))).toBe("GENERATION_PROVIDER_NOT_CONFIGURED");
+    expect(await code(h.call({ requestId: RID }, { registry: UNCONFIGURED }))).toBe("GENERATION_PROVIDER_NOT_CONFIGURED");
     expect(h.snapshot()).toBe(before);
     expect(h.request(RID)?.status).toBe("running");
     h.provider.release();
@@ -1548,12 +1601,25 @@ describe("the backend AI gate", () => {
 });
 
 describe("the production generator registry behind an open gate", () => {
-  it("unconfigured: GENERATION_PROVIDER_NOT_CONFIGURED — a different answer from NUTRITION_AI_DISABLED — and nothing written", async () => {
+  it("the signed production deployment, gate closed: NUTRITION_AI_DISABLED, the SDK client never built, nothing written", async () => {
     const h = setup();
     const before = h.snapshot();
-    expect(await code(h.call({ requestId: RID }, { enabled: true, via: "production" }))).toBe("GENERATION_PROVIDER_NOT_CONFIGURED");
-    expect(await code(h.call({ requestId: RID }, { enabled: false, via: "production" }))).toBe("NUTRITION_AI_DISABLED");
+    expect(await code(h.call({ requestId: RID }, { enabled: NUTRITION_AI_PRODUCTION_ENABLED, via: "production" }))).toBe("NUTRITION_AI_DISABLED");
+    expect(h.vertex.requests).toEqual([]);
     expect(h.snapshot()).toBe(before);
+  });
+
+  it("the signed production deployment, gate opened explicitly over a scripted client: gemini-3.8-flash, LOW thinking, 8192 tokens, one unit charged", async () => {
+    const h = setup();
+    expect(await h.call({ requestId: RID }, { enabled: true, via: "production" })).toMatchObject({ status: "succeeded", resultPlanId: "gen-plan-1" });
+    expect(h.vertex.requests).toHaveLength(1);
+    expect(h.vertex.requests[0].model).toBe("gemini-3.8-flash");
+    expect(h.vertex.requests[0].config).toMatchObject({ maxOutputTokens: 8192, thinkingConfig: { thinkingLevel: "LOW" } });
+    // The claim was taken for the deployment's 300-second lease.
+    expect(h.operation(RID)).toMatchObject({ status: "completed", attempts: 1 });
+    expect(h.firestore.docs.get(`_ai_quota/${UID}__nutrition_plan_generation__2026-09`)).toMatchObject({ count: 1, reservations: [] });
+    // Nothing of the deployment is stored.
+    expect(h.snapshot()).not.toMatch(/fitssai-coach|"eu"|gemini/);
   });
 
   it.each<[string, unknown]>([
@@ -1654,5 +1720,446 @@ describe("the production generator registry behind an open gate", () => {
     expect(await h.call({ requestId: RID }, { registry })).toMatchObject({ status: "failed", errorCode: "PROVIDER_FAILED" });
     expect(h.snapshot()).not.toContain("fixture-project-123");
     expect(h.snapshot()).not.toContain("ya29");
+  });
+});
+
+/* ------------------------------------------------------------------ *
+ * NUT-12C.2: the Nutrition generation quota
+ * ------------------------------------------------------------------ */
+
+type QuotaHold = { requestId: string; expiresAt: string };
+type Harness = ReturnType<typeof setup>;
+
+const SEPTEMBER = "2026-09";
+const OCTOBER = "2026-10";
+const DAY = 24 * 60 * 60 * 1000;
+const LIMIT = DEFAULT_QUOTA_LIMITS.nutrition_plan_generation;
+const quotaPath = (period: string = SEPTEMBER) => `_ai_quota/${UID}__nutrition_plan_generation__${period}`;
+const TRAINING_QUOTA_PATH = `_ai_quota/${UID}__plan_generation__${SEPTEMBER}`;
+const ledgerOf = (h: Harness, period: string = SEPTEMBER) =>
+  h.firestore.docs.get(quotaPath(period)) as { count?: number; reservations?: QuotaHold[] } | undefined;
+const countOf = (h: Harness, period?: string) => ledgerOf(h, period)?.count ?? 0;
+const heldBy = (h: Harness, period?: string) => (ledgerOf(h, period)?.reservations ?? []).map((entry) => entry.requestId);
+const iso = (ms: number) => new Date(ms).toISOString();
+
+/** A quota document as the store writes it: `count` units, some of them still held. */
+const seededQuota = (count: number, reservations: QuotaHold[] = [], period: string = SEPTEMBER) => ({
+  [quotaPath(period)]: { uid: UID, action: "nutrition_plan_generation", period, count, reservations, updatedAt: "2026-09-01T00:00:00.000Z" },
+});
+
+/** A second, working generator for the invocation that takes a request over. */
+const recoveredRegistry = (script: FakeProviderScript = { generate: "valid" }) => {
+  const provider = createFakeNutritionPlanProvider(script);
+  return { provider, registry: fixtureGenerationProviderRegistry(provider) };
+};
+
+describe("the Nutrition quota: its own allowance", () => {
+  it("is nutrition_plan_generation, four a month; Training's plan_generation stays three", () => {
+    expect(NUTRITION_GENERATION_QUOTA_ACTION).toBe("nutrition_plan_generation");
+    expect(LIMIT).toBe(4);
+    expect(DEFAULT_QUOTA_LIMITS.plan_generation).toBe(3);
+    expect(DEFAULT_QUOTA_LIMITS.weekly_summary).toBe(8);
+  });
+
+  it("a first plan and three regenerations share it; the fifth new request is refused QUOTA_EXCEEDED before the generator, writing nothing", async () => {
+    const h = setup({ state: INITIAL_STATE, plans: {}, start: new Date("2026-09-14T09:15:00.000Z") });
+    const ids = [21, 22, 23, 24, 25].map(requestId);
+
+    for (const [index, id] of ids.slice(0, 4).entries()) {
+      if (index > 0) h.advance(DAY);
+      expect(await h.call({ requestId: id })).toMatchObject({ requestId: id, status: "succeeded" });
+      expect(countOf(h)).toBe(index + 1);
+    }
+    expect(ids.slice(0, 4).map((id) => h.request(id)?.kind)).toEqual(["initial", "regenerate", "regenerate", "regenerate"]);
+    expect(ledgerOf(h)).toMatchObject({ count: 4, reservations: [] });
+
+    h.advance(DAY);
+    const before = h.snapshot();
+    const error = (await refusal(h.call({ requestId: ids[4] }))) as NutritionGenerationError;
+    expect(error.code).toBe("QUOTA_EXCEEDED");
+    expect(h.snapshot()).toBe(before);
+    expect(h.provider.calls.generate).toHaveLength(4);
+    expect(h.request(ids[4])).toBeUndefined();
+    expect(h.operation(ids[4])).toBeUndefined();
+    expect(h.state()?.activeGenerationRequestId).toBeNull();
+  });
+
+  it("answers QUOTA_EXCEEDED as a failed-precondition carrying only the code — no count, limit or period", async () => {
+    const h = setup({ extra: seededQuota(LIMIT) });
+    const error = (await refusal(h.call({ requestId: RID }))) as NutritionGenerationError;
+    expect(error.details).toEqual({});
+    const mapped = toNutritionHttpsError(error);
+    expect(mapped.code).toBe("failed-precondition");
+    expect(mapped.message).toBe("QUOTA_EXCEEDED");
+    expect(mapped.details).toBeUndefined();
+  });
+
+  it("with the gate off, an exhausted account still answers NUTRITION_AI_DISABLED", async () => {
+    const h = setup({ extra: seededQuota(LIMIT) });
+    const before = h.snapshot();
+    expect(await code(h.call({ requestId: RID }, { enabled: NUTRITION_AI_PRODUCTION_ENABLED }))).toBe("NUTRITION_AI_DISABLED");
+    expect(h.snapshot()).toBe(before);
+  });
+
+  it.each<[string, Options, Parameters<Harness["call"]>[1], string]>([
+    ["an ineligible account", { profile: { ...PROFILE, age: 17 } }, {}, "NOT_ELIGIBLE"],
+    ["no target", { state: storedState({ currentTargetVersionId: null }) }, {}, "NO_CURRENT_TARGET"],
+    ["no generator", {}, { registry: UNCONFIGURED }, "GENERATION_PROVIDER_NOT_CONFIGURED"],
+    ["no plan-validation policy", { policies: [] }, {}, "PLAN_VALIDATION_POLICY_NOT_CONFIGURED"],
+    ["no first-plan slots", { state: INITIAL_STATE, plans: {}, initialSlots: "none" }, {}, "GENERATION_SLOTS_NOT_CONFIGURED"],
+  ])("every free refusal comes before the quota: %s is refused as such, even when the allowance is used up", async (_label, options, callOptions, expected) => {
+    const h = setup({ ...options, extra: seededQuota(LIMIT) });
+    const before = h.snapshot();
+    expect(await code(h.call({ requestId: RID }, callOptions))).toBe(expected);
+    expect(h.snapshot()).toBe(before);
+  });
+
+  it("a hold whose request is gone is reclaimed by enforcement, so its unit can pay for a new request", async () => {
+    const h = setup({ extra: seededQuota(LIMIT, [{ requestId: "gone-request", expiresAt: "2026-09-28T08:00:00.000Z" }]) });
+    expect(await h.call({ requestId: RID })).toMatchObject({ status: "succeeded" });
+    expect(ledgerOf(h)).toMatchObject({ count: LIMIT, reservations: [] });
+  });
+
+  it("never touches Training's allowance: an exhausted plan_generation does not stop Nutrition, and Nutrition never writes it", async () => {
+    const training = { uid: UID, action: "plan_generation", period: SEPTEMBER, count: 3, reservations: [], updatedAt: "2026-09-01T00:00:00.000Z" };
+    const h = setup({ extra: { [TRAINING_QUOTA_PATH]: training } });
+    expect(await h.call({ requestId: RID })).toMatchObject({ status: "succeeded" });
+    expect(h.firestore.docs.get(TRAINING_QUOTA_PATH)).toEqual(training);
+    expect(countOf(h)).toBe(1);
+
+    const exhausted = setup({ extra: seededQuota(LIMIT) });
+    await refusal(exhausted.call({ requestId: RID }));
+    expect(exhausted.firestore.docs.get(TRAINING_QUOTA_PATH)).toBeUndefined();
+  });
+});
+
+describe("the Nutrition quota: charged only with an activated plan", () => {
+  it("a success charges exactly one unit; replaying it charges nothing and writes nothing", async () => {
+    const h = setup();
+    expect(await h.call({ requestId: RID })).toMatchObject({ status: "succeeded", replay: false });
+    expect(ledgerOf(h)).toMatchObject({ count: 1, reservations: [] });
+
+    const before = h.snapshot();
+    expect(await h.call({ requestId: RID })).toMatchObject({ status: "succeeded", replay: true });
+    expect(h.snapshot()).toBe(before);
+    expect(countOf(h)).toBe(1);
+  });
+
+  it("a live duplicate holds no second unit; the one hold becomes the charge", async () => {
+    const h = setup({ script: { generate: "pending" } });
+    const running = h.call({ requestId: RID });
+    await h.provider.whenPending();
+    expect(ledgerOf(h)).toMatchObject({ count: 1, reservations: [{ requestId: RID, expiresAt: iso(NOW.getTime() + LEASE) }] });
+
+    const before = h.snapshot();
+    expect(await h.call({ requestId: RID })).toMatchObject({ status: "running" });
+    expect(await h.call({ requestId: OTHER })).toMatchObject({ requestId: RID, status: "running" });
+    expect(h.snapshot()).toBe(before);
+
+    h.provider.release();
+    await running;
+    expect(ledgerOf(h)).toMatchObject({ count: 1, reservations: [] });
+  });
+
+  it.each<[string, Options, string]>([
+    ["a provider failure", { script: { generate: "throws" } }, "PROVIDER_FAILED"],
+    ["an invalid candidate", { script: { generate: "malformed", repair: "malformed" } }, "CANDIDATE_INVALID"],
+    ["a plan-validation failure", { script: { generate: "valid", repair: "valid" }, policies: [FIXTURE_REJECT_PLAN_VALIDATION_POLICY] }, "PLAN_VALIDATION_FAILED"],
+    ["an activation that commits no plan", { failWrites: (path) => path.startsWith(`users/${UID}/nutrition_v2_plans/gen-`) }, "INTERNAL"],
+  ])("%s ends the request failed and gives the unit back", async (_label, options, errorCode) => {
+    const h = setup(options);
+    expect(await h.call({ requestId: RID })).toMatchObject({ status: "failed", errorCode });
+    expect(ledgerOf(h)).toMatchObject({ count: 0, reservations: [] });
+    expect(h.planIds()).toEqual(["plan-1"]);
+
+    // Replaying the failure changes nothing: a second release never happens, let alone refunds.
+    const before = h.snapshot();
+    expect(await h.call({ requestId: RID })).toMatchObject({ status: "failed", replay: true });
+    expect(h.snapshot()).toBe(before);
+  });
+
+  it.each<[string, Options, (h: Harness) => Promise<unknown> | void, string]>([
+    ["another plan was activated", {}, (h) => h.repeat(OTHER), "STALE_ACTIVE_PLAN"],
+    [
+      "the target changed",
+      { targets: ["target-1", "target-2"] },
+      (h) => void h.firestore.docs.set(STATE_PATH, { ...(h.state() as NutritionUserState), currentTargetVersionId: "target-2" }),
+      "STALE_TARGET",
+    ],
+    [
+      "the pointer no longer names it",
+      {},
+      (h) => void h.firestore.docs.set(STATE_PATH, { ...(h.state() as NutritionUserState), activeGenerationRequestId: null }),
+      "STALE_GENERATION",
+    ],
+    ["the account is no longer eligible", {}, (h) => void h.firestore.docs.set(PROFILE_PATH, { ...PROFILE, age: 17 }), "ELIGIBILITY_CHANGED"],
+  ])("when %s, the request is discarded and its unit given back", async (_label, options, change, errorCode) => {
+    const h = setup({ ...options, script: { generate: "pending" } });
+    const running = h.call({ requestId: RID });
+    await h.provider.whenPending();
+    expect(countOf(h)).toBe(1);
+    await change(h);
+    h.provider.release();
+
+    expect(await running).toMatchObject({ status: "discarded_stale", errorCode });
+    expect(ledgerOf(h)).toMatchObject({ count: 0, reservations: [] });
+    expect(h.plan("gen-plan-1")).toBeUndefined();
+  });
+
+  it("a takeover that finds the input changed (the account switched to keto) is discarded INPUT_CHANGED and gives the unit back", async () => {
+    const h = setup({ script: { generate: "pending" } });
+    const stalled = h.call({ requestId: RID });
+    await h.provider.whenPending();
+    h.advance(LEASE + 1);
+    h.firestore.docs.set(PROFILE_PATH, { ...PROFILE, dietaryPreference: "keto" });
+    const recovered = recoveredRegistry();
+
+    expect(await h.call({ requestId: RID }, { registry: recovered.registry })).toMatchObject({ status: "discarded_stale", errorCode: "INPUT_CHANGED" });
+    expect(recovered.provider.calls.generate).toEqual([]);
+    expect(ledgerOf(h)).toMatchObject({ count: 0, reservations: [] });
+
+    // The stalled invocation lost its claim: it neither charges nor refunds anything.
+    h.provider.release();
+    await stalled;
+    expect(ledgerOf(h)).toMatchObject({ count: 0, reservations: [] });
+  });
+
+  it("an abandoned request gives its unit back in the transaction that claims its successor — even at the limit", async () => {
+    const h = setup({ script: { generate: "pending" }, extra: seededQuota(LIMIT - 1) });
+    const stalled = h.call({ requestId: RID });
+    await h.provider.whenPending();
+    expect(ledgerOf(h)).toMatchObject({ count: LIMIT, reservations: [{ requestId: RID }] });
+    h.advance(LEASE + 1);
+
+    expect(await h.call({ requestId: OTHER }, { registry: recoveredRegistry().registry })).toMatchObject({ requestId: OTHER, status: "succeeded" });
+    expect(h.request(RID)).toMatchObject({ status: "failed", errorCode: "GENERATION_ABANDONED" });
+    expect(ledgerOf(h)).toMatchObject({ count: LIMIT, reservations: [] });
+
+    h.provider.release();
+    expect(await stalled).toMatchObject({ requestId: RID, status: "failed", errorCode: "GENERATION_ABANDONED" });
+    expect(ledgerOf(h)).toMatchObject({ count: LIMIT, reservations: [] });
+  });
+});
+
+describe("the Nutrition quota: one unit per logical request", () => {
+  it("a takeover renews the same request's hold for its new lease and charges no second unit", async () => {
+    const h = setup({ script: { generate: "pending" } });
+    const stalled = h.call({ requestId: RID });
+    await h.provider.whenPending();
+    h.advance(LEASE + 1);
+    const recovered = recoveredRegistry({ generate: "pending" });
+
+    const takeover = h.call({ requestId: RID }, { registry: recovered.registry });
+    await recovered.provider.whenPending();
+    expect(ledgerOf(h)).toMatchObject({ count: 1, reservations: [{ requestId: RID, expiresAt: iso(NOW.getTime() + LEASE + 1 + LEASE) }] });
+    expect(h.operation(RID)).toMatchObject({ attempts: 2, claimToken: "claim-2" });
+
+    recovered.provider.release();
+    expect(await takeover).toMatchObject({ status: "succeeded", resultPlanId: "gen-plan-1" });
+    expect(ledgerOf(h)).toMatchObject({ count: 1, reservations: [] });
+
+    h.provider.release();
+    await stalled;
+    expect(ledgerOf(h)).toMatchObject({ count: 1, reservations: [] });
+    expect([...h.planIds()].sort()).toEqual(["gen-plan-1", "plan-1"]);
+  });
+
+  it("the invocation that lost its claim cannot release the successor's hold, however it ends", async () => {
+    const h = setup({ script: { generate: "pending" } });
+    const stalled = h.call({ requestId: RID });
+    await h.provider.whenPending();
+    h.advance(LEASE + 1);
+    const recovered = recoveredRegistry({ generate: "pending" });
+    const takeover = h.call({ requestId: RID }, { registry: recovered.registry });
+    await recovered.provider.whenPending();
+    const held = structuredClone(ledgerOf(h));
+
+    // The old invocation's provider fails after the takeover: its failure is not its to record.
+    h.provider.release("throws");
+    expect(await stalled).toMatchObject({ requestId: RID, status: "running" });
+    expect(ledgerOf(h)).toEqual(held);
+    expect(heldBy(h)).toEqual([RID]);
+
+    recovered.provider.release();
+    expect(await takeover).toMatchObject({ status: "succeeded" });
+    expect(ledgerOf(h)).toMatchObject({ count: 1, reservations: [] });
+  });
+
+  it("a takeover is never refused for its own unit, even with the month's allowance otherwise used up", async () => {
+    const h = setup({ script: { generate: "pending" }, extra: seededQuota(LIMIT - 1) });
+    const stalled = h.call({ requestId: RID });
+    await h.provider.whenPending();
+    h.advance(LEASE + 1);
+
+    expect(await h.call({ requestId: RID }, { registry: recoveredRegistry().registry })).toMatchObject({ status: "succeeded" });
+    expect(ledgerOf(h)).toMatchObject({ count: LIMIT, reservations: [] });
+    h.provider.release();
+    await stalled;
+  });
+
+  it("concurrent new requests cannot oversubscribe: one claims the last unit, the other is answered with it", async () => {
+    const h = setup({ script: { generate: "pending" }, extra: seededQuota(LIMIT - 1) });
+    const first = h.call({ requestId: RID });
+    const second = h.call({ requestId: OTHER });
+    await h.provider.whenPending();
+    expect(await second).toMatchObject({ requestId: RID, status: "running" });
+    expect(ledgerOf(h)).toMatchObject({ count: LIMIT, reservations: [{ requestId: RID }] });
+    h.provider.release();
+    expect(await first).toMatchObject({ status: "succeeded" });
+    expect(countOf(h)).toBe(LIMIT);
+    expect(h.request(OTHER)).toBeUndefined();
+
+    const exhausted = setup({ extra: seededQuota(LIMIT) });
+    const answers = await Promise.all([refusal(exhausted.call({ requestId: RID })), refusal(exhausted.call({ requestId: OTHER }))]);
+    expect(answers.map((error) => (error as NutritionGenerationError).code)).toEqual(["QUOTA_EXCEEDED", "QUOTA_EXCEEDED"]);
+    expect(countOf(exhausted)).toBe(LIMIT);
+  });
+});
+
+/* ------------------------------------------------------------------ *
+ * NUT-12C.2: a request keeps the month of its first claim
+ * ------------------------------------------------------------------ */
+
+describe("the Nutrition quota across a UTC month boundary", () => {
+  // 23:59:45 UTC on 30 September — already 1 October in Berlin, so a first plan starts on 1 October.
+  const MONTH_END = new Date("2026-09-30T23:59:45.000Z");
+  const firstPlan = (options: Options = {}) => setup({ state: INITIAL_STATE, plans: {}, start: MONTH_END, ...options });
+
+  it("claimed in September, activated in October: the September hold becomes the charge, October is untouched", async () => {
+    const h = firstPlan({ script: { generate: "pending" } });
+    const running = h.call({ requestId: RID });
+    await h.provider.whenPending();
+    expect(heldBy(h, SEPTEMBER)).toEqual([RID]);
+
+    h.advance(30_000);
+    expect(h.clock().toISOString()).toBe("2026-10-01T00:00:15.000Z");
+    h.provider.release();
+    expect(await running).toMatchObject({ status: "succeeded" });
+    expect(ledgerOf(h, SEPTEMBER)).toMatchObject({ count: 1, reservations: [] });
+    expect(ledgerOf(h, OCTOBER)).toBeUndefined();
+    expect(h.request(RID)?.createdAt).toEqual(seconds(MONTH_END));
+  });
+
+  it("claimed in September, failed in October: the September hold is released, October is untouched", async () => {
+    const h = firstPlan({ script: { generate: "pending" } });
+    const running = h.call({ requestId: RID });
+    await h.provider.whenPending();
+    h.advance(30_000);
+    h.provider.release("throws");
+
+    expect(await running).toMatchObject({ status: "failed", errorCode: "PROVIDER_FAILED" });
+    expect(ledgerOf(h, SEPTEMBER)).toMatchObject({ count: 0, reservations: [] });
+    expect(ledgerOf(h, OCTOBER)).toBeUndefined();
+  });
+
+  it("a takeover in October renews the September hold — even with September used up — and never takes an October unit", async () => {
+    const h = firstPlan({ script: { generate: "pending" }, extra: seededQuota(LIMIT - 1) });
+    const stalled = h.call({ requestId: RID });
+    await h.provider.whenPending();
+    h.advance(LEASE + 1);
+    const recovered = recoveredRegistry({ generate: "pending" });
+
+    const takeover = h.call({ requestId: RID }, { registry: recovered.registry });
+    await recovered.provider.whenPending();
+    expect(ledgerOf(h, SEPTEMBER)).toMatchObject({
+      count: LIMIT,
+      reservations: [{ requestId: RID, expiresAt: iso(MONTH_END.getTime() + LEASE + 1 + LEASE) }],
+    });
+    expect(ledgerOf(h, OCTOBER)).toBeUndefined();
+
+    recovered.provider.release();
+    expect(await takeover).toMatchObject({ status: "succeeded" });
+    expect(ledgerOf(h, SEPTEMBER)).toMatchObject({ count: LIMIT, reservations: [] });
+    expect(ledgerOf(h, OCTOBER)).toBeUndefined();
+    h.provider.release();
+    await stalled;
+  });
+
+  it("a new request in October counts against October, whatever September says", async () => {
+    const h = firstPlan({ extra: seededQuota(LIMIT) });
+    expect(await code(h.call({ requestId: OTHER }))).toBe("QUOTA_EXCEEDED");
+
+    h.advance(30_000);
+    expect(await h.call({ requestId: RID })).toMatchObject({ status: "succeeded" });
+    expect(ledgerOf(h, OCTOBER)).toMatchObject({ period: OCTOBER, count: 1, reservations: [] });
+    expect(ledgerOf(h, SEPTEMBER)).toMatchObject({ count: LIMIT, reservations: [] });
+  });
+
+  it("an abandoned September request is given back in September while its October successor is charged in October", async () => {
+    const h = firstPlan({ script: { generate: "pending" } });
+    const stalled = h.call({ requestId: RID });
+    await h.provider.whenPending();
+    h.advance(LEASE + 1);
+
+    expect(await h.call({ requestId: OTHER }, { registry: recoveredRegistry().registry })).toMatchObject({ requestId: OTHER, status: "succeeded" });
+    expect(h.request(RID)).toMatchObject({ status: "failed", errorCode: "GENERATION_ABANDONED" });
+    expect(ledgerOf(h, SEPTEMBER)).toMatchObject({ count: 0, reservations: [] });
+    expect(ledgerOf(h, OCTOBER)).toMatchObject({ count: 1, reservations: [] });
+    h.provider.release();
+    await stalled;
+  });
+});
+
+/* ------------------------------------------------------------------ *
+ * NUT-12C.2: Keto is not a generated plan
+ * ------------------------------------------------------------------ */
+
+describe("Keto generation is refused", () => {
+  it("keeps keto in the profile vocabulary", () => {
+    expect(NUTRITION_DIETARY_PREFERENCES).toContain("keto");
+  });
+
+  it.each([
+    ["a regeneration", {}],
+    ["a first plan", { state: INITIAL_STATE, plans: {} }],
+  ])("gate on, %s: DIETARY_PREFERENCE_NOT_SUPPORTED before any paid work — no generator, quota, request, pointer, record or plan", async (_label, options) => {
+    const h = setup({ ...options, profile: { ...PROFILE, dietaryPreference: "keto" } });
+    const before = h.snapshot();
+    const error = (await refusal(h.call({ requestId: RID }))) as NutritionGenerationError;
+
+    expect(error.code).toBe("DIETARY_PREFERENCE_NOT_SUPPORTED");
+    expect(h.snapshot()).toBe(before);
+    expect(h.provider.calls.generate).toEqual([]);
+    expect(h.firestore.under("_ai_quota")).toEqual([]);
+    expect(h.request(RID)).toBeUndefined();
+    expect(h.operation(RID)).toBeUndefined();
+    expect(h.state()?.activeGenerationRequestId).toBeNull();
+
+    const mapped = toNutritionHttpsError(error);
+    expect(mapped.code).toBe("failed-precondition");
+    expect(mapped.message).toBe("DIETARY_PREFERENCE_NOT_SUPPORTED");
+    expect(mapped.details).toBeUndefined();
+  });
+
+  it("gate off: NUTRITION_AI_DISABLED still wins", async () => {
+    const h = setup({ profile: { ...PROFILE, dietaryPreference: "keto" } });
+    const before = h.snapshot();
+    expect(await code(h.call({ requestId: RID }, { enabled: NUTRITION_AI_PRODUCTION_ENABLED, production: true }))).toBe("NUTRITION_AI_DISABLED");
+    expect(h.snapshot()).toBe(before);
+  });
+
+  it("comes after eligibility and before the generator and the quota", async () => {
+    const keto = { ...PROFILE, dietaryPreference: "keto" };
+    expect(await code(setup({ profile: { ...keto, age: 17 } }).call({ requestId: RID }))).toBe("NOT_ELIGIBLE");
+    expect(await code(setup({ profile: keto }).call({ requestId: RID }, { registry: UNCONFIGURED }))).toBe("DIETARY_PREFERENCE_NOT_SUPPORTED");
+    expect(await code(setup({ profile: keto, extra: seededQuota(LIMIT) }).call({ requestId: RID }))).toBe("DIETARY_PREFERENCE_NOT_SUPPORTED");
+  });
+
+  it.each([["vegan"], ["vegetarian"], ["highProtein"], ["noPreference"], [undefined]])("%s generates as before, with no substitution", async (preference) => {
+    const { dietaryPreference: _dropped, ...rest } = PROFILE;
+    const h = setup({ profile: preference === undefined ? rest : { ...rest, dietaryPreference: preference } });
+    expect(await h.call({ requestId: RID })).toMatchObject({ status: "succeeded" });
+    expect(h.provider.calls.generate.map((input) => input.dietaryPreference)).toEqual([preference ?? null]);
+  });
+
+  it("an account that switches to keto keeps its finished request's answer, and starts no new one", async () => {
+    const h = setup();
+    await h.call({ requestId: RID });
+    h.firestore.docs.set(PROFILE_PATH, { ...PROFILE, dietaryPreference: "keto" });
+    const before = h.snapshot();
+
+    expect(await h.call({ requestId: RID })).toMatchObject({ status: "succeeded", replay: true });
+    expect(await code(h.call({ requestId: OTHER }))).toBe("DIETARY_PREFERENCE_NOT_SUPPORTED");
+    expect(h.snapshot()).toBe(before);
   });
 });

@@ -25,6 +25,15 @@ import {
 
 export const NUTRITION_REQUEST_PLAN_CALLABLE = "nutritionRequestPlan" as const;
 
+/**
+ * How long the browser waits for `nutritionRequestPlan` (NUT-12C.2): the
+ * callable's own budget, not the SDK's 70-second default. It is at least the
+ * server's operation lease, so a browser does not give up on a call the server
+ * is still entitled to finish; a call that is given up on anyway still ends on
+ * the server, and the request document says how.
+ */
+export const NUTRITION_REQUEST_PLAN_CLIENT_TIMEOUT_MS = 300_000;
+
 /** Strict: exactly `{ requestId }`. A uid, kind, plan, target, profile value or provider is refused, not ignored. */
 export const nutritionRequestPlanRequestSchema = z
   .object({
@@ -105,6 +114,12 @@ export type NutritionRequestPlanResult = z.infer<typeof nutritionRequestPlanResu
  *                                          would leave it no date
  *   GENERATION_SLOTS_NOT_CONFIGURED        a first plan needs a slot
  *                                          configuration, and none is signed off
+ *   DIETARY_PREFERENCE_NOT_SUPPORTED       the account's dietary preference
+ *                                          (keto) is not one generation supports
+ *                                          (NUT-12C.2); nothing is substituted
+ *   QUOTA_EXCEEDED                         the month's Nutrition generation
+ *                                          allowance is used up (NUT-12C.2);
+ *                                          no count, limit or period is sent
  *   INTERNAL                               anything else; nothing internal is exposed
  */
 export const NUTRITION_REQUEST_PLAN_ERROR_CODES = [
@@ -118,6 +133,8 @@ export const NUTRITION_REQUEST_PLAN_ERROR_CODES = [
   "PLAN_NOT_ACTIVE",
   "PLAN_NOT_REGENERABLE",
   "GENERATION_SLOTS_NOT_CONFIGURED",
+  "DIETARY_PREFERENCE_NOT_SUPPORTED",
+  "QUOTA_EXCEEDED",
   "INTERNAL",
 ] as const;
 

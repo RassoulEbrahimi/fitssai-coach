@@ -388,6 +388,22 @@ describe("server-owned AI bookkeeping is invisible to clients", () => {
     await assertFails(deleteDoc(doc(alice(), "_ai_quota", `${ALICE}__plan_generation__2026-08`)));
   });
 
+  // NUT-12C.2: Nutrition's own allowance lives in the same server-only collection.
+  it("alice cannot read, release or zero her Nutrition generation quota, nor create one", async () => {
+    const nutritionQuota = `${ALICE}__nutrition_plan_generation__2026-09`;
+    await seed(["_ai_quota", nutritionQuota], {
+      count: 4,
+      reservations: [{ requestId: "r1", expiresAt: "2026-09-28T09:20:00.000Z" }],
+    });
+
+    await assertFails(getDoc(doc(alice(), "_ai_quota", nutritionQuota)));
+    await assertFails(updateDoc(doc(alice(), "_ai_quota", nutritionQuota), { count: 0 }));
+    await assertFails(updateDoc(doc(alice(), "_ai_quota", nutritionQuota), { reservations: [] }));
+    await assertFails(deleteDoc(doc(alice(), "_ai_quota", nutritionQuota)));
+    await assertFails(setDoc(doc(alice(), "_ai_quota", `${ALICE}__nutrition_plan_generation__2026-10`), { count: 0 }));
+    await assertFails(getDoc(doc(bob(), "_ai_quota", nutritionQuota)));
+  });
+
   it("an unauthenticated client cannot reach them either", async () => {
     await seed(["_ai_logs", "entry"], { status: "success" });
 

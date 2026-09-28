@@ -44,7 +44,7 @@ describe("quota decisions", () => {
 
   it("refuses once the limit is reached, with a machine-readable reason", async () => {
     const store = memoryStore();
-    const service = createQuotaService({ store, limits: { plan_generation: 1, weekly_summary: 1 } });
+    const service = createQuotaService({ store, limits: { plan_generation: 1, weekly_summary: 1, nutrition_plan_generation: 1 } });
 
     await service.consume("user-1", "plan_generation");
     const decision = await service.check("user-1", "plan_generation");
@@ -74,7 +74,7 @@ describe("quota decisions", () => {
 
   it("does not consume when the call is already refused", async () => {
     const store = memoryStore();
-    const service = createQuotaService({ store, limits: { plan_generation: 1, weekly_summary: 1 } });
+    const service = createQuotaService({ store, limits: { plan_generation: 1, weekly_summary: 1, nutrition_plan_generation: 1 } });
 
     await service.consume("user-1", "plan_generation");
     await service.consume("user-1", "plan_generation");
@@ -100,7 +100,7 @@ describe("server authority", () => {
   });
 
   it("covers exactly the actions that will cost money", () => {
-    expect([...QUOTA_ACTIONS]).toEqual(["plan_generation", "weekly_summary"]);
+    expect([...QUOTA_ACTIONS]).toEqual(["plan_generation", "weekly_summary", "nutrition_plan_generation"]);
     expect(Object.keys(DEFAULT_QUOTA_LIMITS).sort()).toEqual([...QUOTA_ACTIONS].sort());
   });
 });

@@ -52,6 +52,13 @@ const NUTRITION_PROVIDER_DIRECTORY = "src/nutrition/providers/";
  * the sweep below still applies to them; generationBoundary.test.ts pins the
  * rest of their boundary.
  */
+/** NUT-12C.2: the only Nutrition modules that name quota. */
+const NUTRITION_QUOTA_SOURCES = [
+  "src/nutrition/errors.ts",
+  "src/nutrition/generationLifecycle.ts",
+  "src/nutrition/requestPlan.ts",
+];
+
 const PROVIDER_SEAM_SOURCES = [
   "src/nutrition/errors.ts",
   // NUT-12B: the Vertex adapter, its prompt, response contract and lazy registry.
@@ -163,7 +170,10 @@ describe("the production target seam carries no formula", () => {
   it.each(nutritionSources.map(rel))("%s uses no provider, quota, AI operation record or logging", (file) => {
     const source = code(join(FUNCTIONS_ROOT, file));
     expect(source).not.toMatch(/_ai_operations|OPERATION_COLLECTION|createFirestoreOperationStore/);
-    expect(source).not.toMatch(/quota|AiLog|console\./i);
+    expect(source).not.toMatch(/AiLog|console\./i);
+    // NUT-12C.2: generation's quota lives in its lifecycle, its handler's
+    // dependencies and its refusal code — nowhere else in Nutrition.
+    if (!NUTRITION_QUOTA_SOURCES.includes(file)) expect(source).not.toMatch(/quota/i);
     // Only the Nutrition adapter names its vendor's model.
     if (!file.startsWith(NUTRITION_PROVIDER_DIRECTORY)) expect(source).not.toMatch(/gemini/i);
     if (!PROVIDER_SEAM_SOURCES.includes(file)) expect(source).not.toMatch(/provider/i);

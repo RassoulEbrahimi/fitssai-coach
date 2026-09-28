@@ -7,15 +7,18 @@ import { BACKEND_CAPABILITIES } from "../config";
 import { DEFAULT_QUOTA_LIMITS, QUOTA_ACTIONS } from "../quota";
 import { productionInitialSlotConfiguration } from "./generationInput";
 import { productionNutritionGenerationProviderRegistry } from "./providers/productionRegistry";
+import { NUTRITION_VERTEX_PROVIDER_ID } from "./providers/vertexGemini";
 import { PRODUCTION_PLAN_VALIDATION_POLICIES, productionPlanValidationPolicyRegistry } from "./planValidation/registry";
 import { PRODUCTION_TARGET_POLICIES } from "./targetPolicy/registry";
 
 /*
   NUT-11 boundaries on source: the generation infrastructure is deployed, and
-  nothing is configured to generate. The test generator never reaches the
-  build; no module calls a model, holds a prompt or a secret, takes quota or
-  logs a provider's input or output; activation is the one NUT-09 algorithm,
-  run inside the finalisation's own transaction; and capabilities stay false.
+  — since NUT-12C.2 — configured behind the closed backend gate. The test
+  generator never reaches the build; no generation module calls a model, holds
+  a prompt or a secret, or logs a provider's input or output; quota is
+  Nutrition's own action, settled in the lifecycle's transactions; activation
+  is the one NUT-09 algorithm, run inside the finalisation's own transaction;
+  and capabilities stay false.
 */
 
 const FUNCTIONS_ROOT = join(__dirname, "..", "..");
@@ -86,9 +89,12 @@ describe("the test generator stays out of production", () => {
   });
 });
 
-describe("production has no generator", () => {
-  it("resolves no generator; the signed deterministic policies and first-plan slots are configured (NUT-12C.1)", () => {
-    expect(productionNutritionGenerationProviderRegistry.current()).toBeNull();
+describe("production: configured behind the closed gate", () => {
+  it("resolves the signed Vertex generator (NUT-12C.2) and the signed deterministic policies and first-plan slots (NUT-12C.1)", () => {
+    // Resolving builds the adapter only: no SDK client, no credential lookup, no call.
+    const setup = productionNutritionGenerationProviderRegistry.current();
+    expect(setup?.provider.id).toBe(NUTRITION_VERTEX_PROVIDER_ID);
+    expect(setup?.operationLeaseMs).toBe(300_000);
     expect(Object.isFrozen(productionNutritionGenerationProviderRegistry)).toBe(true);
     expect(productionPlanValidationPolicyRegistry.current()).toMatchObject({ id: "target-alignment", version: 1 });
     expect(PRODUCTION_PLAN_VALIDATION_POLICIES.map(({ id, version }) => [id, version])).toEqual([["target-alignment", 1]]);
@@ -99,17 +105,19 @@ describe("production has no generator", () => {
     expect(productionInitialSlotConfiguration.slotsFor(3)).toEqual(["breakfast", "lunch", "dinner"]);
   });
 
-  it("wires the deployed callable to the production registries only, with no secret, quota, operations store or log", () => {
+  it("wires the deployed callable to the production registries and the server quota store only, with no secret, operations store or log", () => {
     const index = code("src/index.ts");
     const start = index.indexOf("export const nutritionRequestPlan");
     const wiring = index.slice(start, index.indexOf("export const", start + 1));
     expect(wiring).toContain("handleNutritionRequestPlan(request");
-    // NUT-12B: the closed backend gate, before the (lazy, unconfigured) registry.
+    // NUT-12B: the closed backend gate, before the (lazy) registry.
     expect(wiring).toContain("generationEnabled: NUTRITION_AI_PRODUCTION_ENABLED");
     expect(wiring).toContain("providers: productionNutritionGenerationProviderRegistry");
     expect(wiring).toContain("policies: productionPlanValidationPolicyRegistry");
     expect(wiring).toContain("initialSlots: productionInitialSlotConfiguration");
-    expect(wiring).not.toMatch(/secrets|GEMINI|createGeminiProvider|quota|Quota|operations|createFirestoreOperationStore|log\(|Log/);
+    // NUT-12C.2: the existing `_ai_quota` store — the same one Training uses, not a second system.
+    expect(wiring).toContain("quota: createFirestoreQuotaStore({ firestore: db() })");
+    expect(wiring).not.toMatch(/secrets|GEMINI|createGeminiProvider|operations|createFirestoreOperationStore|log\(|Log/);
   });
 
   it("declares no provider, model or secret for Nutrition anywhere", () => {
@@ -125,11 +133,24 @@ describe("production has no generator", () => {
   });
 });
 
-describe("no quota, log or payload for Nutrition generation", () => {
-  it("adds no Nutrition quota action or value", () => {
-    expect([...QUOTA_ACTIONS]).toEqual(["plan_generation", "weekly_summary"]);
-    expect(Object.keys(DEFAULT_QUOTA_LIMITS).sort()).toEqual(["plan_generation", "weekly_summary"]);
-    for (const file of GENERATION_MODULES) expect(code(file), file).not.toMatch(/quota|Quota|reserve|consume|release/);
+describe("Nutrition's own quota; no log or payload for Nutrition generation", () => {
+  it("adds exactly one Nutrition quota action, four a month, and leaves Training's allowances as they were", () => {
+    expect([...QUOTA_ACTIONS]).toEqual(["plan_generation", "weekly_summary", "nutrition_plan_generation"]);
+    expect(DEFAULT_QUOTA_LIMITS).toEqual({ plan_generation: 3, weekly_summary: 8, nutrition_plan_generation: 4 });
+  });
+
+  it("settles quota in the lifecycle's own transactions only, on Nutrition's action, through the ledger", () => {
+    const quotaModules = ["src/nutrition/generationLifecycle.ts", "src/nutrition/requestPlan.ts"];
+    for (const file of GENERATION_MODULES.filter((module) => !quotaModules.includes(module))) {
+      expect(code(file), file).not.toMatch(/quota|Quota|reserve|consume|release/);
+    }
+    const lifecycle = code("src/nutrition/generationLifecycle.ts");
+    expect(lifecycle).toContain('NUTRITION_GENERATION_QUOTA_ACTION = "nutrition_plan_generation"');
+    // Never Training's action, and never the store's own transactions or its non-transactional counters.
+    expect(lifecycle).not.toMatch(/["']plan_generation["']|\.increment\(|\.getUsage\(|reserveInTransaction|consumeInTransaction|releaseInTransaction/);
+    expect([...lifecycle.matchAll(/readLedgerInTransaction\(/g)]).toHaveLength(1);
+    // The period of an existing request is its first claim's, from the immutable createdAt.
+    expect(lifecycle).toMatch(/period: nutritionGenerationQuotaPeriod\(request\)/);
   });
 
   it.each(GENERATION_MODULES)("%s logs nothing — no console, logger, AI log or telemetry", (file) => {

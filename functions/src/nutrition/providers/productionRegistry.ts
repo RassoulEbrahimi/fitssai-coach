@@ -12,7 +12,8 @@ import {
 } from "./vertexGemini";
 
 /**
- * The deployed Nutrition generator registry (NUT-12B): lazy, and unconfigured.
+ * The deployed Nutrition generator registry (NUT-12B): lazy, and — since
+ * NUT-12C.2 — configured with the signed Vertex deployment below.
  *
  * `nutritionRequestPlan` asks it only for new work, and only after the
  * backend gate `NUTRITION_AI_PRODUCTION_ENABLED` has let that work through —
@@ -48,11 +49,44 @@ const deploymentSchema = z
   .strict();
 
 /**
- * No deployment is signed off: the Vertex project, the location, data
- * processing and every operational value wait for NUT-12C. Null, so nothing
- * can be generated even with the gate on.
+ * The signed technical deployment (NUT-12C.2). The model is not here: it is
+ * the adapter's own pin, `NUTRITION_GEMINI_MODEL_ID`, and moves only there.
+ *
+ *   project               fitssai-coach
+ *   location              eu
+ *   thinkingLevel         LOW — the pinned model has no MINIMAL
+ *   maxOutputTokens       8192
+ *   timeoutMs             45 s per attempt; a timeout is not retried
+ *   maxTransportAttempts  2 in total, for 429/5xx only
+ *   operationLeaseMs      300 s
+ *
+ * The budget these fit, worst case: a first call and one repair, each at most
+ * two 45-second attempts with the transport's back-off between them —
+ * 2 × (2 × 45 s + 0.25 s) = 180.5 s — inside the Function's 240-second
+ * timeout (`nutritionRequestPlan` in src/index.ts), inside the 300-second lease, which
+ * the browser's own timeout (`NUTRITION_REQUEST_PLAN_CLIENT_TIMEOUT_MS`)
+ * matches. A claim therefore outlives the invocation that holds it, and a
+ * takeover can only start once that invocation cannot still be running.
+ *
+ * Configured is not enabled: `NUTRITION_AI_PRODUCTION_ENABLED` is off, so no
+ * new work reaches this registry and no production call is made. Vertex
+ * authenticates as the Function's runtime identity (Application Default
+ * Credentials) — no key, no secret. That identity's permission to call Vertex
+ * AI predictions is a deployment prerequisite outside this repository, and so
+ * is the privacy, legal and data-processing sign-off; both are open until
+ * NUT-14 enables production.
  */
-export const PRODUCTION_NUTRITION_VERTEX_DEPLOYMENT: NutritionVertexDeployment | null = null;
+export const PRODUCTION_NUTRITION_VERTEX_DEPLOYMENT: NutritionVertexDeployment = Object.freeze({
+  provider: Object.freeze({
+    project: "fitssai-coach",
+    location: "eu",
+    maxOutputTokens: 8192,
+    thinkingLevel: "LOW",
+    timeoutMs: 45_000,
+    maxTransportAttempts: 2,
+  }),
+  operationLeaseMs: 300_000,
+});
 
 /** A lazy registry over `deployment`: nothing is checked or built until it is asked, and the answer is kept. */
 export const createNutritionVertexProviderRegistry = (
@@ -78,6 +112,11 @@ export const createNutritionVertexProviderRegistry = (
   });
 };
 
-/** The registry the deployed callable is wired to. Resolves nothing: there is no deployment. */
+/**
+ * The registry the deployed callable is wired to, over the signed deployment.
+ * Lazy: creating it checks and builds nothing, and resolving it builds the
+ * adapter but no SDK client — that happens on the first generation call,
+ * which the closed gate never lets through.
+ */
 export const productionNutritionGenerationProviderRegistry: NutritionGenerationProviderRegistry =
   createNutritionVertexProviderRegistry(PRODUCTION_NUTRITION_VERTEX_DEPLOYMENT);

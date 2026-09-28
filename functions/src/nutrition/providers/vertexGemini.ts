@@ -25,8 +25,8 @@ import { interpretNutritionProviderReply, nutritionProviderResponseJsonSchema } 
  * Authentication is the runtime's own IAM identity through Application
  * Default Credentials: there is no Nutrition API key, no secret and nothing a
  * browser could hold. The project and the location are explicit
- * configuration; neither has a default here, and which ones production uses
- * is not decided (NUT-12C).
+ * configuration; neither has a default here. Production's are the signed
+ * deployment in `./productionRegistry` (NUT-12C.2).
  *
  * The adapter asks the model for meal content only (`./responseContract`),
  * assembles canonical plan content on the server — dates, slot order and meal
@@ -39,8 +39,8 @@ import { interpretNutritionProviderReply, nutritionProviderResponseJsonSchema } 
  * leaves this file but a fixed message: the NUT-11 step records it as
  * `PROVIDER_FAILED`.
  *
- * NOT IN USE: the backend gate `NUTRITION_AI_PRODUCTION_ENABLED` is off and
- * the production deployment configuration is absent, so no production call
+ * NOT IN USE: the production deployment is configured (NUT-12C.2), but the
+ * backend gate `NUTRITION_AI_PRODUCTION_ENABLED` is off, so no production call
  * can reach this adapter.
  */
 

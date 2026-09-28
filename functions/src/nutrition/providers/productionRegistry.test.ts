@@ -1,5 +1,6 @@
-import { describe, it, expect } from "vitest";
+import { afterEach, describe, it, expect, vi } from "vitest";
 import { FIXTURE_VERTEX_CONFIGURATION, FIXTURE_VERTEX_DEPLOYMENT, createFakeGoogleGenAiClient } from "../../testing/fakeGoogleGenAiClient";
+import type { NutritionGenerationInput } from "../generationInput";
 import { NutritionGenerationProviderConfigurationError } from "../generationProvider";
 import {
   PRODUCTION_NUTRITION_VERTEX_DEPLOYMENT,
@@ -9,16 +10,60 @@ import {
 import { NUTRITION_VERTEX_PROVIDER_ID } from "./vertexGemini";
 
 /*
-  NUT-12B: the deployed generator registry is lazy and unconfigured. Asking it
-  is cheap and builds nothing; an incomplete deployment is an explicit error,
-  never a defaulted project, location or setting.
+  NUT-12B: the deployed generator registry is lazy. Asking it is cheap and
+  builds nothing; an incomplete deployment is an explicit error, never a
+  defaulted project, location or setting. NUT-12C.2: production carries the
+  signed Vertex deployment — configured, and still behind the closed gate.
 */
 
+const FIXTURE_GENERATION_INPUT: NutritionGenerationInput = Object.freeze({
+  startDate: "2026-09-29",
+  dayCount: 7,
+  target: Object.freeze({ kcal: 2100, proteinG: 130, carbsG: 240, fatG: 70 }),
+  slotOrder: Object.freeze(["breakfast", "lunch", "dinner"]) as unknown as NutritionGenerationInput["slotOrder"],
+  dietaryPreference: "vegetarian",
+}) as NutritionGenerationInput;
+
+afterEach(() => {
+  vi.restoreAllMocks();
+});
+
 describe("the production registry", () => {
-  it("has no deployment, so it resolves no generator", () => {
-    expect(PRODUCTION_NUTRITION_VERTEX_DEPLOYMENT).toBeNull();
-    expect(productionNutritionGenerationProviderRegistry.current()).toBeNull();
+  it("resolves the signed deployment's generator and lease without any network call", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockRejectedValue(new Error("no network in this test"));
+    const setup = productionNutritionGenerationProviderRegistry.current();
+    expect(setup?.provider.id).toBe(NUTRITION_VERTEX_PROVIDER_ID);
+    expect(setup?.operationLeaseMs).toBe(300_000);
+    expect(productionNutritionGenerationProviderRegistry.current()).toBe(setup);
     expect(Object.isFrozen(productionNutritionGenerationProviderRegistry)).toBe(true);
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it("over the signed deployment builds no SDK client until the generator is called, and then asks for the pinned model with LOW thinking and 8192 tokens", async () => {
+    let built = 0;
+    const client = createFakeGoogleGenAiClient([{ status: 400 }]);
+    const connections: unknown[] = [];
+    const registry = createNutritionVertexProviderRegistry(PRODUCTION_NUTRITION_VERTEX_DEPLOYMENT, {
+      createClient: (connection) => (connections.push(connection), (built += 1), client),
+    });
+    const setup = registry.current();
+    expect(setup?.operationLeaseMs).toBe(PRODUCTION_NUTRITION_VERTEX_DEPLOYMENT.operationLeaseMs);
+    expect(built).toBe(0);
+
+    await expect(setup?.provider.generate(FIXTURE_GENERATION_INPUT)).rejects.toThrow();
+    expect(built).toBe(1);
+    // Vertex through the runtime identity: a project and a location, never a key.
+    expect(connections).toEqual([{ kind: "vertex", project: "fitssai-coach", location: "eu" }]);
+    expect(client.requests).toHaveLength(1);
+    expect(client.requests[0].model).toBe("gemini-3.8-flash");
+    expect(client.requests[0].config).toMatchObject({ maxOutputTokens: 8192, thinkingConfig: { thinkingLevel: "LOW" }, responseMimeType: "application/json" });
+    expect(Object.keys(client.requests[0].config as Record<string, unknown>).sort()).toEqual([
+      "maxOutputTokens",
+      "responseJsonSchema",
+      "responseMimeType",
+      "systemInstruction",
+      "thinkingConfig",
+    ]);
   });
 });
 

@@ -308,11 +308,16 @@ describe("Nutrition V2 module boundary", () => {
 
   it("calls nutritionRequestPlan from one module, reached only through the request hook, which no UI uses yet", () => {
     const generation = code(generationCallableModule);
-    expect(generation).toMatch(/httpsCallable<[^>]+>\(\s*getFunctions\(getApp\(\), FUNCTIONS_REGION\),\s*NUTRITION_REQUEST_PLAN_CALLABLE\s*\)/);
+    // NUT-12C.2: with this callable's own timeout, never the SDK default.
+    expect(generation).toMatch(
+      /httpsCallable<[^>]+>\(\s*getFunctions\(getApp\(\), FUNCTIONS_REGION\),\s*NUTRITION_REQUEST_PLAN_CALLABLE,\s*\{ timeout: NUTRITION_REQUEST_PLAN_CLIENT_TIMEOUT_MS \}\s*\)/
+    );
     expect([...generation.matchAll(/\bhttpsCallable\b/g)]).toHaveLength(2); // the import and the one call
     expect(generation).toMatch(/const payload = nutritionRequestPlanRequestSchema\.parse\(request\);/);
     for (const other of [targetCallableModule, planCallableModule, slotCallableModule]) {
       expect(code(other), other).not.toMatch(/NUTRITION_REQUEST_PLAN_CALLABLE/);
+      // The long timeout is this callable's alone.
+      expect(code(other), other).not.toMatch(/timeout/i);
     }
 
     const importers = productionSources.filter((path) => /from\s+["'][^"']*\/generationCallable["']/.test(read(path)));

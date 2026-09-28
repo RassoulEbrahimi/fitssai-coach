@@ -18,10 +18,11 @@ import { PRODUCTION_TARGET_POLICIES, productionTargetPolicyRegistry } from "./ta
   NUT-12B boundaries on source: a Nutrition Vertex AI adapter exists, and
   nothing can use it. The backend gate is a reviewed `false` that no client,
   environment or registry can move; the deployed callable passes exactly it;
-  there is no Nutrition key, secret, quota, log, exclusion vocabulary or
-  replacement generator; the signed deterministic policies and first-plan
-  slots (NUT-12C.1) configure no generator; the model id and the SDK stay on the server; and no provider payload
-  is persisted.
+  there is no Nutrition key, secret, log, exclusion vocabulary or replacement
+  generator; the signed deterministic policies and first-plan slots
+  (NUT-12C.1) and the signed Vertex deployment (NUT-12C.2) are configured
+  behind the closed gate; quota stays out of the provider; the model id and
+  the SDK stay on the server; and no provider payload is persisted.
 */
 
 const FUNCTIONS_ROOT = join(__dirname, "..", "..");
@@ -103,13 +104,27 @@ describe("the backend AI gate", () => {
   });
 });
 
-describe("production stays unconfigured behind the gate", () => {
-  it("has no Vertex deployment: no project, location or operational value is chosen", () => {
-    expect(PRODUCTION_NUTRITION_VERTEX_DEPLOYMENT).toBeNull();
-    expect(productionNutritionGenerationProviderRegistry.current()).toBeNull();
+describe("production is configured behind the closed gate (NUT-12C.2)", () => {
+  it("has exactly the signed Vertex deployment, frozen", () => {
+    expect(PRODUCTION_NUTRITION_VERTEX_DEPLOYMENT).toEqual({
+      provider: {
+        project: "fitssai-coach",
+        location: "eu",
+        maxOutputTokens: 8192,
+        thinkingLevel: "LOW",
+        timeoutMs: 45_000,
+        maxTransportAttempts: 2,
+      },
+      operationLeaseMs: 300_000,
+    });
+    expect(Object.isFrozen(PRODUCTION_NUTRITION_VERTEX_DEPLOYMENT)).toBe(true);
+    expect(Object.isFrozen(PRODUCTION_NUTRITION_VERTEX_DEPLOYMENT.provider)).toBe(true);
+    // The model is the adapter's pin, not a deployment value.
+    expect(NUTRITION_GEMINI_MODEL_ID).toBe("gemini-3.8-flash");
+    expect(PRODUCTION_NUTRITION_VERTEX_DEPLOYMENT.provider).not.toHaveProperty("model");
   });
 
-  it("configures only the signed deterministic policies and first-plan slots (NUT-12C.1), not the provider", () => {
+  it("configures the signed deterministic policies, first-plan slots and generator — and the gate stays off", () => {
     expect(PRODUCTION_TARGET_POLICIES).toHaveLength(2);
     expect(productionTargetPolicyRegistry.get("manual")).toMatchObject({ id: "manual-target", version: 1 });
     expect(productionTargetPolicyRegistry.get("calculated")).toMatchObject({ id: "calculated-target", version: 1 });
@@ -117,21 +132,25 @@ describe("production stays unconfigured behind the gate", () => {
     expect(productionPlanValidationPolicyRegistry.current()).toMatchObject({ id: "target-alignment", version: 1 });
     for (const mealsPerDay of [1, 2, 3, 4, 5]) expect(productionInitialSlotConfiguration.slotsFor(mealsPerDay)).toHaveLength(mealsPerDay);
     for (const mealsPerDay of [null, 0, 6]) expect(productionInitialSlotConfiguration.slotsFor(mealsPerDay)).toBeNull();
-    // None of that configures generation: no deployment, so no generator.
-    expect(PRODUCTION_NUTRITION_VERTEX_DEPLOYMENT).toBeNull();
-    expect(productionNutritionGenerationProviderRegistry.current()).toBeNull();
+    expect(productionNutritionGenerationProviderRegistry.current()?.operationLeaseMs).toBe(300_000);
+    // Configured is not enabled.
     expect(NUTRITION_AI_PRODUCTION_ENABLED).toBe(false);
   });
 
-  it("chooses no Vertex location or project anywhere in code — no region default", () => {
+  it("names a Vertex location and project only in the signed deployment — no default anywhere else", () => {
     for (const file of PROVIDER_MODULES) {
       const source = code(file);
-      expect(source, file).not.toMatch(/["'`](global|us|eu|us-[a-z]+\d*|europe-[a-z]+\d*|asia-[a-z]+\d*|me-[a-z]+\d*)["'`]/);
       expect(source, file).not.toMatch(/GOOGLE_CLOUD_(PROJECT|LOCATION)|FUNCTIONS_REGION/);
+      if (file === "src/nutrition/providers/productionRegistry.ts") continue;
+      expect(source, file).not.toMatch(/["'`](global|us|eu|us-[a-z]+\d*|europe-[a-z]+\d*|asia-[a-z]+\d*|me-[a-z]+\d*)["'`]/);
+      expect(source, file).not.toMatch(/fitssai-coach/);
     }
+    const registry = code("src/nutrition/providers/productionRegistry.ts");
+    expect([...registry.matchAll(/location: "([^"]+)"/g)].map((match) => match[1])).toEqual(["eu"]);
+    expect([...registry.matchAll(/project: "([^"]+)"/g)].map((match) => match[1])).toEqual(["fitssai-coach"]);
   });
 
-  it("chooses no output cap, thinking level, timeout, attempt count or lease for production", () => {
+  it("takes every operational value from the deployment: the adapter has no default", () => {
     const vertex = code("src/nutrition/providers/vertexGemini.ts");
     const registry = code("src/nutrition/providers/productionRegistry.ts");
     // Settings come only from the configuration: no `?? <number>` fallback, no default object.
@@ -139,7 +158,8 @@ describe("production stays unconfigured behind the gate", () => {
     expect(vertex).toMatch(/maxOutputTokens: config\.maxOutputTokens,/);
     expect(vertex).toMatch(/config\.timeoutMs/);
     expect(vertex).toMatch(/maxAttempts: config\.maxTransportAttempts/);
-    expect(registry).toMatch(/PRODUCTION_NUTRITION_VERTEX_DEPLOYMENT: NutritionVertexDeployment \| null = null;/);
+    expect(registry).toMatch(/PRODUCTION_NUTRITION_VERTEX_DEPLOYMENT: NutritionVertexDeployment = Object\.freeze\(\{/);
+    expect(registry).not.toMatch(/\?\?\s*\d/);
   });
 
   it("keeps production capabilities off while the V2 UI is enabled", () => {
@@ -148,11 +168,12 @@ describe("production stays unconfigured behind the gate", () => {
     expect(NUTRITION_V2_ENABLED).toBe(true);
   });
 
-  it("changes no Function operational setting: nutritionRequestPlan keeps its timeout and has no secret", () => {
+  it("gives nutritionRequestPlan the signed execution budget and no secret", () => {
     const index = code("src/index.ts");
     const start = index.indexOf("export const nutritionRequestPlan");
     const wiring = index.slice(start, index.indexOf("export const", start + 1));
-    expect(wiring).toMatch(/timeoutSeconds: 30,/);
+    expect(wiring).toMatch(/timeoutSeconds: 240,/);
+    expect(wiring).not.toMatch(/timeoutSeconds: 30,/);
     expect(wiring).not.toMatch(/secrets|GEMINI_API_KEY|apiKey/);
   });
 });
@@ -263,11 +284,13 @@ describe("the model and the SDK stay on the server", () => {
   });
 });
 
-describe("no quota, log, payload, exclusion or replacement generator", () => {
-  it("adds no Nutrition quota action or value", () => {
-    expect([...QUOTA_ACTIONS]).toEqual(["plan_generation", "weekly_summary"]);
-    expect(Object.keys(DEFAULT_QUOTA_LIMITS).sort()).toEqual(["plan_generation", "weekly_summary"]);
-    for (const file of [...nutritionModules, "src/ai/googleGenai.ts"]) expect(code(file), file).not.toMatch(/quota|Quota|_ai_quota/);
+describe("quota outside the provider; no log, payload, exclusion or replacement generator", () => {
+  it("keeps quota out of the provider and the transport: only the lifecycle, its handler and its refusal code name it", () => {
+    expect([...QUOTA_ACTIONS]).toEqual(["plan_generation", "weekly_summary", "nutrition_plan_generation"]);
+    expect(DEFAULT_QUOTA_LIMITS).toEqual({ plan_generation: 3, weekly_summary: 8, nutrition_plan_generation: 4 });
+    for (const file of PROVIDER_MODULES) expect(code(file), file).not.toMatch(/quota|Quota|_ai_quota/);
+    const namers = [...nutritionModules, "src/ai/googleGenai.ts"].filter((file) => /quota/i.test(code(file)));
+    expect(namers.sort()).toEqual(["src/nutrition/errors.ts", "src/nutrition/generationLifecycle.ts", "src/nutrition/requestPlan.ts"]);
   });
 
   it.each(PROVIDER_MODULES)("%s logs nothing and persists nothing", (file) => {

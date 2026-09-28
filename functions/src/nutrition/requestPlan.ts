@@ -8,6 +8,7 @@ import {
 } from "../../../shared/nutrition";
 import { requireAuth, type AuthContextLike } from "../auth";
 import { NUTRITION_PLAN_OPERATIONS, createOperationRecordStore } from "../operationRecords";
+import type { ReservingQuotaStore } from "../quota/firestoreQuotaStore";
 import { NutritionGenerationError, isNutritionGenerationError, isNutritionPlanError } from "./errors";
 import { generateNutritionPlanCandidate } from "./generationCandidate";
 import type { NutritionInitialSlotConfiguration } from "./generationInput";
@@ -42,15 +43,18 @@ import { nodeSha256Hex } from "./sha256";
  *      production it is off, so a new deployed request ends here: no request,
  *      no state pointer, no plan, no operation record, no quota, and the
  *      generator registry is not even asked); the profile read in THAT
- *      transaction is an eligible adult (NOT_ELIGIBLE); a generator is
- *      configured (GENERATION_PROVIDER_NOT_CONFIGURED); a plan-validation
- *      policy is in force (PLAN_VALIDATION_POLICY_NOT_CONFIGURED); and the
- *      account's own preconditions hold.
+ *      transaction is an eligible adult (NOT_ELIGIBLE) whose dietary
+ *      preference generation supports (DIETARY_PREFERENCE_NOT_SUPPORTED —
+ *      keto); a generator is configured (GENERATION_PROVIDER_NOT_CONFIGURED);
+ *      a plan-validation policy is in force
+ *      (PLAN_VALIDATION_POLICY_NOT_CONFIGURED); the account's own
+ *      preconditions hold; and, last, the month's `nutrition_plan_generation`
+ *      allowance has a unit left (QUOTA_EXCEEDED).
  *   5. The claim writes the request document (running), its `nutritionPlan`
- *      operation record with a reserved plan id, and the state's
- *      `activeGenerationRequestId`. Kind, base plan, target, dates and slots
- *      are the server's: `initial` from today without an active plan,
- *      `regenerate` from tomorrow with one.
+ *      operation record with a reserved plan id, the state's
+ *      `activeGenerationRequestId` and the request's quota hold. Kind, base
+ *      plan, target, dates and slots are the server's: `initial` from today
+ *      without an active plan, `regenerate` from tomorrow with one.
  *   7. the generator, with the minimized input only, then structure, the
  *      requested dates and slots, and the policy — at most one repair
  *   8. ONE finalisation transaction — the plan activated through the NUT-09
@@ -59,7 +63,8 @@ import { nodeSha256Hex } from "./sha256";
  *
  * The request document is the convergence source: a lost response, a closed
  * browser or a retry does not change what happens to it, and nothing cancels
- * it. No prompt, input or answer is persisted or logged, and no quota is taken.
+ * it. No prompt, input or answer is persisted or logged. The quota unit is
+ * charged only with an activated plan and given back by every other ending.
  */
 
 export interface NutritionRequestPlanDeps {
@@ -74,8 +79,14 @@ export interface NutritionRequestPlanDeps {
   providers: NutritionGenerationProviderRegistry;
   /** The plan-validation policy in force. Production: none. */
   policies: PlanValidationPolicyRegistry;
-  /** The slots of a first plan. Production: no mapping. */
+  /** The slots of a first plan. Production: the signed v1 mapping. */
   initialSlots: NutritionInitialSlotConfiguration;
+  /**
+   * The server's quota store (`_ai_quota`). Nutrition holds, charges and
+   * releases `nutrition_plan_generation` units through its transactional
+   * ledger; the browser supplies nothing about quota.
+   */
+  quota: Pick<ReservingQuotaStore, "readLedgerInTransaction">;
   now?: () => Date;
   /** Mints a plan id for a request's first claim. Server-side only; never the request id. */
   newPlanId?: () => string;
@@ -139,6 +150,7 @@ export const handleNutritionRequestPlan = async (
     policies: deps.policies,
     initialSlots: deps.initialSlots,
     sha256Hex: nodeSha256Hex,
+    quota: deps.quota,
   };
 
   // 3–6. One claim transaction: the profile, the request, its record and the
