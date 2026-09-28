@@ -35,8 +35,8 @@ import {
   NUT-12B: the Nutrition Vertex AI adapter, against a scripted fake SDK client.
   No test here reaches a network, a credential or a real project: CI never
   calls Vertex AI. The production gate is not involved — these tests build the
-  adapter directly, which only the (unconfigured) production registry would do
-  in a deployment.
+  adapter directly, which only the production registry would do in a
+  deployment, and only behind the gate.
 */
 
 const INPUT: NutritionGenerationInput = Object.freeze({

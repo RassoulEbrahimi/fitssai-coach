@@ -3,6 +3,7 @@ import { getFunctions, httpsCallable, type FunctionsError } from "firebase/funct
 import { FUNCTIONS_REGION } from "@/lib/backend/region";
 import {
   NUTRITION_REQUEST_PLAN_CALLABLE,
+  NUTRITION_REQUEST_PLAN_CLIENT_TIMEOUT_MS,
   isNutritionRequestPlanErrorCode,
   nutritionRequestPlanRequestSchema,
   nutritionRequestPlanResultSchema,
@@ -55,9 +56,12 @@ export const toNutritionRequestPlanCallError = (error: unknown): NutritionReques
 export const callNutritionRequestPlan = async (request: NutritionRequestPlanRequest): Promise<NutritionRequestPlanResult> => {
   // Strict: exactly `{ requestId }` leaves the browser.
   const payload = nutritionRequestPlanRequestSchema.parse(request);
+  // This callable's own timeout: a generation outlasts the SDK's default, and
+  // the browser must not give up while the server's claim is still live.
   const callable = httpsCallable<NutritionRequestPlanRequest, unknown>(
     getFunctions(getApp(), FUNCTIONS_REGION),
-    NUTRITION_REQUEST_PLAN_CALLABLE
+    NUTRITION_REQUEST_PLAN_CALLABLE,
+    { timeout: NUTRITION_REQUEST_PLAN_CLIENT_TIMEOUT_MS }
   );
 
   let data: unknown;

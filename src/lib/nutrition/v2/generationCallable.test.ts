@@ -11,7 +11,7 @@ const functions = vi.hoisted(() => {
   return {
     invoke,
     getFunctions: vi.fn(() => ({ region: "europe-west3" })),
-    httpsCallable: vi.fn((_functions: unknown, _name: string) => invoke),
+    httpsCallable: vi.fn((_functions: unknown, _name: string, _options?: unknown) => invoke),
   };
 });
 
@@ -53,6 +53,8 @@ describe("callNutritionRequestPlan", () => {
     expect(await callNutritionRequestPlan({ requestId: REQUEST_ID })).toEqual(answer());
     expect(functions.getFunctions).toHaveBeenCalledWith(expect.anything(), "europe-west3");
     expect(functions.httpsCallable.mock.calls[0][1]).toBe("nutritionRequestPlan");
+    // NUT-12C.2: its own 300-second timeout, never the SDK default.
+    expect(functions.httpsCallable.mock.calls[0][2]).toEqual({ timeout: 300_000 });
     expect(functions.invoke.mock.calls).toEqual([[{ requestId: REQUEST_ID }]]);
   });
 
@@ -123,6 +125,8 @@ describe("toNutritionRequestPlanCallError", () => {
     [{ code: "functions/failed-precondition", message: "PLAN_VALIDATION_POLICY_NOT_CONFIGURED" }, "PLAN_VALIDATION_POLICY_NOT_CONFIGURED"],
     [{ code: "functions/failed-precondition", message: "PLAN_NOT_REGENERABLE" }, "PLAN_NOT_REGENERABLE"],
     [{ code: "functions/failed-precondition", message: "GENERATION_SLOTS_NOT_CONFIGURED" }, "GENERATION_SLOTS_NOT_CONFIGURED"],
+    [{ code: "functions/failed-precondition", message: "QUOTA_EXCEEDED" }, "QUOTA_EXCEEDED"],
+    [{ code: "functions/failed-precondition", message: "DIETARY_PREFERENCE_NOT_SUPPORTED" }, "DIETARY_PREFERENCE_NOT_SUPPORTED"],
     [{ code: "functions/internal", message: "users/alice/nutrition_v2_generations/x: boom" }, "INTERNAL"],
     [{ code: "functions/unavailable", message: "Failed to fetch" }, "INTERNAL"],
     // Another callable's code is not this one's.

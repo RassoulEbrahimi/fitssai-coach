@@ -22,7 +22,9 @@ import {
   type Sha256Hex,
   type TargetVersion,
 } from "../../../shared/nutrition";
-import type { OperationRecord, OperationRecordStore } from "../operationRecords";
+import { operationLeaseExpiry, type OperationRecord, type OperationRecordStore } from "../operationRecords";
+import { DEFAULT_QUOTA_LIMITS } from "../quota";
+import { quotaPeriod, type QuotaLedger, type QuotaTransactionLike, type ReservingQuotaStore } from "../quota/firestoreQuotaStore";
 import { NutritionGenerationError, NutritionPlanError } from "./errors";
 import {
   buildNutritionGenerationInput,
@@ -97,11 +99,13 @@ import type { PlanValidationPolicy, PlanValidationPolicyRegistry } from "./planV
  * request replays, and a live one — this request or another — is answered,
  * whatever the gate, the generator or the policy registry says now. Only new
  * work — a new request, or a takeover that would call the generator — needs
- * the backend AI gate on (NUTRITION_AI_DISABLED, NUT-12B), a configured
- * generator (GENERATION_PROVIDER_NOT_CONFIGURED), a policy in force
- * (PLAN_VALIDATION_POLICY_NOT_CONFIGURED) and the generator's operation lease,
- * and it is refused before anything is written. The gate is judged first, and
- * the generator registry is not even asked while it is off.
+ * the backend AI gate on (NUTRITION_AI_DISABLED, NUT-12B), a dietary
+ * preference generation supports (DIETARY_PREFERENCE_NOT_SUPPORTED: keto,
+ * NUT-12C.2), a configured generator (GENERATION_PROVIDER_NOT_CONFIGURED), a
+ * policy in force (PLAN_VALIDATION_POLICY_NOT_CONFIGURED), the generator's
+ * operation lease and, judged last, a unit of the month's allowance
+ * (QUOTA_EXCEEDED), and it is refused before anything is written. The gate is
+ * judged first, and the generator registry is not even asked while it is off.
  *
  * With the gate off, an expired request is left exactly as it is: still
  * `running`, its record and the state pointer untouched, answered
@@ -115,6 +119,29 @@ import type { PlanValidationPolicy, PlanValidationPolicyRegistry } from "./planV
  * State revision: a transaction that changes the state document moves
  * `revision` by exactly one (claim, activation, a failure or discard that
  * clears the pointer); one that does not change it does not write it.
+ *
+ * Quota (NUT-12C.2): one `nutrition_plan_generation` unit per logical
+ * request, on the existing `_ai_quota` store, settled in the same transaction
+ * as the lifecycle step it belongs to:
+ *
+ *   claim of a new request   reserves one unit, held until the claim's lease
+ *                            runs out; none left → QUOTA_EXCEEDED, nothing
+ *                            written. Judged last, after every free refusal
+ *   takeover                 renews the SAME request's hold for the new lease —
+ *                            never a second unit
+ *   finalize, activated      the hold becomes a permanent charge, with the plan
+ *   any end without a plan   the hold is released: failed (including
+ *                            GENERATION_ABANDONED), or discarded_stale
+ *   answering, replaying     nothing
+ *
+ * A lost invocation ends nothing, so it releases nothing: the successor's hold
+ * is the successor's. The hold is always in the UTC month the request was
+ * created in (`nutritionGenerationQuotaPeriod`), so a request claimed on the
+ * 30th and finished on the 1st settles the unit it took, never next month's.
+ *
+ * Every transaction reads the quota document with its other reads and
+ * changes it after them (`QuotaLedger`): reads stay before writes, including
+ * the activation core's own.
  */
 
 type Snapshot = { exists: boolean; data(): Record<string, unknown> | undefined };
@@ -127,9 +154,44 @@ export interface NutritionGenerationContext {
   policies: PlanValidationPolicyRegistry;
   initialSlots: NutritionInitialSlotConfiguration;
   sha256Hex: Sha256Hex;
+  /** The server's quota store. Only its transactional ledger is used. */
+  quota: Pick<ReservingQuotaStore, "readLedgerInTransaction">;
 }
 
+/** Nutrition's own allowance: never Training's `plan_generation`. */
+export const NUTRITION_GENERATION_QUOTA_ACTION = "nutrition_plan_generation" as const;
+
 const internal = (message: string) => new NutritionGenerationError("INTERNAL", message);
+
+/**
+ * The UTC month a request's quota hold is counted in: the month of its first
+ * claim, read from the immutable `createdAt`, for the request's whole life.
+ */
+export const nutritionGenerationQuotaPeriod = (request: Pick<GenerationRequest, "createdAt">): string =>
+  quotaPeriod(new Date(request.createdAt.seconds * 1000 + Math.floor(request.createdAt.nanoseconds / 1_000_000)));
+
+/** `request`'s quota document, read inside `tx`. Callers read it with their other reads, before any write. */
+const readQuotaLedger = (
+  ctx: NutritionGenerationContext,
+  tx: ActivationTransaction,
+  request: Pick<GenerationRequest, "createdAt">
+): Promise<QuotaLedger> =>
+  ctx.quota.readLedgerInTransaction(tx as unknown as QuotaTransactionLike, {
+    uid: ctx.uid,
+    action: NUTRITION_GENERATION_QUOTA_ACTION,
+    period: nutritionGenerationQuotaPeriod(request),
+  });
+
+/**
+ * Keto is part of the profile vocabulary, but no generated plan is Keto: a
+ * standard target is not a Keto target. Refused before any paid work, and
+ * never substituted by another preference.
+ */
+const requireSupportedDietaryPreference = (profile: NutritionProfile): void => {
+  if (answeredValue(profile.dietaryPreference) === "keto") {
+    throw new NutritionGenerationError("DIETARY_PREFERENCE_NOT_SUPPORTED", "Nutrition plan generation does not support this dietary preference.");
+  }
+};
 
 const runTransaction = <T>(firestore: Firestore, body: (tx: ActivationTransaction) => Promise<T>): Promise<T> =>
   (
@@ -386,12 +448,13 @@ export const claimNutritionGeneration = (
     }
 
     // New work from here: the AI gate on, an eligible adult by the profile read
-    // above, and a configured generator.
+    // above, a dietary preference generation supports, and a configured generator.
     requireGenerationEnabled(generationEnabled);
     const eligibility = getNutritionEligibility(profile);
     if (!eligibility.eligible) {
       throw new NutritionGenerationError("NOT_ELIGIBLE", "Nutrition is for adults with a known age.", { reason: eligibility.reason });
     }
+    requireSupportedDietaryPreference(profile);
     const work = requireWork(ctx, providers);
     if (!state || state.currentTargetVersionId === null) {
       throw new NutritionGenerationError("NO_CURRENT_TARGET", "No target is set.");
@@ -413,9 +476,6 @@ export const claimNutritionGeneration = (
     const derived = await deriveInput(ctx, profile, basePlan, target, at);
     if (!derived.ok) throw new NutritionGenerationError(derived.code, "The generation cannot be configured.");
 
-    // Every read is done; everything below is written together.
-    if (abandoned) writeRequestEnd(ctx, tx, abandoned, { status: "failed", code: "GENERATION_ABANDONED" }, at);
-
     const created: GenerationRequest = {
       schemaVersion: NUTRITION_SCHEMA_VERSION,
       requestId,
@@ -433,6 +493,24 @@ export const claimNutritionGeneration = (
     };
     if (!generationRequestSchema.safeParse(created).success) throw internal("The new request is not a valid GenerationRequest.");
 
+    // The last reads: the allowance of this request's month, and — when it is
+    // another month — the abandoned request's, whose hold it gives back.
+    const ledger = await readQuotaLedger(ctx, tx, created);
+    const abandonedLedger =
+      abandoned && nutritionGenerationQuotaPeriod(abandoned) !== ledger.period ? await readQuotaLedger(ctx, tx, abandoned) : ledger;
+
+    // Every read is done; everything below is written together — or, when the
+    // allowance is gone, nothing is. The abandoned request's unit goes back
+    // first, so it can pay for this one.
+    if (abandoned) abandonedLedger.release(abandoned.requestId);
+    const reserved = ledger.reserve({
+      requestId,
+      limit: DEFAULT_QUOTA_LIMITS[NUTRITION_GENERATION_QUOTA_ACTION],
+      expiresAt: operationLeaseExpiry(at, work.setup.operationLeaseMs),
+    });
+    if (reserved === null) throw new NutritionGenerationError("QUOTA_EXCEEDED", "The monthly Nutrition generation allowance is used up.");
+
+    if (abandoned) writeRequestEnd(ctx, tx, abandoned, { status: "failed", code: "GENERATION_ABANDONED" }, at);
     ctx.records.writeClaim(tx, {
       uid: ctx.uid,
       requestId,
@@ -486,11 +564,14 @@ const continueRequest = async (
   if (record.leaseLive) return { kind: "inProgress", request };
 
   // The invocation that owned it is gone. Continue the same request, or end it
-  // — ending it needs no generator; continuing does.
+  // — ending it needs no generator; continuing does. Either settles the hold
+  // the request took in its own month, read here, before any write.
+  const ledger = await readQuotaLedger(ctx, tx, request);
   const stale = staleCodeFor(state, request, profile);
   if (stale) {
     const ended = writeRequestEnd(ctx, tx, request, { status: "discarded_stale", code: stale }, at);
     clearPointerIfNamed(ctx, tx, state, request.requestId);
+    ledger.release(request.requestId);
     return { kind: "finished", request: ended, replay: false };
   }
 
@@ -509,8 +590,23 @@ const continueRequest = async (
   if (!derived.ok || derived.fingerprint !== request.payloadFingerprint) {
     const ended = writeRequestEnd(ctx, tx, request, { status: "discarded_stale", code: "INPUT_CHANGED" }, at);
     clearPointerIfNamed(ctx, tx, state, request.requestId);
+    ledger.release(request.requestId);
     return { kind: "finished", request: ended, replay: false };
   }
+  // Unreachable for a request this version claimed (the preference is part of
+  // the fingerprint), and refused all the same before any paid work.
+  requireSupportedDietaryPreference(profile);
+
+  // The same logical request keeps its one unit: the hold is renewed for the
+  // new lease, in the month it was taken — never a second unit, never next
+  // month's. Only a request that holds nothing any more needs the allowance.
+  const renewed = ledger.reserve({
+    requestId: request.requestId,
+    limit: DEFAULT_QUOTA_LIMITS[NUTRITION_GENERATION_QUOTA_ACTION],
+    expiresAt: operationLeaseExpiry(at, work.setup.operationLeaseMs),
+    renew: true,
+  });
+  if (renewed === null) throw new NutritionGenerationError("QUOTA_EXCEEDED", "The monthly Nutrition generation allowance is used up.");
 
   // A new owner of the same request: new token, same reserved plan id, same document.
   ctx.records.writeClaim(tx, {
@@ -586,15 +682,21 @@ export const finalizeNutritionGeneration = (
 
     const state = parseNutritionStateSnapshot(await tx.get(refsFor(ctx.firestore, ctx.uid).state));
     const profile = await readProfile(ctx, tx);
+    // Read before the activation core runs: its own reads come next, and every
+    // write — the plan's, the state's, the quota's — after all of them.
+    const ledger = await readQuotaLedger(ctx, tx, request);
     const stale = staleCodeFor(state, request, profile);
     if (stale) {
       const ended = writeRequestEnd(ctx, tx, request, { status: "discarded_stale", code: stale }, at);
       clearPointerIfNamed(ctx, tx, state, requestId);
+      ledger.release(requestId);
       return { kind: "finished", request: ended };
     }
 
     const activated = await activateNutritionPlanInTransaction(tx, { firestore: ctx.firestore, policies: ctx.policies }, activation);
     if (activated.kind !== "activated") throw internal("A generation activation cannot be a replay.");
+    // The plan and its charge commit together, or neither does.
+    ledger.consume(requestId);
 
     const succeeded: GenerationRequest = {
       ...request,
@@ -629,8 +731,11 @@ export const failNutritionGeneration = (
     const { request, record } = await readOwned(ctx, tx, requestId, at);
     if (!owns(request, record, claimToken)) return { kind: "lost", request };
     const state = parseNutritionStateSnapshot(await tx.get(refsFor(ctx.firestore, ctx.uid).state));
+    const ledger = await readQuotaLedger(ctx, tx, request);
     const ended = writeRequestEnd(ctx, tx, request, { status: "failed", code }, at);
     clearPointerIfNamed(ctx, tx, state, requestId);
+    // No plan: the unit goes back. A second release finds no hold and gives nothing.
+    ledger.release(requestId);
     return { kind: "finished", request: ended };
   });
 

@@ -168,10 +168,19 @@ export class FakeFirestore {
     const run = this.lock.then(async () => {
       const buffered: Array<() => void> = [];
       const result = await body({
-        get: async (ref) =>
-          typeof (ref as { where?: unknown }).where === "function"
+        /*
+          As the Admin SDK: a transaction does all of its reads before its
+          first write. A read after a write is a bug that production would
+          throw on, so the fake throws on it too.
+        */
+        get: async (ref) => {
+          if (buffered.length > 0) {
+            throw new Error("Firestore transactions require all reads to be executed before all writes.");
+          }
+          return typeof (ref as { where?: unknown }).where === "function"
             ? ((await (ref as unknown as { get: () => Promise<unknown> }).get()) as Doc)
-            : this.snapshot(ref.path),
+            : this.snapshot(ref.path);
+        },
         set: (ref, value, options) =>
           buffered.push(() => this.writeAt(ref.path, value, options?.merge === true)),
         create: (ref, value) =>

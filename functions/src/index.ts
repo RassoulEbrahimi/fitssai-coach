@@ -151,21 +151,24 @@ export const generateWeeklyReview = onCall(
  * but NOTHING can generate: the backend gate
  * `NUTRITION_AI_PRODUCTION_ENABLED` is off, so a new request answers
  * `NUTRITION_AI_DISABLED` before the generator registry is even asked, and
- * writes nothing — no request, no state pointer, no plan, no operation record.
- * Behind the gate, the generator's deployment configuration is still empty;
- * the signed `target-alignment` v1 policy and the v1 first-plan slot mapping
- * are configured (NUT-12C.1), but configure no generator.
+ * writes nothing — no request, no state pointer, no plan, no operation record,
+ * no quota. Behind the gate everything new work needs is configured: the
+ * signed `target-alignment` v1 policy and the v1 first-plan slot mapping
+ * (NUT-12C.1), the signed Vertex deployment, the execution budget below and
+ * the `nutrition_plan_generation` quota — four activated plans per UTC month,
+ * reserved with the claim, charged with the activation (NUT-12C.2).
  *
- * No secret (Vertex AI authenticates as the runtime's own identity), no quota
- * and no log: nothing here is paid for.
+ * No secret (Vertex AI authenticates as the runtime's own identity) and no
+ * log. The timeout is sized for one generation plus one repair; see
+ * `PRODUCTION_NUTRITION_VERTEX_DEPLOYMENT`.
  */
 export const nutritionRequestPlan = onCall(
   {
     region: FUNCTIONS_REGION,
     maxInstances: 5,
-    // Today it reads a profile and refuses. A configured generator brings its
-    // own execution budget, together with the operation lease that covers it.
-    timeoutSeconds: 30,
+    // 240 s: the worst-case provider time (about 181 s) fits inside it, and
+    // it ends before the 300-second operation lease does.
+    timeoutSeconds: 240,
     memory: "256MiB",
   },
   async (request) => {
@@ -176,6 +179,7 @@ export const nutritionRequestPlan = onCall(
         providers: productionNutritionGenerationProviderRegistry,
         policies: productionPlanValidationPolicyRegistry,
         initialSlots: productionInitialSlotConfiguration,
+        quota: createFirestoreQuotaStore({ firestore: db() }),
       });
     } catch (error) {
       // Only our codes cross; see nutrition/errors.ts.

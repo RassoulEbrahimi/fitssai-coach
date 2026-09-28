@@ -55,11 +55,12 @@ configuration is needed to render the UI.
 
 ## Production gates and remaining work
 
-Unchanged: `NUTRITION_AI_PRODUCTION_ENABLED = false`, backend
-`nutritionGeneration = false`, `nutritionTargets = false`, unsigned target
-and validation policies, and the unconfigured production Vertex deployment.
-No provider timeout/retry/lease settings, Firebase rules, schema, quota or
-server write paths change in this PR.
+Unchanged by NUT-12D: `NUTRITION_AI_PRODUCTION_ENABLED = false`, backend
+`nutritionGeneration = false`, `nutritionTargets = false`, and — at that
+time — unsigned target and validation policies and no production Vertex
+deployment (both since configured; see the updates below). No provider
+timeout/retry/lease settings, Firebase rules, schema, quota or server write
+paths change in that PR.
 
 A fresh account can see the real empty V2 UI after deployment. It cannot get
 its first target or AI meal plan from this release. Existing legacy plans
@@ -71,18 +72,38 @@ Update (NUT-12C.1): the deterministic TargetPolicy v1 (`calculated-target`,
 slot mapping v1 are now signed and configured server-side, so a fresh adult
 account can set its first TARGET. The target setup shows the new
 `TARGET_INFEASIBLE` refusal neutrally. Production AI is still off:
-`NUTRITION_AI_PRODUCTION_ENABLED = false`, no Vertex deployment, no Nutrition
-quota, and both capability flags remain `false`.
+`NUTRITION_AI_PRODUCTION_ENABLED = false`, and both capability flags remain
+`false` (at NUT-12C.1 there was also no Vertex deployment and no Nutrition
+quota yet).
+
+Update (NUT-12C.2): the generation backend is now configured behind the
+closed gate — the signed Vertex deployment (project `fitssai-coach`, location
+`eu`, `gemini-3.8-flash` as Nutrition's own model pin, thinking `LOW`, 8192
+output tokens, 45 s per attempt, 2 transport attempts, 300 s operation
+lease), the execution budget (`nutritionRequestPlan` Function timeout 240 s,
+browser callable timeout 300 s for this callable only), the
+`nutrition_plan_generation` quota (4 activated plans per user per UTC month,
+first plans and regenerations alike, never Training's allowance) and an
+explicit Keto refusal (`DIETARY_PREFERENCE_NOT_SUPPORTED`; `keto` stays in the
+profile vocabulary). Still: `NUTRITION_AI_PRODUCTION_ENABLED = false`, both
+capability flags `false`, and no production Nutrition AI call can occur. The
+new refusal codes `QUOTA_EXCEEDED` and `DIETARY_PREFERENCE_NOT_SUPPORTED`
+reach the browser's callable parser; no UI action issues a request yet, so no
+copy was added. The runtime identity's Vertex AI permission (IAM) and the
+privacy, legal and data-processing sign-off remain open prerequisites; this
+repository changes neither.
 
 Remaining sequence:
 
 1. NUT-12C: sign off policies (done in NUT-12C.1) and production
-   configuration, including the timeout/retry/lease relationship (NUT-12C.2).
-   This is not required for read-only UI.
+   configuration, including the timeout/retry/lease relationship (done in
+   NUT-12C.2). This is not required for read-only UI.
 2. NUT-13: authenticated browser/phone E2E against an approved environment,
-   including recording and replacement with real server responses.
+   including recording and replacement with real server responses. Next.
 3. NUT-14: separately reviewed production enablement and explicit setup/
-   generation actions. UI rollout does not authorize enabling these gates.
+   generation actions — the only slice that may turn on the gate and the
+   capability flags, after the IAM prerequisite and the privacy/legal sign-off.
+   UI rollout does not authorize enabling these gates.
 
 ## One-time deployment and phone check (after review/merge)
 

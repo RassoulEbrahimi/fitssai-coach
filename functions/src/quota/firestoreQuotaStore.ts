@@ -34,6 +34,9 @@ export const quotaPeriod = (now: Date): string =>
 export const quotaDocId = (uid: string, action: QuotaAction, period: string): string =>
   `${uid}__${action}__${period}`;
 
+/** What `quotaPeriod` produces; an explicit period must look the same. */
+const QUOTA_PERIOD_PATTERN = /^\d{4}-(0[1-9]|1[0-2])$/;
+
 /**
  * The slice of a Firestore transaction the quota helpers need.
  *
@@ -79,6 +82,42 @@ export interface QuotaHoldRef {
   uid: string;
   action: QuotaAction;
   requestId: string;
+  /**
+   * The period the hold is counted against. Omitted, it is the period of the
+   * store's clock now — what every caller before NUT-12C.2 gets. A request
+   * that can outlive a month boundary names the period of its first claim, so
+   * finishing it after midnight on the 1st settles the hold it actually took
+   * instead of looking for it in next month's document.
+   */
+  period?: string;
+}
+
+/**
+ * One quota document, read inside a caller's transaction, whose holds can then
+ * be changed without reading it again.
+ *
+ * A Firestore transaction must do all of its reads before its first write. A
+ * caller that settles a hold together with other documents — a plan, a
+ * request, an account state — therefore reads the ledger early, with its other
+ * reads, and applies the change after them. Each change is written at once
+ * and is cumulative, so several changes to one document in one transaction
+ * (one request's hold released, another's reserved) leave it exactly as the
+ * last one describes.
+ */
+export interface QuotaLedger {
+  /** The period this document counts. */
+  readonly period: string;
+  /**
+   * Take or renew `requestId`'s hold, as `reserveInTransaction` does. With
+   * `renew`, the request's own hold is never reclaimed first, even past its
+   * expiry: the request is being continued, and continuing it is not a second
+   * unit. Returns the usage after the call, or null when the allowance is gone.
+   */
+  reserve(hold: { requestId: string; limit: number; expiresAt: Date; renew?: boolean }): number | null;
+  /** Turn `requestId`'s hold into a permanent charge, as `consumeInTransaction` does. */
+  consume(requestId: string): void;
+  /** Give `requestId`'s hold back, as `releaseInTransaction` does. */
+  release(requestId: string): void;
 }
 
 export interface FirestoreQuotaStoreOptions {
@@ -136,6 +175,16 @@ export interface ReservingQuotaStore extends QuotaStore {
    * nothing and changes nothing rather than handing out a free generation.
    */
   releaseInTransaction(tx: QuotaTransactionLike, hold: QuotaHoldRef): Promise<void>;
+  /**
+   * Read one document of the allowance inside a caller's transaction, for
+   * changes the caller applies after the rest of its reads. The three
+   * `…InTransaction` methods above are exactly this read followed by one
+   * change.
+   */
+  readLedgerInTransaction(
+    tx: QuotaTransactionLike,
+    ref: { uid: string; action: QuotaAction; period?: string }
+  ): Promise<QuotaLedger>;
 }
 
 export const createFirestoreQuotaStore = (
@@ -144,8 +193,10 @@ export const createFirestoreQuotaStore = (
   const { firestore } = options;
   const now = options.now ?? (() => new Date());
 
-  const ref = (uid: string, action: QuotaAction) =>
-    firestore.collection(QUOTA_COLLECTION).doc(quotaDocId(uid, action, quotaPeriod(now())));
+  const refAt = (uid: string, action: QuotaAction, period: string) =>
+    firestore.collection(QUOTA_COLLECTION).doc(quotaDocId(uid, action, period));
+
+  const ref = (uid: string, action: QuotaAction) => refAt(uid, action, quotaPeriod(now()));
 
   const readCount = (data: FirebaseFirestore.DocumentData | undefined): number => {
     const value = data?.count;
@@ -164,6 +215,17 @@ export const createFirestoreQuotaStore = (
     );
   };
 
+  /** What one quota document says, before reclamation. */
+  interface Book {
+    count: number;
+    reservations: QuotaReservation[];
+  }
+
+  const bookOf = (data: FirebaseFirestore.DocumentData | undefined): Book => ({
+    count: readCount(data),
+    reservations: readReservations(data),
+  });
+
   /**
    * The document as it should be read, with expired holds already reclaimed.
    *
@@ -174,7 +236,7 @@ export const createFirestoreQuotaStore = (
    * at zero is what keeps that from ever becoming free generations.
    */
   const ledger = (
-    data: FirebaseFirestore.DocumentData | undefined,
+    book: Book,
     at: Date,
     /**
      * A request whose own hold is never treated as stale.
@@ -187,7 +249,7 @@ export const createFirestoreQuotaStore = (
      */
     keep?: string
   ) => {
-    const held = readReservations(data);
+    const held = book.reservations;
     const live = held.filter((entry) => {
       if (entry.requestId === keep) return true;
       const expiry = Date.parse(entry.expiresAt);
@@ -195,7 +257,7 @@ export const createFirestoreQuotaStore = (
     });
     return {
       /** Successful generations, plus the ones still genuinely in flight. */
-      count: Math.max(0, readCount(data) - (held.length - live.length)),
+      count: Math.max(0, book.count - (held.length - live.length)),
       reservations: live,
       reclaimed: held.length - live.length,
     };
@@ -205,6 +267,7 @@ export const createFirestoreQuotaStore = (
     tx: QuotaTransactionLike,
     docRef: unknown,
     at: Date,
+    period: string,
     uid: string,
     action: QuotaAction,
     count: number,
@@ -215,13 +278,101 @@ export const createFirestoreQuotaStore = (
       {
         uid,
         action,
-        period: quotaPeriod(at),
+        period,
         count,
         reservations,
         updatedAt: at.toISOString(),
       },
       { merge: true }
     );
+  };
+
+  /*
+    The read is here and nowhere else in the transactional path; every change
+    below is a write against what it read, so a caller can put the read among
+    its own reads and the change after them.
+  */
+  const readLedgerInTransaction = async (
+    tx: QuotaTransactionLike,
+    { uid, action, period }: { uid: string; action: QuotaAction; period?: string }
+  ): Promise<QuotaLedger> => {
+    const at = now();
+    const bucket = period ?? quotaPeriod(at);
+    if (!QUOTA_PERIOD_PATTERN.test(bucket)) throw new Error("A quota period is a UTC calendar month, YYYY-MM.");
+    const docRef = refAt(uid, action, bucket);
+    let book = bookOf((await tx.get(docRef)).data());
+
+    const write = (count: number, reservations: QuotaReservation[]): void => {
+      book = { count, reservations };
+      writeLedger(tx, docRef, at, bucket, uid, action, count, reservations);
+    };
+
+    return {
+      period: bucket,
+
+      reserve: ({ requestId, limit, expiresAt, renew = false }) => {
+        const current = ledger(book, at, renew ? requestId : undefined);
+        const mine = { requestId, expiresAt: expiresAt.toISOString() };
+
+        /*
+          This request already holds a unit — it is being continued after its
+          first invocation stopped, not started again. Extend the hold to the
+          new claim's lease so nothing reclaims it while the retry is working,
+          and charge nothing: one press, one unit, however many invocations it
+          takes.
+        */
+        if (current.reservations.some((entry) => entry.requestId === requestId)) {
+          write(
+            current.count,
+            current.reservations.map((entry) => (entry.requestId === requestId ? mine : entry))
+          );
+          return current.count;
+        }
+
+        if (current.count >= limit) {
+          // Nothing to give. Units reclaimed by the read above are still worth
+          // committing, so the next request does not have to find them again.
+          if (current.reclaimed > 0) write(current.count, current.reservations);
+          return null;
+        }
+
+        write(current.count + 1, [...current.reservations, mine]);
+        return current.count + 1;
+      },
+
+      consume: (requestId) => {
+        /*
+          The count stays where it is: this unit was counted when it was
+          reserved, and it has now bought a plan. Dropping the hold is the
+          whole transition — it is what stops the unit from ever being
+          reclaimed.
+
+          A request finalising without a live hold is not treated as a new
+          charge either. Its own hold is exempt from reclamation, and a
+          document written before holds were recorded already carries the
+          claim's increment in the count — so the unit is counted exactly once
+          however the record looks, and finalising is only ever the act of
+          making it permanent.
+        */
+        const current = ledger(book, at, requestId);
+        write(
+          current.count,
+          current.reservations.filter((entry) => entry.requestId !== requestId)
+        );
+      },
+
+      release: (requestId) => {
+        const current = ledger(book, at);
+        const remaining = current.reservations.filter((entry) => entry.requestId !== requestId);
+
+        // Only a unit this request still owns is given back. A repeated
+        // release, or one from an attempt whose hold was already reclaimed,
+        // finds nothing and changes nothing — a refund it never paid for would
+        // be a free plan.
+        const refund = remaining.length < current.reservations.length ? 1 : 0;
+        write(Math.max(0, current.count - refund), remaining);
+      },
+    };
   };
 
   return {
@@ -234,7 +385,7 @@ export const createFirestoreQuotaStore = (
     */
     getUsage: async (uid, action) => {
       const snap = await ref(uid, action).get();
-      return ledger(snap.data(), now()).count;
+      return ledger(bookOf(snap.data()), now()).count;
     },
 
     increment: async (uid, action) => {
@@ -280,85 +431,18 @@ export const createFirestoreQuotaStore = (
       });
     },
 
-    reserveInTransaction: async (tx, { uid, action, requestId, limit, expiresAt }) => {
-      const at = now();
-      const docRef = ref(uid, action);
-      const book = ledger((await tx.get(docRef)).data(), at);
-      const mine = { requestId, expiresAt: expiresAt.toISOString() };
+    reserveInTransaction: async (tx, { uid, action, requestId, limit, expiresAt, period }) =>
+      (await readLedgerInTransaction(tx, { uid, action, period })).reserve({ requestId, limit, expiresAt }),
 
-      /*
-        This request already holds a unit — it is being continued after its
-        first invocation stopped, not started again. Extend the hold to the new
-        claim's lease so nothing reclaims it while the retry is working, and
-        charge nothing: one press, one unit, however many invocations it takes.
-      */
-      if (book.reservations.some((entry) => entry.requestId === requestId)) {
-        writeLedger(
-          tx,
-          docRef,
-          at,
-          uid,
-          action,
-          book.count,
-          book.reservations.map((entry) => (entry.requestId === requestId ? mine : entry))
-        );
-        return book.count;
-      }
-
-      if (book.count >= limit) {
-        // Nothing to give. Units reclaimed by the read above are still worth
-        // committing, so the next request does not have to find them again.
-        if (book.reclaimed > 0) {
-          writeLedger(tx, docRef, at, uid, action, book.count, book.reservations);
-        }
-        return null;
-      }
-
-      const next = book.count + 1;
-      writeLedger(tx, docRef, at, uid, action, next, [...book.reservations, mine]);
-      return next;
+    consumeInTransaction: async (tx, { uid, action, requestId, period }) => {
+      (await readLedgerInTransaction(tx, { uid, action, period })).consume(requestId);
     },
 
-    consumeInTransaction: async (tx, { uid, action, requestId }) => {
-      const at = now();
-      const docRef = ref(uid, action);
-
-      /*
-        The count stays where it is: this unit was counted when it was
-        reserved, and it has now bought a plan. Dropping the hold is the whole
-        transition — it is what stops the unit from ever being reclaimed.
-
-        A request finalising without a live hold is not treated as a new charge
-        either. Its own hold is exempt from reclamation, and a document written
-        before holds were recorded already carries the claim's increment in the
-        count — so the unit is counted exactly once however the record looks,
-        and finalising is only ever the act of making it permanent.
-      */
-      const book = ledger((await tx.get(docRef)).data(), at, requestId);
-
-      writeLedger(
-        tx,
-        docRef,
-        at,
-        uid,
-        action,
-        book.count,
-        book.reservations.filter((entry) => entry.requestId !== requestId)
-      );
+    releaseInTransaction: async (tx, { uid, action, requestId, period }) => {
+      (await readLedgerInTransaction(tx, { uid, action, period })).release(requestId);
     },
 
-    releaseInTransaction: async (tx, { uid, action, requestId }) => {
-      const at = now();
-      const docRef = ref(uid, action);
-      const book = ledger((await tx.get(docRef)).data(), at);
-      const remaining = book.reservations.filter((entry) => entry.requestId !== requestId);
-
-      // Only a unit this request still owns is given back. A repeated release,
-      // or one from an attempt whose hold was already reclaimed, finds nothing
-      // and changes nothing — a refund it never paid for would be a free plan.
-      const refund = remaining.length < book.reservations.length ? 1 : 0;
-      writeLedger(tx, docRef, at, uid, action, Math.max(0, book.count - refund), remaining);
-    },
+    readLedgerInTransaction,
 
     release: async (uid, action) => {
       const at = now();

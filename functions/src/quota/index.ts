@@ -12,8 +12,14 @@
  * persistent store through the `QuotaStore` seam below.
  */
 
-/** Actions that will cost money once a provider exists. */
-export const QUOTA_ACTIONS = ["plan_generation", "weekly_summary"] as const;
+/**
+ * Actions that will cost money once a provider exists.
+ *
+ * `plan_generation` is Training's workout plan; `nutrition_plan_generation` is
+ * a Nutrition V2 plan (NUT-12C.2). They are separate allowances on separate
+ * documents: using one never spends the other.
+ */
+export const QUOTA_ACTIONS = ["plan_generation", "weekly_summary", "nutrition_plan_generation"] as const;
 
 export type QuotaAction = (typeof QUOTA_ACTIONS)[number];
 
@@ -38,10 +44,16 @@ export interface QuotaDecision {
  *
  * `weekly_summary` has no implementation yet; its limit exists so the type is
  * total, not because anything counts against it.
+ *
+ * `nutrition_plan_generation`: four activated Nutrition plans per user per
+ * UTC calendar month, a first plan and a regeneration alike. Charged only when
+ * a generated plan is activated; a request that ends without one gives its
+ * unit back.
  */
 export const DEFAULT_QUOTA_LIMITS: Readonly<Record<QuotaAction, number>> = Object.freeze({
   plan_generation: 3,
   weekly_summary: 8,
+  nutrition_plan_generation: 4,
 });
 
 /**

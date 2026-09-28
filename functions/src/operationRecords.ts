@@ -17,7 +17,9 @@ import type { Firestore } from "firebase-admin/firestore";
  *                             under the same id, and quota is reserved and
  *                             charged with the record
  *   Nutrition plan generation `./nutrition/generationLifecycle` — every
- *                             outcome is final, and nothing is charged
+ *                             outcome is final, and its own quota action
+ *                             is held with the claim and charged only with
+ *                             an activated plan (NUT-12C.2)
  *
  * The lease duration is the family's operational setting, passed to the one
  * write that takes a claim; nothing here chooses one. Reading a record — its

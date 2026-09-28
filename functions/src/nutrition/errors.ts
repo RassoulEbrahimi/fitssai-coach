@@ -166,6 +166,9 @@ const GENERATION_HTTPS_CODES: Readonly<Record<NutritionGenerationError["code"], 
   PLAN_NOT_ACTIVE: "failed-precondition",
   PLAN_NOT_REGENERABLE: "failed-precondition",
   GENERATION_SLOTS_NOT_CONFIGURED: "failed-precondition",
+  DIETARY_PREFERENCE_NOT_SUPPORTED: "failed-precondition",
+  // Only the code crosses: no count, limit, period or quota document.
+  QUOTA_EXCEEDED: "failed-precondition",
   INTERNAL: "internal",
 };
 

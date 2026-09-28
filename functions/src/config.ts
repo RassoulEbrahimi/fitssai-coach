@@ -47,11 +47,11 @@ export interface BackendCapabilities {
   nutritionTargets: boolean;
   /**
    * Generating a Nutrition V2 plan. False: `nutritionRequestPlan` and its
-   * lifecycle exist (NUT-11) and a Vertex AI generator is implemented
-   * (NUT-12B), but the backend gate `NUTRITION_AI_PRODUCTION_ENABLED` is off
-   * and no deployment or plan-validation policy is configured, so it can only
-   * answer `NUTRITION_AI_DISABLED`. A generator existing in code is not the
-   * capability being available.
+   * lifecycle exist (NUT-11), a Vertex AI generator is implemented (NUT-12B)
+   * and its deployment, policy, slots, budget and quota are configured
+   * (NUT-12C), but the backend gate `NUTRITION_AI_PRODUCTION_ENABLED` is off,
+   * so it can only answer `NUTRITION_AI_DISABLED`. A configured generator is
+   * not the capability being available.
    */
   nutritionGeneration: boolean;
 }
@@ -69,10 +69,10 @@ export const BACKEND_CAPABILITIES: Readonly<BackendCapabilities> = Object.freeze
   // deliberately leaves this flag alone: it moves only in its own reviewed
   // enablement change.
   nutritionTargets: false,
-  // False from NUT-11: the generation infrastructure is deployed, but the
-  // production generator registry is empty, so no plan can actually be
-  // generated. NUT-12B adds the generator code behind a closed backend gate,
-  // and NUT-12C.1 signs the plan-validation policy and first-plan slots;
-  // neither changes that. It moves only with a real, enabled generator.
+  // False from NUT-11. NUT-12B adds the generator code behind a closed backend
+  // gate, NUT-12C.1 signs the plan-validation policy and first-plan slots, and
+  // NUT-12C.2 configures the Vertex deployment and the quota — all behind the
+  // gate, so no plan can actually be generated. It moves only in NUT-14, with
+  // a real, enabled generator.
   nutritionGeneration: false,
 });
