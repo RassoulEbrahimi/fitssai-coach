@@ -154,3 +154,8 @@ Do not remove V2 documents, queued entry intents or deployed rules.
 - Local browser checks use synthetic data, no production Firebase, at 390px
   and 320px widths: target, Today/week, recording dialog, empty, error and
   ineligible states. This is visual QA, not authenticated production E2E.
+- NUT-13A adds a local authenticated E2E harness: the real app against the
+  Auth, Firestore and Functions emulators of the demo project, with seeded
+  populated V2 accounts ([nutrition-e2e.md](nutrition-e2e.md)). NUT-13 is not
+  complete: recording, persistence, replacement, offline reconciliation,
+  account isolation and narrow layouts are validated in NUT-13B on it.

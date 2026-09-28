@@ -27,6 +27,7 @@ dist-ssr
 .env
 .env.*
 !.env.example
+!.env.e2e.example
 service_account.json
 *-firebase-adminsdk-*.json
 serviceAccountKey.json

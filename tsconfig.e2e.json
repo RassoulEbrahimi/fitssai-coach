@@ -1,0 +1,21 @@
+{
+  /*
+    Typecheck of the local Nutrition E2E harness (e2e/). It also covers the
+    shared contract and the Functions modules the seed executes, with strict
+    settings. Not part of a build: nothing in e2e/ is bundled or deployed.
+  */
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2023"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "types": ["node"],
+    "strict": true,
+    "noEmit": true,
+    "skipLibCheck": true,
+    "isolatedModules": true,
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true
+  },
+  "include": ["e2e/**/*.ts"]
+}

@@ -940,7 +940,7 @@ injected at runtime and never enters the repository or a build artifact.
 
 ```bash
 npm --prefix functions ci          # install the backend workspace
-npm run typecheck                  # client + functions (canonical)
+npm run typecheck                  # client + functions + e2e harness (canonical)
 npm run typecheck:client
 npm run typecheck:functions
 npm test                           # client suite
@@ -950,6 +950,11 @@ npm run build                      # client
 npm run build:functions            # backend → functions/lib/
 npm run verify                     # everything above, in order
 ```
+
+The local authenticated browser E2E harness (Auth, Firestore and Functions
+emulators, demo project only) is documented in
+[nutrition-e2e.md](nutrition-e2e.md): `npm run e2e:nutrition`. It is not part of
+CI or the deployment workflow.
 
 The backend suite is pure vitest in a node environment. No Java, no emulator
 and no CLI is required to run it, so a contributor without the Firebase

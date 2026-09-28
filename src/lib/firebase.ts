@@ -1,6 +1,11 @@
 import { initializeApp, getApps } from "firebase/app";
 import { getAuth } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
+import { connectFirebaseEmulators, resolveFirebaseEmulatorConfig } from "./firebaseEmulators";
+
+// Resolved first: an E2E configuration that could reach production throws
+// before any Firebase service exists. Null (the normal case) changes nothing.
+const emulators = resolveFirebaseEmulatorConfig(import.meta.env);
 
 const firebaseConfig = {
   apiKey:            import.meta.env.VITE_FIREBASE_API_KEY,
@@ -14,3 +19,5 @@ const firebaseConfig = {
 const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0];
 export const auth = getAuth(app);
 export const db   = getFirestore(app);
+
+if (emulators) connectFirebaseEmulators(app, auth, db, emulators);

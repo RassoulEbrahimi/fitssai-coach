@@ -246,9 +246,16 @@ describe("no Nutrition key, secret or client-side configuration", () => {
       "VITE_FIREBASE_API_KEY",
       "VITE_FIREBASE_APP_ID",
       "VITE_FIREBASE_AUTH_DOMAIN",
+      // NUT-13A: local emulator routing for the E2E harness — a flag, a host
+      // and ports, never a key; refused for any project but demo-fitssai.
+      "VITE_FIREBASE_AUTH_EMULATOR_PORT",
+      "VITE_FIREBASE_EMULATOR_HOST",
+      "VITE_FIREBASE_FIRESTORE_EMULATOR_PORT",
+      "VITE_FIREBASE_FUNCTIONS_EMULATOR_PORT",
       "VITE_FIREBASE_MESSAGING_SENDER_ID",
       "VITE_FIREBASE_PROJECT_ID",
       "VITE_FIREBASE_STORAGE_BUCKET",
+      "VITE_FIREBASE_USE_EMULATORS",
     ]);
   });
 });
