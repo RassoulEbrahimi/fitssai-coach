@@ -1,8 +1,23 @@
-import { defineConfig } from "vite";
+import { defineConfig, type Plugin } from "vite";
 import react from "@vitejs/plugin-react-swc";
 import path from "path";
 import { VitePWA } from 'vite-plugin-pwa';
 import { resolveAppVersion, resolveBuildSha } from "./scripts/buildMetadata";
+
+/**
+ * Firebase emulator mode (NUT-13A) is for the local dev server only. A bundle
+ * that could be deployed never carries it, whatever the env files or CI say.
+ */
+const refuseEmulatorBuild = (): Plugin => ({
+  name: "fitssai-refuse-emulator-build",
+  apply: "build",
+  configResolved(config) {
+    const flag = config.env.VITE_FIREBASE_USE_EMULATORS;
+    if (flag !== undefined && flag !== "" && flag !== "false") {
+      throw new Error("VITE_FIREBASE_USE_EMULATORS is set: emulator mode is refused for `vite build`.");
+    }
+  },
+});
 
 export default defineConfig(({ mode }) => ({
   define: {
@@ -18,6 +33,7 @@ export default defineConfig(({ mode }) => ({
     port: 8080,
   },
   plugins: [
+    refuseEmulatorBuild(),
     react(),
     // The single service-worker and manifest authority. Both are generated
     // from this config, and `base` is applied to start_url, scope and the
