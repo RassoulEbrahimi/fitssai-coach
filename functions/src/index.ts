@@ -1,6 +1,6 @@
 import { defineSecret } from "firebase-functions/params";
 import { HttpsError, onCall } from "firebase-functions/v2/https";
-import { FUNCTIONS_REGION } from "./config";
+import { FUNCTIONS_REGION, NUTRITION_GENERATION_SERVICE_ACCOUNT } from "./config";
 import { handleCoachBackendStatus } from "./coaching/status";
 import { handleGenerateWorkoutPlan } from "./coaching/generatePlan";
 import { handleGenerateWeeklyReview } from "./coaching/weeklyReview";
@@ -158,13 +158,16 @@ export const generateWeeklyReview = onCall(
  * `NUTRITION_AI_DISABLED` before the generator registry is asked, and writes
  * nothing.
  *
- * No secret (Vertex AI authenticates as the runtime's own identity) and no
- * log. The timeout is sized for one generation plus one repair; see
+ * No secret (Vertex AI authenticates as the runtime's own identity, the
+ * dedicated `NUTRITION_GENERATION_SERVICE_ACCOUNT`) and no log. The timeout
+ * is sized for one generation plus one repair; see
  * `PRODUCTION_NUTRITION_VERTEX_DEPLOYMENT`.
  */
 export const nutritionRequestPlan = onCall(
   {
     region: FUNCTIONS_REGION,
+    // Runtime only; the build keeps its own identity. See config.ts for rollback.
+    serviceAccount: NUTRITION_GENERATION_SERVICE_ACCOUNT,
     maxInstances: 5,
     // 240 s: the worst-case provider time (about 181 s) fits inside it, and
     // it ends before the 300-second operation lease does.
