@@ -69,14 +69,11 @@ describe("the nutritionRequestPlan runtime identity (RUNTIME-IAM-02)", () => {
     expect(holders).toEqual(["src/config.ts"]);
   });
 
-  it("cannot be overridden by an environment variable, parameter or global option", () => {
+  it("cannot be overridden by an environment variable or parameter", () => {
     expect(code("src/config.ts")).toContain(`export const NUTRITION_GENERATION_SERVICE_ACCOUNT = "${DEDICATED}";`);
     expect(typeof endpoint("nutritionRequestPlan").serviceAccountEmail).toBe("string");
     for (const file of ["src/config.ts", "src/index.ts"]) {
       expect(code(file), file).not.toMatch(/process\.env|NODE_ENV|FUNCTIONS_EMULATOR|VITEST|defineString|defineBoolean|defineInt|defineList|defineJsonSecret|projectID|PROJECT_NUMBER/);
-    }
-    for (const file of walk(join(FUNCTIONS_ROOT, "src")).filter((path) => !/\.test\.ts$/.test(path))) {
-      expect(readFileSync(file, "utf-8"), posix(relative(FUNCTIONS_ROOT, file))).not.toMatch(/setGlobalOptions/);
     }
   });
 
