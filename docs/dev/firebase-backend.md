@@ -585,8 +585,8 @@ the browser bundle and readable by every visitor. Tests fail if one appears.
 |---|---|
 | Four-week workout-plan generation | **Live** (PR55) |
 | Weekly review + coaching recommendation | **Live** (PR58, hardened in PR59) — metrics and the recommendation category are deterministic; the model only rephrases them, on an explicit click |
-| Nutrition targets | Deterministic, no AI (NUT-08 plumbing, NUT-12C.1 policies) — `nutritionSetTarget` runs the signed TargetPolicy v1 (`calculated-target` v1, `manual-target` v1); `nutritionTargets` is `true` in source since NUT-14 (live once `coachBackendStatus` is deployed from it) |
-| Nutrition generation | Enabled in source by NUT-14 (NUT-11 infrastructure, NUT-12B provider code, NUT-12C configuration): `NUTRITION_AI_PRODUCTION_ENABLED = true` and `nutritionGeneration = true`. Production stays closed until the post-merge targeted deploy of `nutritionRequestPlan` and `coachBackendStatus`; see [nutrition-v2-production-enablement.md](nutrition-v2-production-enablement.md) for the release order, rollback and smoke plan |
+| Nutrition targets | Deterministic, no AI (NUT-08 plumbing, NUT-12C.1 policies) — `nutritionSetTarget` runs the signed TargetPolicy v1 (`calculated-target` v1, `manual-target` v1); `nutritionTargets` is `true` since NUT-14, **live** in production since 2026-09-29 |
+| Nutrition generation | **Live** since 2026-09-29 (NUT-14; NUT-11 infrastructure, NUT-12B provider code, NUT-12C configuration): `NUTRITION_AI_PRODUCTION_ENABLED = true` and `nutritionGeneration = true`, deployed with `nutritionRequestPlan` and `coachBackendStatus`; the one-account production smoke passed. See [nutrition-v2-production-enablement.md](nutrition-v2-production-enablement.md) for the status, smoke evidence, release order and rollback |
 | Exercise suggestions in Add Workout | Not implemented — that tab offers exercises for one day, which a four-week generator is not |
 | AI usage statistics in Profile | Not available — the authoritative log is server-only by design |
 
@@ -821,7 +821,7 @@ not a legal certification.
 | Quota | Configured (NUT-12C.2) — `nutrition_plan_generation`, 4 per user per UTC month, reserved with the claim, charged with the activation, released otherwise (see "Nutrition V2 plan generation") |
 | Keto | Generation refuses `keto` as `DIETARY_PREFERENCE_NOT_SUPPORTED` (NUT-12C.2); the vocabulary keeps it |
 | Logs | No Nutrition `_ai_logs`; no prompt, input, reply or provider error is persisted |
-| Production AI calls | Enabled in source by NUT-14 (gate and both capability flags `true`). None occur until `nutritionRequestPlan` and `coachBackendStatus` are deployed from it after merge; the first is the approved one-account production smoke test |
+| Production AI calls | Live since 2026-09-29: NUT-14 (gate and both capability flags `true`) merged, then `nutritionRequestPlan` and `coachBackendStatus` were deployed from it. The first call was the approved one-account production smoke test, which passed |
 
 How the adapter works, for when it is enabled:
 
@@ -1011,9 +1011,9 @@ project selected.
   *Current role-management limitation*.
 * No App Check, no Storage rules, no per-collection field validation beyond the
   authorization fields named above.
-* No production Nutrition generation (the backend gate is off; the Vertex
-  deployment, budget and quota behind it are configured but unreachable) and
-  no exercise-level suggestions — see the capability table above.
+* No exercise-level suggestions — see the capability table above.
+  (Production Nutrition generation was listed here until NUT-14 enabled it
+  on 2026-09-29.)
 * No Firestore migration or backfill of any kind.
 * No Firebase Functions deployment from CI.
 

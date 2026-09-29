@@ -100,8 +100,15 @@ and the operator approved production use of the minimized generation payload.
 NUT-14 sets `NUTRITION_AI_PRODUCTION_ENABLED = true` and both capability flags
 to `true` in source, and the browser now offers the existing target setup and
 one explicit generation action — only while the DEPLOYED backend's
-`coachBackendStatus` says so. Production stays closed until the post-merge
-targeted Functions deployment. Release order, rollback and the smoke plan:
+`coachBackendStatus` says so. Release order, rollback and the smoke plan:
+[nutrition-v2-production-enablement.md](nutrition-v2-production-enablement.md).
+
+Update (NUT-14 rollout, 2026-09-29): **production is ACTIVE.** PR #130 merged
+(`00202ff`) and the Pages deployment succeeded. The targeted deploy of
+`nutritionRequestPlan` and `coachBackendStatus` followed. The one-account
+production smoke **PASSED**: one target, one real generation, one active
+7-day plan, no duplicate after reload, one quota unit, and TARGET, PLANNED
+and RECORDED still separate. Evidence and open follow-ups:
 [nutrition-v2-production-enablement.md](nutrition-v2-production-enablement.md).
 
 Sequence:
@@ -115,7 +122,8 @@ Sequence:
    "Ausgelassen" label polish stays open and non-blocking.
 3. NUT-14: separately reviewed production enablement and explicit setup/
    generation actions — the only slice that turns on the gate and the
-   capability flags. Pre-flight and operator approval are done; see
+   capability flags — **ACTIVE in production since 2026-09-29, smoke
+   PASSED**; see
    [nutrition-v2-production-enablement.md](nutrition-v2-production-enablement.md).
    UI rollout alone does not authorize enabling these gates.
 
@@ -147,7 +155,9 @@ This PR is not merged or deployed by its authoring task.
    “Dein Ernährungsprofil ist vollständig.” once they are all given (NUT-12D.1).
    No empty target section, no Planstatus without a request, no legacy plan
    and — until the NUT-14 backend deployment reports the capabilities — no
-   generation/target button. For an approved existing V2 account, check target,
+   generation/target button (historical: that deployment ran on 2026-09-29,
+   so a complete profile now leads to **Ziel festlegen**). For an approved
+   existing V2 account, check target,
    Today meals, recorded state and the seven-date week. Confirm refresh works.
 6. Check minor/missing-age messaging and switching accounts. Test a recorded
    meal, offline reconciliation and replacement only on an approved test
