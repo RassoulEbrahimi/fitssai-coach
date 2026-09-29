@@ -4,8 +4,42 @@ NUT-14 is the separately reviewed slice that enables Nutrition V2 TARGET
 setup and AI plan generation in production. It is the only slice that moves
 the backend AI gate and the two Nutrition capability flags.
 
-**This PR changes source only. It deploys nothing.** Production stays closed
-until the targeted Functions deployment after merge (Phase 2 below).
+## NUT-14 production status — ACTIVE
+
+Production enablement completed: **2026-09-29**. Production smoke:
+**PASSED**.
+
+| Step | Status |
+| --- | --- |
+| Phase 1 — merge | Done. PR #130 merged as `00202ffe3d745ce3c02f984fde02840add2e661f`; the GitHub Pages deployment for that merge succeeded. |
+| Phase 2 — targeted backend deploy | Done. `nutritionRequestPlan` and `coachBackendStatus` (both `europe-west3`) deployed with the documented command. No other Function was deployed. |
+| Phase 3 — production smoke | **PASSED** on 2026-09-29 with one approved adult account. See [Production smoke result](#production-smoke-result-passed-2026-09-29). |
+
+Live production state:
+
+| | Value |
+| --- | --- |
+| `NUTRITION_AI_PRODUCTION_ENABLED` | `true` |
+| `nutritionTargets` | `true` |
+| `nutritionGeneration` | `true` |
+| `NUTRITION_V2_ENABLED` (frontend) | `true` |
+
+The production configuration is frozen as reviewed:
+- project `fitssai-coach`, Vertex location `eu`, model `gemini-3.8-flash`;
+- thinking `LOW`, `maxOutputTokens` 8192;
+- provider timeout 45 s, 2 transport attempts, retry on 429/5xx only, one repair;
+- Function timeout 240 s, lease 300 s, browser timeout 300 s;
+- 256 MiB, `maxInstances` 5;
+- quota 4 successful Nutrition plans per user per UTC month;
+- policies, slots, the generation lifecycle and recording/replacement semantics.
+
+The rollout closed with the non-blocking follow-ups listed under
+[Open follow-ups](#open-follow-ups-non-blocking).
+
+The sections from "Pre-flight" to "Production smoke plan" are the historical
+pre-merge procedure, kept for the release-order rationale and the rollback
+design. They were written while the PR changed source only and deployed
+nothing.
 
 ## What changes
 
@@ -147,13 +181,14 @@ The operator completed the following:
 - confirmed that no Nutrition V2 production documents existed at the
   inventory point.
 
-The deployed backend still reports
+At the pre-flight, the deployed backend still reported
 `NUTRITION_AI_PRODUCTION_ENABLED = false`, `nutritionTargets = false` and
-`nutritionGeneration = false`. It stays that way until this PR is reviewed
-and merged.
+`nutritionGeneration = false`. It stayed that way until the PR was merged and
+the Phase 2 deploy ran. Both are done; see the status above.
 
-The runtime service account currently has the broad Editor role. Narrowing
-it to least privilege is a later hardening item, not part of NUT-14.
+The runtime service account has the broad Editor role. Narrowing it to least
+privilege is a later hardening item, not part of NUT-14 (see
+[Open follow-ups](#open-follow-ups-non-blocking)).
 
 ## Operator privacy / data-processing decision
 
@@ -184,6 +219,10 @@ No prompt, raw response or model reasoning is persisted. Nutrition writes no
 AI log.
 
 ## Release order
+
+Historical procedure. All three phases are complete (2026-09-29); see the
+status at the top. The order still applies to a future rollback and
+re-enablement.
 
 Do not deploy anything from the implementation task.
 
@@ -242,7 +281,10 @@ Never delete any of the following:
 
 Never silently return to legacy Nutrition.
 
-## Production smoke plan (define only — not run by this task)
+## Production smoke plan
+
+Defined by the NUT-14 PR, which did not run it. The operator ran it after
+the Phase 2 deploy; the result follows this plan.
 
 After the Phase 2 deploy, one approved adult production test account:
 
@@ -264,6 +306,81 @@ After the Phase 2 deploy, one approved adult production test account:
     never recorded, and recorded entries are unchanged snapshots.
 
 Expected cost and quota: one successful `nutrition_plan_generation` unit.
+
+## Production smoke result (PASSED, 2026-09-29)
+
+The operator ran the plan above with one approved adult production account.
+Every step passed. This record carries no uid, email, name, profile value,
+screenshot, secret or token. `{uid}` stands for the smoke account.
+
+**Capability and target**
+- Nutrition V2 offered the target setup action.
+- Exactly one calculated TARGET was created through the product UI and
+  persisted across reload.
+
+**Real AI generation**
+- **Ernährungsplan erstellen** was clicked exactly once.
+- The UI showed the running state ("Dein Ernährungsplan wird erstellt …").
+- The real production generation succeeded, and the generated plan became
+  the active plan.
+
+**Product UI**
+- The active plan rendered Today, the 7-day Week, the planned meals and the
+  **Erfassen**, **Ersetzen**, **Eigene Mahlzeit** and **Neuen Plan erstellen**
+  actions.
+- The week covered 2026-09-29 through 2026-10-05.
+
+**Reload and idempotency**
+- A reload showed the same active plan.
+- No second generation started after the reload.
+
+**Generation document** (`users/{uid}/nutrition_v2_generations/{requestId}`)
+- Exactly one document: the initial request the operator made.
+- `schemaVersion` 2, `kind` `"initial"`, `basePlanId` null, `status`
+  `"succeeded"`, `errorCode` null.
+- `resultPlanId`, `targetVersionId`, `requestId`, `idempotencyKey`,
+  `payloadFingerprint`, `createdAt` and `finishedAt` present.
+
+**Plan document** (`users/{uid}/nutrition_v2_plans/{planId}`)
+- Exactly one activated plan. Its id is the generation's `resultPlanId`.
+- It holds the activated 7-day generated plan. Its meals match the rendered
+  UI.
+
+**Quota** (`_ai_quota/{uid}__nutrition_plan_generation__2026-09`)
+- `action` `"nutrition_plan_generation"`, `period` `"2026-09"`, `count` 1,
+  `reservations` `[]`.
+- The smoke used exactly one successful Nutrition plan unit of the monthly
+  allowance of 4.
+
+**Privacy and persistence**
+
+The generation document keeps lifecycle metadata and the payload fingerprint
+only, as designed. It does not contain:
+- the provider prompt, the raw provider response or model reasoning;
+- the full profile;
+- the user's name or email;
+- height or weight.
+
+**Semantics**
+- Generated meals showed as planned ("geplant").
+- Recording status showed separately ("Nicht erfasst").
+- TARGET, PLANNED and RECORDED stayed separate.
+
+## Open follow-ups (non-blocking)
+
+None of these blocks NUT-14 or changes its production state. Each is a
+separate, deliberately reviewed slice.
+
+1. **Runtime service-account least privilege.** The production Nutrition
+   runtime uses `813249512866-compute@developer.gserviceaccount.com` with the
+   broad `roles/editor`. Narrow it to least privilege. NUT-14 changes no IAM.
+2. **320 px "Ausgelassen" clipping.** The known NUT-13B layout diagnostic
+   (tracked by an expected-failure test) stays open.
+3. **`firebase-functions` outdated-package warning.** The Phase 2
+   `firebase deploy` warned that `firebase-functions` (`^7.3.2` in
+   `functions/package.json`) is outdated. Upgrading is a separate
+   dependency slice with its own Functions and emulator validation. NUT-14
+   upgrades nothing.
 
 ## Tests
 
