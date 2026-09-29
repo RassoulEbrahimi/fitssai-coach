@@ -276,13 +276,18 @@ export interface NutritionV2ProfileSectionProps {
    * nothing (eligible) or only a way to change it (minor).
    */
   showReady: boolean;
+  /**
+   * The deployed backend offers target setup (NUT-14): the ready message then
+   * points to the target section below instead of saying it is not available.
+   */
+  targetSetupAvailable?: boolean;
 }
 
 /**
  * The Nutrition profile card: a completion prompt while answers are missing,
  * the empty state's "ready" message once they are all given.
  */
-export const NutritionV2ProfileSection: React.FC<NutritionV2ProfileSectionProps> = ({ reason, showReady }) => {
+export const NutritionV2ProfileSection: React.FC<NutritionV2ProfileSectionProps> = ({ reason, showReady, targetSetupAvailable = false }) => {
   const { t } = useTranslation();
   const profile = useProfile();
   const updateProfile = useUpdateProfile();
@@ -348,7 +353,9 @@ export const NutritionV2ProfileSection: React.FC<NutritionV2ProfileSectionProps>
             <h3 id={titleId} className="font-semibold leading-snug text-foreground">
               {t("nutritionV2.profile.complete.title")}
             </h3>
-            <p className="text-sm text-muted-foreground">{t("nutritionV2.profile.complete.description")}</p>
+            <p className="text-sm text-muted-foreground">
+              {t(targetSetupAvailable ? "nutritionV2.profile.complete.descriptionNextTarget" : "nutritionV2.profile.complete.description")}
+            </p>
           </div>
         </div>
         <Button type="button" variant="outline" size="sm" className="min-h-11" onClick={() => setOpen(true)}>

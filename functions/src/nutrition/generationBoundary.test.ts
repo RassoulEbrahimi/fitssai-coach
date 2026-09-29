@@ -5,6 +5,7 @@ import ts from "typescript";
 import { parseNutritionProfile } from "../../../shared/nutrition";
 import { BACKEND_CAPABILITIES } from "../config";
 import { DEFAULT_QUOTA_LIMITS, QUOTA_ACTIONS } from "../quota";
+import { NUTRITION_AI_PRODUCTION_ENABLED } from "./aiGate";
 import { productionInitialSlotConfiguration } from "./generationInput";
 import { productionNutritionGenerationProviderRegistry } from "./providers/productionRegistry";
 import { NUTRITION_VERTEX_PROVIDER_ID } from "./providers/vertexGemini";
@@ -110,7 +111,7 @@ describe("production: configured behind the closed gate", () => {
     const start = index.indexOf("export const nutritionRequestPlan");
     const wiring = index.slice(start, index.indexOf("export const", start + 1));
     expect(wiring).toContain("handleNutritionRequestPlan(request");
-    // NUT-12B: the closed backend gate, before the (lazy) registry.
+    // NUT-12B: the backend gate, before the (lazy) registry.
     expect(wiring).toContain("generationEnabled: NUTRITION_AI_PRODUCTION_ENABLED");
     expect(wiring).toContain("providers: productionNutritionGenerationProviderRegistry");
     expect(wiring).toContain("policies: productionPlanValidationPolicyRegistry");
@@ -229,8 +230,12 @@ describe("the profile contract stays as signed", () => {
 });
 
 describe("capabilities stay truthful", () => {
-  it("claims neither Nutrition generation nor targets", () => {
-    expect(BACKEND_CAPABILITIES.nutritionGeneration).toBe(false);
-    expect(BACKEND_CAPABILITIES.nutritionTargets).toBe(false);
+  it("claims generation exactly while the backend gate is on and a generator is configured (NUT-14)", () => {
+    // A flag without the gate would offer an action the server refuses; the
+    // gate without the flag would generate for no one. They move together.
+    expect(BACKEND_CAPABILITIES.nutritionGeneration).toBe(NUTRITION_AI_PRODUCTION_ENABLED);
+    expect(BACKEND_CAPABILITIES.nutritionGeneration).toBe(true);
+    expect(productionNutritionGenerationProviderRegistry.current()).not.toBeNull();
+    expect(productionPlanValidationPolicyRegistry.current()).not.toBeNull();
   });
 });

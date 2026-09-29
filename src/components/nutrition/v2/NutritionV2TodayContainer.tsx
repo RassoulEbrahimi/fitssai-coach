@@ -7,6 +7,8 @@ import { queryKeys } from "@/lib/queryKeys";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { useBerlinToday } from "@/hooks/useBerlinToday";
+import { useProfile } from "@/hooks/queries/useProfile";
+import { useCoachBackendCapabilities } from "@/hooks/queries/useCoachBackendCapabilities";
 import {
   useActiveNutritionV2Plan,
   useCurrentNutritionV2Target,
@@ -23,12 +25,14 @@ import { useNutritionV2SlotOverride } from "@/hooks/queries/useNutritionV2SlotOv
 import { buildNutritionDayRecordings } from "@/lib/nutrition/v2/dayRecordings";
 import { deriveNutritionV2TodayView, selectNutritionV2TodayPlan } from "@/lib/nutrition/v2/todayView";
 import { nutritionWeekSuccessorId } from "@/lib/nutrition/v2/resolvedPlan";
+import { nutritionProfileCompletenessOf } from "@/lib/nutrition/v2/profileCompletion";
 import { NutritionV2TodayShell } from "./NutritionV2TodayShell";
 import { NutritionV2TodayRecording } from "./NutritionV2TodayRecording";
 import { NutritionV2Conflicts } from "./NutritionV2Conflicts";
 import { NutritionV2TargetSection } from "./NutritionV2TargetSection";
 import { NutritionV2GenerationStatus } from "./NutritionV2GenerationStatus";
 import { NutritionV2ProfileSection } from "./NutritionV2ProfileCompletion";
+import { NutritionV2PlanGeneration } from "./NutritionV2PlanGeneration";
 
 /**
  * Nutrition V2 Today/week data container.
@@ -66,8 +70,16 @@ import { NutritionV2ProfileSection } from "./NutritionV2ProfileCompletion";
  * it, or for another date — until the person applies it again or discards it.
  *
  * Mounted by the V2 product view (NUT-12D). The rollout flag chooses the
- * whole tab; this container never falls back to legacy data. Target setup
- * and new AI requests remain unavailable in this rollout.
+ * whole tab; this container never falls back to legacy data.
+ *
+ * Target setup and plan generation (NUT-14) are offered only while the
+ * DEPLOYED backend says it supports them (`useCoachBackendCapabilities`, one
+ * live `coachBackendStatus` read per account and session, never persisted).
+ * Pending, failed or false hides only those two actions — everything read
+ * above, recording, replacement and the profile keep working. A frontend
+ * released before its backend, or a backend rolled back, shows neither.
+ * With no target yet, a complete profile leads to the target setup, and only
+ * a current target leads to generation.
  *
  * The Nutrition PROFILE section (NUT-12D.1) is offered to every signed-in
  * account whose profile could be read — eligible or not — because an account
@@ -101,6 +113,9 @@ export const NutritionV2TodayContainer: React.FC = () => {
 
   // The same query the target section reads; here only to tell an empty account apart.
   const target = useCurrentNutritionV2Target();
+  const profile = useProfile();
+  // The deployed backend's live answer; only an eligible adult ever asks.
+  const capabilities = useCoachBackendCapabilities({ enabled: access.status === "eligible" });
 
   const view = deriveNutritionV2TodayView({ access, state, plan, todayPlan, slots, entries, successorPlan, successorSlots, today });
   const todayDay = view?.status === "today" ? view.week.today : null;
@@ -118,15 +133,24 @@ export const NutritionV2TodayContainer: React.FC = () => {
     target.status === "success" &&
     target.data === null;
   const profileReason = access.status === "eligible" ? "eligible" : access.status === "ineligible" ? access.reason : null;
+  const targetSetupAvailable = access.status === "eligible" && capabilities.nutritionTargets;
+  const profileComplete = profile.data !== undefined && nutritionProfileCompletenessOf(profile.data).status === "complete";
+  // Without a target or a plan the section appears once a target can actually be set up.
+  const showTarget = !empty || (targetSetupAvailable && profileComplete);
 
-  // Only this account's V2 reads — or its profile, when that could not be read.
+  // Reads only: this account's V2 reads — or its profile, when that could not
+  // be read — and the deployed backend's status, so a rollout or rollback is
+  // seen without clearing site data. Never a target, a plan or a request.
   const refresh = async () => {
     if (!user) return;
     setRefreshing(true);
     try {
-      await queryClient.invalidateQueries({
-        queryKey: access.status === "error" ? queryKeys.profile.me(user.uid) : queryKeys.nutrition.all(user.uid),
-      });
+      await Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: access.status === "error" ? queryKeys.profile.me(user.uid) : queryKeys.nutrition.all(user.uid),
+        }),
+        queryClient.invalidateQueries({ queryKey: queryKeys.backend.all(user.uid) }),
+      ]);
     } finally {
       setRefreshing(false);
     }
@@ -153,10 +177,20 @@ export const NutritionV2TodayContainer: React.FC = () => {
             </Button>
           ) : undefined
         }
-        profile={profileReason ? <NutritionV2ProfileSection reason={profileReason} showReady={empty} /> : null}
+        profile={
+          profileReason ? (
+            <NutritionV2ProfileSection reason={profileReason} showReady={empty} targetSetupAvailable={targetSetupAvailable} />
+          ) : null
+        }
         profileIsEmptyState={empty}
         conflicts={<NutritionV2Conflicts conflicts={overlay.conflicts} today={today} recording={recording} />}
-        target={<>{!empty && <NutritionV2TargetSection />}<NutritionV2GenerationStatus /></>}
+        target={
+          <>
+            {showTarget && <NutritionV2TargetSection allowSetup={targetSetupAvailable} />}
+            <NutritionV2GenerationStatus />
+            <NutritionV2PlanGeneration available={capabilities.nutritionGeneration} today={today} />
+          </>
+        }
         todayRecording={
           recordings ? (
             <NutritionV2TodayRecording

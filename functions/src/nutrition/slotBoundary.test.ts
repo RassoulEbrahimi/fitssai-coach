@@ -169,9 +169,9 @@ describe("slot writes", () => {
 });
 
 describe("capabilities stay truthful", () => {
-  it("slot overrides claim neither Nutrition targets nor generation, and add no capability", () => {
-    expect(BACKEND_CAPABILITIES.nutritionTargets).toBe(false);
-    expect(BACKEND_CAPABILITIES.nutritionGeneration).toBe(false);
+  it("slot overrides add no capability; targets and generation are NUT-14's enablement", () => {
+    expect(BACKEND_CAPABILITIES.nutritionTargets).toBe(true);
+    expect(BACKEND_CAPABILITIES.nutritionGeneration).toBe(true);
     expect(Object.keys(BACKEND_CAPABILITIES).sort()).toEqual([
       "nutritionGeneration",
       "nutritionTargets",

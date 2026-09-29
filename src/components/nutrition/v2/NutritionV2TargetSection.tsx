@@ -11,7 +11,9 @@ import { NutritionV2TargetSetupSheet } from "./NutritionV2TargetSetup";
  * target read), its freshness against the profile, and the target setup.
  *
  * Rendering reads; it never calls the target callable and never creates a
- * state or a target. Only a confirmed setup does. V2-only: unreachable while
+ * state or a target. Only a confirmed setup does, and it is offered only when
+ * the container passes `allowSetup` — the deployed backend's live
+ * `nutritionTargets` (NUT-14). V2-only: unreachable while
  * `NUTRITION_V2_ENABLED` is false.
  */
 export const NutritionV2TargetSection: React.FC<{ allowSetup?: boolean }> = ({ allowSetup = false }) => {
@@ -23,7 +25,7 @@ export const NutritionV2TargetSection: React.FC<{ allowSetup?: boolean }> = ({ a
   const updateProfile = useUpdateProfile();
   const [open, setOpen] = useState(false);
 
-  // Product rollout is read-only until target policies receive production sign-off.
+  // Only while the deployed backend offers target setup (NUT-14), for an eligible account.
   const canSetUp = allowSetup && mutation.availability.status === "available";
 
   return (

@@ -114,6 +114,14 @@ export const queryKeys = {
   nutritionLegacy: {
     latest: (userId: string | undefined) => ['nutrition-plan', userId] as const,
   },
+
+  // 10. The deployed backend's live status (NUT-14): what the backend that is
+  // actually running can do for this account. Operational state, so the
+  // persisted cache never keeps it (`queryPersistence.ts`).
+  backend: {
+    all: (userId: string | undefined) => ['coach-backend', userId] as const,
+    status: (userId: string | undefined) => ['coach-backend', userId, 'status'] as const,
+  },
 };
 
 // Type helper for consistency in hooks

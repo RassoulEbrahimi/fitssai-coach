@@ -3,6 +3,7 @@ import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
 import { nutritionTargetFingerprintMaterial } from "../../../shared/nutrition";
 import { BACKEND_CAPABILITIES } from "../config";
+import { PRODUCTION_TARGET_POLICIES } from "./targetPolicy/registry";
 import { nodeSha256Hex } from "./sha256";
 
 /*
@@ -188,9 +189,9 @@ describe("the production target seam carries no formula", () => {
 });
 
 describe("capabilities stay truthful", () => {
-  it("does not claim Nutrition targets or generation", () => {
-    expect(BACKEND_CAPABILITIES.nutritionTargets).toBe(false);
-    expect(BACKEND_CAPABILITIES.nutritionGeneration).toBe(false);
+  it("claims Nutrition targets only with both signed target policies registered (NUT-14)", () => {
+    expect(BACKEND_CAPABILITIES.nutritionTargets).toBe(true);
+    expect(PRODUCTION_TARGET_POLICIES.map(({ mode }) => mode).sort()).toEqual(["calculated", "manual"]);
   });
 });
 

@@ -147,16 +147,16 @@ export const generateWeeklyReview = onCall(
  * The request is only `{ requestId }`. The lifecycle behind it — one active
  * generation per account, a persistent generation request, a minimized input,
  * at most one repair, and one atomic finalisation through the NUT-09
- * activation core — is complete, and a Vertex AI generator exists (NUT-12B),
- * but NOTHING can generate: the backend gate
- * `NUTRITION_AI_PRODUCTION_ENABLED` is off, so a new request answers
- * `NUTRITION_AI_DISABLED` before the generator registry is even asked, and
- * writes nothing — no request, no state pointer, no plan, no operation record,
- * no quota. Behind the gate everything new work needs is configured: the
- * signed `target-alignment` v1 policy and the v1 first-plan slot mapping
- * (NUT-12C.1), the signed Vertex deployment, the execution budget below and
- * the `nutrition_plan_generation` quota — four activated plans per UTC month,
- * reserved with the claim, charged with the activation (NUT-12C.2).
+ * activation core — is complete, and a Vertex AI generator exists (NUT-12B).
+ * The backend gate `NUTRITION_AI_PRODUCTION_ENABLED` is on since NUT-14, so an
+ * eligible account's new request is generated with everything the gate waited
+ * for: the signed `target-alignment` v1 policy and the v1 first-plan slot
+ * mapping (NUT-12C.1), the signed Vertex deployment, the execution budget
+ * below and the `nutrition_plan_generation` quota — four activated plans per
+ * UTC month, reserved with the claim, charged with the activation (NUT-12C.2).
+ * With the gate closed again (rollback), a new request answers
+ * `NUTRITION_AI_DISABLED` before the generator registry is asked, and writes
+ * nothing.
  *
  * No secret (Vertex AI authenticates as the runtime's own identity) and no
  * log. The timeout is sized for one generation plus one repair; see

@@ -39,19 +39,20 @@ export interface BackendCapabilities {
    */
   weeklySummaryAI: boolean;
   /**
-   * Setting a Nutrition V2 target. `nutritionSetTarget` exists and, since
-   * NUT-12C.1, runs the signed TargetPolicy v1 for both modes. The flag is
-   * still false: it moves only with an explicit enablement decision, not as a
-   * side effect of installing policies.
+   * Setting a Nutrition V2 target. `nutritionSetTarget` runs the signed
+   * TargetPolicy v1 for both modes (NUT-12C.1). The browser offers target setup
+   * only while the deployed backend answers true here (NUT-14), so this flag is
+   * the product exposure switch: false hides the action without touching any
+   * stored target. It is not a server gate — the callable itself stays an
+   * authenticated, deterministic endpoint either way.
    */
   nutritionTargets: boolean;
   /**
-   * Generating a Nutrition V2 plan. False: `nutritionRequestPlan` and its
-   * lifecycle exist (NUT-11), a Vertex AI generator is implemented (NUT-12B)
-   * and its deployment, policy, slots, budget and quota are configured
-   * (NUT-12C), but the backend gate `NUTRITION_AI_PRODUCTION_ENABLED` is off,
-   * so it can only answer `NUTRITION_AI_DISABLED`. A configured generator is
-   * not the capability being available.
+   * Generating a Nutrition V2 plan through `nutritionRequestPlan` (NUT-11)
+   * and its signed Vertex AI deployment (NUT-12B/C). True only together with
+   * the backend gate `NUTRITION_AI_PRODUCTION_ENABLED` (NUT-14): a configured
+   * generator behind a closed gate is not the capability being available. The
+   * browser offers generation only while the deployed backend answers true.
    */
   nutritionGeneration: boolean;
 }
@@ -65,14 +66,14 @@ export const BACKEND_CAPABILITIES: Readonly<BackendCapabilities> = Object.freeze
   // that remains so — and a false here would still leave the review working,
   // because the wording falls back to the app's own.
   weeklySummaryAI: true,
-  // False from NUT-08. NUT-12C.1 registers the signed target policies, but
-  // deliberately leaves this flag alone: it moves only in its own reviewed
-  // enablement change.
-  nutritionTargets: false,
-  // False from NUT-11. NUT-12B adds the generator code behind a closed backend
-  // gate, NUT-12C.1 signs the plan-validation policy and first-plan slots, and
-  // NUT-12C.2 configures the Vertex deployment and the quota — all behind the
-  // gate, so no plan can actually be generated. It moves only in NUT-14, with
-  // a real, enabled generator.
-  nutritionGeneration: false,
+  // True from NUT-14, the reviewed enablement signed off on 2026-09-29. The
+  // signed target policies have been registered since NUT-12C.1. Rollback:
+  // false, and deploy `coachBackendStatus`; target history is untouched.
+  nutritionTargets: true,
+  // True from NUT-14, together with the backend gate
+  // `NUTRITION_AI_PRODUCTION_ENABLED`: the Vertex deployment, the
+  // plan-validation policy, first-plan slots and the quota are signed
+  // (NUT-12C). Rollback: false together with the gate, and deploy
+  // `nutritionRequestPlan` and `coachBackendStatus`.
+  nutritionGeneration: true,
 });

@@ -141,13 +141,24 @@ test("isolation account: its own plan, none of the adult's meals", async ({ page
   expectEmulatorOnlyTraffic(network, { functions: false });
 });
 
-test("the Functions emulator keeps Nutrition AI generation closed and writes nothing", async () => {
+test("the Functions emulator refuses anything but { requestId } before any provider work, and writes nothing", async () => {
+  // NUT-14 opened the AI gate in source, so this harness never lets an
+  // eligible adult's generation reach the provider: the emulator has no
+  // credentials, and the first real Vertex call is the production smoke test.
+  // A request that is not exactly `{ requestId }` is refused before the gate.
   const env = requireLocalEmulatorEnv(process.env);
   const token = await emulatorIdToken(env, adult.uid, adult.email, e2ePassword());
 
-  const answer = await callEmulatorCallable(env, "nutritionRequestPlan", token, { requestId: "0e2e0000-0000-4000-8000-0000000000ff" });
-  expect(answer.status).toBe(400);
-  expect(answer.body).toEqual({ error: { message: "NUTRITION_AI_DISABLED", status: "FAILED_PRECONDITION" } });
+  const invalid = { error: { message: "INVALID_REQUEST", status: "INVALID_ARGUMENT" } };
+  for (const data of [
+    { requestId: "0e2e0000-0000-4000-8000-0000000000ff", uid: adult.uid },
+    { requestId: "0e2e0000-0000-4000-8000-0000000000ff", planId: adultNutrition.planId },
+    { requestId: "not-a-request-id" },
+    {},
+  ]) {
+    const answer = await callEmulatorCallable(env, "nutritionRequestPlan", token, data);
+    expect(answer, JSON.stringify(data)).toEqual({ status: 400, body: invalid });
+  }
 
   // No generation request, AI operation, AI log or quota was created by the run.
   expect(await listEmulatorDocumentIds(env, `users/${adult.uid}/nutrition_v2_generations`)).toEqual([]);

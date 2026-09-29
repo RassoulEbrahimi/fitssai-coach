@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import type { Page } from "@playwright/test";
 import { recordedEntrySchema } from "../../shared/nutrition";
 import { e2ePassword, openNutrition, signIn } from "../support/browser";
-import { callEmulatorCallable, createEmulatorDocumentAs, emulatorIdToken } from "../support/emulatorRest";
+import { callEmulatorCallable, createEmulatorDocumentAs, emulatorIdToken, listEmulatorDocumentIds } from "../support/emulatorRest";
 import { expect, test } from "../support/fixtures";
 import type { LocalEmulatorEnv } from "../support/emulatorEnv";
 import type { NutritionSeedSummary } from "../support/seedNutrition";
@@ -36,6 +36,9 @@ const expectNoNutritionV2Surface = async (page: Page) => {
   await expect(page.getByRole("button", { name: /erfassen$/ })).toHaveCount(0);
   await expect(page.getByRole("button", { name: /ersetzen$/ })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Aktualisieren" })).toHaveCount(0);
+  // NUT-14: neither the target setup nor plan generation, whatever the backend offers.
+  await expect(page.getByRole("button", { name: /^Ziel (festlegen|ändern|prüfen)$/ })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: /Ernährungsplan erstellen|Neuen Plan erstellen/ })).toHaveCount(0);
 };
 
 /** The server refuses every Nutrition V2 mutation of `key` with NOT_ELIGIBLE / the rules. */
@@ -64,9 +67,13 @@ const expectServerRefusesMutations = async (
   });
   expect(slot).toEqual({ status: 403, body: notEligible });
 
-  // Generation answers the closed AI gate first; it is refused either way and writes nothing.
+  // NUT-14: with the AI gate on, generation is refused by eligibility itself —
+  // before any provider work — and writes nothing.
   const generation = await callEmulatorCallable(env, "nutritionRequestPlan", token, { requestId: randomUUID() });
-  expect(generation).toEqual({ status: 400, body: { error: { message: "NUTRITION_AI_DISABLED", status: "FAILED_PRECONDITION" } } });
+  expect(generation).toEqual({ status: 403, body: notEligible });
+  expect(await listEmulatorDocumentIds(env, `users/${user.uid}/nutrition_v2_generations`)).toEqual([]);
+  expect(await listEmulatorDocumentIds(env, "_ai_operations")).toEqual([]);
+  expect(await listEmulatorDocumentIds(env, "_ai_quota")).toEqual([]);
 
   // A recorded entry the rules accept for an adult (checked below) is denied for this account.
   const entry = skipEntry(seed.today);
@@ -134,6 +141,11 @@ test("missing age: no V2 data or actions; the age can be completed and the accou
   await expect(page.getByTestId("nutrition-v2-profile-completion")).toHaveAttribute("data-profile-status", "complete");
   await expect(page.getByText("Dein Ernährungsprofil ist vollständig.")).toBeVisible();
   await expect(page.getByTestId("nutrition-v2-slot")).toHaveCount(0);
+  // NUT-14: the live emulator backend offers target setup, so it is the next
+  // action; generation waits for a target. Nothing is set by showing it.
+  await expect(page.getByText(/Als Nächstes legst du dein Ernährungsziel fest/)).toBeVisible();
+  await expect(page.getByRole("button", { name: "Ziel festlegen" })).toBeVisible();
+  await expect(page.getByRole("button", { name: /Ernährungsplan erstellen|Neuen Plan erstellen/ })).toHaveCount(0);
 
   // Server: the age, and nothing else, changed; no Nutrition V2 document was created.
   const after = await persisted(user.uid);

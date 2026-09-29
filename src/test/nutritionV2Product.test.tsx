@@ -191,7 +191,7 @@ it('reads an existing generation status and refreshes it without starting a requ
   };
   put(C.generations, requestId, request);
   mount();
-  expect(await screen.findByText('Deine Plananfrage wird bearbeitet.')).toBeInTheDocument();
+  expect(await screen.findByText(/Dein Ernährungsplan wird erstellt\. Aktualisiere/)).toBeInTheDocument();
   put(C.generations, requestId, { broken: true });
   fireEvent.click(screen.getByRole('button', { name: 'Aktualisieren' }));
   expect(await screen.findByText(/Der Planstatus konnte nicht geladen werden/)).toBeInTheDocument();

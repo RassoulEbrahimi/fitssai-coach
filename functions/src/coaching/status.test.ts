@@ -78,11 +78,13 @@ describe("what the response says", () => {
     expect(result.capabilities).toEqual(BACKEND_CAPABILITIES);
   });
 
-  it("does not claim Nutrition targets or generation", () => {
-    // NUT-08 deploys the target plumbing, but no target policy is signed off
-    // and Nutrition generation does not exist, so neither is usable.
-    expect(result.capabilities.nutritionTargets).toBe(false);
-    expect(result.capabilities.nutritionGeneration).toBe(false);
+  it("claims Nutrition targets and generation, the NUT-14 enablement", () => {
+    // NUT-14: the signed target policies and the enabled, signed Vertex
+    // generator are behind these. The browser offers target setup and plan
+    // generation only while this deployed answer says true, so a rollback of
+    // either flag hides its action without a frontend release.
+    expect(result.capabilities.nutritionTargets).toBe(true);
+    expect(result.capabilities.nutritionGeneration).toBe(true);
     expect(Object.keys(result.capabilities).sort()).toEqual([
       "nutritionGeneration",
       "nutritionTargets",
