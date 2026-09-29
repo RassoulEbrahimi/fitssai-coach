@@ -17,6 +17,21 @@
  */
 export const FUNCTIONS_REGION = "europe-west3";
 
+/**
+ * The runtime identity of `nutritionRequestPlan`, and of no other Function
+ * (RUNTIME-IAM-02).
+ *
+ * A dedicated account with `roles/datastore.user` and `roles/aiplatform.user`
+ * only, so the one Function that calls Vertex AI no longer runs as the
+ * project's Editor-holding default compute account. The other Functions and
+ * every Cloud Build keep their existing identity.
+ *
+ * Rollback is not deleting this option: a deploy updates only the fields
+ * present, so the deployed Function would keep this account. Set the previous
+ * `813249512866-compute@developer.gserviceaccount.com` explicitly instead.
+ */
+export const NUTRITION_GENERATION_SERVICE_ACCOUNT = "fitssai-nutrition-generation@fitssai-coach.iam.gserviceaccount.com";
+
 /** Identifies this backend in responses. Not a secret, not a project id. */
 export const BACKEND_NAME = "fitssai-coach";
 
