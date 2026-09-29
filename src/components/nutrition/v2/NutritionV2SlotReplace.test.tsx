@@ -155,6 +155,8 @@ const applyOnServer = (payload: NutritionUpdateSlotRequest, owner: NutritionPlan
 const refusal = (code: string, details?: unknown) => Object.assign(new Error(code), { code: "functions/aborted", details });
 
 const slotCalls = () => server.calls.filter((call) => call.name === NUTRITION_UPDATE_SLOT_CALLABLE);
+/** Every call but the read-only backend status probe (NUT-14). */
+const mutatingCalls = () => server.calls.filter((call) => call.name !== "coachBackendStatus");
 
 const renderContainer = () => {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
@@ -250,7 +252,7 @@ describe("the replacement surface", () => {
     await user.click(within(sheet).getByRole("button", { name: "Abbrechen" }));
     await settle();
 
-    expect(server.calls).toEqual([]);
+    expect(mutatingCalls()).toEqual([]);
     expect(storedHead("lunch")).toBeNull();
     expect(within(await slotRow("lunch")).queryByTestId("nutrition-v2-slot-replaced")).toBeNull();
   });
@@ -418,7 +420,7 @@ describe("when replacing is unavailable", () => {
     const sheet = await openReplace(user);
     expect(within(sheet).getByTestId("nutrition-v2-replace-blocked")).toHaveTextContent("Ersetzen ist nur mit Internetverbindung möglich.");
     expect(within(sheet).getByRole("button", { name: "Ersetzen" })).toBeDisabled();
-    expect(server.calls).toEqual([]);
+    expect(mutatingCalls()).toEqual([]);
     // Nothing is stored for later either: the offline queue stays empty.
     expect(loadQueue()).toEqual([]);
   });
@@ -447,7 +449,7 @@ describe("when replacing is unavailable", () => {
     expect(await reasonOf((await run()).commitPlanMeal({ ...target, date: "2026-09-25" }, "m-0-lunch"))).toBe("pastDate");
     Object.defineProperty(navigator, "onLine", { configurable: true, get: () => false });
     expect(await reasonOf((await run()).commitSuggestion(target, { suggestionSetId: "s", candidateId: "c" }))).toBe("offline");
-    expect(server.calls).toEqual([]);
+    expect(mutatingCalls()).toEqual([]);
   });
 });
 
@@ -469,7 +471,7 @@ describe("undo", () => {
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
 
     const sheet = await openReplace(user);
-    expect(server.calls).toEqual([]);
+    expect(mutatingCalls()).toEqual([]);
     await user.click(within(sheet).getByRole("button", { name: "Rückgängig" }));
     await waitFor(() => expect(slotCalls()).toHaveLength(1));
     expect(slotCalls()[0].payload).toEqual({

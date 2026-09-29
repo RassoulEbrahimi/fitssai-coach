@@ -166,9 +166,9 @@ describe("plan writes", () => {
 });
 
 describe("capabilities stay truthful", () => {
-  it("repeat plumbing claims neither Nutrition targets nor generation", () => {
-    expect(BACKEND_CAPABILITIES.nutritionTargets).toBe(false);
-    expect(BACKEND_CAPABILITIES.nutritionGeneration).toBe(false);
+  it("repeat plumbing adds no capability of its own; targets and generation are NUT-14's enablement", () => {
+    expect(BACKEND_CAPABILITIES.nutritionTargets).toBe(true);
+    expect(BACKEND_CAPABILITIES.nutritionGeneration).toBe(true);
     expect(Object.keys(BACKEND_CAPABILITIES).sort()).toEqual([
       "nutritionGeneration",
       "nutritionTargets",

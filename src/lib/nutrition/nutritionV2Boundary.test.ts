@@ -41,6 +41,10 @@ import { NUTRITION_V2_ENABLED } from "@shared/nutrition/featureFlag";
   save planner, and a card and sheet that read and save the existing profile
   through useProfile/useUpdateProfile only — no V2 read, no callable and no
   V2 document.
+
+  NUT-14 puts the generation hook behind one explicit product action, used by
+  the Today container only, and offers it and the target setup only while the
+  deployed backend says so. Still no new callable and no new write.
 */
 
 const root = resolve(__dirname, "../../..");
@@ -104,6 +108,9 @@ const v2Modules = [
   // NUT-12D.1: profile completion.
   "src/lib/nutrition/v2/profileCompletion.ts",
   "src/components/nutrition/v2/NutritionV2ProfileCompletion.tsx",
+  // NUT-14: the explicit generation action.
+  "src/lib/nutrition/v2/planGeneration.ts",
+  "src/components/nutrition/v2/NutritionV2PlanGeneration.tsx",
 ];
 
 /** NUT-12D.1: the profile completion planner and its card and sheet. */
@@ -306,7 +313,7 @@ describe("Nutrition V2 module boundary", () => {
     }
   });
 
-  it("calls nutritionRequestPlan from one module, reached only through the request hook, which no UI uses yet", () => {
+  it("calls nutritionRequestPlan from one module, reached only through the request hook, which one explicit action uses", () => {
     const generation = code(generationCallableModule);
     // NUT-12C.2: with this callable's own timeout, never the SDK default.
     expect(generation).toMatch(
@@ -323,7 +330,13 @@ describe("Nutrition V2 module boundary", () => {
     const importers = productionSources.filter((path) => /from\s+["'][^"']*\/generationCallable["']/.test(read(path)));
     expect(importers).toEqual([requestPlanHookModule]);
     const hookImporters = productionSources.filter((path) => /useNutritionV2RequestPlan["']/.test(read(path)));
-    expect(hookImporters).toEqual([]);
+    expect(hookImporters).toEqual(["src/components/nutrition/v2/NutritionV2PlanGeneration.tsx"]);
+    const action = code("src/components/nutrition/v2/NutritionV2PlanGeneration.tsx");
+    // Only a click submits: no effect, no timer, no retry loop, no id of its own.
+    expect([...action.matchAll(/request\.submit\(\)/g)]).toHaveLength(1);
+    expect(action).not.toMatch(/useEffect|setInterval|setTimeout|refetchInterval|randomUUID/);
+    const actionImporters = productionSources.filter((path) => /\/NutritionV2PlanGeneration["']/.test(read(path)));
+    expect(actionImporters).toEqual(["src/components/nutrition/v2/NutritionV2TodayContainer.tsx"]);
   });
 
   it("requests a plan with { requestId } only: online, never queued, never optimistic, no cancel", () => {

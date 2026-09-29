@@ -64,13 +64,13 @@ const clientSources = [...walk(join(REPO_ROOT, "src"), /\.(ts|tsx)$/), ...walk(j
 );
 
 describe("the backend AI gate", () => {
-  it("is false", () => {
-    expect(NUTRITION_AI_PRODUCTION_ENABLED).toBe(false);
+  it("is true: the NUT-14 enablement signed off on 2026-09-29", () => {
+    expect(NUTRITION_AI_PRODUCTION_ENABLED).toBe(true);
   });
 
   it("is a reviewed literal: no environment, parameter, emulator or test-runner default can move it", () => {
     const gate = code("src/nutrition/aiGate.ts");
-    expect(gate.trim()).toBe("export const NUTRITION_AI_PRODUCTION_ENABLED: boolean = false;");
+    expect(gate.trim()).toBe("export const NUTRITION_AI_PRODUCTION_ENABLED: boolean = true;");
     for (const file of [...nutritionModules, "src/index.ts", "src/config.ts", "src/ai/googleGenai.ts"]) {
       expect(code(file), file).not.toMatch(/process\.env|NODE_ENV|FUNCTIONS_EMULATOR|VITEST|defineBoolean|defineString|defineInt|defineJsonSecret/);
     }
@@ -104,7 +104,7 @@ describe("the backend AI gate", () => {
   });
 });
 
-describe("production is configured behind the closed gate (NUT-12C.2)", () => {
+describe("production is configured behind the gate (NUT-12C.2), enabled by NUT-14", () => {
   it("has exactly the signed Vertex deployment, frozen", () => {
     expect(PRODUCTION_NUTRITION_VERTEX_DEPLOYMENT).toEqual({
       provider: {
@@ -124,7 +124,7 @@ describe("production is configured behind the closed gate (NUT-12C.2)", () => {
     expect(PRODUCTION_NUTRITION_VERTEX_DEPLOYMENT.provider).not.toHaveProperty("model");
   });
 
-  it("configures the signed deterministic policies, first-plan slots and generator — and the gate stays off", () => {
+  it("configures the signed deterministic policies, first-plan slots and generator — and the gate is on", () => {
     expect(PRODUCTION_TARGET_POLICIES).toHaveLength(2);
     expect(productionTargetPolicyRegistry.get("manual")).toMatchObject({ id: "manual-target", version: 1 });
     expect(productionTargetPolicyRegistry.get("calculated")).toMatchObject({ id: "calculated-target", version: 1 });
@@ -133,8 +133,8 @@ describe("production is configured behind the closed gate (NUT-12C.2)", () => {
     for (const mealsPerDay of [1, 2, 3, 4, 5]) expect(productionInitialSlotConfiguration.slotsFor(mealsPerDay)).toHaveLength(mealsPerDay);
     for (const mealsPerDay of [null, 0, 6]) expect(productionInitialSlotConfiguration.slotsFor(mealsPerDay)).toBeNull();
     expect(productionNutritionGenerationProviderRegistry.current()?.operationLeaseMs).toBe(300_000);
-    // Configured is not enabled.
-    expect(NUTRITION_AI_PRODUCTION_ENABLED).toBe(false);
+    // Configured, and enabled by the reviewed NUT-14 literal.
+    expect(NUTRITION_AI_PRODUCTION_ENABLED).toBe(true);
   });
 
   it("names a Vertex location and project only in the signed deployment — no default anywhere else", () => {
@@ -162,9 +162,12 @@ describe("production is configured behind the closed gate (NUT-12C.2)", () => {
     expect(registry).not.toMatch(/\?\?\s*\d/);
   });
 
-  it("keeps production capabilities off while the V2 UI is enabled", () => {
-    expect(BACKEND_CAPABILITIES.nutritionTargets).toBe(false);
-    expect(BACKEND_CAPABILITIES.nutritionGeneration).toBe(false);
+  it("claims the NUT-14 capabilities with the gate, and leaves the Training capabilities alone", () => {
+    expect(BACKEND_CAPABILITIES.nutritionTargets).toBe(true);
+    expect(BACKEND_CAPABILITIES.nutritionGeneration).toBe(true);
+    expect(BACKEND_CAPABILITIES.nutritionGeneration).toBe(NUTRITION_AI_PRODUCTION_ENABLED);
+    expect(BACKEND_CAPABILITIES.planGeneration).toBe(true);
+    expect(BACKEND_CAPABILITIES.weeklySummaryAI).toBe(true);
     expect(NUTRITION_V2_ENABLED).toBe(true);
   });
 

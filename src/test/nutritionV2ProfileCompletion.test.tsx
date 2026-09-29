@@ -60,6 +60,10 @@ const session = vi.hoisted(() => ({
 
 vi.mock("firebase/firestore", () => firestore);
 vi.mock("firebase/functions", () => callables);
+
+/** Every callable asked for, by name, except the read-only backend status probe (NUT-14). */
+const nutritionCallables = () =>
+  (callables.httpsCallable.mock.calls as unknown as unknown[][]).map((args) => args[1]).filter((name) => name !== "coachBackendStatus");
 vi.mock("@/lib/firebase", () => ({ db: {} }));
 vi.mock("@/hooks/useAuth", () => ({ useAuth: () => ({ user: session.user }) }));
 vi.mock("@/hooks/useBerlinToday", () => ({ useBerlinToday: () => session.today }));
@@ -176,7 +180,8 @@ afterEach(async () => {
 });
 
 describe("rollout", () => {
-  // The server capabilities and the AI gate stay off; backend.test and the Functions suite pin those.
+  // The server capabilities and the AI gate are pinned by backend.test and the Functions suite;
+  // what the live backend status exposes is nutritionV2Enablement.test's.
   it("runs against the enabled V2 UI", () => {
     expect(NUTRITION_V2_ENABLED).toBe(true);
   });
@@ -370,14 +375,14 @@ describe("F: plan status", () => {
     mount();
 
     const status = await screen.findByRole("region", { name: "Planstatus" });
-    await waitFor(() => expect(status).toHaveTextContent("Deine Plananfrage wartet auf Bearbeitung."));
+    await waitFor(() => expect(status).toHaveTextContent("Dein Ernährungsplan wartet auf die Erstellung."));
     expect(within(status).queryByRole("button")).toBeNull();
-    expect(callables.httpsCallable).not.toHaveBeenCalled();
+    expect(nutritionCallables()).toEqual([]);
   });
 });
 
 describe("G: refresh", () => {
-  it("is one compact header action that refetches only this account's Nutrition V2 reads", async () => {
+  it("is one compact header action that refetches only this account's Nutrition V2 reads and the backend status", async () => {
     store.docs.set(profilePath, { ...COMPLETE_PROFILE });
     const { client } = mount();
     await screen.findByText("Dein Ernährungsprofil ist vollständig.");
@@ -390,8 +395,8 @@ describe("G: refresh", () => {
     const invalidate = vi.spyOn(client, "invalidateQueries");
     fireEvent.click(refresh[0]);
     await waitFor(() => expect(refresh[0]).not.toBeDisabled());
-    expect(invalidate.mock.calls).toEqual([[{ queryKey: ["nutrition-v2", "alice"] }]]);
-    expect(callables.httpsCallable).not.toHaveBeenCalled();
+    expect(invalidate.mock.calls).toEqual([[{ queryKey: ["nutrition-v2", "alice"] }], [{ queryKey: ["coach-backend", "alice"] }]]);
+    expect(nutritionCallables()).toEqual([]);
     expect(firestore.setDoc).not.toHaveBeenCalled();
   });
 });

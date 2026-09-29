@@ -11,8 +11,9 @@ recording lives in the emulators of the demo project `demo-fitssai`, is wiped
 on every seed, and never leaves this machine. Production Firebase receives no
 read or write from this harness; production AI is never called.
 
-NUT-13 is **not** passed by this slice. NUT-13A builds and smoke-tests the
-harness; NUT-13B uses it for the product validation (see the end).
+NUT-13A builds and smoke-tests the harness; NUT-13B uses it for the product
+validation (see the end). NUT-13 is **PASSED** (automated validation and the
+physical phone check). NUT-14 adds the enablement spec below.
 
 ## Safety model
 
@@ -37,7 +38,7 @@ Where it is enforced:
 | Production build | `vite.config.ts` refuses `vite build` whenever `VITE_FIREBASE_USE_EMULATORS` is set to anything but empty/`false`. Emulator mode exists only on the dev server. |
 | Node (seed, setup, launchers) | `e2e/support/emulatorEnv.ts` `requireLocalEmulatorEnv` requires `GCLOUD_PROJECT=demo-fitssai` and loopback/LAN `FIREBASE_AUTH_EMULATOR_HOST`, `FIRESTORE_EMULATOR_HOST` and `FIREBASE_FUNCTIONS_EMULATOR_HOST`. It defaults nothing. The REST helpers refuse any URL that is not one of those emulators. |
 | Emulator process | `e2e/support/processEnv.ts` `emulatorProcessEnv` starts the Firebase CLI with no Google credentials. There are no `GOOGLE_APPLICATION_CREDENTIALS`, and APPDATA, `XDG_CONFIG_HOME` and `CLOUDSDK_CONFIG` point at empty directories, so neither gcloud ADC nor the `firebase login` account can be handed to the Functions runtime. |
-| AI | Unchanged: `NUTRITION_AI_PRODUCTION_ENABLED = false`, `nutritionTargets = false`, `nutritionGeneration = false`. The Functions emulator runs the same build, so `nutritionRequestPlan` answers `NUTRITION_AI_DISABLED`. The smoke suite asserts this. |
+| AI | Since NUT-14 the source says `NUTRITION_AI_PRODUCTION_ENABLED = true`, `nutritionTargets = true`, `nutritionGeneration = true`, and the Functions emulator runs that build. The harness still never makes a Vertex AI call: the emulator has no credentials, no test sends an eligible adult's well-formed generation request to the emulator (the smoke suite checks strict `INVALID_REQUEST` refusals, the eligibility suite `NOT_ELIGIBLE`, the enablement suite the Keto refusal — all before any provider work), and every generation the browser sends is answered at the browser boundary by `page.route`. No environment-controlled gate exists or is added. |
 
 The seed is outside `functions/`, so Functions deployment cannot package it,
 and `e2e/` is not part of any build.
@@ -167,9 +168,11 @@ phone. Treat that check as layout/interaction QA. Do not commit a LAN address.
    This proves the server path NUT-13B needs; it is not the replacement
    validation.
 3. Isolation account: signs in to its own plan and shows none of A's meals.
-4. `nutritionRequestPlan` answers `NUTRITION_AI_DISABLED`. No generation
-   request, `_ai_operations`, `_ai_logs` or `_ai_quota` document exists, and
-   the state is unchanged.
+4. `nutritionRequestPlan` refuses anything but `{ requestId }` (an extra
+   uid or plan id, a malformed id, no id) as `INVALID_REQUEST`, before the
+   gate and any provider work (NUT-14; before NUT-14 this asserted
+   `NUTRITION_AI_DISABLED`). No generation request, `_ai_operations`,
+   `_ai_logs` or `_ai_quota` document exists, and the state is unchanged.
 
 Every browser test aborts and records any request to a non-local host (the
 web font excepted), fails if there is one, and asserts the page reached the
@@ -320,9 +323,10 @@ History:
   - `runNutritionSeed` reseeds before every test.
   - The emulator Admin reader is shared with the seed.
 
-### Physical phone check — pending
+### Physical phone check — complete
 
-A real phone has not been used, so **NUT-13 is not passed**. Recording,
+The physical phone check is complete, so **NUT-13 is PASSED**. The notes
+below stay for repeating it. Recording,
 replacement, extra meals and the offline queue create ids with
 `crypto.randomUUID()`, which a browser offers only in a secure context.
 `http://<lan-address>:5180` is not one, so those actions fail on a phone that
@@ -379,7 +383,20 @@ Status:
 
 - NUT-13A harness: COMPLETE.
 - NUT-13B-FIX-01: MERGED (PR #128).
-- NUT-13B automated product validation: PASS.
-- 320 px "Ausgelassen" label: a known non-functional polish issue, open.
-- Physical phone check: PENDING.
-- NUT-13: not passed until the phone check.
+- NUT-13B automated product validation: PASS (PR #129, MERGED).
+- 320 px "Ausgelassen" label: a known non-functional polish issue, open and
+  non-blocking.
+- Physical phone check: COMPLETE.
+- NUT-13: PASSED.
+
+## NUT-14 enablement suite (`e2e/tests/nutrition-enablement.e2e.ts`)
+
+The emulator runs the NUT-14 source, so its live `coachBackendStatus` is the
+post-deploy one. Generation never reaches the emulator's generator.
+
+| Test | What it proves |
+| --- | --- |
+| Release order | `coachBackendStatus` answered `false`/`false` at the browser boundary (the Phase 1 window): no target setup and no generation action; Today, the target and recording keep working; a refresh reads the status again and still offers nothing. |
+| Target, then generation | A complete adult without Nutrition V2 data (the missing-age account with its age set) sees the target setup as the next action, sets a calculated target through the real deterministic `nutritionSetTarget`, and only then is offered "Ernährungsplan erstellen". The one click sends `{ requestId }` once, answered `NUTRITION_AI_DISABLED` by `page.route`; the temporary-availability copy is shown and no generation, operation or quota document exists. |
+| Regeneration | The adult is offered "Neuen Plan erstellen", which asks once more; cancelling sends nothing, confirming sends one `{ requestId }`, answered `QUOTA_EXCEEDED` by `page.route` and shown as the monthly-allowance copy. A reload sends nothing. |
+| Keto | The product says Keto generation is not supported and offers no action; the emulator itself answers `DIETARY_PREFERENCE_NOT_SUPPORTED` before any provider work and writes nothing. |

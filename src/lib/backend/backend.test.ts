@@ -36,7 +36,7 @@ describe("client and server agree", () => {
     expect(serverConfig).toContain(`FUNCTIONS_REGION = "${FUNCTIONS_REGION}"`);
   });
 
-  it("names the same capabilities, and the server claims no Nutrition target or generation", () => {
+  it("names the same capabilities, and the server claims Nutrition targets and generation (NUT-14)", () => {
     const serverConfig = stripComments(read("functions/src/config.ts"));
     const client = stripComments(read("src/lib/backend/index.ts"));
 
@@ -44,9 +44,10 @@ describe("client and server agree", () => {
       expect(client).toMatch(new RegExp(`\\b${capability}: boolean;`));
       expect(serverConfig).toMatch(new RegExp(`\\b${capability}: boolean;`));
     }
-    // NUT-08: the target callable exists, but no target policy is signed off.
-    expect(serverConfig).toMatch(/\bnutritionTargets: false,/);
-    expect(serverConfig).toMatch(/\bnutritionGeneration: false,/);
+    // NUT-14: enabled server-side. The browser still offers the actions only
+    // while the DEPLOYED backend says so (useCoachBackendCapabilities).
+    expect(serverConfig).toMatch(/\bnutritionTargets: true,/);
+    expect(serverConfig).toMatch(/\bnutritionGeneration: true,/);
   });
 
   it("keeps FitssAI's backend in Europe", () => {
@@ -109,14 +110,21 @@ describe("the shared schema accepts what the client already stores", () => {
 });
 
 describe("the client seam stays a seam", () => {
-  it("is not called automatically anywhere in the app", () => {
+  it("is called only by the capability hook, once per account session and never on a timer", () => {
     const callers = walk("src").filter(
-      (file) => !file.startsWith("src/lib/backend") && /fetchCoachBackendStatus/.test(read(file))
+      (file) => !file.startsWith("src/lib/backend") && !/\.test\.tsx?$/.test(file) && /fetchCoachBackendStatus/.test(read(file))
     );
 
-    // A status probe on render would be a paid network request per user per
-    // view, to learn something that does not change.
-    expect(callers).toEqual([]);
+    // A status probe on render would be a network request per user per view,
+    // to learn something that changes only with a deployment (NUT-14).
+    expect(callers).toEqual(["src/hooks/queries/useCoachBackendCapabilities.ts"]);
+    const hook = stripComments(read(callers[0]));
+    expect(hook).toMatch(/staleTime: Infinity,/);
+    for (const option of ["refetchOnMount", "refetchOnWindowFocus", "refetchOnReconnect", "retry", "retryOnMount"]) {
+      expect(hook).toMatch(new RegExp(`\\b${option}: false,`));
+    }
+    expect(hook).not.toMatch(/refetchInterval|setInterval|setTimeout|persist|localStorage/);
+    expect(hook).toMatch(/queryKey: queryKeys\.backend\.status\(uid\)/);
   });
 
   it("adds no user-facing AI affordance", () => {

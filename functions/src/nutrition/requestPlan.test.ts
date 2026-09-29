@@ -69,12 +69,13 @@ import { handleNutritionSetTarget } from "./setTarget";
 /*
   NUT-11: `nutritionRequestPlan`, end to end against the in-memory Firestore.
 
-  Production is configured behind the closed backend gate (NUT-12C.1 signed
-  the plan-validation policy and the first-plan slot mapping; NUT-12C.2 the
-  Vertex deployment and the quota), so the deployed handler answers
-  NUTRITION_AI_DISABLED and writes nothing. A registry with no deployment
-  still answers GENERATION_PROVIDER_NOT_CONFIGURED; the production deployment
-  itself only ever runs here over a scripted SDK client. Everything else runs on TEST FIXTURES from src/testing/: a scripted
+  Production is configured behind the backend gate (NUT-12C.1 signed the
+  plan-validation policy and the first-plan slot mapping; NUT-12C.2 the Vertex
+  deployment and the quota), and NUT-14 opened the gate. A closed gate (the
+  rollback) answers NUTRITION_AI_DISABLED and writes nothing. A registry with
+  no deployment still answers GENERATION_PROVIDER_NOT_CONFIGURED; the
+  production deployment itself only ever runs here over a scripted SDK client,
+  never against Vertex AI. Everything else runs on TEST FIXTURES from src/testing/: a scripted
   generator with no network, prompt or model, validation policies that accept
   or reject by fiat, and a fixed breakfast/lunch/dinner slot list.
 
@@ -1413,16 +1414,42 @@ const spyRegistry = (provider: FakeNutritionPlanProvider) => {
 };
 
 describe("the backend AI gate", () => {
-  it("is off in production, and the deployed wiring passes exactly that", () => {
-    expect(NUTRITION_AI_PRODUCTION_ENABLED).toBe(false);
+  it("is on in production since NUT-14, and the deployed wiring passes exactly that", () => {
+    expect(NUTRITION_AI_PRODUCTION_ENABLED).toBe(true);
   });
 
-  it("PRODUCTION: a new request with the production gate and registries answers NUTRITION_AI_DISABLED and writes nothing", async () => {
+  it("PRODUCTION: a new request with the deployed gate and every production registry generates through the signed deployment — over a scripted SDK client", async () => {
+    // A target the signed target-alignment v1 policy can be met for, and a
+    // scripted reply that meets it: 3 × (600 kcal, 40 g protein, 66 g carbs, 20 g fat).
+    const h = setup({
+      extra: { [targetPath("target-1")]: { ...storedTarget("target-1"), values: { kcal: 1800, proteinG: 120, carbsG: 200, fatG: 60 } } },
+      vertexSteps: [
+        {
+          reply: fixtureVertexReply(["breakfast", "lunch", "dinner"], (slotId, dayIndex) => ({
+            slotId,
+            name: `Mahlzeit ${slotId} ${dayIndex + 1}`,
+            values: { kcal: 600, proteinG: 40, carbsG: 66, fatG: 20 },
+          })),
+        },
+      ],
+    });
+    expect(await h.call({ requestId: RID }, { enabled: NUTRITION_AI_PRODUCTION_ENABLED, production: true })).toMatchObject({
+      status: "succeeded",
+      resultPlanId: "gen-plan-1",
+    });
+    expect(h.vertex.requests).toHaveLength(1);
+    expect(h.vertex.requests[0].model).toBe("gemini-3.8-flash");
+    expect(h.state()?.activeGenerationRequestId).toBeNull();
+    expect(h.planIds().sort()).toEqual(["gen-plan-1", "plan-1"]);
+    expect(h.firestore.docs.get(`_ai_quota/${UID}__nutrition_plan_generation__2026-09`)).toMatchObject({ count: 1, reservations: [] });
+  });
+
+  it("ROLLBACK: a new request with the gate closed and every production registry answers NUTRITION_AI_DISABLED and writes nothing", async () => {
     const h = setup();
     const before = h.snapshot();
     const revision = h.state()?.revision;
 
-    expect(await code(h.call({ requestId: RID }, { enabled: NUTRITION_AI_PRODUCTION_ENABLED, production: true }))).toBe("NUTRITION_AI_DISABLED");
+    expect(await code(h.call({ requestId: RID }, { enabled: false, production: true }))).toBe("NUTRITION_AI_DISABLED");
     expect(h.snapshot()).toBe(before);
     expect(h.requests()).toEqual([]);
     expect(h.firestore.under(OPERATION_COLLECTION)).toEqual([]);
@@ -1601,10 +1628,10 @@ describe("the backend AI gate", () => {
 });
 
 describe("the production generator registry behind an open gate", () => {
-  it("the signed production deployment, gate closed: NUTRITION_AI_DISABLED, the SDK client never built, nothing written", async () => {
+  it("the signed production deployment, gate closed (rollback): NUTRITION_AI_DISABLED, the SDK client never built, nothing written", async () => {
     const h = setup();
     const before = h.snapshot();
-    expect(await code(h.call({ requestId: RID }, { enabled: NUTRITION_AI_PRODUCTION_ENABLED, via: "production" }))).toBe("NUTRITION_AI_DISABLED");
+    expect(await code(h.call({ requestId: RID }, { enabled: false, via: "production" }))).toBe("NUTRITION_AI_DISABLED");
     expect(h.vertex.requests).toEqual([]);
     expect(h.snapshot()).toBe(before);
   });
@@ -1794,10 +1821,18 @@ describe("the Nutrition quota: its own allowance", () => {
     expect(mapped.details).toBeUndefined();
   });
 
-  it("with the gate off, an exhausted account still answers NUTRITION_AI_DISABLED", async () => {
+  it("with the gate off (rollback), an exhausted account still answers NUTRITION_AI_DISABLED", async () => {
     const h = setup({ extra: seededQuota(LIMIT) });
     const before = h.snapshot();
-    expect(await code(h.call({ requestId: RID }, { enabled: NUTRITION_AI_PRODUCTION_ENABLED }))).toBe("NUTRITION_AI_DISABLED");
+    expect(await code(h.call({ requestId: RID }, { enabled: false }))).toBe("NUTRITION_AI_DISABLED");
+    expect(h.snapshot()).toBe(before);
+  });
+
+  it("with the deployed gate, an exhausted account answers QUOTA_EXCEEDED before the SDK client is asked", async () => {
+    const h = setup({ extra: seededQuota(LIMIT) });
+    const before = h.snapshot();
+    expect(await code(h.call({ requestId: RID }, { enabled: NUTRITION_AI_PRODUCTION_ENABLED, production: true }))).toBe("QUOTA_EXCEEDED");
+    expect(h.vertex.requests).toEqual([]);
     expect(h.snapshot()).toBe(before);
   });
 
@@ -2131,10 +2166,18 @@ describe("Keto generation is refused", () => {
     expect(mapped.details).toBeUndefined();
   });
 
-  it("gate off: NUTRITION_AI_DISABLED still wins", async () => {
+  it("gate off (rollback): NUTRITION_AI_DISABLED still wins", async () => {
     const h = setup({ profile: { ...PROFILE, dietaryPreference: "keto" } });
     const before = h.snapshot();
-    expect(await code(h.call({ requestId: RID }, { enabled: NUTRITION_AI_PRODUCTION_ENABLED, production: true }))).toBe("NUTRITION_AI_DISABLED");
+    expect(await code(h.call({ requestId: RID }, { enabled: false, production: true }))).toBe("NUTRITION_AI_DISABLED");
+    expect(h.snapshot()).toBe(before);
+  });
+
+  it("with the deployed gate and production registries: refused, the SDK client never asked, nothing written", async () => {
+    const h = setup({ profile: { ...PROFILE, dietaryPreference: "keto" } });
+    const before = h.snapshot();
+    expect(await code(h.call({ requestId: RID }, { enabled: NUTRITION_AI_PRODUCTION_ENABLED, production: true }))).toBe("DIETARY_PREFERENCE_NOT_SUPPORTED");
+    expect(h.vertex.requests).toEqual([]);
     expect(h.snapshot()).toBe(before);
   });
 

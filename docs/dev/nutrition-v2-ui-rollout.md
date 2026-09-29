@@ -93,19 +93,31 @@ copy was added. The runtime identity's Vertex AI permission (IAM) and the
 privacy, legal and data-processing sign-off remain open prerequisites; this
 repository changes neither.
 
-Remaining sequence:
+Update (NUT-14, 2026-09-29): the pre-flight is complete (rules deployed and
+parity-checked, the Nutrition callables deployed with the gates closed, the
+Vertex AI API enabled, runtime IAM verified, the model and location accepted)
+and the operator approved production use of the minimized generation payload.
+NUT-14 sets `NUTRITION_AI_PRODUCTION_ENABLED = true` and both capability flags
+to `true` in source, and the browser now offers the existing target setup and
+one explicit generation action — only while the DEPLOYED backend's
+`coachBackendStatus` says so. Production stays closed until the post-merge
+targeted Functions deployment. Release order, rollback and the smoke plan:
+[nutrition-v2-production-enablement.md](nutrition-v2-production-enablement.md).
+
+Sequence:
 
 1. NUT-12C: sign off policies (done in NUT-12C.1) and production
    configuration, including the timeout/retry/lease relationship (done in
    NUT-12C.2). This is not required for read-only UI.
-2. NUT-13: authenticated browser/phone E2E against an approved environment,
-   including recording and replacement with real server responses. NUT-13A
-   (harness), NUT-13B-FIX-01 and NUT-13B (automated validation) are done.
-   Still open: the physical phone check and the 320 px label polish.
+2. NUT-13: authenticated browser/phone E2E — **PASSED**. NUT-13A (harness),
+   NUT-13B-FIX-01 (PR #128, merged), NUT-13B (automated validation, PR #129,
+   merged) and the physical phone check are complete. The 320 px
+   "Ausgelassen" label polish stays open and non-blocking.
 3. NUT-14: separately reviewed production enablement and explicit setup/
-   generation actions — the only slice that may turn on the gate and the
-   capability flags, after the IAM prerequisite and the privacy/legal sign-off.
-   UI rollout does not authorize enabling these gates.
+   generation actions — the only slice that turns on the gate and the
+   capability flags. Pre-flight and operator approval are done; see
+   [nutrition-v2-production-enablement.md](nutrition-v2-production-enablement.md).
+   UI rollout alone does not authorize enabling these gates.
 
 ## One-time deployment and phone check (after review/merge)
 
@@ -134,7 +146,8 @@ This PR is not merged or deployed by its authoring task.
    vervollständigen” with “Angaben ergänzen” while answers are missing, or
    “Dein Ernährungsprofil ist vollständig.” once they are all given (NUT-12D.1).
    No empty target section, no Planstatus without a request, no legacy plan
-   and no generation/target button. For an approved existing V2 account, check target,
+   and — until the NUT-14 backend deployment reports the capabilities — no
+   generation/target button. For an approved existing V2 account, check target,
    Today meals, recorded state and the seven-date week. Confirm refresh works.
 6. Check minor/missing-age messaging and switching accounts. Test a recorded
    meal, offline reconciliation and replacement only on an approved test
@@ -168,5 +181,8 @@ Do not remove V2 documents, queued entry intents or deployed rules.
   - The automated validation passes headless, headed and LAN-routed.
   - Known, non-functional: the "Ausgelassen" label is clipped at 320 px. It
     is tracked by an expected-failure diagnostic.
-  - The physical phone check is still pending. It needs a secure-context
-    origin; see nutrition-e2e.md. **NUT-13 is not passed.**
+  - The physical phone check is complete. **NUT-13 is PASSED.**
+- NUT-14 adds `nutritionV2Enablement.test.tsx` and
+  `nutrition-enablement.e2e.ts`: the release-order state (backend still
+  false: no new action), the live capability gate, real target setup and the
+  generation action over a mocked callable only.

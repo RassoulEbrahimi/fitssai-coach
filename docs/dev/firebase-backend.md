@@ -187,18 +187,22 @@ signed-in client → callable → verified auth context → response
   "capabilities": {
     "planGeneration": true,
     "weeklySummaryAI": true,
-    "nutritionTargets": false,
-    "nutritionGeneration": false
+    "nutritionTargets": true,
+    "nutritionGeneration": true
   }
 }
 ```
 
 The capability flags live in code, not in a comment. Each flipped when the
 capability behind it shipped, not before — `planGeneration` in PR55 and
-`weeklySummaryAI` in PR58. `nutritionTargets` stays false even though the
-signed target policies are registered (NUT-12C.1, see "Nutrition V2
-targets"): it moves only in its own reviewed enablement change.
-`nutritionGeneration` stays false while there is no Nutrition generation.
+`weeklySummaryAI` in PR58. `nutritionTargets` and `nutritionGeneration` moved
+to true in NUT-14, the reviewed enablement signed off on 2026-09-29, together
+with the backend AI gate. Since NUT-14 the browser reads this answer live
+(`useCoachBackendCapabilities`, once per account and session, never
+persisted) and offers target setup and plan generation only while the
+deployed backend says true — so a frontend released before its backend, or a
+backend rolled back, shows neither action. See
+[nutrition-v2-production-enablement.md](nutrition-v2-production-enablement.md).
 
 ## Shared workout-plan schema
 
@@ -581,8 +585,8 @@ the browser bundle and readable by every visitor. Tests fail if one appears.
 |---|---|
 | Four-week workout-plan generation | **Live** (PR55) |
 | Weekly review + coaching recommendation | **Live** (PR58, hardened in PR59) — metrics and the recommendation category are deterministic; the model only rephrases them, on an explicit click |
-| Nutrition targets | Deterministic, no AI (NUT-08 plumbing, NUT-12C.1 policies) — `nutritionSetTarget` runs the signed TargetPolicy v1 (`calculated-target` v1, `manual-target` v1); the capability flag `nutritionTargets` is still `false` |
-| Nutrition generation | Off (NUT-11 infrastructure, NUT-12B provider code, NUT-12C configuration) — `nutritionRequestPlan` and its lifecycle are deployed and configured behind the backend gate: the signed plan-validation policy and first-plan slot mapping (NUT-12C.1), the signed Vertex deployment, the execution budget and the `nutrition_plan_generation` quota (NUT-12C.2). The gate `NUTRITION_AI_PRODUCTION_ENABLED` is `false`, so a new request answers `NUTRITION_AI_DISABLED` and writes nothing, and no production Nutrition AI call can occur. The capability flag `nutritionGeneration` is still `false`; NUT-14 is the explicit enablement slice |
+| Nutrition targets | Deterministic, no AI (NUT-08 plumbing, NUT-12C.1 policies) — `nutritionSetTarget` runs the signed TargetPolicy v1 (`calculated-target` v1, `manual-target` v1); `nutritionTargets` is `true` in source since NUT-14 (live once `coachBackendStatus` is deployed from it) |
+| Nutrition generation | Enabled in source by NUT-14 (NUT-11 infrastructure, NUT-12B provider code, NUT-12C configuration): `NUTRITION_AI_PRODUCTION_ENABLED = true` and `nutritionGeneration = true`. Production stays closed until the post-merge targeted deploy of `nutritionRequestPlan` and `coachBackendStatus`; see [nutrition-v2-production-enablement.md](nutrition-v2-production-enablement.md) for the release order, rollback and smoke plan |
 | Exercise suggestions in Add Workout | Not implemented — that tab offers exercises for one day, which a four-week generator is not |
 | AI usage statistics in Profile | Not available — the authoritative log is server-only by design |
 
@@ -703,10 +707,10 @@ read by `supersededByPlanId`, with the successor's own slot heads (NUT-11).
 ## Nutrition V2 plan generation
 
 `nutritionRequestPlan` (NUT-11) takes exactly `{ requestId }`. Its lifecycle
-is complete and configured; **nothing can generate**. New work is refused first
-by the backend AI gate (`NUTRITION_AI_PRODUCTION_ENABLED = false`, NUT-12B, see
-below) with `NUTRITION_AI_DISABLED`, before the generator registry is even
-asked. Behind the gate, the production generator registry
+is complete and configured. New work passes the backend AI gate first
+(`NUTRITION_AI_PRODUCTION_ENABLED`, NUT-12B, see below; `true` since NUT-14 —
+closed again, it refuses new work with `NUTRITION_AI_DISABLED` before the
+generator registry is even asked). Behind the gate, the production generator registry
 (`functions/src/nutrition/providers/productionRegistry.ts`) holds the signed
 Vertex deployment (NUT-12C.2); a registry with no deployment still answers
 `GENERATION_PROVIDER_NOT_CONFIGURED`. The signed plan-validation policy and
@@ -785,7 +789,7 @@ core inside the finalisation's own transaction and clears the pointer;
 another plan or target becoming current meanwhile discards the result
 (`discarded_stale`); a failure keeps the current plan. `revision` moves by
 one per state-changing transaction, and generation never enters the request
-ledger. `nutritionGeneration` stays `false`.
+ledger. `nutritionGeneration` is `true` since NUT-14.
 
 ## Nutrition AI provider implementation (NUT-12B)
 
@@ -793,19 +797,22 @@ ledger. `nutritionGeneration` stays `false`.
 data-processing statement:** no GDPR, DPA, data-residency, EU-only-processing,
 retention or zero-data-retention claim is made here or anywhere in this
 slice. The Vertex project and location are configured as technical values
-(NUT-12C.2); the privacy, legal and data-processing sign-off is **still
-open** and is a prerequisite of NUT-14.
+(NUT-12C.2). On 2026-09-29 the operator approved NUT-14 production use of the
+minimized generation payload with Google Vertex AI — an operator/product
+sign-off, recorded in
+[nutrition-v2-production-enablement.md](nutrition-v2-production-enablement.md),
+not a legal certification.
 
 | | |
 |---|---|
 | Provider | Google Vertex AI adapter implemented: `functions/src/nutrition/providers/vertexGemini.ts`, over the shared transport `functions/src/ai/googleGenai.ts` (`@google/genai` 2.19.0, no new dependency) |
 | Model | `gemini-3.8-flash` — `NUTRITION_GEMINI_MODEL_ID`, Nutrition's own constant, independent of Training's `GEMINI_MODEL_ID` (`gemini-3.7-flash`, unchanged); availability checked **2026-09-27**; pinned by a test |
 | Authentication | Runtime IAM / Application Default Credentials. **No Nutrition API key**, no Nutrition secret, nothing `VITE_*`; an API key in the environment is not used for the Vertex client |
-| Backend gate | `NUTRITION_AI_PRODUCTION_ENABLED = false` (`functions/src/nutrition/aiGate.ts`) — a reviewed constant, not a client flag, not derived from any environment; the deployed callable passes it, and tests inject `generationEnabled: true` explicitly |
+| Backend gate | `NUTRITION_AI_PRODUCTION_ENABLED = true` since NUT-14 (`functions/src/nutrition/aiGate.ts`) — a reviewed constant, not a client flag, not derived from any environment; the deployed callable passes it, and tests inject `generationEnabled` explicitly for both states |
 | Vertex project / location | Configured (NUT-12C.2) in `PRODUCTION_NUTRITION_VERTEX_DEPLOYMENT`: project `fitssai-coach`, location `eu`. The adapter still requires both explicitly and has no default of its own |
 | Operational values | Configured (NUT-12C.2): `thinkingLevel` `LOW`, `maxOutputTokens` 8192, provider timeout 45,000 ms per attempt, 2 transport attempts in total (429/5xx only; a timeout is not retried), operation lease 300,000 ms. The model is not a deployment value — it stays `NUTRITION_GEMINI_MODEL_ID` |
 | Execution budget | `nutritionRequestPlan`: Function timeout 240 s (was 30 s), memory 256 MiB and `maxInstances` 5 unchanged; browser callable timeout 300,000 ms (`NUTRITION_REQUEST_PLAN_CLIENT_TIMEOUT_MS`, this callable only). Worst-case provider time for a first call plus one repair is 2 × (2 × 45 s + 0.25 s) = 180.5 s < 240 s Function < 300 s lease ≤ 300 s browser; `executionBudget.test.ts` pins the chain. No other Function's budget changed |
-| Runtime IAM | **External prerequisite, not changed here.** The Functions runtime identity needs permission to call Vertex AI predictions in `fitssai-coach` before NUT-14 enables production. No IAM mutation, service-account key or credential is part of this repository |
+| Runtime IAM | **External, not changed here.** Verified in the NUT-14 pre-flight: the deployed runtime service account (`813249512866-compute@developer.gserviceaccount.com`) technically permits Vertex AI prediction in `fitssai-coach`. Its broad Editor role is a later least-privilege hardening item. No IAM mutation, service-account key or credential is part of this repository |
 | Model capability limits | Validated as configuration, before any client is built (a setting outside them is `GENERATION_PROVIDER_NOT_CONFIGURED`, never a paid call that fails): thinking level `LOW`, `MEDIUM`, `HIGH` or none (`null`: no `thinkingConfig` is sent and the model default, `MEDIUM`, applies) — `gemini-3.8-flash` has no `MINIMAL`; `maxOutputTokens` 1 … 65,536 (`NUTRITION_GEMINI_MAX_OUTPUT_TOKENS`). Ceilings only — not the production values |
 | API compatibility (NUT-12B.1) | `gemini-3.8-flash` takes reasoning control through `thinkingLevel` only. The Nutrition request sends **no** custom `temperature`, no `topP`/`topK`, no `candidateCount` (one response is the API's normal behaviour) and no frequency/presence penalties; none of them is a Nutrition setting, and the strict configuration schema refuses a stale deployment that still carries one (`GENERATION_PROVIDER_NOT_CONFIGURED`, before any client is built). The request config is exactly `systemInstruction`, `maxOutputTokens`, `thinkingConfig` (only when a level is configured), `responseMimeType`, `responseJsonSchema` and `abortSignal`; structured JSON output is still used. A future model that supports custom sampling reintroduces it explicitly, with the migration. **Nutrition only:** Training's `gemini-3.7-flash` config (`GENERATION_CONFIG`, above) is unchanged |
 | TargetPolicy | Configured (NUT-12C.1) — `calculated-target` v1 and `manual-target` v1; deterministic, no AI |
@@ -814,7 +821,7 @@ open** and is a prerequisite of NUT-14.
 | Quota | Configured (NUT-12C.2) — `nutrition_plan_generation`, 4 per user per UTC month, reserved with the claim, charged with the activation, released otherwise (see "Nutrition V2 plan generation") |
 | Keto | Generation refuses `keto` as `DIETARY_PREFERENCE_NOT_SUPPORTED` (NUT-12C.2); the vocabulary keeps it |
 | Logs | No Nutrition `_ai_logs`; no prompt, input, reply or provider error is persisted |
-| Production AI calls | **None possible**: everything is configured, but the gate is off and both capability flags are `false` |
+| Production AI calls | Enabled in source by NUT-14 (gate and both capability flags `true`). None occur until `nutritionRequestPlan` and `coachBackendStatus` are deployed from it after merge; the first is the approved one-account production smoke test |
 
 How the adapter works, for when it is enabled:
 
@@ -863,16 +870,15 @@ ends it as the NUT-11 lifecycle says. An expired request whose snapshot is
 already stale is still ended `discarded_stale` — convergence, not provider
 work.
 
-Configured behind the closed gate: the deterministic target and
-plan-validation policies and the first-plan slots (NUT-12C.1); the Vertex
-deployment, the execution budget, the Nutrition quota and the Keto refusal
-(NUT-12C.2). None of it enables production AI.
-
-Still open before production: the runtime identity's Vertex AI permission
-(external IAM), the privacy, legal and data-processing sign-off, consent and
-privacy copy, then NUT-13, then NUT-14 — the explicit enablement slice that
-alone may turn the gate and the capability flags on. Not planned in these
-slices: Nutrition AI logging, exclusions and replacement suggestions.
+Configured behind the gate: the deterministic target and plan-validation
+policies and the first-plan slots (NUT-12C.1); the Vertex deployment, the
+execution budget, the Nutrition quota and the Keto refusal (NUT-12C.2). NUT-14
+turned the gate and the capability flags on, after the pre-flight (runtime
+IAM verified, Vertex AI API enabled, model and location accepted), NUT-13 and
+the operator's approval of the minimized payload; see
+[nutrition-v2-production-enablement.md](nutrition-v2-production-enablement.md).
+Not planned in these slices: Nutrition AI logging, exclusions and replacement
+suggestions.
 
 
 

@@ -5,11 +5,12 @@ import { FUNCTIONS_REGION } from "./region";
 /**
  * The client's side of the callable boundary.
  *
- * Deliberately a seam and not a feature. Nothing in the app calls this on
- * render, on mount, or on a timer — a status probe that fires on every screen
- * would be a network request per user per view, paid for, to learn something
- * that does not change. It exists so PR51 has a tested path to extend, and so
- * a developer can confirm the backend is reachable.
+ * A seam, with one caller: `useCoachBackendCapabilities` (NUT-14), which asks
+ * once per signed-in account and session whether the DEPLOYED backend offers
+ * the Nutrition target and generation actions. Nothing calls it per render,
+ * per view or on a timer — a status probe that fires on every screen would be
+ * a network request per user per view, to learn something that changes only
+ * with a deployment. An explicit Nutrition refresh may ask again.
  *
  * No secret lives here. The callable is authorised by the signed-in user's own
  * Firebase ID token, which the SDK attaches; the server decides what that
@@ -19,9 +20,9 @@ import { FUNCTIONS_REGION } from "./region";
 export interface BackendCapabilities {
   planGeneration: boolean;
   weeklySummaryAI: boolean;
-  /** False: the target callable exists, but no target policy is signed off. */
+  /** The deployed backend offers Nutrition target setup (NUT-14). */
   nutritionTargets: boolean;
-  /** False: Nutrition plan generation does not exist yet. */
+  /** The deployed backend offers Nutrition plan generation (NUT-14). */
   nutritionGeneration: boolean;
 }
 

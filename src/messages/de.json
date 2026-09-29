@@ -483,11 +483,47 @@
       "generation": {
         "pending": "Planstatus wird geladen …",
         "error": "Der Planstatus konnte nicht geladen werden. Bitte aktualisiere die Ansicht.",
-        "queued": "Deine Plananfrage wartet auf Bearbeitung.",
-        "running": "Deine Plananfrage wird bearbeitet.",
+        "queued": "Dein Ernährungsplan wartet auf die Erstellung. Aktualisiere die Ansicht später, um das Ergebnis zu sehen.",
+        "running": "Dein Ernährungsplan wird erstellt. Aktualisiere die Ansicht später, um das Ergebnis zu sehen.",
         "succeeded": "Die Plananfrage wurde abgeschlossen.",
         "failed": "Die Plananfrage ist fehlgeschlagen. Dein bisheriger Plan bleibt erhalten.",
         "discarded_stale": "Die Plananfrage wurde wegen geänderter Angaben verworfen. Dein bisheriger Plan bleibt erhalten."
+      }
+    },
+    "generation": {
+      "create": "Ernährungsplan erstellen",
+      "createDescription": "FitssAI erstellt aus deinem Ziel einen Ernährungsplan für 7 Tage ab heute.",
+      "regenerate": "Neuen Plan erstellen",
+      "regenerateDescription": "Erstellt einen neuen Plan, der ab morgen gilt.",
+      "regenerateConfirm": "Dein neuer Plan gilt ab morgen und ersetzt die kommenden Tage deines aktuellen Plans. Heute und bereits erfasste Mahlzeiten bleiben unverändert. Jeder neue Plan zählt zu deinem monatlichen Kontingent.",
+      "cancel": "Abbrechen",
+      "submitting": "Dein Ernährungsplan wird erstellt …",
+      "submittingDescription": "Das kann einige Minuten dauern. Auch wenn du die Ansicht verlässt, wird die Erstellung abgeschlossen – aktualisiere sie später, um das Ergebnis zu sehen.",
+      "offline": "Ein Ernährungsplan kann nur mit Internetverbindung erstellt werden.",
+      "disclaimer": "Der Plan ist ein Vorschlag, keine medizinische Beratung und keine Garantie, dass Mahlzeiten frei von Allergenen sind.",
+      "targetNeedsReview": "Prüfe zuerst dein Ernährungsziel. Danach kannst du einen neuen Plan erstellen.",
+      "result": {
+        "succeeded": "Dein Ernährungsplan ist fertig.",
+        "succeededRegenerate": "Dein neuer Ernährungsplan ist fertig und gilt ab morgen.",
+        "inProgress": "Dein Ernährungsplan wird gerade erstellt. Aktualisiere die Ansicht später, um das Ergebnis zu sehen.",
+        "failed": "Der Plan konnte gerade nicht erstellt werden. Dein bisheriger Plan bleibt erhalten. Bitte versuche es später noch einmal.",
+        "discarded": "Deine Angaben haben sich während der Erstellung geändert, deshalb wurde kein neuer Plan übernommen. Dein bisheriger Plan bleibt erhalten."
+      },
+      "refusal": {
+        "UNAUTHENTICATED": "Bitte melde dich erneut an, um einen Ernährungsplan zu erstellen.",
+        "INVALID_REQUEST": "Die Anfrage konnte nicht verarbeitet werden. Bitte aktualisiere die Ansicht und versuche es erneut.",
+        "NOT_ELIGIBLE": "Ernährungspläne sind nur für Erwachsene mit Altersangabe verfügbar.",
+        "NUTRITION_AI_DISABLED": "Die Planerstellung ist vorübergehend nicht verfügbar. Bitte versuche es später noch einmal.",
+        "GENERATION_PROVIDER_NOT_CONFIGURED": "Die Planerstellung ist gerade nicht verfügbar. Bitte versuche es später noch einmal.",
+        "PLAN_VALIDATION_POLICY_NOT_CONFIGURED": "Die Planerstellung ist gerade nicht verfügbar. Bitte versuche es später noch einmal.",
+        "NO_CURRENT_TARGET": "Lege zuerst dein Ernährungsziel fest. Danach kannst du deinen Ernährungsplan erstellen.",
+        "PLAN_NOT_ACTIVE": "Dein aktueller Plan hat sich inzwischen geändert. Bitte aktualisiere die Ansicht.",
+        "PLAN_NOT_REGENERABLE": "Dein nächster Plan hat noch nicht begonnen. Einen neuen Plan kannst du ab seinem ersten Tag erstellen.",
+        "GENERATION_SLOTS_NOT_CONFIGURED": "Für deine Angabe zu Mahlzeiten pro Tag kann gerade kein Plan erstellt werden. Prüfe dein Ernährungsprofil.",
+        "DIETARY_PREFERENCE_NOT_SUPPORTED": "Für die Ernährungsform Keto können derzeit keine Ernährungspläne erstellt werden.",
+        "QUOTA_EXCEEDED": "Du hast die Anzahl neuer Ernährungspläne für diesen Monat erreicht. Im nächsten Monat kannst du wieder neue Pläne erstellen.",
+        "INTERNAL": "Der Plan konnte gerade nicht erstellt werden. Bitte versuche es später noch einmal.",
+        "offline": "Ein Ernährungsplan kann nur mit Internetverbindung erstellt werden."
       }
     },
     "today": {
@@ -747,7 +783,8 @@
       },
       "complete": {
         "title": "Dein Ernährungsprofil ist vollständig.",
-        "description": "Dein Ernährungsziel und deinen Plan kannst du hier erstellen, sobald diese Funktion verfügbar ist."
+        "description": "Dein Ernährungsziel und deinen Plan kannst du hier erstellen, sobald diese Funktion verfügbar ist.",
+        "descriptionNextTarget": "Als Nächstes legst du dein Ernährungsziel fest. Danach kann FitssAI deinen Ernährungsplan erstellen."
       },
       "edit": "Angaben ändern",
       "sheetTitle": "Ernährungsprofil",

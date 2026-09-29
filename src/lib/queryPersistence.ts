@@ -7,16 +7,22 @@ import { queryKeys } from '@/lib/queryKeys';
  * Which cached queries the account's persisted cache may keep (NUT-07).
  *
  * Everything the default would keep — every successful query — except the
- * Nutrition query families that are ephemeral or sensitive: plan-generation
- * requests and replacement suggestions. They are recognised by the key
- * registry's own prefixes for the key's account, never by matching strings.
- * Recorded entries and every Training family persist exactly as before.
+ * families that are ephemeral or sensitive: Nutrition plan-generation
+ * requests and replacement suggestions, and the deployed backend's live
+ * status (NUT-14). They are recognised by the key registry's own prefixes for
+ * the key's account, never by matching strings. Recorded entries and every
+ * Training family persist exactly as before.
+ *
+ * The backend status says which actions the running backend offers. A stored
+ * `true` could outlive a backend rollback and offer an action the backend no
+ * longer does, so it is only ever read live.
  */
 
 /** The key families that are never written to the persisted cache, for the key's own account. */
 const ephemeralPrefixes = (userId: string | undefined): readonly QueryKey[] => [
     queryKeys.nutrition.generation.all(userId),
     queryKeys.nutrition.suggestionsAll(userId),
+    queryKeys.backend.all(userId),
 ];
 
 const startsWith = (key: QueryKey, prefix: QueryKey): boolean =>
@@ -110,3 +116,14 @@ export const createAccountPersister = ({ storage, key }: { storage: Storage | un
  */
 export const invalidateRestoredQueries = (queryClient: QueryClient): Promise<void> =>
     queryClient.invalidateQueries({ refetchType: 'none' });
+
+/**
+ * Called once the persisted cache has been restored, before
+ * `invalidateRestoredQueries` (NUT-14): drops every restored query of an
+ * ephemeral family. Nothing current writes one, but a snapshot stored by an
+ * older build or edited by hand must still never hand the app a backend
+ * status, a generation request or a suggestion it did not read live.
+ */
+export const removeRestoredEphemeralQueries = (queryClient: QueryClient): void => {
+    queryClient.removeQueries({ predicate: (query) => isEphemeralQueryKey(query.queryKey) });
+};
