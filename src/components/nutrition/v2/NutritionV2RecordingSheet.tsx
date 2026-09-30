@@ -247,14 +247,16 @@ const RecordingForm = ({
       )}
 
       {target.kind === "slot" && (
-        <div role="group" aria-label={t("nutritionV2.recording.sheet.modeLabel")} className="grid grid-cols-3 gap-2">
+        // Equal widths where they fit, but never narrower than a label's longest word ("Ausgelassen" at 320 px):
+        // the row wraps before a label is clipped.
+        <div role="group" aria-label={t("nutritionV2.recording.sheet.modeLabel")} className="flex flex-wrap gap-2">
           {SLOT_MODES.map((option) => (
             <Button
               key={option}
               type="button"
               variant={mode === option ? "default" : "outline"}
               aria-pressed={mode === option}
-              className="h-auto min-h-11 whitespace-normal px-2"
+              className="h-auto min-h-11 min-w-min flex-1 whitespace-normal px-2"
               onClick={() => {
                 setMode(option);
                 setErrors({});
@@ -370,7 +372,7 @@ export const NutritionV2RecordingSheet: React.FC<{
 
   return (
     <Sheet open={target !== null} onOpenChange={(open) => (!open ? onClose() : undefined)}>
-      <SheetContent side="bottom" className={cn("max-h-[90dvh] overflow-y-auto")}>
+      <SheetContent side="bottom" className={cn("max-h-[90dvh] overflow-y-auto break-words")}>
         {target && (
           <>
             <SheetHeader className="mb-4 text-left">

@@ -224,7 +224,7 @@ UI steps go through the app's own buttons, sheets and accessible names
 | `nutrition-offline.e2e.ts` | `context.setOffline(true)` (Chromium reports `navigator.onLine === false` and fires the real events, so no helper is needed). One recording gives exactly one queued `NUTRITION_ENTRY_WRITE` intent. The UI says "Lokal gespeichert – wird synchronisiert", nothing is on the server, and replacement is blocked. Back online, the app's own replay writes the same intent once and the queue drains. Further offline/online transitions, the 5 s retry interval, and a re-inserted copy of the replayed queue entry (an interrupted cleanup) cause no second revision. The flow stays in one document; reload preserves the result. |
 | `nutrition-account-isolation.e2e.ts` | One document from start to end. A records breakfast online and queues lunch offline, then signs out through Profil → Abmelden. B signs in on the same page: B's TARGET, plan and meals, none of A's names, recordings, pending changes or conflicts, and nothing of A in B's persisted cache. B's replay never touches A's queued entry, and B gets no entries. A signs back in: A's data is intact, and A's queued lunch replays as A with its original intent. |
 | `nutrition-eligibility.e2e.ts` | Missing age and minor: no Nutrition V2 read at all from the browser, no target, slots, week, recording, replacement or refresh. The server refuses `nutritionSetTarget` and `nutritionUpdateSlot` with `NOT_ELIGIBLE` (`permission-denied`, with the reason). `nutritionRequestPlan` answers the closed AI gate. A rules-valid entry write is denied (a control shows the adult may write it). Missing age: the age is completed through the profile sheet (out-of-range refused), the account becomes eligible (the "profile complete" empty state), only `age` changed and no V2 document was created. |
-| `nutrition-responsive.e2e.ts` | 320, 375 and 390 px as a touch device. The **required** functional check: no horizontal scroll; TARGET, slots, both slot actions, week rows and the four navigation tabs sit inside the viewport; the last week row scrolls clear of the bottom navigation; the recording and replacement sheets fit and are completed by taps; Undo works; Profil → Nutrition works. A separate label **diagnostic** measures every sheet label for clipping. At 320 px it is marked `test.fail` for the known "Ausgelassen" issue (see below). |
+| `nutrition-responsive.e2e.ts` | 320, 375 and 390 px as a touch device. The **required** functional check: no horizontal scroll; TARGET, slots, both slot actions, week rows and the four navigation tabs sit inside the viewport; the last week row scrolls clear of the bottom navigation; the recording and replacement sheets fit and are completed by taps; Undo works; Profil → Nutrition works. A second **required** check (since NUT-12D.2) measures every sheet label for clipping in each recording mode, records a long German compound meal name, and requires that no text in the Today rows, week rows or the recording and replacement sheets is wider than its box. |
 | `nutrition-reload-cache.e2e.ts` | From NUT-13B-FIX-01 (above): a reload immediately after a recording, a replacement (and a recording made after it) or a profile save, and after another device's change. |
 
 No scenario waits for the persisted cache before reloading; every reload
@@ -304,7 +304,8 @@ button and renders clipped. The button still works, and the functional check
 at 320 px passes. The diagnostic is an explicit expected failure
 (`test.fail`) at 320 px, and it passes at 375 and 390 px. It will report
 "expected to fail, but passed" once the label fits. It is not fixed in
-NUT-13B.
+NUT-13B. **Fixed in NUT-12D.2**, which also made the check a required one
+(see below).
 
 Other notes:
 
@@ -384,8 +385,8 @@ Status:
 - NUT-13A harness: COMPLETE.
 - NUT-13B-FIX-01: MERGED (PR #128).
 - NUT-13B automated product validation: PASS (PR #129, MERGED).
-- 320 px "Ausgelassen" label: a known non-functional polish issue, open and
-  non-blocking.
+- 320 px "Ausgelassen" label: fixed in NUT-12D.2 (see "NUT-12D.2 responsive
+  polish" below).
 - Physical phone check: COMPLETE.
 - NUT-13: PASSED.
 
@@ -400,3 +401,29 @@ post-deploy one. Generation never reaches the emulator's generator.
 | Target, then generation | A complete adult without Nutrition V2 data (the missing-age account with its age set) sees the target setup as the next action, sets a calculated target through the real deterministic `nutritionSetTarget`, and only then is offered "Ernährungsplan erstellen". The one click sends `{ requestId }` once, answered `NUTRITION_AI_DISABLED` by `page.route`; the temporary-availability copy is shown and no generation, operation or quota document exists. |
 | Regeneration | The adult is offered "Neuen Plan erstellen", which asks once more; cancelling sends nothing, confirming sends one `{ requestId }`, answered `QUOTA_EXCEEDED` by `page.route` and shown as the monthly-allowance copy. A reload sends nothing. |
 | Keto | The product says Keto generation is not supported and offers no action; the emulator itself answers `DIETARY_PREFERENCE_NOT_SUPPORTED` before any provider work and writes nothing. |
+
+## NUT-12D.2 responsive polish
+
+A layout-only slice. Nutrition semantics, the backend and all data stay
+unchanged. An audit at 320, 375, 390 and 1280 px measured every Nutrition
+surface: Today, Week, the recording sheet in each mode, the edit, extra-meal,
+replacement and target sheets, the offline pending note, and long German
+compound meal names. It found:
+
+- **Recording sheet mode buttons.** The fixed three-column grid made
+  "Ausgelassen" 10–11 px wider than its button at 320 px. "Gegessen" also
+  overflowed by 2 px while another mode was pressed. The buttons now share
+  the row equally but never shrink below their longest word. At 320 px the
+  row wraps: "Gegessen" and "Anderes gegessen" on one line, "Ausgelassen"
+  under them at full width. At 375 px and wider all three stay on one line.
+- **Week rows at 320 px.** "2.728 kcal geplant" kept its full width, so the
+  date wrapped into three or four lines and "Nicht erfasst" stuck out of its
+  column by about 5 px. The day and status now get their width first. The
+  kcal wraps under its number, with a non-breaking space in "kcal".
+- **Long meal names.** A compound longer than the text column stuck out of
+  the Today slot and extra rows and over the action button: 76–162 px at
+  320 px, still up to 107 px at 375 px and 92 px at 390 px. It also stuck out
+  in the sheets, and in the replacement sheet's fieldset at 320 px. Rows and
+  sheets now break an over-long word at the edge instead.
+
+`nutrition-responsive.e2e.ts` guards all three (see the suite table above).

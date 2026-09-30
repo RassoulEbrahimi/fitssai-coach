@@ -106,11 +106,13 @@ const WeekRow = ({ day, language }: { day: NutritionWeekDay; language: string })
       data-recording={day.recording}
       aria-current={day.isToday ? "date" : undefined}
       className={cn(
-        "flex items-center gap-3 rounded-lg px-3 py-3",
+        // The day and its status get their width first; on a narrow screen the planned kcal
+        // takes what is left and wraps under its number ("2.728 kcal" / "geplant").
+        "grid grid-cols-[minmax(0,max-content)_minmax(min-content,1fr)_auto] items-center gap-3 rounded-lg px-3 py-3",
         day.isToday && "bg-primary/10 ring-1 ring-primary/30"
       )}
     >
-      <div className="min-w-0 flex-1">
+      <div className="min-w-0 break-words">
         <p className="font-medium text-foreground">
           {day.isToday ? (
             <>
@@ -123,7 +125,7 @@ const WeekRow = ({ day, language }: { day: NutritionWeekDay; language: string })
         </p>
         <p className="text-sm text-muted-foreground">{status}</p>
       </div>
-      <p className="whitespace-nowrap text-sm tabular-nums text-foreground">
+      <p className="text-right text-sm tabular-nums text-foreground">
         {t("nutritionV2.today.plannedKcal", { kcal })}
       </p>
       <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />

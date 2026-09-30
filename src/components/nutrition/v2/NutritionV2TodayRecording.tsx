@@ -117,7 +117,7 @@ export const NutritionV2TodayRecording: React.FC<{
               data-recorded={slot.active ? slot.active.recording : "none"}
               className="flex items-center gap-3 rounded-lg px-3 py-3"
             >
-              <div className="min-w-0 flex-1">
+              <div className="min-w-0 flex-1 break-words">
                 <p className="text-sm text-muted-foreground">{slotLabel}</p>
                 <p className="font-medium text-foreground">{slot.meal.name}</p>
                 <p className="text-sm text-muted-foreground">
@@ -175,7 +175,7 @@ export const NutritionV2TodayRecording: React.FC<{
                   data-testid="nutrition-v2-extra"
                   className="flex items-center gap-3 rounded-lg px-3 py-3"
                 >
-                  <div className="min-w-0 flex-1">
+                  <div className="min-w-0 flex-1 break-words">
                     <p className="font-medium text-foreground">{name}</p>
                     <p className="text-sm text-foreground">{recordedEntryLabel(entry, t, language)}</p>
                     <PendingNote state={pending.get(entry.entryId)} />
