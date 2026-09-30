@@ -8,6 +8,7 @@ import {
   navigateWithBottomNav,
   openRecordingSheet,
   openReplaceSheet,
+  openSheet,
   nextUpdateSlotResponse,
   slotRow,
   undoSlot,
@@ -25,16 +26,39 @@ import { E2E_LOCAL_DIR } from "../support/processEnv";
  * pointer); the last week row can be scrolled clear of the bottom navigation.
  * These functional checks are REQUIRED at every width.
  *
- * The label check is a visual-polish DIAGNOSTIC. At 320 px the recording
- * sheet's "Ausgelassen" mode label is wider than its button (a known,
- * non-functional issue: the button still works). It is marked as an expected
- * failure there, so the suite stays green for the required checks and turns
- * red — "expected to fail, but passed" — once the label fits.
+ * The label check is REQUIRED too since NUT-12D.2. It fixed the 320 px
+ * "Ausgelassen" mode label, which was about 10 px wider than its button and
+ * was an expected failure until then. No sheet label, Today row or week row
+ * may have text wider than its box, with a long German compound meal name
+ * recorded.
  * Screenshots go to e2e/results.local/screenshots.
  */
 
-/** Known label-polish issue, by width: the diagnostic is expected to fail there. */
-const KNOWN_CLIPPED_LABEL_WIDTHS: ReadonlySet<number> = new Set([320]);
+/** A recorded name with a compound longer than a 320 px slot row's text column. */
+const LONG_MEAL_NAME = "Hähnchenbrustfiletstreifenpfanne mit Rosmarinkartoffeln";
+
+/** Text runs that stick out of the element holding them (clipped, or drawn over a neighbour). */
+const escapingText = (container: Locator) =>
+  container.evaluate((root) => {
+    const escaping: { text: string; overflow: number }[] = [];
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+    for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+      const text = (node.textContent ?? "").trim();
+      // The nearest box that lays the text out: an inline span always encloses its own text.
+      let holder = node.parentElement;
+      while (holder && getComputedStyle(holder).display === "inline") holder = holder.parentElement;
+      if (!text || !holder) continue;
+      const box = holder.getBoundingClientRect();
+      // A 1 px box is screen-reader-only text (the sheet's "Close"), clipped on purpose.
+      if (box.width <= 1) continue;
+      const range = document.createRange();
+      range.selectNodeContents(node);
+      const overflow = Math.max(0, ...Array.from(range.getClientRects(), (rect) => Math.max(rect.right - box.right, box.left - rect.left)));
+      // Up to 2 px is sub-pixel layout and font rasterization, as for the sheet labels.
+      if (overflow > 2) escaping.push({ text, overflow: Math.round(overflow) });
+    }
+    return escaping;
+  });
 
 const SCREENSHOTS = path.join(E2E_LOCAL_DIR, "screenshots");
 mkdirSync(SCREENSHOTS, { recursive: true });
@@ -169,11 +193,7 @@ for (const width of WIDTHS) {
       await expect(slotRow(page, "breakfast")).toHaveAttribute("data-recorded", "plannedMeal");
     });
 
-    test(`sheet labels at ${width} px are not clipped (diagnostic)`, async ({ page, seed }) => {
-      test.fail(
-        KNOWN_CLIPPED_LABEL_WIDTHS.has(width),
-        'Known polish issue: the "Ausgelassen" mode label overflows its button by about 10 px at 320 px; the action still works.'
-      );
+    test(`labels and rows at ${width} px are not clipped`, async ({ page, seed }) => {
       const adult = seed.users.adult;
       await signIn(page, adult.email, e2ePassword());
       await openNutrition(page);
@@ -185,11 +205,30 @@ for (const width of WIDTHS) {
             .map((button) => ({ label: (button.textContent ?? "").trim(), overflow: button.scrollWidth - button.clientWidth }))
         );
 
+      // Every mode pressed in turn: a pressed and an unpressed button are measured for each label.
       const recordSheet = await openRecordingSheet(page, "breakfast");
       await settled(recordSheet);
-      const recording = await labels(recordSheet);
-      await page.keyboard.press("Escape");
+      const recording: { label: string; overflow: number }[] = [];
+      for (const mode of ["Gegessen", "Anderes gegessen", "Ausgelassen"]) {
+        await recordSheet.getByRole("button", { name: mode, exact: true }).click();
+        recording.push(...(await labels(recordSheet)));
+      }
+      // A recorded long compound name, shown in its slot row and in the sheet.
+      await recordSheet.getByRole("button", { name: "Anderes gegessen", exact: true }).click();
+      await recordSheet.getByLabel("Bezeichnung").fill(LONG_MEAL_NAME);
+      await recordSheet.getByLabel("Kalorien (kcal)").fill("640");
+      await recordSheet.getByRole("button", { name: "Speichern", exact: true }).click();
       await expect(recordSheet).toBeHidden();
+      await expect(slotRow(page, "breakfast")).toContainText(LONG_MEAL_NAME);
+      await expect(slotRow(page, "breakfast")).toHaveAttribute("data-recorded", "custom");
+      expect(await escapingText(page.getByTestId("nutrition-v2-today")), "Today and week text wider than its box").toEqual([]);
+      await slotRow(page, "breakfast").getByRole("button", { name: "Frühstück bearbeiten" }).click();
+      const editSheet = openSheet(page);
+      await settled(editSheet);
+      expect(await escapingText(editSheet), "recording sheet text wider than its box").toEqual([]);
+      await page.keyboard.press("Escape");
+      await expect(editSheet).toBeHidden();
+
       const replaceSheet = await openReplaceSheet(page, "lunch");
       await settled(replaceSheet);
       const replacing = await labels(replaceSheet);
@@ -201,6 +240,7 @@ for (const width of WIDTHS) {
       // headed and headless Chrome raster the same label up to 2 px apart. More is a clipped label.
       const clipped = [...recording, ...replacing, ...optionOverflow].filter((item) => item.overflow > 2);
       expect(clipped, "labels wider than their button").toEqual([]);
+      expect(await escapingText(replaceSheet), "replacement sheet text wider than its box").toEqual([]);
     });
   });
 }

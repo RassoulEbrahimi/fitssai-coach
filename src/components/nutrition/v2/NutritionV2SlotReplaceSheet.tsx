@@ -114,7 +114,7 @@ const ReplaceForm = ({
         </p>
       )}
 
-      <fieldset className="space-y-2" aria-describedby={`${groupId}-hint`}>
+      <fieldset className="min-w-0 space-y-2" aria-describedby={`${groupId}-hint`}>
         <legend className="text-sm font-medium text-foreground">{t("nutritionV2.replace.sheet.planMealsTitle")}</legend>
         <p id={`${groupId}-hint`} className="text-xs text-muted-foreground">
           {t("nutritionV2.replace.sheet.planMealsHint")}
@@ -144,7 +144,7 @@ const ReplaceForm = ({
                     }}
                     className="h-4 w-4 accent-primary"
                   />
-                  <span className="text-sm text-foreground">
+                  <span className="min-w-0 text-sm text-foreground">
                     {t("nutritionV2.replace.sheet.option", {
                       name: meal.name,
                       kcal: formatNutritionKcal(meal.values.kcal, language),
@@ -202,7 +202,7 @@ export const NutritionV2SlotReplaceSheet: React.FC<{
 
   return (
     <Sheet open={slot !== null} onOpenChange={(open) => (!open ? onClose() : undefined)}>
-      <SheetContent side="bottom" className="max-h-[90dvh] overflow-y-auto">
+      <SheetContent side="bottom" className="max-h-[90dvh] overflow-y-auto break-words">
         {slot && (
           <>
             <SheetHeader className="mb-4 text-left">

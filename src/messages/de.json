@@ -532,7 +532,7 @@
       "weekTitle": "Diese Woche",
       "planWeekTitle": "Aktiver Plan",
       "loading": "Ernährung wird geladen",
-      "plannedKcal": "{{kcal}} kcal geplant",
+      "plannedKcal": "{{kcal}} kcal geplant",
       "status": {
         "unrecorded": "Nicht erfasst",
         "partial": "Teilweise erfasst",

@@ -374,8 +374,9 @@ separate, deliberately reviewed slice.
 1. **Runtime service-account least privilege.** The production Nutrition
    runtime uses `813249512866-compute@developer.gserviceaccount.com` with the
    broad `roles/editor`. Narrow it to least privilege. NUT-14 changes no IAM.
-2. **320 px "Ausgelassen" clipping.** The known NUT-13B layout diagnostic
-   (tracked by an expected-failure test) stays open.
+2. **320 px "Ausgelassen" clipping.** The known NUT-13B layout diagnostic.
+   Fixed by NUT-12D.2, which also makes the E2E check a required one
+   (`docs/dev/nutrition-e2e.md`).
 3. **`firebase-functions` outdated-package warning.** The Phase 2
    `firebase deploy` warned that `firebase-functions` (`^7.3.2` in
    `functions/package.json`) is outdated. Upgrading is a separate
